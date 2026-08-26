@@ -40,22 +40,22 @@ def _production_env() -> dict[str, str]:
         "AKL_OIDC_AUDIENCE": "akl-api",
         "AKL_OIDC_JWKS_URL": "https://login.example/realms/stratos/certs",
         "AKL_RAG_USER_OIDC_AUDIENCE": "akl-api",
-        "AKL_RAG_AIIP_OIDC_AUDIENCE": "akb-api",
-        "AKL_TRUSTED_SERVICE_CLIENT_IDS": "aiip-service,akb-rag-service",
-        "AKL_RAG_AIIP_SERVICE_CLIENT_IDS": "aiip-service",
+        "AKL_TRUSTED_SERVICE_CLIENT_IDS": "akb-rag-service",
         "AKL_RAG_DEPENDENCY_MODE": "http",
         "AKL_RAG_AUTHZ_MODE": "registry",
     }
 
 
-def test_production_requires_service_and_per_caller_audience_allowlists() -> None:
+def test_production_allows_no_trusted_service_clients() -> None:
     values = _production_env()
     values["AKL_TRUSTED_SERVICE_CLIENT_IDS"] = ""
-    with pytest.raises(ConfigError, match="AKL_TRUSTED_SERVICE_CLIENT_IDS"):
-        load_settings(values)
+    settings = load_settings(values)
+    assert settings.trusted_service_client_ids == ()
 
+
+def test_production_requires_user_audience_allowlist() -> None:
     values = _production_env()
-    values["AKL_RAG_AIIP_OIDC_AUDIENCE"] = ""
+    values["AKL_RAG_USER_OIDC_AUDIENCE"] = ""
     with pytest.raises(ConfigError, match="AKL_RAG_USER_OIDC_AUDIENCE"):
         load_settings(values)
 

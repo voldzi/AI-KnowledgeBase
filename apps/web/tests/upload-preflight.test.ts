@@ -25,7 +25,6 @@ describe("upload preflight", () => {
     const settings = testSettings("/tmp/akl-upload-purpose-test");
     const purposes = [
       CONTROLLED_DOCUMENT_UPLOAD_TOKEN_PURPOSE,
-      "stratos-upload",
       "stratos-budget-upload",
     ];
     const payloads = purposes.map((purpose) => verifyUploadToken(
@@ -211,52 +210,52 @@ describe("upload preflight", () => {
     );
   });
 
-  it("binds the complete AIIP governance confirmation into the signed upload token", () => {
+  it("binds complete source governance into the signed upload token", () => {
     const settings = testSettings("/tmp/akl-upload-test");
     const governanceScope = {
       scopeType: "own",
-      scopeId: "own:aiip:subject-123",
+      scopeId: "own:source:subject-123",
       organizationId: "org_stratos",
       ownerSubjectId: "subject-123"
     };
     const decision = createUploadPreflightDecision(
       {
-        document_id: "doc_aiip_123",
+        document_id: "doc_source_123",
         file_name: "requirement-card.pdf",
         file_size: 128,
         file_type: "application/pdf",
         sha256: `sha256:${"d".repeat(64)}`,
-        policy_binding_id: "binding-aiip-own",
+        policy_binding_id: "binding-source-own",
         policy_version: "2",
         policy_hash: `sha256:${"e".repeat(64)}`,
-        external_document_id: "extdoc_aiip_123",
+        external_document_id: "extdoc_source_123",
         expected_current_document_version_id: "ver_previous_123",
         governed_document_resource_id: "governed-akb-document-123",
-        source_governed_resource_id: "governed-aiip-idea-123",
+        source_governed_resource_id: "governed-source-record-123",
         source_resource_id: "idea-123",
         source_version: "content-revision-7",
         governance_scope: governanceScope,
         governance_actor_subject_id: "subject-123",
         governance_registered_by_subject_id: "subject-123",
-        governance_correlation_id: "corr-aiip-123",
-        governance_idempotency_key: "aiip-upload:idea-123:content-revision-7"
+        governance_correlation_id: "corr-source-123",
+        governance_idempotency_key: "source-upload:record-123:content-revision-7"
       },
       settings
     );
 
     const payload = verifyUploadToken(decision.required_headers["X-AKL-Upload-Token"], settings);
 
-    assert.equal(payload.external_document_id, "extdoc_aiip_123");
+    assert.equal(payload.external_document_id, "extdoc_source_123");
     assert.equal(payload.expected_current_document_version_id, "ver_previous_123");
     assert.equal(payload.governed_document_resource_id, "governed-akb-document-123");
-    assert.equal(payload.source_governed_resource_id, "governed-aiip-idea-123");
+    assert.equal(payload.source_governed_resource_id, "governed-source-record-123");
     assert.equal(payload.source_resource_id, "idea-123");
     assert.equal(payload.source_version, "content-revision-7");
     assert.deepEqual(payload.governance_scope, governanceScope);
     assert.equal(payload.governance_actor_subject_id, "subject-123");
     assert.equal(payload.governance_registered_by_subject_id, "subject-123");
-    assert.equal(payload.governance_correlation_id, "corr-aiip-123");
-    assert.equal(payload.governance_idempotency_key, "aiip-upload:idea-123:content-revision-7");
+    assert.equal(payload.governance_correlation_id, "corr-source-123");
+    assert.equal(payload.governance_idempotency_key, "source-upload:record-123:content-revision-7");
   });
 
   it("accepts audit coordinates on a controlled-document upload without treating it as federated governance", () => {
@@ -282,16 +281,16 @@ describe("upload preflight", () => {
     assert.equal(payload.governance_scope, null);
   });
 
-  it("rejects a signed token with an incomplete governed AIIP context", () => {
+  it("rejects a signed token with incomplete source governance", () => {
     const settings = testSettings("/tmp/akl-upload-test");
     const decision = createUploadPreflightDecision(
       {
-        document_id: "doc_aiip_123",
+        document_id: "doc_source_123",
         file_name: "requirement-card.pdf",
         file_size: 128,
         file_type: "application/pdf",
         sha256: `sha256:${"f".repeat(64)}`,
-        external_document_id: "extdoc_aiip_123"
+        external_document_id: "extdoc_source_123"
       },
       settings
     );

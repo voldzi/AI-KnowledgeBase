@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 import pytest
 
 import app.security as security_module
-from app.config import load_settings
+from app.config import ConfigError, load_settings
 from app.errors import RetrievalError
 from app.main import create_app
 from app.security import _oidc_context
@@ -19,9 +19,7 @@ def _settings():
             "AKL_OIDC_AUDIENCE": "akl-api",
             "AKL_OIDC_JWKS_URL": "https://login.example/realms/stratos/certs",
             "AKL_RAG_USER_OIDC_AUDIENCE": "akl-api",
-            "AKL_RAG_AIIP_OIDC_AUDIENCE": "akb-api",
-            "AKL_TRUSTED_SERVICE_CLIENT_IDS": "aiip-service,akb-rag-service",
-            "AKL_RAG_AIIP_SERVICE_CLIENT_IDS": "aiip-service",
+            "AKL_TRUSTED_SERVICE_CLIENT_IDS": "akb-rag-service",
             "AKL_RAG_DEPENDENCY_MODE": "mock",
             "AKL_RAG_REGISTRY_CLIENT_MODE": "mock",
             "AKL_RAG_RETRIEVER_MODE": "mock",
@@ -31,13 +29,13 @@ def _settings():
     )
 
 
-def _aiip_claims(*, audience: str = "akb-api", client_id: str = "aiip-service"):
+def _service_claims(*, audience: str = "akl-api", client_id: str = "akb-rag-service"):
     return {
         "sub": f"service-account-{client_id}",
         "preferred_username": f"service-account-{client_id}",
         "azp": client_id,
         "aud": audience,
-        "realm_access": {"roles": ["service_aiip"]},
+        "realm_access": {"roles": ["service_rag"]},
     }
 
 
@@ -64,26 +62,26 @@ def _retrieve_payload(subject_id: str) -> dict[str, object]:
     }
 
 
-def test_exact_aiip_service_and_user_audiences_are_separate() -> None:
+def test_user_and_trusted_service_use_the_single_akb_audience() -> None:
     settings = _settings()
 
-    aiip = _oidc_context(_aiip_claims(), "aiip-token", settings)
+    service = _oidc_context(_service_claims(), "service-token", settings)
     user = _oidc_context(_user_claims(), "user-token", settings)
 
-    assert aiip.service_identity is True
-    assert aiip.service_client_id == "aiip-service"
+    assert service.service_identity is True
+    assert service.service_client_id == "akb-rag-service"
     assert user.service_identity is False
     assert user.service_client_id is None
 
 
-def test_aiip_service_rejects_user_or_foreign_audience() -> None:
+def test_service_rejects_foreign_audience_and_untrusted_client() -> None:
     settings = _settings()
 
     with pytest.raises(RetrievalError, match="audience") as wrong_audience:
-        _oidc_context(_aiip_claims(audience="akl-api"), "aiip-token", settings)
+        _oidc_context(_service_claims(audience="foreign-api"), "service-token", settings)
     with pytest.raises(RetrievalError) as foreign_service:
         _oidc_context(
-            _aiip_claims(audience="foreign-api", client_id="foreign-service"),
+            _service_claims(client_id="foreign-service"),
             "foreign-token",
             settings,
         )
@@ -92,13 +90,13 @@ def test_aiip_service_rejects_user_or_foreign_audience() -> None:
     assert foreign_service.value.code == "UNTRUSTED_SERVICE_IDENTITY"
 
 
-def test_aiip_service_rejects_client_and_service_account_name_mismatch() -> None:
+def test_service_rejects_client_and_service_account_name_mismatch() -> None:
     settings = _settings()
-    claims = _aiip_claims()
-    claims["preferred_username"] = "service-account-akb-rag-service"
+    claims = _service_claims()
+    claims["preferred_username"] = "service-account-foreign-service"
 
     with pytest.raises(RetrievalError) as mismatch:
-        _oidc_context(claims, "aiip-token", settings)
+        _oidc_context(claims, "service-token", settings)
 
     assert mismatch.value.code == "UNTRUSTED_SERVICE_IDENTITY"
 
@@ -110,13 +108,13 @@ def test_generic_rag_rejects_trusted_service_for_arbitrary_restricted_subject(
     monkeypatch.setattr(
         security_module,
         "_verified_oidc_claims",
-        lambda _token, _settings: _aiip_claims(),
+        lambda _token, _settings: _service_claims(),
     )
 
     with TestClient(create_app(settings)) as client:
         response = client.post(
             "/api/v1/rag/retrieve",
-            headers={"Authorization": "Bearer aiip-token"},
+            headers={"Authorization": "Bearer service-token"},
             json=_retrieve_payload("user-it-admin"),
         )
 

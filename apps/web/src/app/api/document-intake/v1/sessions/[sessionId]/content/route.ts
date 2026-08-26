@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 
 import {
   getStratosBudgetUploadSettings,
-  getStratosUploadSettings,
   STRATOS_BUDGET_UPLOAD_TOKEN_PURPOSE,
 } from "@/lib/stratos/document-ai";
 import {
@@ -54,9 +53,6 @@ export async function PUT(request: NextRequest, context: RouteContext) {
 function settingsForPurpose(payload: UploadTokenPayload): UploadSettings {
   if (payload.purpose === STRATOS_BUDGET_UPLOAD_TOKEN_PURPOSE) {
     return getStratosBudgetUploadSettings();
-  }
-  if (payload.purpose === "stratos-upload") {
-    return getStratosUploadSettings();
   }
   return getUploadSettings();
 }

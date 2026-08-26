@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "STRATOS Director Copilot 2 domain tools",
-    "version": "2.0.3"
+    "version": "2.0.4"
   },
   "paths": {
     "/api/v1/integrations/akb/domain-tools/execute": {
@@ -10,13 +10,27 @@
         "operationId": "executeDirectorCopilotDomainTool",
         "summary": "Execute a deterministic read-only domain tool",
         "parameters": [
-          { "$ref": "#/components/parameters/Contract" },
-          { "$ref": "#/components/parameters/ActorAuthorization" },
-          { "$ref": "#/components/parameters/RequestId" },
-          { "$ref": "#/components/parameters/CorrelationId" },
-          { "$ref": "#/components/parameters/IdempotencyKey" }
+          {
+            "$ref": "#/components/parameters/Contract"
+          },
+          {
+            "$ref": "#/components/parameters/ActorAuthorization"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/CorrelationId"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
         ],
-        "security": [{ "serviceBearer": [] }],
+        "security": [
+          {
+            "serviceBearer": []
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -40,27 +54,63 @@
           },
           "400": {
             "description": "Invalid contract, request or transport binding",
-            "content": { "application/json": { "schema": { "$ref": "./director-copilot-2-error.schema.json" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./director-copilot-2-error.schema.json"
+                }
+              }
+            }
           },
           "401": {
             "description": "Missing or invalid service or actor bearer",
-            "content": { "application/json": { "schema": { "$ref": "./director-copilot-2-error.schema.json" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./director-copilot-2-error.schema.json"
+                }
+              }
+            }
           },
           "403": {
             "description": "Invalid audience, token separation or actor binding",
-            "content": { "application/json": { "schema": { "$ref": "./director-copilot-2-error.schema.json" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./director-copilot-2-error.schema.json"
+                }
+              }
+            }
           },
           "413": {
             "description": "Request or response exceeds the contract limit",
-            "content": { "application/json": { "schema": { "$ref": "./director-copilot-2-error.schema.json" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./director-copilot-2-error.schema.json"
+                }
+              }
+            }
           },
           "422": {
             "description": "Unsupported tool or closed parameter catalogue",
-            "content": { "application/json": { "schema": { "$ref": "./director-copilot-2-error.schema.json" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./director-copilot-2-error.schema.json"
+                }
+              }
+            }
           },
           "503": {
             "description": "The single retryable unavailable response for Access Governance or source application failure",
-            "content": { "application/json": { "schema": { "$ref": "./director-copilot-2-error.schema.json" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./director-copilot-2-error.schema.json"
+                }
+              }
+            }
           }
         }
       }
@@ -69,8 +119,16 @@
       "get": {
         "operationId": "listDirectorCopilotDomainToolManifests",
         "summary": "List manifests owned by the source application",
-        "parameters": [{ "$ref": "#/components/parameters/Contract" }],
-        "security": [{ "serviceBearer": [] }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Contract"
+          }
+        ],
+        "security": [
+          {
+            "serviceBearer": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Versioned tool manifests",
@@ -79,9 +137,14 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": false,
-                  "required": ["schema_version", "manifests"],
+                  "required": [
+                    "schema_version",
+                    "manifests"
+                  ],
                   "properties": {
-                    "schema_version": { "const": "director-copilot-2" },
+                    "schema_version": {
+                      "const": "director-copilot-2"
+                    },
                     "manifests": {
                       "type": "array",
                       "items": {
@@ -95,19 +158,43 @@
           },
           "400": {
             "description": "Invalid contract header",
-            "content": { "application/json": { "schema": { "$ref": "./director-copilot-2-error.schema.json" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./director-copilot-2-error.schema.json"
+                }
+              }
+            }
           },
           "401": {
             "description": "Missing service bearer",
-            "content": { "application/json": { "schema": { "$ref": "./director-copilot-2-error.schema.json" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./director-copilot-2-error.schema.json"
+                }
+              }
+            }
           },
           "403": {
             "description": "Wrong service identity or target audience",
-            "content": { "application/json": { "schema": { "$ref": "./director-copilot-2-error.schema.json" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./director-copilot-2-error.schema.json"
+                }
+              }
+            }
           },
           "503": {
             "description": "Service identity verification unavailable",
-            "content": { "application/json": { "schema": { "$ref": "./director-copilot-2-error.schema.json" } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "./director-copilot-2-error.schema.json"
+                }
+              }
+            }
           }
         }
       }
@@ -126,31 +213,47 @@
         "name": "X-AKB-Domain-Tool-Contract",
         "in": "header",
         "required": true,
-        "schema": { "const": "director-copilot-2" }
+        "schema": {
+          "const": "director-copilot-2"
+        }
       },
       "ActorAuthorization": {
         "name": "X-STRATOS-Actor-Authorization",
         "in": "header",
         "required": true,
-        "schema": { "type": "string", "pattern": "^Bearer " }
+        "schema": {
+          "type": "string",
+          "pattern": "^Bearer "
+        }
       },
       "RequestId": {
         "name": "X-Request-ID",
         "in": "header",
         "required": true,
-        "schema": { "type": "string", "minLength": 1, "maxLength": 160 }
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        }
       },
       "CorrelationId": {
         "name": "X-Correlation-ID",
         "in": "header",
         "required": true,
-        "schema": { "type": "string", "minLength": 1, "maxLength": 160 }
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        }
       },
       "IdempotencyKey": {
         "name": "Idempotency-Key",
         "in": "header",
         "required": true,
-        "schema": { "type": "string", "pattern": "^call_[a-f0-9]{16,64}$" }
+        "schema": {
+          "type": "string",
+          "pattern": "^call_[a-f0-9]{16,64}$"
+        }
       }
     }
   }

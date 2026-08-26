@@ -1,5 +1,11 @@
 # AKB Architecture
 
+Portable architecture, runtime inventory and the supported-mode boundary for a
+foreign installation are documented in
+`docs/deployment/external-environment-architecture.md`. The current supported
+production mode is integrated with STRATOS identity/access/policy; the local
+development profile is not an autonomous production security profile.
+
 AKB is the Document AI backend for controlled documents and STRATOS knowledge
 workflows. It owns document metadata, versions, source-file references,
 ingestion, extraction, chunking, embeddings, Qdrant indexing, retrieval,
@@ -62,6 +68,16 @@ intelligence workbench -> AKB web route -> Registry metadata/readiness/case APIs
 intelligence workbench -> AKB web bridge -> Ingestion OpenSearch intelligence endpoints
 director copilot -> AKB orchestrator -> authorized read-only STRATOS domain tools -> evidence snapshot -> answer/artifact
 ```
+
+Before a document question enters RAG, the web bridge deterministically maps
+ordinary employee language to a bounded document task such as procedure,
+resource, support channel, owner, responsibility, deadline, obligation, or
+policy lookup. The task selects an existing citation-bound answer mode and
+retrieval-only vocabulary expansion. It never changes authorization or source
+precedence: Registry and Information Policy still select the allowed current or
+historically effective versions, and only retrieved chunks may support the
+answer. Task state can continue across a referential follow-up and page reload,
+but a self-contained new topic resets it.
 
 ## Portable Knowledge Bundles
 
@@ -208,7 +224,6 @@ Detailed architecture references:
 - `docs/ARCHITECTURE/02_SERVICE_BOUNDARIES.md`
 - `docs/ARCHITECTURE/enterprise-architecture.md`
 - `docs/ARCHITECTURE/professional-knowledge-chat-plan.md`
-- `docs/ARCHITECTURE/director-copilot-implementation-plan.md`
 - `docs/ARCHITECTURE/standalone-chat-pwa.md`
 - `docs/integration/STRATOS_EXTERNAL_DOCUMENTS_API.md`
 - `docs/29_STRATOS_SHARED_LIBRARIES.md`

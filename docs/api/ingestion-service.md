@@ -57,7 +57,7 @@ GET  /ready
 - Accepts interactive job create/read/cancel only through the exact
   `svc-akb-web-ingestion` transport. Every operation also requires a
   short-lived Registry proof bound to its actor, action, immutable
-  document/version, correlation id, and idempotency key. The inbound AIIP/user
+  document/version, correlation id, and idempotency key. The inbound user
   bearer is never forwarded.
 - Uses a separate short-lived `svc-ingestion` client-credentials bearer for
   Registry proof confirmation, readiness, metadata reads, authoritative
@@ -87,8 +87,8 @@ GET  /ready
   deterministic successor ingestion attempt for that exact immutable version.
   This refreshes rebuildable Qdrant/OpenSearch payloads with the authoritative
   `valid` status; PostgreSQL Registry data remains the source of truth.
-- Synchronizes AIIP ingestion status only for the immutable version already
-  selected by the dedicated confirm route; it cannot establish/change current
+- Synchronizes ingestion status only for the immutable version already
+  selected by the governed intake route; it cannot establish or change current
   lineage, file metadata, or source URI.
 - Persists deterministic jobs with confirmed authorization lineage, obtains the
   authoritative Registry claim before any source read or indexing, and writes

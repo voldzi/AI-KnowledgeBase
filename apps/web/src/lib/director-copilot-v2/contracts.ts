@@ -10,25 +10,21 @@ import requestSchema from "./contracts/director-copilot-2-request.schema.json";
 import responseSchema from "./contracts/director-copilot-2-response.schema.json";
 
 export const DIRECTOR_COPILOT_V2_CONTRACT = "director-copilot-2" as const;
-export const DIRECTOR_COPILOT_V2_REVISION = "2.0.3" as const;
+export const DIRECTOR_COPILOT_V2_REVISION = "2.0.4" as const;
 export const DIRECTOR_COPILOT_V2_MANIFEST_BUNDLE_SHA256 =
-  "a13c8b1e9724c7547bbf6cc7936c8f06c9bbea587beab230a754ac67e69e7716" as const;
+  "6fdb2eee077998f7c17d2d6bd6b6ff6f6a6fd8f7cd7b37c1464f7e65eb07cb0a" as const;
 
 export const V2_TOOL_IDS = {
   budgetOrganization: "budget.organization_financial_summary.v1",
   budgetProject: "budget.project_financial_snapshot.v1",
   projectflow: "projectflow.portfolio_delivery_overview.v1",
   archflow: "archflow.need_portfolio_overview.v1",
-  aiip: "aiip.idea_portfolio_overview.v1",
 } as const;
 
 export type DirectorCopilotV2ToolId = (typeof V2_TOOL_IDS)[keyof typeof V2_TOOL_IDS];
-export type DirectorCopilotV2Application = "budget" | "projectflow" | "archflow" | "aiip";
-export type ActiveDirectorCopilotV2Application = Exclude<
-  DirectorCopilotV2Application,
-  "aiip"
->;
-export type DirectorCopilotV2Audience = "budget-api" | "projectflow-api" | "archflow-api" | "aiip-api";
+export type DirectorCopilotV2Application = "budget" | "projectflow" | "archflow";
+export type ActiveDirectorCopilotV2Application = DirectorCopilotV2Application;
+export type DirectorCopilotV2Audience = "budget-api" | "projectflow-api" | "archflow-api";
 export type DirectorCopilotV2ScopeType =
   | "own"
   | "public"
@@ -193,7 +189,7 @@ export interface DirectorCopilotV2Manifest {
   schema_version: typeof DIRECTOR_COPILOT_V2_CONTRACT;
   contract_revision: typeof DIRECTOR_COPILOT_V2_REVISION;
   tool_id: DirectorCopilotV2ToolId;
-  owner: "BUDGET" | "PROJECTFLOW" | "ARCHFLOW" | "AIIP";
+  owner: "BUDGET" | "PROJECTFLOW" | "ARCHFLOW";
   audience: DirectorCopilotV2Audience;
   schema_revision: string;
   metrics: Array<{
@@ -293,21 +289,18 @@ const EXPECTED_TOOLS: Record<DirectorCopilotV2Application, DirectorCopilotV2Tool
   budget: [V2_TOOL_IDS.budgetOrganization, V2_TOOL_IDS.budgetProject],
   projectflow: [V2_TOOL_IDS.projectflow],
   archflow: [V2_TOOL_IDS.archflow],
-  aiip: [V2_TOOL_IDS.aiip],
 };
 
 const EXPECTED_AUDIENCE: Record<DirectorCopilotV2Application, DirectorCopilotV2Audience> = {
   budget: "budget-api",
   projectflow: "projectflow-api",
   archflow: "archflow-api",
-  aiip: "aiip-api",
 };
 
 const SOURCE_SYSTEM: Record<DirectorCopilotV2Manifest["owner"], string> = {
   BUDGET: "STRATOS_BUDGET",
   PROJECTFLOW: "STRATOS_PROJECTFLOW",
   ARCHFLOW: "STRATOS_ARCHFLOW",
-  AIIP: "STRATOS_AIIP",
 };
 
 const pinnedBundle = parsePinnedBundle(pinnedManifestBundleJson);
@@ -463,8 +456,7 @@ export function directorCopilotV2ApplicationForTool(
     return "budget";
   }
   if (toolId === V2_TOOL_IDS.projectflow) return "projectflow";
-  if (toolId === V2_TOOL_IDS.archflow) return "archflow";
-  return "aiip";
+  return "archflow";
 }
 
 export function directorCopilotV2StableId(
@@ -491,7 +483,7 @@ function parsePinnedBundle(value: unknown): DirectorCopilotV2ManifestBundle {
     || value.schema_version !== DIRECTOR_COPILOT_V2_CONTRACT
     || value.contract_revision !== DIRECTOR_COPILOT_V2_REVISION
     || !Array.isArray(value.manifests)
-    || value.manifests.length !== 5
+    || value.manifests.length !== 4
   ) {
     fail("DIRECTOR_COPILOT_V2_PIN_INVALID", "Pinned manifest bundle is invalid.");
   }
@@ -501,7 +493,7 @@ function parsePinnedBundle(value: unknown): DirectorCopilotV2ManifestBundle {
   const tools = value.manifests.map((manifest) => (
     (manifest as DirectorCopilotV2Manifest).tool_id
   ));
-  if (new Set(tools).size !== 5 || tools.some((tool) => !Object.values(V2_TOOL_IDS).includes(tool))) {
+  if (new Set(tools).size !== 4 || tools.some((tool) => !Object.values(V2_TOOL_IDS).includes(tool))) {
     fail("DIRECTOR_COPILOT_V2_PIN_INVALID", "Pinned manifest tools are incomplete.");
   }
   return structuredClone(value) as unknown as DirectorCopilotV2ManifestBundle;

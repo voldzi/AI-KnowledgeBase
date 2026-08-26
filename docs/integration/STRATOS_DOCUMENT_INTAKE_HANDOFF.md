@@ -2,7 +2,7 @@
 
 ## Objective
 
-Budget, ProjectFlow, ArchFlow, AIIP and other approved STRATOS applications
+Budget, ProjectFlow, ArchFlow and other approved STRATOS applications
 must use AKB as the only binary entry point for governed documents. A source
 application remains the authority for its business action and local roles.
 AKB remains the authority for document identity, binary integrity, malware
@@ -67,7 +67,6 @@ ideas, but must not copy those roles into AKB document assignments.
 | Budget | User may perform the relevant contract, budget or evidence action in the covered scope. | Use the Budget upload bridge for current and historical batches; preserve tenant, project, contract and batch lineage. |
 | ProjectFlow | User may attach or publish project evidence for the covered project/portfolio. | Use the generic governed STRATOS bridge with canonical project/resource lineage; store only AKB references after confirm. |
 | ArchFlow | User may attach evidence to a need, assessment or handoff. | Bind the upload to the canonical need and current actor; do not infer Budget or ProjectFlow access. |
-| AIIP | User may submit or assess the covered idea. | Use the dedicated AIIP document identity and governance contract; AIIP service credentials never call Registry, RAG or ClamAV directly. |
 | SecurityPreflight | User or service may create approved assessment evidence. | Use a dedicated exact source namespace and classification ceiling; findings do not grant document access. |
 | AKB web | Current projection contains the required upload/manage capability. | Interactive upload uses the controlled-document preflight and the same canonical binary endpoint. |
 | Official source collector | Manager approved the source collection and URL allowlist. | Downloaded bytes pass through the same intake core; a public origin does not bypass scanning. |

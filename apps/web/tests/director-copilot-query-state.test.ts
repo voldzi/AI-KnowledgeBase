@@ -329,17 +329,6 @@ describe("Director Copilot conversation query state", () => {
     );
   });
 
-  it("does not preserve the retired AIIP application name as a live source", () => {
-    const resolved = resolveConversationQuery({
-      message: "Kolik podnětů eviduje AIIP?",
-      now: NOW,
-    });
-
-    assert.equal(resolved.recognized, false);
-    assert.deepEqual(resolved.state.sources, []);
-    assert.equal(classifyDirectorCopilotV2Intent("Kolik podnětů eviduje AIIP?"), null);
-  });
-
   it("sanitizes untrusted persisted context and never accepts authorization fields", () => {
     const parsed = conversationQueryState({
       schema_version: "stratos-conversation-query-state-2",

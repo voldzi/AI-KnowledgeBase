@@ -16,6 +16,7 @@ import {
   CommandCenterTrigger,
   GlobalTopbar,
   GlobalTopbarBreadcrumb,
+  STRATOS_APP_DIRECTORY,
   TopbarStatusGroup,
   WorkspaceSidebarTriggerButton,
   type TopbarStatusIndicatorTone,
@@ -186,11 +187,11 @@ export function ProjectTopbar({
       currentAppId="akb"
       appAvailability={applyAkbStratosAppsVisibility(
         buildStratosAppsAvailabilityFromAccessProjection(applicationAccess),
+        STRATOS_APP_DIRECTORY.map(({ id }) => id),
       )}
       appUrls={{
         "budget-contract": process.env.NEXT_PUBLIC_STRATOS_HOME_URL,
         projectflow: process.env.NEXT_PUBLIC_PROJECTFLOW_URL,
-        "security-preflight": process.env.NEXT_PUBLIC_SECURITY_PREFLIGHT_URL,
         archflow: process.env.NEXT_PUBLIC_ARCHFLOW_URL,
       }}
       mobileBehavior={{

@@ -23,6 +23,16 @@ def test_expand_query_text_adds_czech_statistics_and_itsm_synonyms() -> None:
     assert "fitsm" in service_management
 
 
+def test_expand_query_text_adds_employee_task_and_form_synonyms() -> None:
+    vacation = expand_query_text("Jak si nastavím dovolenou?")
+    travel_form = expand_query_text("Kde najdu formulář pro zahraniční cestu?")
+    support = expand_query_text("Kam nahlásím problém na IT podporu?")
+
+    assert "zadost o dovolenou" in vacation
+    assert "cestovni prikaz" in travel_form
+    assert "hlaseni incidentu" in support
+
+
 def test_extract_query_identifiers_normalizes_document_and_citation_references() -> None:
     identifiers = extract_query_identifiers("Najdi RMO č. 12/2024, čl. 4 odst. 2.")
 

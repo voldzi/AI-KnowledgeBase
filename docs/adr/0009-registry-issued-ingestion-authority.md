@@ -61,28 +61,6 @@ document. Alembic revision `0018_ingestion_attempts` backfills unambiguous
 current external-reference state and aborts rather than guessing when legacy
 rows conflict.
 
-The initial AIIP upload is a deliberately narrow authorization case. An AIIP
-submitter does not need a general AKB `document.ingest` capability merely to
-store the source of their own submitted idea. Registry may issue the
-`document.ingest` proof without that capability only when the document has an
-exact `STRATOS_AIIP` external reference, both the document and immutable version
-are centrally registered with `own` scope for the same current person, the
-person is the persisted document owner, the version inherits from that exact
-document root, and its single file was uploaded by the same person. This does
-not authorize read, reindex, another user's document, an organization-scoped
-artifact, or any non-AIIP document. The issuance audit records
-`authorization_basis=aiip_owner_submission`; every other issuance continues
-through normal application capability and scope evaluation.
-
-An interrupted AIIP upload may have already persisted its immutable AKB
-version before a later confirmation failed. A retry that presents the same
-content hash, filename, media type, byte size, AIIP source path, policy, and
-governance lineage reuses that first canonical version and file even when the
-retry uploaded the bytes into a fresh staging object. Object URI, storage
-reference, and capture time are transport coordinates, not a new document
-version. Any change to the immutable content or source lineage remains a
-conflict.
-
 For a centrally `REGISTERED` immutable version, the Registry-issued ingestion
 authority is bound to the exact policy hash confirmed by STRATOS and persisted
 with that registration. AKB must not replace it with a locally recomputed hash.
@@ -121,15 +99,6 @@ Ingestion readiness is authenticated. Deployment runs the probe inside the
 container with the exact `svc-ingestion` identity and also checks the separate
 non-mutating web-transport readiness route with
 `svc-akb-web-ingestion`.
-
-This decision supersedes only the post-confirm ingestion authorization
-paragraphs of ADR 0008. ADR 0008 remains authoritative for the AIIP dual-identity
-upload, immutable lineage, and current-pointer compare-and-swap.
-
-The AIIP confirm route performs the immutable save and current-version
-selection synchronously, then starts this proof/job protocol after the HTTP
-response. Failure to create or activate the job is observable as a saved
-`VERSION_CREATED` version and never rolls back or misreports the source save.
 
 ## Consequences
 

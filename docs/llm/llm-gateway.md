@@ -174,7 +174,7 @@ AKL_LLM_GATEWAY_ALLOWED_CALLER_ROLES=service_ingestion,service_rag
 ```
 
 Ingestion volá gateway jako `svc-ingestion` s rolí `service_ingestion`; RAG
-jako `svc-rag` s rolí `service_rag`. Caller OIDC token z browseru nebo AIIP se
+jako `svc-rag` s rolí `service_rag`. Caller OIDC token z browseru se
 do tohoto downstream volání nepoužívá ani nepřeposílá. Ingestion může v auditní
 hlavičce `X-AKL-On-Behalf-Of` zachovat pouze identifikátor osoby, který už
 potvrdil z Registry-issued proof; hlavička sama není autorita.

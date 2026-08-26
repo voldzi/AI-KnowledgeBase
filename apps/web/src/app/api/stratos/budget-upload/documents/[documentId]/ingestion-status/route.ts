@@ -4,7 +4,7 @@ import {
   authenticateStratosDocumentServiceRequest,
   requireStratosDocumentSourceAllowed,
   type StratosDocumentServicePrincipal,
-} from "@/lib/aiip/application-api";
+} from "@/lib/stratos/document-service-auth";
 import { getStratosBudgetDocumentStatus, type StratosIngestionStatus } from "@/lib/stratos/document-ai";
 import { ApiClientError, type ApiRequestContext, type RegistryIngestionAttempt } from "@/lib/types";
 

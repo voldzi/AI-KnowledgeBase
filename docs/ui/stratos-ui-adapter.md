@@ -8,7 +8,7 @@ STRATOS repozitari je `@voldzi/stratos-ui` a obsahuje zejmena `AppShell`,
 ## Implementacni Rozhodnuti
 
 `@voldzi/stratos-ui` je cilovy zdroj sdilenych UI komponent. Povinna STRATOS
-UI baseline pro AKB web je `@voldzi/stratos-ui@0.3.29` nebo novejsi
+UI baseline pro AKB web je `@voldzi/stratos-ui@0.3.37` nebo novejsi
 kompatibilni patch/minor verze. Balicek se nema
 pripojovat pres `file:` dependency mimo Docker build context a AKB nema
 pridavat scoped `.npmrc` pro `@voldzi:registry=https://npm.pkg.github.com`.
@@ -21,9 +21,10 @@ a `project-topbar.tsx` importuji shell a navigacni komponenty primo z
 lokalizovane popisky, stav aktivniho modulu, prikazy a domenova data.
 
 Adresar `apps/web/src/components/stratos` zustava pouze pro male API adaptery,
-kde AKB feature pouziva odlisny props kontrakt, nebo pro znovupouzitelne
-domenove komponenty. Neobsahuje re-exporty ani kopie `AppShell`, `GlobalTopbar`,
-`AppRail`, `WorkspaceSidebar`, `WorkspaceNav` nebo `CommandCenter`.
+kde AKB feature pouziva odlisny props kontrakt, a pro pojmenovane kompatibilitni
+aliasy stabilnich exportu balicku. Neobsahuje kopie `AppShell`, `GlobalTopbar`,
+`AppRail`, `WorkspaceSidebar`, `WorkspaceNav` nebo `CommandCenter`; obecne
+rozlozeni, chovani a styly zustavaji vyhradne ve sdilene knihovne.
 
 `globals.css` mapuje barevne tokeny a nastavuje odsazeni pracovni plochy.
 Neobsahuje lokalni implementaci gridu shellu, mobilniho draweru, backdropu,
@@ -42,7 +43,7 @@ ikony, poradi, dostupnost ProcessForge a vynechani aktualni aplikace z nabidky
 vlastni centralni katalog v `@voldzi/stratos-ui`.
 Dokud publikovany balicek `@voldzi/stratos-ui@0.3.37` obsahuje starsi sestaveny
 katalog, AKB pres `applyAkbStratosAppsVisibility` pouze skryva vyrazene cile
-SecurityPreflight, AIIP a ProcessForge. Metadata aktivnich aplikaci nadale
+SecurityPreflight a ProcessForge. Metadata aktivnich aplikaci nadale
 vlastni sdilena knihovna. Kompatibilitni filtr se odstrani po publikaci balicku,
 jehoz sestaveny katalog odpovida aktualnimu STRATOS zdroji.
 AKB nepridava mobilni opravy pro `.stratos-app-shell-main`,
@@ -183,7 +184,7 @@ Field-help API je sdilene v `@voldzi/stratos-ui`: AKB pouziva `HelpHint`, `Field
 
 ## Udrzovaci Kontrakt
 
-1. Drzet dependency `@voldzi/stratos-ui` minimalne na `0.3.27` z verejneho npm registry.
+1. Drzet dependency `@voldzi/stratos-ui` minimalne na `0.3.37` z verejneho npm registry.
 2. Importovat `@voldzi/stratos-ui/styles.css` prave jednou v root layoutu.
 3. Importovat standardni shell, topbar, navigaci, popovery a kanban primo ze sdilene knihovny.
 4. Nevytvaret lokalni CSS pro `.stratos-app-shell*`, `.stratos-workspace-sidebar*`, `.stratos-app-rail*`, `.stratos-global-topbar*`, sdilene popovery nebo kanban.

@@ -1,7 +1,7 @@
 import { PageHeader } from "@/components/page-header";
 import { ControlledDocumentationWorkbench } from "@/features/controlled-documentation/controlled-documentation-workbench";
 import { getServerApiClients, getServerRequestContextForPath } from "@/lib/api/server";
-import { requirePageAccess } from "@/lib/auth/server-route-guard";
+import { requireWorkspaceRouteAccess } from "@/lib/auth/server-route-guard";
 import type { ControlledDocumentPackageList, Document } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +17,7 @@ export default async function ControlledDocumentationPage({ searchParams }: Cont
   const clients = getServerApiClients();
   const context =
     await getServerRequestContextForPath(controlledRequestPath(domain, validOn));
-  requirePageAccess(context, "knowledge_workspace");
+  requireWorkspaceRouteAccess(context, "/controlled-documentation");
   const authorization = await clients.registry.getAuthorizationHints(context);
   const [packages, rules] = await Promise.all([
     clients.registry.listControlledDocumentPackages(context, {

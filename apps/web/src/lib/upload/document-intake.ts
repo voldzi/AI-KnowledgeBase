@@ -22,7 +22,6 @@ export const DOCUMENT_INTAKE_CONTENT_BASE_PATH = "/api/document-intake/v1/sessio
 const SUPPORTED_UPLOAD_PURPOSES = new Set([
   "controlled-document-upload",
   "official-public-source-sync",
-  "stratos-upload",
   "stratos-budget-upload",
 ]);
 

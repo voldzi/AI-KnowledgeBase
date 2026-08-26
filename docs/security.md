@@ -1,5 +1,10 @@
 # AKB Security
 
+Use `docs/security/standalone-and-stratos-integration.md` for the portable
+security and integration guide, including the explicit unsupported status of
+autonomous production AKB, service identities, network flows and fail-closed
+outage behavior.
+
 AKB security is centralized in backend services. Browser clients and STRATOS
 host applications do not make authorization decisions for AKB documents.
 
@@ -64,29 +69,15 @@ host applications do not make authorization decisions for AKB documents.
   short-lived proof bound to the exact actor, action, document/version,
   correlation id and idempotency key. Caller tokens are never reused as
   Ingestion, LLM Gateway, or ingestion-to-Registry credentials.
-- A person submitting an AIIP idea may authorize only the first ingest of their
-  own exact, centrally registered AIIP document version without receiving a
-  general AKB ingest capability. Registry requires the matching AIIP external
-  reference, own-scope owner, immutable parent lineage and uploader identity;
-  other documents, users and ingestion actions remain under normal AKB
-  capability and scope checks.
 - The web backend uses the exact confidential transport
   `svc-akb-web-ingestion`/`service_akb_web_ingestion` for interactive Ingestion
   calls. It sends a Registry-issued proof and the bound subject; Ingestion
   confirms that proof through Registry with its own short-lived
   `svc-ingestion` bearer. The subject header becomes audit context only after
   exact proof confirmation and is never independently authoritative.
-- AIIP document transport uses only `aiip-document-service`, realm role
-  `service_aiip_document`, audience `akl-api`, and the `client_credentials`
-  grant. Registry gives this client exactly `aiip-upload`. AI assistance uses
-  the independent `aiip-service` identity with `service_aiip` and audience
-  `akb-api`; it has no Registry route grant. The public AKB bridge rejects a
-  client, role, audience, or service-account name from the other profile. AIIP
-  never sends `X-AKL-*` and never calls LLM Gateway, RAG, Qdrant, or OpenSearch
-  directly. Client secrets stay only in the host or CI secret store.
 - RAG uses the separate internal client `akb-rag-service`, role `service_rag`,
   and audience `akl-api` for Registry calls. Its secret is mounted read-only
-  only into RAG; the AIIP credential is not shared with RAG or Registry.
+  only into RAG and is not shared with another service.
 - A service role is not sufficient to establish machine identity. Registry and
   RAG require an allowlisted `azp`/`client_id` bound to the exact Keycloak
   `service-account-<client_id>` identity. Conflicting claims and untrusted
@@ -95,19 +86,14 @@ host applications do not make authorization decisions for AKB documents.
   `audit`, and `idempotency`.
 - `svc-ingestion` receives only `authz`, `audit`, `documents-read`, and the exact
   `ingestion-status` route. The latter reads authoritative attempt coordinates
-  and can update job/status only for an already selected AIIP version;
+  and can update job/status only for an already selected immutable version;
   `documents-read` returns only registered document/version metadata required
-  to verify the immutable source. `aiip-document-service` remains restricted
-  to `aiip-upload` and can never be reused by the pipeline on generic Registry
-  paths.
+  to verify the immutable source.
 - `svc-akb-web-ingestion` receives no Registry route grant. Ingestion Service
   accepts it only on the bounded job/read/cancel and web-transport readiness
   surface. A valid service token without a matching Registry proof is denied.
-- RAG separates user audience `akl-api` from AIIP service audience `akb-api`.
-  Generic RAG and all other end-user routes reject service identities and bind
-  the request subject to the verified user bearer. Only the two AIIP
-  integration routes accept exact `aiip-service` with `service_aiip`,
-  organization `org_stratos`, and classification `public` or `internal`.
+- RAG uses user audience `akl-api`. End-user routes reject service identities
+  and bind the request subject to the verified user bearer.
 
 ## Authorization
 
@@ -428,18 +414,6 @@ storage through a read-only mount and writes only to a separate disposable
 rendition cache. Returned bytes must have a valid PDF signature and remain
 private with `no-store`; source content is never written to application logs.
 
-AIIP documents marked with `Tajné` in `metadata.aiip.sensitivity`,
-`metadata.aiip.input_data_sensitivity`, or
-`metadata.aiip.output_data_sensitivity` are rejected by the standard AKB
-external document upsert until a separate classified boundary is explicitly
-approved.
-
-AIIP application API processing accepts only `public` and `internal`.
-`restricted` and `confidential` requests are rejected at the web boundary
-before RAG or model invocation. Duplicate retrieval also enforces `tenant_id`,
-`external_system=STRATOS_AIIP`, the classification ceiling, and Registry
-document authorization.
-
 ## Container Runtime Boundary
 
 The production Registry, RAG, LLM Gateway and Governance containers run as the
@@ -477,8 +451,7 @@ For service-written events, Registry always stores the verified caller subject
 as `actor_id`; a payload actor is only `reported_actor_id` metadata, and the
 server-derived `service_client_id` overwrites any supplied value. Idempotency
 reserve and complete are likewise caller-bound. Cross-client namespaces are
-denied except for the explicit `akb-rag-service=aiip-service` delegation used
-by the AIIP bridge.
+denied except for explicitly configured least-privilege delegations.
 
 Audit CSV export is generated in the browser only from events already returned
 by the authorized Registry audit endpoint and filtered in the current view. It

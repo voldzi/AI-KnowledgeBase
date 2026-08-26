@@ -119,7 +119,7 @@ X-AKL-Audience: llm-gateway-service
 X-AKL-Roles: service_ingestion | service_rag
 ```
 
-The token, audience, and role must all match. A user or AIIP bearer token is
+The token, audience, and role must all match. A user bearer token is
 not a substitute for this downstream service identity.
 
 In `AKL_AUTH_MODE=oidc`, the gateway requires an inbound bearer token but does not validate OIDC claims locally. It relies on upstream services to perform document authorization before calling the gateway.

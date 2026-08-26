@@ -140,15 +140,6 @@ def test_registry_service_secret_file_and_ingestion_client_boundary(tmp_path) ->
     settings = load_settings(base)
     assert settings.registry_service_client_secret == "registry-secret"
 
-    with pytest.raises(ConfigError, match="not aiip-service"):
-        load_settings(
-            {
-                **base,
-                "AKL_REGISTRY_SERVICE_CLIENT_ID": "aiip-service",
-            }
-        )
-
-
 def test_production_registry_service_identity_must_match_ingestion_identity(tmp_path) -> None:
     secret_file = tmp_path / "svc-ingestion-client-secret"
     secret_file.write_text("registry-secret\n", encoding="utf-8")

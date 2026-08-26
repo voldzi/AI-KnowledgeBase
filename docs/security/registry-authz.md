@@ -35,12 +35,10 @@ route je default-deny.
 Produkční `svc-ingestion` má pouze `authz`, `audit`, `documents-read` a
 `ingestion-status`. `ingestion-status` mapuje pouze GET a PATCH na
 `/documents/{document_id}/external-references/current`; GET vrací souřadnice
-autoritativního attemptu a PATCH smí u AIIP záznamu změnit jen job/status pro už
-dedikovaně potvrzenou current verzi. `documents-read` dovoluje přesnému workeru
+autoritativního attemptu a PATCH smí změnit jen job/status pro už potvrzenou
+current verzi. `documents-read` dovoluje přesnému workeru
 načíst detail dokumentu a neměnné verze pro kontrolu URI, hashe, policy a
-parserových metadat, nikoli binární obsah nebo odvozená data. Produkční
-`aiip-service` zůstává omezený pouze na `aiip-upload` a nesmí získat žádnou z
-těchto generic families.
+parserových metadat, nikoli binární obsah nebo odvozená data.
 
 Produkční `svc-akb-director-copilot` má pouze route grant `audit`. Závěrečný
 audit federované odpovědi používá její bearer s audience `akl-api`; interaktivní
@@ -191,8 +189,7 @@ obě pole nelze podvrhnout payloadem.
 
 Idempotency reserve i complete jsou vázané na ověřeného service klienta.
 Client smí pracovat ve vlastním namespace a pouze v explicitně delegovaných
-namespaces z `AKL_SERVICE_CLIENT_DELEGATIONS`. Produkční AIIP tok používá
-jedinou úzkou delegaci `akb-rag-service=aiip-service`; ostatní cross-client
+namespaces z `AKL_SERVICE_CLIENT_DELEGATIONS`; ostatní cross-client
 reserve/complete končí `403 idempotency_namespace_forbidden`.
 
 ## Phase 02D enforcement status
@@ -205,9 +202,8 @@ Hotovo:
   vlastní `svc-ingestion` bearer; kontrolovaný caller zůstává v `subject_id`.
 - RAG volá `/authz/filter-documents` s akcí `rag.query` před odpovědí/LLM kontextem.
 - Ingestion, RAG a LLM Gateway přijímají `AKL_AUTH_MODE=oidc` a vyžadují bearer token.
-- Uživatelská Registry authz volání používají caller token. AIIP upload používá
-  výhradně `aiip-document-service=aiip-upload`; navazující ingestion používá oddělený
-  `svc-ingestion` service account a caller token dál nepředává.
+- Uživatelská Registry authz volání používají caller token. Navazující ingestion
+  používá oddělený `svc-ingestion` service account a caller token dál nepředává.
 
 Zbývá:
 

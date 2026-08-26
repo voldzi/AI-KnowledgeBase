@@ -80,11 +80,11 @@ Response feedback exports `akb.assistant.feedback.recorded`. The matching
 rating, bounded reason code and an explicit marker that no content was retained.
 Free-text feedback is not part of the API contract.
 
-For the AIIP application API, operational logs and Registry audit metadata may
-include operation, request/correlation/audit ids, canonical input hash, status,
+For application APIs, operational logs and Registry audit metadata may include
+operation, request/correlation/audit ids, canonical input hash, status,
 latency, requested/actual model, fallback flag, token counts, index version,
-and candidate/suggestion counts. They must not include AIIP record bodies,
-prompts, model responses, citation text, vectors, bearer tokens, or credentials.
+and candidate/suggestion counts. They must not include record bodies, prompts,
+model responses, citation text, vectors, bearer tokens, or credentials.
 
 Production telemetry is centralized on `observability.home.cz`. AKB does not
 run a second production Grafana, Prometheus, Tempo or Loki stack on

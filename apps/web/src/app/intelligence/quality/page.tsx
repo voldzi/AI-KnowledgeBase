@@ -4,7 +4,7 @@ import {
   getServerApiClients,
   getServerRequestContextForPath
 } from "@/lib/api/server";
-import { requirePageAccess } from "@/lib/auth/server-route-guard";
+import { requireWorkspaceRouteAccess } from "@/lib/auth/server-route-guard";
 import type { DocumentReadinessReport, EvaluationQualityOverview } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 export default async function RetrievalQualityPage() {
   const clients = getServerApiClients();
   const context = await getServerRequestContextForPath("/intelligence/quality");
-  requirePageAccess(context, "intelligence");
+  requireWorkspaceRouteAccess(context, "/intelligence/quality");
 
   const [qualityResult, readinessResult] = await Promise.allSettled([
     clients.evaluation.getQualityOverview(context, { limit: 20 }),

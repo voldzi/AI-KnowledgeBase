@@ -3,7 +3,7 @@ import {
   getServerApiClients,
   getServerRequestContextForPath,
 } from "@/lib/api/server";
-import { redirectEmployeeChatOnly } from "@/lib/auth/server-route-guard";
+import { requireWorkspaceRouteAccess } from "@/lib/auth/server-route-guard";
 import {
   ApiClientError,
   type AuditEvent,
@@ -25,7 +25,7 @@ export async function DashboardPage({
 }: DashboardPageProps = {}) {
   const clients = getServerApiClients();
   const context = await getServerRequestContextForPath(returnTo);
-  redirectEmployeeChatOnly(context);
+  requireWorkspaceRouteAccess(context, returnTo);
 
   const documentsPromise = clients.registry.listDocuments(context, { recentLimit: 12 });
   const auditEventsPromise = listVisibleAuditEvents(clients.registry.listAuditEvents(context));

@@ -107,16 +107,6 @@
               "quality": 1
             },
             {
-              "key": "archflow.need.source_idea_id",
-              "value": "stratos:idea:idea-001",
-              "value_type": "text",
-              "unit": null,
-              "currency": null,
-              "period_start": "2025-01-01",
-              "period_end": "2025-12-31",
-              "quality": 1
-            },
-            {
               "key": "archflow.need.linked_project_id",
               "value": "stratos:project:project-001",
               "value_type": "text",
@@ -163,12 +153,6 @@
             }
           ],
           "links": [
-            {
-              "key": "archflow.need.source_idea",
-              "relation_type": "direct",
-              "target_entity_type": "idea",
-              "target_canonical_id": "stratos:idea:idea-001"
-            },
             {
               "key": "archflow.need.linked_project",
               "relation_type": "direct",
@@ -254,16 +238,6 @@
               "quality": 1
             },
             {
-              "key": "archflow.need.source_idea_id",
-              "value": "stratos:idea:idea-001",
-              "value_type": "text",
-              "unit": null,
-              "currency": null,
-              "period_start": "2025-01-01",
-              "period_end": "2025-12-31",
-              "quality": 1
-            },
-            {
               "key": "archflow.need.linked_project_id",
               "value": "stratos:project:project-001",
               "value_type": "text",
@@ -310,12 +284,6 @@
             }
           ],
           "links": [
-            {
-              "key": "archflow.need.source_idea",
-              "relation_type": "direct",
-              "target_entity_type": "idea",
-              "target_canonical_id": "stratos:idea:idea-001"
-            },
             {
               "key": "archflow.need.linked_project",
               "relation_type": "direct",

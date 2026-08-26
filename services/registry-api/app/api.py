@@ -28,7 +28,6 @@ from app.assistant_observability import (
     record_assistant_history_access_change_metrics,
 )
 from app.access_governance import (
-    AiipAkbGovernedResourceRegistration,
     BudgetAkbGovernedResourceRegistration,
     GovernanceDenied,
     GovernanceInvalidResponse,
@@ -139,12 +138,6 @@ from app.permissions import (
 )
 from app.schemas import (
     Action,
-    AiipDocumentVersionCreate,
-    AiipDocumentVersionCreateResponse,
-    AiipExternalDocumentCurrentUpdateRequest,
-    AiipExternalDocumentCurrentUpdateResponse,
-    AiipExternalDocumentUpsertRequest,
-    AiipExternalDocumentUpsertResponse,
     StratosBudgetUploadDocumentVersionCreate,
     StratosBudgetUploadDocumentVersionCreateResponse,
     StratosBudgetUploadDocumentVersionLineageResponse,
@@ -226,7 +219,6 @@ from app.schemas import (
     IntegrationIdempotencyReserveRequest,
     IntegrationIdempotencyReserveResponse,
     IntegrationEnvelope,
-    AiipUploadIntegrationEnvelope,
     IngestionAuthorizationConfirmRequest,
     IngestionAuthorizationIssueRequest,
     IngestionAuthorizationResponse,
@@ -522,7 +514,7 @@ def _default_assignment_payloads(payload: DocumentCreate) -> list[DocumentAssign
 def _external_document_metadata(
     payload: ExternalDocumentUpsertRequest,
     *,
-    integration_envelope: IntegrationEnvelope | AiipUploadIntegrationEnvelope | None = None,
+    integration_envelope: IntegrationEnvelope | None = None,
 ) -> dict[str, object]:
     external_system = payload.external_system.value
     source_location = (
@@ -570,10 +562,6 @@ def _external_document_policies(payload: ExternalDocumentUpsertRequest) -> list[
             for policy in payload.access_policies
         ]
 
-    reader_subjects = ["role:reader"]
-    if payload.external_system == ExternalSourceSystem.stratos_aiip:
-        reader_subjects.append("role:service_aiip")
-
     return [
         DocumentAccessPolicy(
             subjects=[
@@ -598,7 +586,7 @@ def _external_document_policies(payload: ExternalDocumentUpsertRequest) -> list[
             },
         ),
         DocumentAccessPolicy(
-            subjects=reader_subjects,
+            subjects=["role:reader"],
             actions=[Action.document_read.value, Action.rag_query.value],
             constraints={
                 "tenant_id": payload.tenant_id,
@@ -1241,7 +1229,7 @@ def _central_operation(action: str, global_action: bool) -> str:
 
 
 def _audit_service_decision_coordinates(event_type: str) -> tuple[str, str]:
-    if event_type.startswith(("aiip.", "rag.", "assistant.")):
+    if event_type.startswith(("rag.", "assistant.")):
         return "akb:chat", "ai"
     if event_type in {"chunk.opened", "citation.opened", "source.opened"}:
         return "akb:read_document", "read"
@@ -2594,907 +2582,6 @@ def confirm_intelligence_scope_authorization_proof(
     )
 
 
-def _require_aiip_upload_service(principal: Principal) -> None:
-    if (
-        not principal.service_identity
-        or principal.service_client_id != "aiip-document-service"
-    ):
-        raise problem(
-            status.HTTP_403_FORBIDDEN,
-            "aiip_upload_service_required",
-            "The dedicated aiip-document-service identity is required for this upload route",
-        )
-
-
-def _aiip_actor_token(request: Request, principal: Principal) -> str:
-    authorization = request.headers.get("X-AIIP-Actor-Authorization") or ""
-    scheme, separator, token = authorization.strip().partition(" ")
-    token = token.strip()
-    if separator != " " or scheme.lower() != "bearer" or not token:
-        raise problem(
-            status.HTTP_401_UNAUTHORIZED,
-            "aiip_actor_authorization_required",
-            "A fresh AIIP actor bearer is required",
-        )
-    if token == principal.bearer_token:
-        raise problem(
-            status.HTTP_403_FORBIDDEN,
-            "aiip_actor_service_conflict",
-            "The AIIP actor bearer must be independent from the transport credential",
-        )
-    return token
-
-
-def _aiip_scope(
-    payload: AiipExternalDocumentUpsertRequest
-    | AiipDocumentVersionCreate
-    | AiipExternalDocumentCurrentUpdateRequest,
-) -> dict[str, str]:
-    return payload.governance_scope.model_dump(
-        mode="json", by_alias=True, exclude_none=True
-    )
-
-
-def _stable_aiip_id(prefix: str, *parts: str) -> str:
-    digest = sha256("\x00".join(parts).encode("utf-8")).hexdigest()[:32]
-    return f"{prefix}_aiip_{digest}"
-
-
-def _lock_aiip_identity(db: Session, key: str) -> None:
-    bind = db.get_bind()
-    if bind.dialect.name == "postgresql":
-        db.execute(
-            text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
-            {"key": f"akb-aiip-upload:{key}"},
-        )
-
-
-def _register_aiip_akb_authoritatively(
-    *,
-    actor_token: str,
-    resource_type: str,
-    resource_id: str,
-    source_version: str,
-    title: str,
-    parent_id: str,
-    scope: dict[str, str],
-    payload: AiipExternalDocumentUpsertRequest
-    | AiipDocumentVersionCreate
-    | AiipExternalDocumentCurrentUpdateRequest,
-    reason: str,
-) -> AiipAkbGovernedResourceRegistration:
-    settings = get_settings()
-    envelope = payload.integration_envelope
-    if settings.auth_mode == "mock":
-        return AiipAkbGovernedResourceRegistration(
-            governed_resource_id=_stable_aiip_id(
-                "gres", resource_type, resource_id, source_version
-            ),
-            resource_type=resource_type,  # type: ignore[arg-type]
-            resource_id=resource_id,
-            source_version=source_version,
-            parent_id=parent_id,
-            scope=scope,
-            inherited_from_resource_id=envelope.source_resource.governed_resource_id,
-            policy_binding_id=payload.information_policy.policy_binding_id,
-            policy_version=payload.information_policy.policy_version,
-            policy_hash=envelope.policy_hash,
-            originator_id=payload.information_policy.originator_id,
-            issued_at=payload.information_policy.issued_at.isoformat(),
-            review_at=(
-                payload.information_policy.review_at.isoformat()
-                if payload.information_policy.review_at is not None
-                else None
-            ),
-            registered_by_subject_id=envelope.actor.subject_id,
-            confirmed_by_subject_id=envelope.actor.subject_id,
-            correlation_id=envelope.correlation_id,
-            idempotency_key=envelope.idempotency_key,
-        )
-    try:
-        return governance_client(settings).register_aiip_akb_resource(
-            actor_token=actor_token,
-            resource_type=resource_type,  # type: ignore[arg-type]
-            resource_id=resource_id,
-            source_version=source_version,
-            title=title,
-            parent_id=parent_id,
-            scope=scope,
-            envelope=envelope,
-            binding=payload.information_policy,
-            reason=reason,
-        )
-    except GovernanceDenied as exc:
-        raise problem(
-            status.HTTP_403_FORBIDDEN,
-            "aiip_upload_governance_denied",
-            "STRATOS denied the AIIP actor or immutable upload lineage",
-        ) from exc
-    except (GovernanceInvalidResponse, GovernanceUnavailable) as exc:
-        raise problem(
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            "aiip_upload_governance_unavailable",
-            "Authoritative AIIP to AKB governance confirmation is unavailable",
-        ) from exc
-
-
-def _aiip_governance_columns(
-    registration: AiipAkbGovernedResourceRegistration,
-) -> dict[str, object]:
-    return {
-        "governed_resource_id": registration.governed_resource_id,
-        "governed_source_version": registration.source_version,
-        "governed_parent_resource_id": registration.parent_id,
-        "governance_scope_type": registration.scope["type"],
-        "governance_scope_id": registration.scope.get("id"),
-        "governance_scope_owner_subject_id": registration.scope.get("ownerSubjectId"),
-        "governance_registration_status": "REGISTERED",
-        "governance_registered_at": utcnow(),
-    }
-
-
-def _aiip_policy_columns(
-    payload: AiipExternalDocumentUpsertRequest
-    | AiipDocumentVersionCreate
-    | AiipExternalDocumentCurrentUpdateRequest,
-    registration: AiipAkbGovernedResourceRegistration,
-) -> dict[str, object]:
-    columns = policy_columns(payload.information_policy)
-    columns["policy_hash"] = registration.policy_hash
-    return columns
-
-
-def _aiip_parent_source(
-    payload: AiipExternalDocumentUpsertRequest
-    | AiipDocumentVersionCreate
-    | AiipExternalDocumentCurrentUpdateRequest,
-) -> dict[str, object]:
-    source = payload.integration_envelope.source_resource
-    return {
-        "governed_resource_id": source.governed_resource_id,
-        "application": source.application,
-        "resource_type": source.resource_type,
-        "resource_id": source.resource_id,
-        "source_version": source.source_version,
-        "scope": source.scope.model_dump(mode="json", by_alias=True, exclude_none=True),
-    }
-
-
-def _aiip_governance_confirmation(
-    payload: AiipExternalDocumentUpsertRequest
-    | AiipDocumentVersionCreate
-    | AiipExternalDocumentCurrentUpdateRequest,
-    registration: AiipAkbGovernedResourceRegistration,
-) -> dict[str, object]:
-    # The integration contract uses a discriminated scope shape. Pydantic may
-    # retain the mutually exclusive coordinate as ``None`` after parsing, but
-    # it must not leak into the wire response because TypeScript consumers use
-    # the exact canonical JSON shape for governance comparisons.
-    confirmation_scope = {
-        key: value for key, value in registration.scope.items() if value is not None
-    }
-    return {
-        "parent_source_resource": _aiip_parent_source(payload),
-        "governed_resource": {
-            "id": registration.governed_resource_id,
-            "application": "AKB",
-            "resource_type": registration.resource_type,
-            "resource_id": registration.resource_id,
-            "source_version": registration.source_version,
-            "parent_id": registration.parent_id,
-            "scope": confirmation_scope,
-            "policy_assignment": "INHERITED",
-            "explicit_policy_binding_id": None,
-            "inherited_from_resource_id": registration.inherited_from_resource_id,
-            "effective_policy": {
-                "policy_binding_id": registration.policy_binding_id,
-                "policy_version": registration.policy_version,
-                "policy_hash": registration.policy_hash,
-                "originator_id": registration.originator_id,
-                "issued_at": registration.issued_at,
-                "review_at": registration.review_at,
-            },
-            "registered_by_subject_id": registration.registered_by_subject_id,
-            "confirmed_by_subject_id": registration.confirmed_by_subject_id,
-        },
-        "document_policy_binding_id": registration.policy_binding_id,
-        "document_policy_version": registration.policy_version,
-        "document_policy_hash": registration.policy_hash,
-        "actor_subject_id": registration.confirmed_by_subject_id,
-        "correlation_id": registration.correlation_id,
-        "idempotency_key": registration.idempotency_key,
-    }
-
-
-def _assert_aiip_document_matches(
-    external_ref: ExternalDocumentRef,
-    payload: AiipExternalDocumentUpsertRequest
-    | AiipDocumentVersionCreate
-    | AiipExternalDocumentCurrentUpdateRequest,
-) -> None:
-    document = external_ref.document
-    source = payload.integration_envelope.source_resource
-    expected_scope = _aiip_scope(payload)
-    actual_scope = document_governance_scope(document)
-    if (
-        external_ref.tenant_id != "org_stratos"
-        or external_ref.external_system != ExternalSourceSystem.stratos_aiip.value
-        or external_ref.external_ref != payload.integration_envelope.external_ref
-        or external_ref.entity_type != payload.integration_envelope.payload.entity_type
-        or external_ref.entity_id != payload.integration_envelope.payload.entity_id
-        or source.resource_id != payload.integration_envelope.payload.entity_id
-        or document.governed_source_version != source.source_version
-        or document.governed_parent_resource_id != source.governed_resource_id
-        or actual_scope != expected_scope
-        or document.policy_binding_id != payload.information_policy.policy_binding_id
-        or document.policy_version != payload.information_policy.policy_version
-        or document.policy_hash != payload.integration_envelope.policy_hash
-        or document.governance_registration_status != "REGISTERED"
-        or not document.governed_resource_id
-    ):
-        raise problem(
-            status.HTTP_409_CONFLICT,
-            "aiip_upload_lineage_conflict",
-            "The existing AKB document does not match the immutable AIIP source lineage",
-        )
-
-
-def _assert_aiip_version_matches(
-    version: DocumentVersion,
-    document: Document,
-    payload: AiipDocumentVersionCreate | AiipExternalDocumentCurrentUpdateRequest,
-) -> None:
-    expected_scope = _aiip_scope(payload)
-    actual_scope = {
-        "type": version.governance_scope_type or "organization",
-    }
-    if version.governance_scope_id:
-        actual_scope["id"] = version.governance_scope_id
-    elif version.governance_scope_owner_subject_id:
-        actual_scope["ownerSubjectId"] = version.governance_scope_owner_subject_id
-    if (
-        version.governed_source_version != version.file_hash
-        or payload.integration_envelope.payload.sha256 != version.file_hash
-        or version.governed_parent_resource_id != document.governed_resource_id
-        or actual_scope != expected_scope
-        or version.policy_binding_id != payload.information_policy.policy_binding_id
-        or version.policy_version != payload.information_policy.policy_version
-        or version.policy_hash != payload.integration_envelope.policy_hash
-        or version.governance_registration_status != "REGISTERED"
-        or not version.governed_resource_id
-    ):
-        raise problem(
-            status.HTTP_409_CONFLICT,
-            "aiip_upload_version_lineage_conflict",
-            "The persisted AKB version does not match the immutable AIIP lineage",
-        )
-
-
-def _aiip_replay_source_lineage(
-    source_location: dict[str, object] | None,
-) -> dict[str, object] | None:
-    if source_location is None:
-        return None
-    # A retry may upload the same immutable bytes into a fresh staging object.
-    # Those coordinates are transport details; the content hash and AIIP source
-    # lineage below remain authoritative and must still match exactly.
-    ephemeral_fields = {"uri", "storage_ref", "captured_at"}
-    return {
-        key: value
-        for key, value in source_location.items()
-        if key not in ephemeral_fields
-    }
-
-
-@router.post(
-    "/integrations/aiip-upload/external-documents/upsert",
-    response_model=AiipExternalDocumentUpsertResponse,
-    status_code=status.HTTP_200_OK,
-)
-def upsert_aiip_external_document(
-    payload: AiipExternalDocumentUpsertRequest,
-    request: Request,
-    db: Session = Depends(get_db),
-    principal: Principal = Depends(get_current_principal),
-) -> AiipExternalDocumentUpsertResponse:
-    _require_aiip_upload_service(principal)
-    actor_token = _aiip_actor_token(request, principal)
-    source = payload.integration_envelope.source_resource
-    if payload.integration_envelope.actor.subject_id != (
-        source.scope.owner_subject_id
-        if source.scope.type == "own"
-        else payload.integration_envelope.actor.subject_id
-    ):
-        raise problem(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            "aiip_upload_owner_mismatch",
-            "An own AIIP upload scope must belong to the envelope actor",
-        )
-    lock_key = f"document:{payload.tenant_id}:{payload.external_system}:{payload.external_ref}"
-    _lock_aiip_identity(db, lock_key)
-    existing_ref = db.execute(
-        select(ExternalDocumentRef)
-        .where(
-            ExternalDocumentRef.tenant_id == payload.tenant_id,
-            ExternalDocumentRef.external_system == payload.external_system,
-            ExternalDocumentRef.external_ref == payload.external_ref,
-        )
-        .options(
-            selectinload(ExternalDocumentRef.document).selectinload(Document.access_policies),
-            selectinload(ExternalDocumentRef.document).selectinload(Document.assignments),
-        )
-    ).scalar_one_or_none()
-    document_id = (
-        existing_ref.document_id
-        if existing_ref is not None
-        else _stable_aiip_id("doc", payload.tenant_id, payload.external_system, payload.external_ref)
-    )
-    if existing_ref is not None:
-        if (
-            existing_ref.entity_type != payload.entity_type
-            or existing_ref.entity_id != payload.entity_id
-        ):
-            raise problem(
-                status.HTTP_409_CONFLICT,
-                "aiip_upload_external_identity_conflict",
-                "The external_ref belongs to a different AIIP entity",
-            )
-        _assert_aiip_document_matches(existing_ref, payload)
-    registration = _register_aiip_akb_authoritatively(
-        actor_token=actor_token,
-        resource_type="document",
-        resource_id=document_id,
-        source_version=source.source_version,
-        title=payload.title,
-        parent_id=source.governed_resource_id,
-        scope=_aiip_scope(payload),
-        payload=payload,
-        reason="Register exact AIIP-derived AKB document",
-    )
-    if existing_ref is not None:
-        document = existing_ref.document
-        if (
-            registration.governed_resource_id != document.governed_resource_id
-            or registration.registered_by_subject_id != document.owner_id
-        ):
-            raise problem(
-                status.HTTP_409_CONFLICT,
-                "aiip_upload_registration_conflict",
-                "STRATOS confirmation conflicts with the persisted AKB document",
-            )
-        add_audit_event(
-            db,
-            actor_id=registration.confirmed_by_subject_id,
-            event_type="external_document.aiip_governance_verified",
-            resource_type="external_document",
-            resource_id=existing_ref.external_document_id,
-            correlation_id=registration.correlation_id,
-            metadata={"document_id": document.document_id, "replay": True},
-        )
-        _commit_or_conflict(db)
-        db.refresh(existing_ref)
-        response = _external_document_response(existing_ref, created=False)
-        return AiipExternalDocumentUpsertResponse(
-            **response.model_dump(),
-            governance_confirmation=_aiip_governance_confirmation(payload, registration),
-        )
-
-    normalized_payload = ExternalDocumentUpsertRequest(
-        tenant_id=payload.tenant_id,
-        external_system=ExternalSourceSystem.stratos_aiip,
-        external_ref=payload.external_ref,
-        entity_type=payload.entity_type,
-        entity_id=payload.entity_id,
-        document_type=payload.document_type,
-        title=payload.title,
-        classification=payload.classification,
-        information_policy=payload.information_policy,
-        # The dedicated AIIP route has already verified the exact Registry-issued
-        # envelope. Do not pass it through the generic route's local hash check.
-        integration_envelope=None,
-        owner=ExternalDocumentOwner(user_id=registration.registered_by_subject_id),
-        tags=payload.tags,
-        metadata={},
-        source_location=payload.source_location,
-        citation_base_url=payload.citation_base_url,
-        preview_url=payload.preview_url,
-        governance_scope=payload.governance_scope,
-        parent_governed_resource_id=source.governed_resource_id,
-    )
-    document = Document(
-        document_id=document_id,
-        title=payload.title,
-        document_type=str(payload.document_type),
-        status=DocumentStatus.draft.value,
-        classification=legacy_classification(payload.information_policy),
-        owner_id=registration.registered_by_subject_id,
-        gestor_unit=None,
-        tags=sorted({*payload.tags, "external", "stratos_aiip"}),
-        document_metadata=_external_document_metadata(
-            normalized_payload,
-            integration_envelope=payload.integration_envelope,
-        ),
-        **_aiip_policy_columns(payload, registration),
-        **_aiip_governance_columns(registration),
-    )
-    document.access_policies = _external_document_policies(normalized_payload)
-    document.assignments = _assignment_models(
-        document=document,
-        payloads=_default_assignment_payloads(
-            DocumentCreate(
-                title=payload.title,
-                document_type=payload.document_type,
-                owner_id=registration.registered_by_subject_id,
-                classification=payload.classification,
-                tags=payload.tags,
-            )
-        ),
-        actor_id=registration.confirmed_by_subject_id,
-    )
-    _sync_document_assignment_denormalized_fields(document)
-    external_ref = ExternalDocumentRef(
-        external_document_id=make_id("extdoc"),
-        tenant_id=payload.tenant_id,
-        external_system=payload.external_system,
-        external_ref=payload.external_ref,
-        entity_type=payload.entity_type,
-        entity_id=payload.entity_id,
-        document=document,
-        source_location=(
-            payload.source_location.model_dump(mode="json", exclude_none=True)
-            if payload.source_location is not None
-            else None
-        ),
-        citation_base_url=payload.citation_base_url,
-        preview_url=payload.preview_url,
-        ref_metadata={},
-    )
-    db.add(document)
-    db.add(external_ref)
-    audit_event = add_audit_event(
-        db,
-        actor_id=registration.confirmed_by_subject_id,
-        event_type="external_document.aiip_registered",
-        resource_type="external_document",
-        resource_id=external_ref.external_document_id,
-        correlation_id=registration.correlation_id,
-        metadata={
-            "document_id": document.document_id,
-            "external_ref": payload.external_ref,
-            "governed_resource_id": registration.governed_resource_id,
-        },
-    )
-    for assignment in document.assignments:
-        assignment.last_audit_event_id = audit_event.audit_event_id
-    _commit_or_conflict(db)
-    db.refresh(external_ref)
-    response = _external_document_response(external_ref, created=True)
-    return AiipExternalDocumentUpsertResponse(
-        **response.model_dump(),
-        governance_confirmation=_aiip_governance_confirmation(payload, registration),
-    )
-
-
-@router.put(
-    "/integrations/aiip-upload/documents/{document_id}/versions",
-    response_model=AiipDocumentVersionCreateResponse,
-)
-def upsert_aiip_document_version(
-    document_id: str,
-    payload: AiipDocumentVersionCreate,
-    request: Request,
-    db: Session = Depends(get_db),
-    principal: Principal = Depends(get_current_principal),
-) -> AiipDocumentVersionCreateResponse:
-    _require_aiip_upload_service(principal)
-    actor_token = _aiip_actor_token(request, principal)
-    _lock_aiip_identity(db, f"version:{document_id}:{payload.version_label}")
-    external_ref = db.execute(
-        select(ExternalDocumentRef)
-        .where(
-            ExternalDocumentRef.document_id == document_id,
-            ExternalDocumentRef.external_system == ExternalSourceSystem.stratos_aiip.value,
-            ExternalDocumentRef.external_ref == payload.integration_envelope.external_ref,
-        )
-        .options(
-            selectinload(ExternalDocumentRef.document).selectinload(Document.access_policies),
-            selectinload(ExternalDocumentRef.document).selectinload(Document.assignments),
-            selectinload(ExternalDocumentRef.document).selectinload(Document.versions).selectinload(DocumentVersion.files),
-        )
-    ).scalar_one_or_none()
-    if external_ref is None:
-        raise problem(
-            status.HTTP_404_NOT_FOUND,
-            "aiip_upload_document_not_found",
-            "The exact AIIP-derived AKB document was not found",
-        )
-    _assert_aiip_document_matches(external_ref, payload)
-    document = external_ref.document
-    intake_attestation = _verify_document_intake_attestation(
-        document_id=document.document_id,
-        source_file_uri=payload.source_file_uri,
-        file_payload=payload.file,
-    )
-    existing = next(
-        (version for version in document.versions if version.version_label == payload.version_label),
-        None,
-    )
-    if existing is not None and existing.file_hash != payload.file_hash:
-        raise problem(
-            status.HTTP_409_CONFLICT,
-            "aiip_upload_version_hash_conflict",
-            "The AIIP version label already belongs to a different file hash",
-        )
-    if existing is not None:
-        _assert_aiip_version_matches(existing, document, payload)
-    version_id = existing.document_version_id if existing is not None else _stable_aiip_id(
-        "ver", document_id, payload.version_label, payload.file_hash
-    )
-    registration = _register_aiip_akb_authoritatively(
-        actor_token=actor_token,
-        resource_type="document-version",
-        resource_id=version_id,
-        source_version=payload.file_hash,
-        title=f"{document.title} — {payload.version_label}",
-        parent_id=str(document.governed_resource_id),
-        scope=_aiip_scope(payload),
-        payload=payload,
-        reason="Register exact immutable AIIP-derived AKB document version",
-    )
-    if existing is not None:
-        if (
-            existing.governed_resource_id != registration.governed_resource_id
-            or existing.governed_parent_resource_id != registration.parent_id
-            or existing.policy_binding_id != registration.policy_binding_id
-        ):
-            raise problem(
-                status.HTTP_409_CONFLICT,
-                "aiip_upload_version_registration_conflict",
-                "STRATOS confirmation conflicts with the persisted AKB document version",
-            )
-        add_audit_event(
-            db,
-            actor_id=registration.confirmed_by_subject_id,
-            event_type="document.version.aiip_governance_verified",
-            resource_type="document_version",
-            resource_id=existing.document_version_id,
-            correlation_id=registration.correlation_id,
-            metadata={
-                "document_id": document_id,
-                "replay": True,
-                "canonical_storage_object_reused": (
-                    existing.source_file_uri != payload.source_file_uri
-                ),
-                **_document_intake_audit_metadata(intake_attestation),
-            },
-        )
-        current_file = max(
-            existing.files,
-            key=lambda item: (item.uploaded_at, item.file_id),
-            default=None,
-        )
-        if current_file is not None:
-            _apply_document_intake_attestation(current_file, intake_attestation)
-        expected_source_location = (
-            payload.source_location.model_dump(mode="json", exclude_none=True)
-            if payload.source_location is not None
-            else None
-        )
-        if (
-            current_file is None
-            or len(existing.files) != 1
-            or existing.valid_from != payload.valid_from
-            or existing.valid_to != payload.valid_to
-            or current_file.uri != existing.source_file_uri
-            or payload.source_location.uri != payload.source_file_uri
-            or _aiip_replay_source_lineage(existing.source_location)
-            != _aiip_replay_source_lineage(expected_source_location)
-            or existing.change_summary != payload.change_summary
-            or current_file.filename != payload.file.filename
-            or current_file.mime_type != payload.file.mime_type
-            or current_file.size_bytes != payload.file.size_bytes
-            or current_file.sha256 != payload.file.sha256
-            or current_file.uploaded_by != registration.registered_by_subject_id
-        ):
-            raise problem(
-                status.HTTP_409_CONFLICT,
-                "aiip_upload_version_payload_conflict",
-                "The persisted AIIP document version does not match the immutable upload payload",
-            )
-        _commit_or_conflict(db)
-        db.refresh(existing)
-        return AiipDocumentVersionCreateResponse(
-            version=_document_version_response(existing),
-            external_document=_external_document_response(external_ref, created=False),
-            created=False,
-            governance_confirmation=_aiip_governance_confirmation(payload, registration),
-        )
-
-    version = DocumentVersion(
-        document_version_id=version_id,
-        document_id=document.document_id,
-        version_label=payload.version_label,
-        status=DocumentStatus.draft.value,
-        valid_from=payload.valid_from,
-        valid_to=payload.valid_to,
-        source_file_uri=payload.source_file_uri,
-        source_location=(
-            payload.source_location.model_dump(mode="json", exclude_none=True)
-            if payload.source_location is not None
-            else None
-        ),
-        file_hash=payload.file_hash,
-        change_summary=payload.change_summary,
-        **_aiip_policy_columns(payload, registration),
-        **_aiip_governance_columns(registration),
-    )
-    file = DocumentFile(
-        document_id=document.document_id,
-        document_version=version,
-        uri=payload.source_file_uri,
-        filename=payload.file.filename,
-        mime_type=payload.file.mime_type,
-        size_bytes=payload.file.size_bytes,
-        sha256=payload.file.sha256,
-        uploaded_by=registration.registered_by_subject_id,
-    )
-    _apply_document_intake_attestation(file, intake_attestation)
-    db.add(version)
-    db.add(file)
-    db.flush()
-    add_audit_event(
-        db,
-        actor_id=registration.confirmed_by_subject_id,
-        event_type="document.version.aiip_created",
-        resource_type="document_version",
-        resource_id=version.document_version_id,
-        correlation_id=registration.correlation_id,
-        metadata={
-            "document_id": document.document_id,
-            "governed_resource_id": registration.governed_resource_id,
-            **_document_intake_audit_metadata(intake_attestation),
-        },
-    )
-    _commit_or_conflict(db)
-    db.refresh(version)
-    return AiipDocumentVersionCreateResponse(
-        version=_document_version_response(version),
-        external_document=_external_document_response(external_ref, created=False),
-        created=True,
-        governance_confirmation=_aiip_governance_confirmation(payload, registration),
-    )
-
-
-@router.patch(
-    "/integrations/aiip-upload/external-documents/{external_document_id}/current",
-    response_model=AiipExternalDocumentCurrentUpdateResponse,
-)
-def update_aiip_external_document_current(
-    external_document_id: str,
-    payload: AiipExternalDocumentCurrentUpdateRequest,
-    request: Request,
-    db: Session = Depends(get_db),
-    principal: Principal = Depends(get_current_principal),
-) -> AiipExternalDocumentCurrentUpdateResponse:
-    _require_aiip_upload_service(principal)
-    actor_token = _aiip_actor_token(request, principal)
-    envelope = payload.integration_envelope
-    source = envelope.source_resource
-    if (
-        source is None
-        or envelope.source_system != "STRATOS_AIIP"
-        or envelope.actor.type != "person"
-        or envelope.policy_binding_id != payload.information_policy.policy_binding_id
-        or source.scope.model_dump(mode="json", by_alias=True, exclude_none=True)
-        != _aiip_scope(payload)
-    ):
-        raise problem(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            "aiip_upload_envelope_invalid",
-            "The current-state update does not match the immutable AIIP envelope",
-        )
-    _lock_aiip_identity(db, f"current:{external_document_id}")
-    external_ref = db.execute(
-        select(ExternalDocumentRef)
-        .where(
-            ExternalDocumentRef.external_document_id == external_document_id,
-            ExternalDocumentRef.document_id == payload.document_id,
-            ExternalDocumentRef.external_system == ExternalSourceSystem.stratos_aiip.value,
-            ExternalDocumentRef.external_ref == envelope.external_ref,
-        )
-        .options(
-            selectinload(ExternalDocumentRef.document).selectinload(Document.access_policies),
-            selectinload(ExternalDocumentRef.document).selectinload(Document.assignments),
-            selectinload(ExternalDocumentRef.document).selectinload(Document.versions).selectinload(DocumentVersion.files),
-        )
-    ).scalar_one_or_none()
-    if external_ref is None:
-        raise problem(
-            status.HTTP_404_NOT_FOUND,
-            "aiip_upload_document_not_found",
-            "The exact AIIP-derived AKB external document was not found",
-        )
-    _assert_aiip_document_matches(external_ref, payload)
-    version = next(
-        (
-            item
-            for item in external_ref.document.versions
-            if item.document_version_id == payload.document_version_id
-        ),
-        None,
-    )
-    if version is None or version.file_hash is None:
-        raise problem(
-            status.HTTP_404_NOT_FOUND,
-            "aiip_upload_version_not_found",
-            "The exact immutable AIIP-derived AKB version was not found",
-        )
-    _assert_aiip_version_matches(version, external_ref.document, payload)
-    file = next((item for item in version.files if item.file_id == payload.file_id), None)
-    if file is None:
-        raise problem(
-            status.HTTP_409_CONFLICT,
-            "aiip_upload_file_conflict",
-            "The file does not belong to the immutable AIIP-derived AKB version",
-        )
-    registration = _register_aiip_akb_authoritatively(
-        actor_token=actor_token,
-        resource_type="document-version",
-        resource_id=version.document_version_id,
-        source_version=version.file_hash,
-        title=f"{external_ref.document.title} — {version.version_label}",
-        parent_id=str(external_ref.document.governed_resource_id),
-        scope=_aiip_scope(payload),
-        payload=payload,
-        reason="Reconfirm AIIP-derived AKB version before current-state update",
-    )
-    if (
-        registration.governed_resource_id != version.governed_resource_id
-        or registration.parent_id != version.governed_parent_resource_id
-        or file.uri != version.source_file_uri
-        or file.sha256 != version.file_hash
-        or file.uploaded_by != registration.registered_by_subject_id
-    ):
-        raise problem(
-            status.HTTP_409_CONFLICT,
-            "aiip_upload_current_registration_conflict",
-            "STRATOS confirmation conflicts with the persisted AKB current version",
-        )
-    current_version_id = external_ref.current_document_version_id
-    same_version = current_version_id == version.document_version_id
-    if same_version:
-        if external_ref.current_file_id != file.file_id:
-            raise problem(
-                status.HTTP_409_CONFLICT,
-                "aiip_upload_current_replay_conflict",
-                "The selected AIIP-derived AKB version has conflicting current metadata",
-            )
-        if (
-            payload.ingestion_job_id is not None
-            and external_ref.current_ingestion_job_id not in {None, payload.ingestion_job_id}
-        ):
-            raise problem(
-                status.HTTP_409_CONFLICT,
-                "aiip_upload_current_replay_conflict",
-                "The selected AIIP-derived AKB version has a different ingestion job",
-            )
-        updated = (
-            payload.ingestion_job_id is not None
-            and external_ref.current_ingestion_job_id is None
-        )
-    else:
-        if current_version_id != payload.expected_current_document_version_id:
-            raise problem(
-                status.HTTP_409_CONFLICT,
-                "aiip_upload_current_cas_conflict",
-                "The AIIP upload preflight was based on a stale current document version",
-            )
-        updated = True
-
-    authoritative_external_status = payload.ingestion_status
-    if payload.ingestion_job_id is not None:
-        ingestion_attempt = _select_aiip_authoritative_ingestion_attempt(
-            db,
-            document_id=payload.document_id,
-            document_version_id=payload.document_version_id,
-            ingestion_job_id=payload.ingestion_job_id,
-        )
-        authoritative_external_status = {
-            "QUEUED": "INGESTING",
-            "INGESTING": "INGESTING",
-            "INDEXED": "INDEXED",
-            "FAILED": "FAILED",
-        }[ingestion_attempt.ingestion_status]
-        if payload.ingestion_status != authoritative_external_status:
-            raise problem(
-                status.HTTP_409_CONFLICT,
-                "aiip_ingestion_status_authority_conflict",
-                "AIIP current-state status does not match the authoritative ingestion attempt",
-            )
-
-    if not same_version:
-        external_ref.current_document_version_id = version.document_version_id
-        external_ref.current_file_id = file.file_id
-        external_ref.akb_source_uri = version.source_file_uri
-        external_ref.source_location = version.source_location
-    if payload.ingestion_job_id is not None:
-        external_ref.current_ingestion_job_id = payload.ingestion_job_id
-        external_ref.current_ingestion_status = authoritative_external_status
-    elif external_ref.current_ingestion_job_id is None:
-        external_ref.current_ingestion_status = "VERSION_CREATED"
-    add_audit_event(
-        db,
-        actor_id=registration.confirmed_by_subject_id,
-        event_type="external_document.aiip_current_reconciled",
-        resource_type="external_document",
-        resource_id=external_ref.external_document_id,
-        correlation_id=registration.correlation_id,
-        metadata={
-            "document_id": external_ref.document_id,
-            "document_version_id": version.document_version_id,
-            "ingestion_job_id": external_ref.current_ingestion_job_id,
-            "updated": updated,
-        },
-    )
-    _commit_or_conflict(db)
-    db.refresh(external_ref)
-    return AiipExternalDocumentCurrentUpdateResponse(
-        external_document=_external_document_response(external_ref, created=False),
-        updated=updated,
-        governance_confirmation=_aiip_governance_confirmation(payload, registration),
-    )
-
-
-def _select_aiip_authoritative_ingestion_attempt(
-    db: Session,
-    *,
-    document_id: str,
-    document_version_id: str,
-    ingestion_job_id: str,
-) -> IngestionAttempt:
-    # Share the same per-document serialization boundary as ingestion-service.
-    # Locking only the attempt row is insufficient while the first row does not
-    # exist, and the AIIP advisory key is intentionally private to its bridge.
-    db.execute(
-        select(Document.document_id)
-        .where(Document.document_id == document_id)
-        .with_for_update()
-    ).scalar_one()
-    attempt = db.execute(
-        select(IngestionAttempt)
-        .where(IngestionAttempt.document_id == document_id)
-        .with_for_update()
-    ).scalar_one_or_none()
-    if attempt is None:
-        attempt = IngestionAttempt(
-            document_id=document_id,
-            document_version_id=document_version_id,
-            ingestion_job_id=ingestion_job_id,
-            ingestion_status="QUEUED",
-        )
-        db.add(attempt)
-        db.flush()
-        return attempt
-    if attempt.ingestion_job_id == ingestion_job_id:
-        if attempt.document_version_id != document_version_id:
-            raise problem(
-                status.HTTP_409_CONFLICT,
-                "aiip_ingestion_attempt_version_conflict",
-                "The selected AIIP ingestion job belongs to another immutable version",
-            )
-        return attempt
-    if attempt.ingestion_status == "INGESTING":
-        raise problem(
-            status.HTTP_409_CONFLICT,
-            "ingestion_attempt_lease_active",
-            "The current ingestion attempt holds the execution lease",
-        )
-    attempt.document_version_id = document_version_id
-    attempt.ingestion_job_id = ingestion_job_id
-    attempt.ingestion_status = "QUEUED"
-    return attempt
-
-
 def _require_stratos_budget_upload_service(principal: Principal) -> None:
     client_id = _require_service_route(principal, "stratos-budget-upload")
     if client_id != "stratos-akb-service" or "service_ingestion" not in principal.roles:
@@ -4764,8 +3851,6 @@ def upsert_external_document(
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> ExternalDocumentResponse:
-    if payload.external_system == ExternalSourceSystem.stratos_aiip:
-        _reject_generic_aiip_write()
     if payload.external_system == ExternalSourceSystem.stratos_budget:
         _reject_generic_budget_write()
     _require_v2_policy(principal, payload.information_policy)
@@ -4936,8 +4021,6 @@ def update_external_document_current(
     principal: Principal = Depends(get_current_principal),
 ) -> ExternalDocumentResponse:
     external_ref = _get_external_document_ref(db, external_document_id)
-    if external_ref.external_system == ExternalSourceSystem.stratos_aiip.value:
-        _reject_generic_aiip_write()
     if external_ref.external_system == ExternalSourceSystem.stratos_budget.value:
         _reject_generic_budget_write()
     if {
@@ -4992,12 +4075,8 @@ def update_document_external_references_current(
     dedicated_external_system = db.execute(
         select(ExternalDocumentRef.external_system).where(
             ExternalDocumentRef.document_id == document_id,
-            ExternalDocumentRef.external_system.in_(
-                [
-                    ExternalSourceSystem.stratos_aiip.value,
-                    ExternalSourceSystem.stratos_budget.value,
-                ]
-            ),
+            ExternalDocumentRef.external_system
+            == ExternalSourceSystem.stratos_budget.value,
         ).limit(1)
     ).scalar_one_or_none()
     if {
@@ -5005,8 +4084,6 @@ def update_document_external_references_current(
         "akb_source_uri",
         "source_location",
     }.intersection(payload.model_fields_set) and dedicated_external_system is not None:
-        if dedicated_external_system == ExternalSourceSystem.stratos_aiip.value:
-            _reject_generic_aiip_write()
         _reject_generic_budget_write()
 
     ingestion_attempt = db.execute(
@@ -5035,11 +4112,8 @@ def update_document_external_references_current(
         external_refs = [
             external_ref
             for external_ref in external_refs
-            if (
-                external_ref.external_system == ExternalSourceSystem.stratos_aiip.value
-                or external_ref.current_document_version_id
-                in {None, payload.current_document_version_id}
-            )
+            if external_ref.current_document_version_id
+            in {None, payload.current_document_version_id}
         ]
     for external_ref in external_refs:
         _apply_ingestion_status_cas(external_ref, payload)
@@ -5155,15 +4229,6 @@ def _create_authoritative_ingestion_attempt(
         ).scalars()
     )
     if any(
-        external_ref.external_system == ExternalSourceSystem.stratos_aiip.value
-        and (
-            external_ref.current_document_version_id != payload.current_document_version_id
-            or external_ref.current_ingestion_job_id != payload.current_ingestion_job_id
-        )
-        for external_ref in external_refs
-    ):
-        _reject_generic_aiip_write()
-    if any(
         external_ref.external_system == ExternalSourceSystem.stratos_budget.value
         and (
             external_ref.current_document_version_id
@@ -5273,14 +4338,6 @@ def _apply_authoritative_ingestion_attempt_cas(
     attempt.ingestion_status = requested_status
 
 
-def _reject_generic_aiip_write() -> None:
-    raise problem(
-        status.HTTP_409_CONFLICT,
-        "aiip_upload_dedicated_route_required",
-        "STRATOS_AIIP lineage may be changed only through the dedicated AIIP upload route",
-    )
-
-
 def _reject_generic_budget_write() -> None:
     raise problem(
         status.HTTP_409_CONFLICT,
@@ -5298,10 +4355,6 @@ def _apply_ingestion_status_cas(
         "akb_source_uri",
         "source_location",
     }.intersection(payload.model_fields_set)
-    if external_ref.external_system == ExternalSourceSystem.stratos_aiip.value and (
-        external_ref.current_ingestion_job_id is None or forbidden_fields
-    ):
-        _reject_generic_aiip_write()
     if external_ref.external_system == ExternalSourceSystem.stratos_budget.value and (
         external_ref.current_ingestion_job_id is None or forbidden_fields
     ):
@@ -8182,15 +7235,6 @@ def create_document_version(
     principal: Principal = Depends(get_current_principal),
 ) -> DocumentVersionResponse:
     document = _get_document(db, document_id)
-    aiip_external_ref = db.execute(
-        select(ExternalDocumentRef.external_document_id).where(
-            ExternalDocumentRef.document_id == document_id,
-            ExternalDocumentRef.external_system
-            == ExternalSourceSystem.stratos_aiip.value,
-        ).limit(1)
-    ).scalar_one_or_none()
-    if aiip_external_ref is not None:
-        _reject_generic_aiip_write()
     budget_external_ref = db.execute(
         select(ExternalDocumentRef.external_document_id).where(
             ExternalDocumentRef.document_id == document_id,
@@ -8537,52 +7581,6 @@ def create_intelligence_scope_authorization_proof(
     )
 
 
-def _aiip_owner_ingestion_authority(
-    *,
-    principal: Principal,
-    action: str,
-    document: Document,
-    version: DocumentVersion,
-    db: Session,
-) -> DocumentVersionAuthority | None:
-    """Allow only the submitter's exact governed AIIP upload to enter ingestion."""
-    if (
-        action != Action.document_ingest.value
-        or document.owner_id != principal.subject_id
-        or document.governance_registration_status != "REGISTERED"
-        or document.governance_scope_type != "own"
-        or document.governance_scope_owner_subject_id != principal.subject_id
-        or version.governance_registration_status != "REGISTERED"
-        or version.governance_scope_type != "own"
-        or version.governance_scope_owner_subject_id != principal.subject_id
-        or version.governed_parent_resource_id != document.governed_resource_id
-    ):
-        return None
-    external_reference = db.execute(
-        select(ExternalDocumentRef.external_document_id).where(
-            ExternalDocumentRef.document_id == document.document_id,
-            ExternalDocumentRef.external_system
-            == ExternalSourceSystem.stratos_aiip.value,
-        )
-    ).scalar_one_or_none()
-    uploaded_files = db.execute(
-        select(DocumentFile.file_id).where(
-            DocumentFile.document_version_id == version.document_version_id,
-            DocumentFile.uploaded_by == principal.subject_id,
-        )
-    ).scalars().all()
-    if external_reference is None or len(uploaded_files) != 1:
-        return None
-    try:
-        return resolve_document_version_authority(document, version)
-    except ValueError as exc:
-        raise problem(
-            status.HTTP_409_CONFLICT,
-            "document_version_authority_invalid",
-            "The immutable AIIP document version governance authority is unavailable or conflicting",
-        ) from exc
-
-
 def _budget_historical_batch_ingestion_authority(
     *,
     principal: Principal,
@@ -8818,24 +7816,15 @@ def create_ingestion_authorization_proof(
             "ingestion_authorization_actor_inactive",
             "The current person identity, membership, and application access must be active",
         )
-    authority = _aiip_owner_ingestion_authority(
-        principal=principal,
-        action=payload.action,
-        document=document,
-        version=version,
-        db=db,
+    require_document_action(principal, Action(payload.action), document, db)
+    authority = require_document_version_action(
+        principal,
+        Action(payload.action),
+        document,
+        version,
+        db,
     )
-    authorization_basis = "aiip_owner_submission"
-    if authority is None:
-        require_document_action(principal, Action(payload.action), document, db)
-        authority = require_document_version_action(
-            principal,
-            Action(payload.action),
-            document,
-            version,
-            db,
-        )
-        authorization_basis = "application_access"
+    authorization_basis = "application_access"
     token, confirmation = issue_ingestion_authorization(
         get_settings(),
         subject_id=principal.subject_id,

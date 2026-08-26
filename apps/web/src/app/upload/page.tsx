@@ -1,7 +1,7 @@
 import { PageHeader } from "@/components/page-header";
 import { UploadWizard } from "@/features/documents/upload-wizard";
 import { getServerApiClients, getServerRequestContextForPath } from "@/lib/api/server";
-import { requirePageAccess } from "@/lib/auth/server-route-guard";
+import { requireWorkspaceRouteAccess } from "@/lib/auth/server-route-guard";
 import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +13,7 @@ interface UploadPageProps {
 export default async function UploadPage({ searchParams }: UploadPageProps) {
   const clients = getServerApiClients();
   const context = await getServerRequestContextForPath("/upload");
-  requirePageAccess(context, "knowledge_workspace");
+  requireWorkspaceRouteAccess(context, "/upload");
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const requestedDocumentId = firstSearchParamValue(resolvedSearchParams.document_id);
   if (!requestedDocumentId) {

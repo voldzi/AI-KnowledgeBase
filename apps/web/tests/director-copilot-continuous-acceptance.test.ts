@@ -287,6 +287,18 @@ describe("continuous Czech assistant acceptance", () => {
       "Jaké typy dokumentů máme v registru?",
       "Vytvoř přehled dokumentů k projektům.",
     ];
+    const employeeTaskQuestions = [
+      ["Jak si nastavím dovolenou?", "procedure"],
+      ["Kde najdu formulář pro zahraniční cestu?", "resource"],
+      ["Kam nahlásím problém s tiskárnou?", "support_channel"],
+      ["Kdo je gestorem směrnice o práci na dálku?", "owner"],
+      ["Za co odpovídá vedoucí zaměstnanec?", "responsibility"],
+      ["Do kdy musím vyúčtovat služební cestu?", "deadline"],
+      ["Jaké doklady musím přiložit k cestovnímu příkazu?", "obligation"],
+      ["Co platí pro práci z domova podle interního předpisu?", "policy"],
+      ["Kde najdu uživatelskou příručku docházkového systému?", "resource"],
+      ["Jak se přihlásím do docházkového systému?", "procedure"],
+    ] as const;
     let evaluated = 0;
 
     for (const prefix of ["", "Prosím, ", "Pro audit: ", "Pro vedení: "] as const) {
@@ -312,9 +324,16 @@ describe("continuous Czech assistant acceptance", () => {
         );
         evaluated += 1;
       }
+      for (const [message, intent] of employeeTaskQuestions) {
+        const route = routeAssistantMessage(`${prefix}${message}`, "cs");
+        assert.equal(route.tool, "rag_document_answer", message);
+        assert.equal(route.documentKnowledge.intent, intent, message);
+        assert.equal(route.queryPlan.quality_gates.citations_required, true, message);
+        evaluated += 1;
+      }
     }
 
-    assert.equal(evaluated, 60);
+    assert.equal(evaluated, 100);
   });
 });
 

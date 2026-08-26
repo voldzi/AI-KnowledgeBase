@@ -72,6 +72,7 @@ jobs:
       - name: Check out reviewed history
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
       - name: Select affected verification jobs
         id: plan
@@ -103,9 +104,16 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+        env:
+          GITEA_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "${{ github.server_url }}/${{ github.repository }}.git"
+          git -c http.extraheader="Authorization: token ${GITEA_TOKEN}" fetch --quiet origin \
+            '+refs/heads/*:refs/remotes/origin/*' --tags
+          git checkout --detach "${{ github.sha }}"
+          [[ "$(git rev-parse HEAD)" == "${{ github.sha }}" ]]
       - name: Verify repository contracts
         run: |
           set -euo pipefail
@@ -136,7 +144,9 @@ jobs:
             tar -xzf "${tmp_dir}/${archive}" -C "${cache_root}" gitleaks
             chmod 0755 "${binary}"
           fi
-          "${binary}" git . --config gitleaks.toml --redact --no-banner
+          # Verbose findings retain the rule, file, and commit while `--redact`
+          # prevents the matched value from entering the CI log.
+          "${binary}" git . --config gitleaks.toml --redact --no-banner --verbose
 
   immutable-release:
     name: Immutable release contract
@@ -183,6 +193,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
       - name: Install dependencies
         run: |
           pnpm --version
@@ -211,6 +223,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
       - name: Install dependencies and test
         working-directory: services/registry-api
         env:
@@ -231,6 +245,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
       - name: Install dependencies and test
         working-directory: services/ingestion-service
         env:
@@ -251,6 +267,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
       - name: Install dependencies and test
         working-directory: services/rag-retrieval-service
         env:
@@ -271,6 +289,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
       - name: Install dependencies and test
         working-directory: services/llm-gateway-service
         env:
@@ -291,6 +311,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
       - name: Install dependencies and test
         working-directory: services/evaluation-service
         env:
@@ -311,6 +333,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
       - name: Install dependencies and test
         working-directory: services/governance-service
         env:
@@ -331,6 +355,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
       - name: Validate supported runtime configurations
         run: |
           set -euo pipefail
@@ -341,5 +367,4 @@ jobs:
             -f infra/docker-compose/docker-compose.dev.yml \
             -f infra/docker-compose/docker-compose.local-prod.yml config >/tmp/akb-compose-local-prod.yml
           AKB_POLICY_SERVICE_TOKEN=dummy-akb-policy-service-token \
-          AKB_AIIP_INGEST_SERVICE_TOKEN=dummy-aiip-ingest-service-token \
           bash scripts/check_docker_home_compose_render.sh

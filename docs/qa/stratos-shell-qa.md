@@ -2,7 +2,7 @@
 
 ## Scope
 
-This protocol verifies the AKB integration with `@voldzi/stratos-ui@0.3.29`.
+This protocol verifies the AKB integration with `@voldzi/stratos-ui@0.3.37`.
 The shared package owns shell layout, rail, workspace drawer, backdrop,
 popover behavior, focus management and mobile bottom navigation. AKB owns
 route selection, role filtering, labels and commands.
@@ -40,6 +40,31 @@ For every viewport verify that text does not overlap, content remains reachable,
 the active route is visible, and popovers are not clipped by the shell.
 
 ## Verification Record
+
+Verified on 2026-08-26 against `@voldzi/stratos-ui@0.3.37`:
+
+| Check | Result |
+| --- | --- |
+| TypeScript and production build | Passed |
+| Complete web test suite | 561/561 passed |
+| Capability navigation matrix | Passed for employee, uploader, document manager, auditor and inactive access |
+| Read-only employee shell | Only Documents and AI modules rendered; operations, Intelligence and oversight modules absent |
+| Direct forbidden route | Server redirect to the first authorized route passed for ingestion, Intelligence, audit and admin |
+| Contextual document actions | Registry hints are intersected with the current access projection; a read-only employee sees no upload, edit, publish, audit or admin action |
+| Production app switcher | Authenticated smoke showed only Budget & Contract, ProjectFlow and ArchFlow |
+| Mobile document overview | Four metrics render in a compact 2 x 2 grid at 390 px |
+| Mobile chat module navigation | Shared bottom `AppRail` remains available without covering the composer |
+| Accessible names | Topbar, module rail, chat controls, table sorting and document actions expose bounded accessible names |
+
+Navigation and server-rendered route guards now consume the same capability
+matrix. `akb:read_document` does not expose operational dashboards, workflow
+queues, ingestion administration, Intelligence, audit or access management.
+Registry action hints are an additional restriction, never a substitute for
+the current central projection. Command Center destinations and quick actions
+use the same route matrix as the visible module rail.
+When a capability is removed while a page is open, the shell selects the first
+route still authorized for the subject; the server remains the authoritative
+boundary for direct URLs.
 
 Verified locally on 2026-07-12 against `@voldzi/stratos-ui@0.3.29`:
 

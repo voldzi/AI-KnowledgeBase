@@ -735,6 +735,26 @@ function AppShellContent({
     },
     [language, userProfile.capabilities, userProfile.roles, webProfile],
   );
+  useEffect(() => {
+    if (accessibleNavigation.length === 0) {
+      return;
+    }
+    const normalizedPathname = pathname === "/"
+      ? webProfile === "chat" ? "/chat" : "/dashboard"
+      : pathname;
+    const currentRouteAllowed = accessibleNavigation.some(
+      (item) =>
+        normalizedPathname === item.href ||
+        (item.href !== "/" && normalizedPathname.startsWith(`${item.href}/`)),
+    );
+    if (currentRouteAllowed) {
+      return;
+    }
+    const fallback = ["/chat", "/documents", "/dashboard", "/admin", "/help"]
+      .map((href) => accessibleNavigation.find((item) => item.href === href))
+      .find((item) => item !== undefined) ?? accessibleNavigation[0]!;
+    router.replace(fallback.href);
+  }, [accessibleNavigation, pathname, router, webProfile]);
   const railDefinitions: Array<{
     id: ShellModuleId;
     label: string;
@@ -866,7 +886,8 @@ function AppShellContent({
         },
       });
     }
-    quickActions.push({
+    if (canAccessWorkspaceRoute(userProfile.roles, "/chat", userProfile.capabilities)) {
+      quickActions.push({
         id: "knowledge:chat",
         type: "report",
         title: language === "cs" ? "Dotaz se zdroji" : "Ask with citations",
@@ -886,8 +907,9 @@ function AppShellContent({
           onSelect: () => openRoute("/chat"),
         },
       });
+    }
     return [...navigationItems, ...quickActions];
-  }, [accessibleNavigation, copy, language, router, userProfile.roles]);
+  }, [accessibleNavigation, copy, language, router, userProfile.capabilities, userProfile.roles]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1076,7 +1098,7 @@ function AppShellContent({
           }
           activeItemId={activeModule}
           panelOpen={shellSidebarOpen}
-          mobileFallback={isChatPath ? "none" : "bottom"}
+          mobileFallback="bottom"
           mobileAriaLabel={
             language === "cs" ? "Moduly AKB" : "AKB modules"
           }

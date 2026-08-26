@@ -28,7 +28,7 @@ def test_text_ingestion_creates_report(tmp_path: Path) -> None:
                 "# Test directive",
                 "Article 4 Exception approvals",
                 "Paragraph 2 The document owner approves an exception after justification is provided.",
-                "Evidence RMO 12/2024 is coordinated through aiip.office@example.cz on 10. 7. 2026.",
+                "Evidence RMO 12/2024 is coordinated through knowledge.office@example.cz on 10. 7. 2026.",
                 "Another paragraph contains additional rules for a citable chunk.",
             ]
         ),
@@ -108,9 +108,9 @@ def test_text_ingestion_creates_report(tmp_path: Path) -> None:
     assert "email" in entity_payload["metadata"]["intelligence"]["entity_types"]
     assert "date" in entity_payload["metadata"]["intelligence"]["entity_types"]
     assert "RMO12/2024" in entity_payload["entity_values"]
-    assert "aiip.office@example.cz" in entity_payload["entity_values"]
+    assert "knowledge.office@example.cz" in entity_payload["entity_values"]
     assert "document_number:RMO12/2024" in entity_payload["entity_pairs"]
-    assert "email:aiip.office@example.cz" in entity_payload["entity_pairs"]
+    assert "email:knowledge.office@example.cz" in entity_payload["entity_pairs"]
 
 
 def test_ingestion_fails_closed_without_clean_document_intake_attestation(

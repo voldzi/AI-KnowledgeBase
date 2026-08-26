@@ -9,6 +9,7 @@ from app.registry_client import AuthzFilterResult
 from app.service import (
     RagRetrievalService,
     _assistant_answer_query,
+    _clarification_questions,
     _assistant_current_context,
     _assistant_filters,
     _assistant_query,
@@ -556,6 +557,52 @@ def test_assistant_query_omits_internal_report_context_from_retrieval() -> None:
     assert "Požadavek na formát odpovědi" in answer_query
     assert "Vrať tabulku" in answer_query
     assert "assistant_query_plan" not in answer_query
+
+
+def test_document_knowledge_hints_are_retrieval_only_and_bounded() -> None:
+    context = {
+        "document_knowledge_state": {
+            "intent": "resource",
+            "answer_mode": "find_procedure",
+            "task_oriented": True,
+        },
+        "document_retrieval_hints": [
+            "formulář",
+            "cestovní příkaz",
+            "cestovní příkaz",
+        ],
+    }
+
+    retrieval_query = _assistant_query(
+        "Kde najdu formulář na zahraniční cestu?",
+        context,
+    )
+    answer_query = _assistant_answer_query(
+        "Kde najdu formulář na zahraniční cestu?",
+        context,
+    )
+
+    assert "Vyhledávací význam zaměstnaneckého dotazu" in retrieval_query
+    assert "formulář; cestovní příkaz" in retrieval_query
+    assert "document_knowledge_state" not in retrieval_query
+    assert "Vyhledávací význam zaměstnaneckého dotazu" not in answer_query
+    current_context = _assistant_current_context(context)
+    assert "document_retrieval_hints" not in current_context
+    assert current_context["document_knowledge_state"] == context["document_knowledge_state"]
+
+
+def test_documented_support_channel_question_retrieves_before_incident_clarification() -> None:
+    questions = _clarification_questions(
+        "Kde mám napsat problém s IT?",
+        {
+            "document_knowledge_state": {
+                "intent": "support_channel",
+                "task_oriented": True,
+            }
+        },
+    )
+
+    assert questions == []
 
 
 def test_director_copilot_evidence_is_answer_only_and_bounded() -> None:

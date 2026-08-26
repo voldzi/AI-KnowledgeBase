@@ -4,7 +4,7 @@
 
 Knowledge management users work in the persistent STRATOS-style shell. The
 shell derives visible modules, submenu entries, Command Center destinations and
-quick actions from the current role; the following list is the complete admin
+quick actions from the current central access projection; the following list is the complete admin
 set, not a menu shown to every user:
 
 - Dashboard
@@ -21,7 +21,12 @@ The app shell is a work console, not a landing page. Command Center opens only
 role-available sections and actions. The top-bar status uses dependency-aware
 `/api/ready`, not process liveness alone.
 
-The visual and interaction shell is provided by `@voldzi/stratos-ui@0.3.35`.
+The same capability matrix guards direct server-rendered routes. Contextual
+document actions require both a positive Registry authorization hint and the
+corresponding current AKB capability; an upstream hint can narrow access but
+cannot grant an action missing from the central projection.
+
+The visual and interaction shell is provided by `@voldzi/stratos-ui@0.3.37`.
 At mobile width the shared topbar trigger and bottom app rail open the workspace
 drawer; at compact tablet width the left rail opens the same overlay; at desktop
 width the sidebar is a persistent column. Close-button, backdrop, Escape, focus
@@ -226,7 +231,7 @@ Purpose:
 
 | Role family | Primary visible areas |
 | --- | --- |
-| employee/reader | Knowledge chat, Help |
+| employee/reader | Knowledge chat, authorized published Documents and controlled documents, Help |
 | reviewer | Dashboard, Tasks, Documents, Knowledge chat, Help |
 | owner/gestor | Dashboard, Tasks, Documents, Knowledge chat, Help |
 | document manager | Operations, Documents, Ingestion, Intelligence, Chat, Help |
@@ -237,6 +242,12 @@ Purpose:
 Navigation visibility reduces cognitive load and prevents dead-end affordances.
 It is not an authorization boundary. Page routes, web bridge routes and backend
 services continue to enforce their own access checks.
+
+For the central capability model, `akb:read_document` exposes only authorized
+document reading and controlled-document views. Operational dashboard, workflow
+tasks, ingestion and Intelligence require `akb:manage_document` or
+`akb:read_audit` as appropriate. The same route matrix is enforced both by the
+shell and by server-rendered page guards.
 
 Version upload is intentionally absent from the workspace navigation and
 Command Center. It is a contextual document action enabled only for one

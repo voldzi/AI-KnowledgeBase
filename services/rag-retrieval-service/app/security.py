@@ -138,14 +138,8 @@ def _csv_header(value: str | None) -> tuple[str, ...]:
 
 
 def _verified_oidc_claims(token: str, settings: Settings) -> dict[str, Any]:
-    accepted_audiences = tuple(
-        dict.fromkeys(
-            value
-            for value in (settings.oidc_user_audience, settings.oidc_aiip_audience)
-            if value
-        )
-    )
-    if not settings.oidc_issuer or not accepted_audiences or not settings.oidc_jwks_url:
+    accepted_audience = settings.oidc_user_audience
+    if not settings.oidc_issuer or not accepted_audience or not settings.oidc_jwks_url:
         raise RetrievalError("AUTH_CONFIG_INVALID", "OIDC verification is not configured", status_code=503)
     try:
         signing_key = PyJWKClient(settings.oidc_jwks_url).get_signing_key_from_jwt(token)
@@ -153,7 +147,7 @@ def _verified_oidc_claims(token: str, settings: Settings) -> dict[str, Any]:
             token,
             signing_key.key,
             algorithms=["RS256", "ES256"],
-            audience=list(accepted_audiences),
+            audience=accepted_audience,
             issuer=settings.oidc_issuer,
         )
     except jwt.PyJWTError as exc:
@@ -180,11 +174,7 @@ def _oidc_context(claims: dict[str, Any], token: str, settings: Settings) -> Aut
             "The bearer token does not identify an explicitly trusted AKB service client.",
             status_code=403,
         )
-    expected_audience = (
-        settings.oidc_aiip_audience
-        if trusted_service and service_client_id in settings.aiip_service_client_ids
-        else settings.oidc_user_audience
-    )
+    expected_audience = settings.oidc_user_audience
     if not expected_audience or expected_audience not in _claim_audiences(claims):
         raise RetrievalError(
             "OIDC_AUDIENCE_FORBIDDEN",

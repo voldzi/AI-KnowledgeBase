@@ -476,11 +476,6 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         raise ConfigError(
             "Authenticated HTTP Registry transport requires a dedicated Registry service identity"
         )
-    if registry_service_client_id == "aiip-service":
-        raise ConfigError(
-            "AKL_REGISTRY_SERVICE_CLIENT_ID must identify ingestion-service, not aiip-service"
-        )
-
     if env_name == "production":
         if auth_mode != "oidc":
             raise ConfigError("Production requires AKL_AUTH_MODE=oidc")

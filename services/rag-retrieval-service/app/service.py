@@ -23,15 +23,14 @@ from app.archflow_extraction import (
     extract_archflow_handover_proposals,
 )
 from app.config import Settings
-from app.context import get_correlation_id, get_request_id
 from app.contract_extraction import contract_extraction_profiles, extract_contract_financial_proposals
 from app.controlled_rule_extraction import (
     controlled_rule_extraction_profile,
     extract_controlled_rule_proposals,
 )
 from app.errors import RetrievalError
-from app.llm_client import ChatCompletionResult, LLMGatewayClient
-from app.registry_client import IdempotencyReservation, RegistryClient
+from app.llm_client import LLMGatewayClient
+from app.registry_client import RegistryClient
 from app.schemas import (
     AnswerRequest,
     AssistantChatRequest,
@@ -48,15 +47,6 @@ from app.schemas import (
     ArchflowArchitectureExtractionResponse,
     ArchflowGoalExtractionProposeRequest,
     ArchflowGoalExtractionResponse,
-    AiipApplicationResponse,
-    AiipDuplicateCandidate,
-    AiipDuplicateCitation,
-    AiipDuplicateSearchRequest,
-    AiipDuplicateSearchResult,
-    AiipHarmonizeRequest,
-    AiipHarmonizeResult,
-    AiipModelMetadata,
-    AiipUsage,
     Citation,
     ClarificationQuestion,
     ContractExtractionProfilesResponse,
@@ -107,12 +97,6 @@ class RetrievalRun:
     denied_document_ids: set[str]
 
 
-@dataclass(frozen=True)
-class AiipExecution:
-    response: AiipApplicationResponse
-    replayed: bool = False
-
-
 class RagRetrievalService:
     def __init__(
         self,
@@ -134,210 +118,6 @@ class RagRetrievalService:
         self._no_answer_policy = no_answer_policy
         self._answer_composer = answer_composer
         self._evidence_gate = evidence_gate or EvidenceGate(settings)
-
-    async def aiip_harmonize(
-        self,
-        payload: AiipHarmonizeRequest,
-        *,
-        idempotency_key: str,
-        auth_context: AuthContext,
-    ) -> AiipExecution:
-        started = time.perf_counter()
-        input_hash = _aiip_input_hash(payload.model_dump(mode="json"))
-        reservation = await self._registry_client.reserve_idempotency(
-            client_id="aiip-service",
-            operation="harmonize",
-            idempotency_key=idempotency_key,
-            input_hash=input_hash,
-            auth_context=auth_context,
-        )
-        replay = _aiip_replay_or_error(reservation)
-        if replay is not None:
-            return AiipExecution(response=AiipApplicationResponse.model_validate(replay), replayed=True)
-
-        requested_model = _aiip_requested_model(self._settings, payload.model_preference)
-        messages = _aiip_harmonize_messages(payload)
-        completion = await self._llm_client.chat_completion_result(
-            messages=messages,
-            metadata={
-                "purpose": "aiip_idea_harmonization",
-                "prompt_template_version": "aiip-harmonize-v1",
-                "classification": payload.classification,
-            },
-            model=requested_model,
-            auth_context=auth_context,
-        )
-        result = _parse_aiip_harmonize_result(completion.content)
-        warnings: list[str] = []
-        if result is None:
-            repaired = await self._llm_client.chat_completion_result(
-                messages=_aiip_repair_messages(completion.content, payload.locale),
-                metadata={
-                    "purpose": "aiip_structured_output_repair",
-                    "prompt_template_version": "aiip-harmonize-repair-v1",
-                    "classification": payload.classification,
-                },
-                model=completion.model,
-                auth_context=auth_context,
-            )
-            result = _parse_aiip_harmonize_result(repaired.content)
-            completion = _merge_aiip_usage(completion, repaired)
-            warnings.append("STRUCTURED_OUTPUT_REPAIRED")
-        if result is None:
-            raise RetrievalError(
-                "STRUCTURED_OUTPUT_INVALID",
-                "The model did not return a valid harmonization result.",
-                status_code=422,
-            )
-
-        latency_ms = max(0, int((time.perf_counter() - started) * 1000))
-        audit_event_id = await self._registry_client.write_audit_event(
-            actor_id=auth_context.subject_id,
-            event_type="aiip.harmonize.completed",
-            resource_type="aiip_record",
-            resource_id=payload.record.record_id,
-            metadata={
-                "tenant_id": payload.tenant_id,
-                "classification": payload.classification,
-                "processing_purpose": payload.processing_purpose,
-                "input_hash": input_hash,
-                "requested_model": requested_model,
-                "actual_model": completion.model,
-                "fallback_applied": completion.model != requested_model,
-                "prompt_template_version": "aiip-harmonize-v1",
-                "schema_version": "1.0",
-                "prompt_tokens": completion.prompt_tokens,
-                "completion_tokens": completion.completion_tokens,
-                "total_tokens": completion.total_tokens,
-                "latency_ms": latency_ms,
-                "suggestion_count": len(result.suggestions),
-            },
-            auth_context=auth_context,
-        )
-        if not audit_event_id:
-            raise RetrievalError("AUDIT_WRITE_FAILED", "The AIIP audit event was not persisted.", status_code=503)
-        response = AiipApplicationResponse(
-            request_id=get_request_id(),
-            correlation_id=get_correlation_id(),
-            audit_event_id=audit_event_id,
-            result=result,
-            warnings=warnings,
-            model=AiipModelMetadata(
-                requested_preference=payload.model_preference,
-                requested_model=requested_model,
-                actual_model=completion.model,
-                fallback_applied=completion.model != requested_model,
-            ),
-            prompt_template_version="aiip-harmonize-v1",
-            usage=AiipUsage(
-                prompt_tokens=completion.prompt_tokens,
-                completion_tokens=completion.completion_tokens,
-                total_tokens=completion.total_tokens,
-            ),
-            latency_ms=latency_ms,
-        )
-        await self._registry_client.complete_idempotency(
-            record_id=reservation.record_id,
-            response_status=200,
-            response_body=response.model_dump(mode="json"),
-            audit_event_id=audit_event_id,
-            auth_context=auth_context,
-        )
-        return AiipExecution(response=response)
-
-    async def aiip_duplicate_search(
-        self,
-        payload: AiipDuplicateSearchRequest,
-        *,
-        idempotency_key: str,
-        auth_context: AuthContext,
-    ) -> AiipExecution:
-        started = time.perf_counter()
-        input_hash = _aiip_input_hash(payload.model_dump(mode="json"))
-        reservation = await self._registry_client.reserve_idempotency(
-            client_id="aiip-service",
-            operation="duplicates.search",
-            idempotency_key=idempotency_key,
-            input_hash=input_hash,
-            auth_context=auth_context,
-        )
-        replay = _aiip_replay_or_error(reservation)
-        if replay is not None:
-            return AiipExecution(response=AiipApplicationResponse.model_validate(replay), replayed=True)
-
-        query_id = _query_id()
-        run = await self._retrieve_authorized(
-            payload=RetrieveRequest(
-                subject_id=auth_context.subject_id,
-                query=_aiip_duplicate_query(payload),
-                filters=RagQueryFilters(
-                    document_types=["ai_intake", "ai_requirement_card"],
-                    only_valid=False,
-                    classification_max=payload.classification,
-                    tenant_id=payload.tenant_id,
-                    external_system="STRATOS_AIIP",
-                ),
-                max_chunks=20,
-            ),
-            query_id=query_id,
-            auth_context=auth_context,
-        )
-        candidates = _aiip_duplicate_candidates(run.response.chunks, payload.min_score)
-        selected = candidates[payload.offset : payload.offset + payload.limit]
-        result = AiipDuplicateSearchResult(
-            candidates=selected,
-            limit=payload.limit,
-            offset=payload.offset,
-            returned=len(selected),
-            has_more=payload.offset + payload.limit < len(candidates),
-        )
-        latency_ms = max(0, int((time.perf_counter() - started) * 1000))
-        index_version = _aiip_index_version(self._settings)
-        audit_event_id = await self._registry_client.write_audit_event(
-            actor_id=auth_context.subject_id,
-            event_type="aiip.duplicates.searched",
-            resource_type="aiip_record",
-            resource_id=payload.record.record_id,
-            metadata={
-                "tenant_id": payload.tenant_id,
-                "classification": payload.classification,
-                "processing_purpose": payload.processing_purpose,
-                "input_hash": input_hash,
-                "query_id": query_id,
-                "retrieval_index_version": index_version,
-                "candidate_count": len(selected),
-                "authorization_filtered": bool(run.denied_document_ids),
-                "latency_ms": latency_ms,
-            },
-            auth_context=auth_context,
-        )
-        if not audit_event_id:
-            raise RetrievalError("AUDIT_WRITE_FAILED", "The AIIP audit event was not persisted.", status_code=503)
-        response = AiipApplicationResponse(
-            request_id=get_request_id(),
-            correlation_id=get_correlation_id(),
-            audit_event_id=audit_event_id,
-            result=result,
-            warnings=run.response.warnings,
-            model=AiipModelMetadata(
-                requested_preference=payload.model_preference,
-                requested_model=self._settings.embedding_model,
-                actual_model=self._settings.embedding_model,
-                fallback_applied=False,
-            ),
-            prompt_template_version="aiip-duplicates-v1",
-            retrieval_index_version=index_version,
-            usage=AiipUsage(),
-            latency_ms=latency_ms,
-        )
-        await self._registry_client.complete_idempotency(
-            record_id=reservation.record_id,
-            response_status=200,
-            response_body=response.model_dump(mode="json"),
-            audit_event_id=audit_event_id,
-            auth_context=auth_context,
-        )
-        return AiipExecution(response=response)
 
     async def retrieve(
         self,
@@ -1488,7 +1268,23 @@ class RagRetrievalService:
             payload.context.get("director_copilot_evidence")
         ) is not None
         requested_facets = _requested_answer_facets(payload.message)
-        max_chunks = 3 if director_copilot_request else (10 if len(requested_facets) >= 2 else 6)
+        document_task_request = payload.mode in {
+            "find_procedure",
+            "find_owner",
+            "find_responsibility",
+            "extract_deadlines",
+            "extract_obligations",
+            "normative_with_citations",
+        }
+        max_chunks = (
+            3
+            if director_copilot_request
+            else 10
+            if len(requested_facets) >= 2
+            else 8
+            if document_task_request
+            else 6
+        )
         run = await self._retrieve_authorized(
             payload=RetrieveRequest(
                 subject_id=payload.user_id,
@@ -2517,191 +2313,12 @@ class RagRetrievalService:
             )
 
 
-def _aiip_input_hash(payload: dict[str, object]) -> str:
-    canonical = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-
-
-def _aiip_replay_or_error(reservation: IdempotencyReservation) -> dict[str, object] | None:
-    if reservation.state == "replay" and reservation.response_body is not None:
-        return reservation.response_body
-    if reservation.state == "conflict":
-        raise RetrievalError(
-            "IDEMPOTENCY_KEY_REUSED",
-            "The idempotency key was already used with a different request body.",
-            status_code=409,
-        )
-    if reservation.state == "processing":
-        raise RetrievalError(
-            "IDEMPOTENCY_REQUEST_IN_PROGRESS",
-            "A request with this idempotency key is already being processed.",
-            status_code=409,
-        )
-    return None
-
-
-def _aiip_requested_model(settings: Settings, preference: str) -> str:
-    if preference == "high_quality" and settings.high_quality_chat_model:
-        return settings.high_quality_chat_model
-    return settings.chat_model
-
-
-def _aiip_harmonize_messages(payload: AiipHarmonizeRequest) -> list[dict[str, str]]:
-    language = "Czech" if payload.locale == "cs" else "English"
-    schema = {
-        "suggestions": [
-            {
-                "field": "normalized_title",
-                "proposed_value": "string, number, boolean, object or array",
-                "confidence": 0.0,
-                "provenance": {
-                    "source": "model_inference",
-                    "input_fields": ["title", "summary"],
-                    "prompt_template_version": "aiip-harmonize-v1",
-                },
-            }
-        ],
-        "review_required": True,
-    }
-    return [
-        {
-            "role": "system",
-            "content": (
-                "You normalize an AI innovation idea without changing source data. Return only one JSON object "
-                "that exactly follows the supplied schema. Suggestions are advisory and require human review. "
-                "Do not add markdown fences. Never include secrets or source text outside proposed values."
-            ),
-        },
-        {
-            "role": "user",
-            "content": (
-                f"Response language: {language}. Schema: {json.dumps(schema, ensure_ascii=False)}. "
-                f"AIIP record: {payload.record.model_dump_json(exclude_none=True)}"
-            ),
-        },
-    ]
-
-
-def _aiip_repair_messages(invalid_output: str, locale: str) -> list[dict[str, str]]:
-    language = "Czech" if locale == "cs" else "English"
-    return [
-        {
-            "role": "system",
-            "content": (
-                "Repair the supplied model output into strict JSON. Return only an object with suggestions and "
-                "review_required=true. Every suggestion requires field, proposed_value, confidence from 0 to 1, "
-                "and provenance with source, input_fields and prompt_template_version=aiip-harmonize-v1."
-            ),
-        },
-        {
-            "role": "user",
-            "content": f"Language: {language}. Invalid output to repair: {_truncate_prompt_text(invalid_output, 12000)}",
-        },
-    ]
-
-
-def _parse_aiip_harmonize_result(value: str) -> AiipHarmonizeResult | None:
-    stripped = value.strip()
-    if stripped.startswith("```"):
-        stripped = re.sub(r"^```(?:json)?\s*|\s*```$", "", stripped, flags=re.IGNORECASE)
-    start = stripped.find("{")
-    end = stripped.rfind("}")
-    if start < 0 or end <= start:
-        return None
-    try:
-        return AiipHarmonizeResult.model_validate(json.loads(stripped[start : end + 1]))
-    except (ValueError, json.JSONDecodeError):
-        return None
-
-
-def _merge_aiip_usage(first: ChatCompletionResult, second: ChatCompletionResult) -> ChatCompletionResult:
-    return ChatCompletionResult(
-        content=second.content,
-        model=second.model,
-        prompt_tokens=first.prompt_tokens + second.prompt_tokens,
-        completion_tokens=first.completion_tokens + second.completion_tokens,
-        total_tokens=first.total_tokens + second.total_tokens,
-    )
-
-
-def _aiip_duplicate_query(payload: AiipDuplicateSearchRequest) -> str:
-    record = payload.record
-    values = [
-        record.title,
-        record.summary,
-        record.problem_statement or "",
-        record.proposed_solution or "",
-        *record.expected_benefits,
-        *record.strategic_domains,
-        *record.keywords,
-    ]
-    return _truncate_prompt_text("\n".join(value for value in values if value), 4000)
-
-
-def _aiip_duplicate_candidates(
-    chunks: list[RetrievedChunk],
-    min_score: float,
-) -> list[AiipDuplicateCandidate]:
-    grouped: dict[str, AiipDuplicateCandidate] = {}
-    for chunk in chunks:
-        if chunk.score < min_score:
-            continue
-        document_id = chunk.citation.document_id
-        metadata = chunk.metadata
-        external_ref = _metadata_string(metadata, "external_ref", "external_id", "entity_id")
-        source_system = _metadata_string(metadata, "external_system", "source_system") or "AKB"
-        citation = AiipDuplicateCitation(
-            document_id=document_id,
-            document_version_id=chunk.citation.document_version_id,
-            chunk_id=chunk.chunk_id,
-            document_title=chunk.citation.document_title,
-            version_label=chunk.citation.version_label,
-            section_path=chunk.citation.section_path,
-            page_number=chunk.citation.page_number,
-        )
-        existing = grouped.get(document_id)
-        if existing is None:
-            grouped[document_id] = AiipDuplicateCandidate(
-                candidate_id=external_ref or document_id,
-                source_system=source_system,
-                source_record_id=external_ref,
-                akb_document_id=document_id,
-                score=chunk.score,
-                matched_areas=_aiip_matched_areas(chunk),
-                citations=[citation],
-            )
-            continue
-        existing.score = max(existing.score, chunk.score)
-        existing.matched_areas = sorted(set(existing.matched_areas).union(_aiip_matched_areas(chunk)))
-        if len(existing.citations) < 3:
-            existing.citations.append(citation)
-    return sorted(grouped.values(), key=lambda candidate: (-candidate.score, candidate.candidate_id))
-
-
 def _metadata_string(metadata: dict[str, object], *keys: str) -> str | None:
     for key in keys:
         value = metadata.get(key)
         if isinstance(value, str) and value.strip():
             return value.strip()[:240]
     return None
-
-
-def _aiip_matched_areas(chunk: RetrievedChunk) -> list[str]:
-    areas = {"semantic_content"}
-    title = chunk.citation.document_title.casefold()
-    text = chunk.text.casefold()
-    if title and title in text:
-        areas.add("title")
-    if chunk.metadata.get("entity_values") or chunk.metadata.get("keywords"):
-        areas.add("keywords")
-    return sorted(areas)
-
-
-def _aiip_index_version(settings: Settings) -> str:
-    return (
-        f"qdrant:{settings.qdrant_collection}|opensearch:{settings.opensearch_index}"
-        f"|service:{settings.service_version}"
-    )
 
 
 def _query_id() -> str:
@@ -3486,6 +3103,8 @@ ASSISTANT_INTERNAL_CONTEXT_KEYS = {
     "assistant_tool",
     "assistant_tool_reason",
     "director_copilot_evidence",
+    "document_knowledge_state",
+    "document_retrieval_hints",
     "live_sources",
     "mixed_evidence",
     "stratos_query_state",
@@ -3497,6 +3116,7 @@ ASSISTANT_PERSISTED_CONTEXT_OMIT_KEYS = {
     "assistant_report_request",
     "director_copilot_evidence",
     "director_copilot_v2_snapshot",
+    "document_retrieval_hints",
     "earlier_user_questions",
     "report_artifacts",
 }
@@ -3716,7 +3336,31 @@ def _assistant_query(
             retrieval_hint = inherited_legal_hint
     if retrieval_hint and not inherited_legal_hint:
         query = f"{query}\n\nKanonický právní zdroj pro vyhledání: {retrieval_hint}"
+    document_hints = (
+        _assistant_document_retrieval_hints(context)
+        if include_retrieval_hint
+        else []
+    )
+    if document_hints:
+        query = (
+            f"{query}\n\nVyhledávací význam zaměstnaneckého dotazu: "
+            + "; ".join(document_hints)
+        )
     return query[:max_query_length]
+
+
+def _assistant_document_retrieval_hints(context: dict[str, object]) -> list[str]:
+    value = context.get("document_retrieval_hints")
+    if not isinstance(value, list):
+        return []
+    hints: list[str] = []
+    for item in value[:12]:
+        if not isinstance(item, str):
+            continue
+        normalized = re.sub(r"\s+", " ", item).strip()[:80]
+        if normalized and normalized not in hints:
+            hints.append(normalized)
+    return hints
 
 
 def _assistant_internal_context_key(key: str) -> bool:
@@ -4102,7 +3746,18 @@ def _clarification_questions(
 ) -> list[ClarificationQuestion]:
     normalized = _normalize_for_assistant(message)
     questions: list[ClarificationQuestion] = []
-    if _is_access_query(normalized):
+    document_intent = _assistant_document_knowledge_intent(context)
+    documented_task = document_intent in {
+        "procedure",
+        "resource",
+        "support_channel",
+        "owner",
+        "responsibility",
+        "deadline",
+        "obligation",
+        "policy",
+    }
+    if _is_access_query(normalized) and not documented_task:
         if not context.get("system"):
             questions.append(
                 ClarificationQuestion(
@@ -4137,7 +3792,7 @@ def _clarification_questions(
                     ],
                 )
             )
-    if _is_incident_query(normalized):
+    if _is_incident_query(normalized) and not documented_task:
         if not context.get("system"):
             questions.append(
                 ClarificationQuestion(
@@ -4653,6 +4308,14 @@ def _parse_follow_up_questions(raw: str) -> list[str]:
         if len(questions) == 3:
             break
     return questions
+
+
+def _assistant_document_knowledge_intent(context: dict[str, object]) -> str | None:
+    value = context.get("document_knowledge_state")
+    if not isinstance(value, dict):
+        return None
+    intent = value.get("intent")
+    return intent if isinstance(intent, str) else None
 
 
 def _normalize_follow_up_question(value: str) -> str:

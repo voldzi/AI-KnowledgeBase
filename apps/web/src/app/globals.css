@@ -5735,7 +5735,6 @@ button {
     flex-wrap: wrap;
   }
 
-  .grid--metrics,
   .grid--three,
   .form-grid--two,
   .form-grid--three,
@@ -5745,6 +5744,11 @@ button {
   .assistant-suggestions,
   .clarification-grid {
     grid-template-columns: 1fr;
+  }
+
+  .grid--metrics {
+    gap: 10px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .registry-toolbar,

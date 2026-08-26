@@ -95,12 +95,50 @@ backend tool. The router is intentionally small and auditable:
   Retrieval Service, including structured reports that interpret cited chunks,
   for example "vytvoř sestavu z obsahu smlouvy".
 
+For ordinary employee questions, the document route includes a deterministic
+Document Knowledge intent layer. It recognizes classes of work rather than
+hard-coded complete questions:
+
+- procedure and how-to requests;
+- form, template, file, or other resource location;
+- documented support and incident-reporting channels;
+- owner, approver, contact, responsibility, deadline, obligation, and policy
+  lookup.
+
+The selected intent activates an existing citation-bound answer mode such as
+`find_procedure`, `find_owner`, `find_responsibility`, `extract_deadlines`,
+`extract_obligations`, or `normative_with_citations`. A browser request with
+the generic `ask` mode therefore uses the server-selected mode; an API client
+that explicitly requests another valid specialized mode remains compatible.
+The intent state is bounded, persisted with conversation continuity, and may be
+inherited only by a referential follow-up. A new self-contained topic starts a
+fresh document intent.
+
 The router does not expose technical tool names in the user-facing answer and
 does not send registry routing metadata into the RAG prompt. For RAG calls it
 adds an internal `assistant_query_plan` to the assistant context; for structured
 answers it also adds a bounded `answer_format_instruction`, requiring meaningful
 multi-column tables and source-supported obligation rows when the user asks for
 obligations.
+
+Task-oriented document routes add bounded retrieval-only synonym hints. These
+hints cover generic document vocabulary, Czech inflection, domain vocabulary
+present in the question, and safe unambiguous equivalents from the complete
+local SSP snapshot. Shared or generic SSP labels are excluded, while app-source
+routing still requires a separately approved binding. The hints improve hybrid
+retrieval but are excluded from answer generation and persisted history, so they
+cannot be quoted as evidence or silently become part of the user's question.
+Task routes retrieve a slightly wider bounded candidate set before reranking.
+Authorization, current-version filtering, Information Policy, no-answer
+behavior, and citation validation remain unchanged.
+
+The answer instruction for a task route is equally fail-closed: AKB must not
+invent a form, URL, contact, owner, deadline, or support channel. For example,
+"Kde mám napsat problém s IT?" searches authorized manuals and procedures; it
+does not assume that a Service Desk exists. If the corpus does not contain a
+precise citable answer, the assistant returns insufficient source coverage.
+Vague troubleshooting requests without a documented task intent continue to
+use clarification questions.
 
 Inside the RAG Retrieval Service, employee-chat retrieval and answer composition
 must keep different inputs. The embedding/retrieval query is built only from the
@@ -117,9 +155,13 @@ It records:
 
 - `plan_id` and `version`;
 - the selected intent such as `grounded_answer`, `structured_report`,
-  `obligation_table`, `document_metadata_report`, or `document_list`;
+  `obligation_table`, `procedure_lookup`, `resource_location`,
+  `support_channel`, `owner_lookup`, `responsibility_lookup`,
+  `deadline_lookup`, `obligation_lookup`, `policy_lookup`,
+  `document_metadata_report`, or `document_list`;
 - the planned output kind (`answer`, `table`, or `registry_report`);
 - registry topics and report kind when Registry metadata is used;
+- the document-knowledge intent used by RAG retrieval and answer composition;
 - quality gates, including whether citations and row-level citations are
   required.
 

@@ -12,7 +12,6 @@ import {
 } from "../src/lib/director-copilot-v2/contracts";
 
 const FIXTURES = [
-  "aiip-idea-portfolio-overview.json",
   "archflow-need-portfolio-overview.json",
   "budget-organization-financial-summary.json",
   "budget-project-financial-snapshot.json",
@@ -21,7 +20,7 @@ const FIXTURES = [
 
 describe("Director Copilot V2 pinned contracts", () => {
   it("validates every source fixture and all closed error envelopes", () => {
-    assert.equal(pinnedDirectorCopilotV2ManifestBundle().manifests.length, 5);
+    assert.equal(pinnedDirectorCopilotV2ManifestBundle().manifests.length, 4);
     for (const name of FIXTURES) {
       const fixture = readFixture(name);
       const toolId = fixture.tool_id as DirectorCopilotV2ToolId;
@@ -87,7 +86,7 @@ describe("Director Copilot V2 pinned contracts", () => {
     );
   });
 
-  it("accepts the closed ProjectFlow entity-filter reason in revision 2.0.3", () => {
+  it("accepts the closed ProjectFlow entity-filter reason in revision 2.0.4", () => {
     const fixture = readFixture("projectflow-portfolio-delivery-overview.json");
     const manifest = pinnedDirectorCopilotV2Manifest(fixture.tool_id as DirectorCopilotV2ToolId);
     const envelope = structuredClone(fixture.errors["400"]);
