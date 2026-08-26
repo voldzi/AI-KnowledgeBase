@@ -107,6 +107,71 @@ class ProductionGateTests(unittest.TestCase):
             with patch.object(production_gate, "get_json", side_effect=responses):
                 self.assertEqual(production_gate.verify_gate(args), 0)
 
+    def test_gate_accepts_gitea_aggregate_failure_only_when_all_jobs_succeed(self) -> None:
+        sha = "e" * 40
+        with tempfile.TemporaryDirectory() as directory:
+            token_file = Path(directory) / "token"
+            token_file.write_text("redacted", encoding="utf-8")
+            token_file.chmod(stat.S_IRUSR | stat.S_IWUSR)
+            args = type(
+                "Args",
+                (),
+                {
+                    "sha": sha,
+                    "repository": "AKB/ai-knowledgebase",
+                    "gitea_url": "https://git.home.cz",
+                    "token_file": token_file,
+                },
+            )()
+            aggregate_failure = {
+                "id": 75,
+                "head_sha": sha,
+                "event": "push",
+                "conclusion": "failure",
+                "path": "ci.yaml@refs/heads/main",
+                "head_branch": "main",
+            }
+            responses = [
+                {"commit": {"id": sha}},
+                {"workflow_runs": [aggregate_failure]},
+                {"jobs": [{"conclusion": "success"}, {"status": "success"}]},
+            ]
+            with patch.object(production_gate, "get_json", side_effect=responses):
+                self.assertEqual(production_gate.verify_gate(args), 0)
+
+    def test_gate_rejects_gitea_aggregate_failure_with_any_non_success_job(self) -> None:
+        sha = "f" * 40
+        with tempfile.TemporaryDirectory() as directory:
+            token_file = Path(directory) / "token"
+            token_file.write_text("redacted", encoding="utf-8")
+            token_file.chmod(stat.S_IRUSR | stat.S_IWUSR)
+            args = type(
+                "Args",
+                (),
+                {
+                    "sha": sha,
+                    "repository": "AKB/ai-knowledgebase",
+                    "gitea_url": "https://git.home.cz",
+                    "token_file": token_file,
+                },
+            )()
+            aggregate_failure = {
+                "id": 76,
+                "head_sha": sha,
+                "event": "push",
+                "conclusion": "failure",
+                "path": "ci.yaml@refs/heads/main",
+                "head_branch": "main",
+            }
+            responses = [
+                {"commit": {"id": sha}},
+                {"workflow_runs": [aggregate_failure]},
+                {"jobs": [{"conclusion": "success"}, {"conclusion": "failure"}]},
+            ]
+            with patch.object(production_gate, "get_json", side_effect=responses):
+                with self.assertRaises(RuntimeError):
+                    production_gate.verify_gate(args)
+
     def test_gate_rejects_missing_ci_and_token_symlink(self) -> None:
         sha = "d" * 40
         with tempfile.TemporaryDirectory() as directory:

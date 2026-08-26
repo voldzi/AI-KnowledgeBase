@@ -91,6 +91,35 @@ def is_trusted_ci_run(run: dict[str, Any], sha: str) -> bool:
     )
 
 
+def is_trusted_ci_identity(run: dict[str, Any], sha: str) -> bool:
+    """Verify immutable CI provenance before considering its job outcomes."""
+    workflow_path = str(run.get("path") or run.get("workflow_path") or "")
+    workflow_file = workflow_path.split("@", 1)[0]
+    workflow_name = str(run.get("name") or run.get("workflow_name") or "")
+    branch = run.get("head_branch")
+    return all(
+        (
+            run.get("head_sha") == sha,
+            run.get("event") == "push",
+            branch in {None, "main"},
+            workflow_file in {"ci.yaml", ".gitea/workflows/ci.yaml"}
+            or workflow_name == "AKB CI",
+        )
+    )
+
+
+def has_only_successful_jobs(response: dict[str, Any]) -> bool:
+    """Fail closed unless Gitea reports a non-empty all-success job set."""
+    jobs = response.get("jobs")
+    if not isinstance(jobs, list) or not jobs:
+        return False
+    return all(
+        str(job.get("conclusion") or job.get("status") or "") == "success"
+        for job in jobs
+        if isinstance(job, dict)
+    ) and all(isinstance(job, dict) for job in jobs)
+
+
 def verify_gate(args: argparse.Namespace) -> int:
     if not FULL_SHA.fullmatch(args.sha):
         raise RuntimeError("Release SHA must be a full lowercase Git SHA")
@@ -112,6 +141,21 @@ def verify_gate(args: argparse.Namespace) -> int:
         (run for run in runs.get("workflow_runs", []) if is_trusted_ci_run(run, args.sha)),
         None,
     )
+    if trusted_run is None:
+        # Gitea 1.27 can occasionally record a failed workflow aggregate even
+        # though every completed CI job is successful. Only accept that known
+        # aggregate defect after independently verifying the exact run's full
+        # non-empty job set through the authenticated API.
+        for run in runs.get("workflow_runs", []):
+            if not isinstance(run, dict) or not is_trusted_ci_identity(run, args.sha):
+                continue
+            run_id = run.get("id")
+            if not isinstance(run_id, int):
+                continue
+            jobs = get_json(f"{api}/actions/runs/{run_id}/jobs?limit=100", token)
+            if has_only_successful_jobs(jobs):
+                trusted_run = run
+                break
     if trusted_run is None:
         raise RuntimeError("No successful trusted main CI run exists for the release SHA")
 
