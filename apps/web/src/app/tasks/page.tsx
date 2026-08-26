@@ -1,7 +1,7 @@
 import { PageHeader } from "@/components/page-header";
 import { WorkflowInbox } from "@/features/tasks/workflow-inbox";
 import { getServerApiClients, getServerRequestContextForPath } from "@/lib/api/server";
-import { requirePageAccess } from "@/lib/auth/server-route-guard";
+import { requireWorkspaceRouteAccess } from "@/lib/auth/server-route-guard";
 import { ApiClientError, type AuditEvent, type RegistryWorkflowTask } from "@/lib/types";
 import type { AuthorizationHint, IngestionJob } from "@/lib/types";
 import { listVisibleIngestionJobs } from "@/lib/ingestion/governed-operations";
@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export default async function TasksPage() {
   const clients = getServerApiClients();
   const context = await getServerRequestContextForPath("/tasks");
-  requirePageAccess(context, "knowledge_workspace");
+  requireWorkspaceRouteAccess(context, "/tasks");
   const documents = await clients.registry.listDocuments(context);
   const [jobs, auditEvents, registryTasks, authorization] = await Promise.all([
     listAvailableIngestionJobs(listVisibleIngestionJobs(clients, documents, context)),

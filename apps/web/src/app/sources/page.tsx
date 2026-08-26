@@ -3,14 +3,14 @@ import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
 import { PublicSourcesWorkbench } from "@/features/public-sources/public-sources-workbench";
 import { getServerApiClients, getServerRequestContextForPath } from "@/lib/api/server";
-import { requirePageAccess } from "@/lib/auth/server-route-guard";
+import { requireWorkspaceRouteAccess } from "@/lib/auth/server-route-guard";
 import { PUBLIC_SOURCE_COLLECTIONS, publicSourceTargetTotal } from "@/lib/public-sources/catalog";
 
 export const dynamic = "force-dynamic";
 
 export default async function PublicSourcesPage() {
   const context = await getServerRequestContextForPath("/sources");
-  requirePageAccess(context, "knowledge_workspace");
+  requireWorkspaceRouteAccess(context, "/sources");
   const clients = getServerApiClients();
   const [authorization, documents] = await Promise.all([
     clients.registry.getAuthorizationHints(context),

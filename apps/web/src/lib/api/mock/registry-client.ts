@@ -56,7 +56,10 @@ import type {
   AssistantConversationPatchRequest,
   AssistantConversationShareReplaceRequest,
 } from "@/lib/types";
-import { canUseAdminSurface } from "@/lib/auth/authorization";
+import {
+  canUseAdminSurface,
+  constrainAuthorizationHintsToContext,
+} from "@/lib/auth/authorization";
 import { ApiClientError } from "@/lib/types";
 
 import {
@@ -718,11 +721,13 @@ export class MockRegistryClient implements RegistryApiClient {
   async getAuthorizationHints(
     context: ApiRequestContext,
   ): Promise<AuthorizationHint> {
-    return cloneMock({
-      ...mockAuthorization,
-      can_manage_admin: canUseAdminSurface(context),
-      can_publish: mockAuthorization.can_publish || canUseAdminSurface(context),
-    });
+    return cloneMock(
+      constrainAuthorizationHintsToContext(context, {
+        ...mockAuthorization,
+        can_manage_admin: canUseAdminSurface(context),
+        can_publish: mockAuthorization.can_publish || canUseAdminSurface(context),
+      }),
+    );
   }
 
   async authorizeDocument(

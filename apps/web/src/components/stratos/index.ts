@@ -1,17 +1,17 @@
-// Buttons — local shims mapping tone → variant (different CSS class conventions)
+// Buttons - thin adapters over @voldzi/stratos-ui mapping tone to variant.
 export { StratosButton, StratosButtonLink, StratosIconButtonLink } from "./button";
 
-// DataTable — from @voldzi/stratos-ui
+// DataTable - shared component with AKB-owned width persistence.
 export { StratosDataTable, type StratosDataTableColumn } from "./data-table";
 
-// PDF viewer — from @voldzi/stratos-ui
+// PDF viewer - stable shared export alias.
 export { StratosPdfViewer, type StratosPdfViewerBbox, type StratosPdfViewerLabels } from "./pdf-viewer";
 
-// SearchBox — local (onChange API differs: native event vs string callback)
+// SearchBox - shared component adapted to the native input event contract.
 export { StratosSearchBox } from "./search-box";
 
-// Select — from @voldzi/stratos-ui SelectField adapter
+// Select - stable alias of the shared SelectField.
 export { StratosSelect, StratosUnifiedSelect } from "./select";
 
-// ViewTabs — local (different CSS class naming convention)
+// ViewTabs - shared component adapted to AKB's typed value contract.
 export { StratosViewTabs, type StratosViewTab } from "./view-tabs";

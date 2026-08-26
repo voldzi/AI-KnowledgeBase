@@ -4,7 +4,7 @@ import {
   getServerApiClients,
   getServerRequestContextForPath,
 } from "@/lib/api/server";
-import { requirePageAccess } from "@/lib/auth/server-route-guard";
+import { requireWorkspaceRouteAccess } from "@/lib/auth/server-route-guard";
 import { authorizeIntelligenceScope } from "@/lib/intelligence/scope-authorization";
 import type { AnalystCase, EntityFacetReport } from "@/lib/types";
 
@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 export default async function IntelligencePage() {
   const clients = getServerApiClients();
   const context = await getServerRequestContextForPath("/intelligence");
-  requirePageAccess(context, "intelligence");
+  requireWorkspaceRouteAccess(context, "/intelligence");
 
   const [documents, summary, readiness, analystCases] = await Promise.all([
     clients.registry.listDocuments(context),

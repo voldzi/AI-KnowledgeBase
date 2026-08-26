@@ -56,6 +56,7 @@ import type {
   WorkflowTaskListOptions
 } from "@/lib/types";
 import { ApiClientError } from "@/lib/types";
+import { constrainAuthorizationHintsToContext } from "@/lib/auth/authorization";
 
 import type { AklFetch } from "../http-client";
 import { requestJson } from "../http-client";
@@ -392,14 +393,14 @@ export class ProductionRegistryClient implements RegistryApiClient {
       check("admin.manage")
     ]);
 
-    return {
+    return constrainAuthorizationHintsToContext(context, {
       can_read: canRead,
       can_update: canUpdate,
       can_ingest: canIngest,
       can_publish: canPublish,
       can_read_audit: canReadAudit,
       can_manage_admin: canManageAdmin
-    };
+    });
   }
 
   authorizeDocument(

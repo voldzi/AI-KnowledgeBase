@@ -1,4 +1,4 @@
-import type { ApiRequestContext } from "@/lib/types";
+import type { ApiRequestContext, AuthorizationHint } from "@/lib/types";
 
 export type AklSurface = "employee_chat" | "knowledge_workspace" | "admin";
 
@@ -136,7 +136,7 @@ export function canUseIntelligence(
 ): boolean {
   if (!hasActiveAccess(context)) return false;
   if (usesCapabilityModel(context)) {
-    return hasAnyCapability(context?.capabilities, ["akb:read_document", "akb:read_audit"]);
+    return hasAnyCapability(context?.capabilities, ["akb:manage_document", "akb:read_audit"]);
   }
   return hasAnyRole(context?.roles, INTELLIGENCE_ROLES);
 }
@@ -179,18 +179,26 @@ export function canAccessWorkspaceRoute(
     if (routeMatches(route, "/admin")) return effectiveCapabilities.includes("akb:manage_access");
     if (routeMatches(route, "/sources")) return effectiveCapabilities.includes("akb:manage_document");
     if (routeMatches(route, "/audit")) return effectiveCapabilities.includes("akb:read_audit");
-    if (routeMatches(route, "/intelligence")) return hasAnyCapability(effectiveCapabilities, ["akb:read_document", "akb:read_audit"]);
+    if (routeMatches(route, "/intelligence")) {
+      return hasAnyCapability(effectiveCapabilities, ["akb:manage_document", "akb:read_audit"]);
+    }
     if (routeMatches(route, "/controlled-documentation")) {
       return hasAnyCapability(effectiveCapabilities, ["akb:read_document", "akb:manage_document"]);
     }
     if (routeMatches(route, "/documents/new") || routeMatches(route, "/upload")) {
       return hasAnyCapability(effectiveCapabilities, ["akb:upload", "akb:manage_document"]);
     }
-    if (routeMatches(route, "/documents") || routeMatches(route, "/ingestion") || routeMatches(route, "/tasks")) {
+    if (routeMatches(route, "/ingestion")) {
+      return effectiveCapabilities.includes("akb:manage_document");
+    }
+    if (routeMatches(route, "/tasks")) {
+      return hasAnyCapability(effectiveCapabilities, ["akb:manage_document", "akb:read_audit"]);
+    }
+    if (routeMatches(route, "/documents")) {
       return hasAnyCapability(effectiveCapabilities, ["akb:read_document", "akb:manage_document", "akb:upload"]);
     }
     if (route === "/" || routeMatches(route, "/dashboard")) {
-      return canUseKnowledgeWorkspace({ roles: [...(roles ?? [])], capabilities: [...effectiveCapabilities] });
+      return hasAnyCapability(effectiveCapabilities, ["akb:manage_document", "akb:read_audit"]);
     }
     return false;
   }
@@ -231,6 +239,59 @@ export function canAccessWorkspaceRoute(
     return hasAnyRole(roles, MANAGEMENT_ROLES);
   }
   return false;
+}
+
+export function canAccessWorkspaceRouteForContext(
+  context: Pick<
+    ApiRequestContext,
+    "roles" | "capabilities" | "identityActive" | "membershipActive" | "applicationAccessActive"
+  > | null | undefined,
+  href: string,
+): boolean {
+  if (!hasActiveAccess(context)) return false;
+  return canAccessWorkspaceRoute(context?.roles, href, context?.capabilities);
+}
+
+export function constrainAuthorizationHintsToContext(
+  context: Pick<
+    ApiRequestContext,
+    "roles" | "capabilities" | "identityActive" | "membershipActive" | "applicationAccessActive"
+  > | null | undefined,
+  authorization: AuthorizationHint,
+): AuthorizationHint {
+  if (!hasActiveAccess(context)) return denyAllAuthorizationHints();
+  if (!usesCapabilityModel(context)) return authorization;
+
+  const capabilities = context?.capabilities ?? [];
+  return {
+    can_read: authorization.can_read && hasAnyCapability(capabilities, [
+      "akb:read_document",
+      "akb:manage_document",
+      "akb:upload",
+    ]),
+    can_update: authorization.can_update && capabilities.includes("akb:manage_document"),
+    can_ingest: authorization.can_ingest && hasAnyCapability(capabilities, [
+      "akb:upload",
+      "akb:manage_document",
+    ]),
+    can_publish: authorization.can_publish && hasAnyCapability(capabilities, [
+      "akb:manage_document",
+      "akb:publish_public",
+    ]),
+    can_read_audit: authorization.can_read_audit && capabilities.includes("akb:read_audit"),
+    can_manage_admin: authorization.can_manage_admin && capabilities.includes("akb:manage_access"),
+  };
+}
+
+function denyAllAuthorizationHints(): AuthorizationHint {
+  return {
+    can_read: false,
+    can_update: false,
+    can_ingest: false,
+    can_publish: false,
+    can_read_audit: false,
+    can_manage_admin: false,
+  };
 }
 
 function normalizeRoute(href: string): string {

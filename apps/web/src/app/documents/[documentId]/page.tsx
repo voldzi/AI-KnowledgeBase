@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
 import { DocumentDetail } from "@/features/documents/document-detail";
 import { getServerApiClients, getServerRequestContextForPath } from "@/lib/api/server";
-import { requirePageAccess } from "@/lib/auth/server-route-guard";
+import { requireWorkspaceRouteAccess } from "@/lib/auth/server-route-guard";
 import { controlledDocumentationDomain } from "@/lib/controlled-documentation/contract";
 import {
   ApiClientError,
@@ -28,7 +28,7 @@ export default async function DocumentDetailPage({ params, searchParams }: Docum
   const clients = getServerApiClients();
   const requestPath = documentDetailRequestPath(documentId, resolvedSearchParams);
   const context = await getServerRequestContextForPath(requestPath);
-  requirePageAccess(context, "knowledge_workspace");
+  requireWorkspaceRouteAccess(context, "/documents");
 
   try {
     const document = await clients.registry.getDocument(documentId, context);

@@ -4,6 +4,8 @@ import { describe, it } from "node:test";
 import {
   canUseAdminSurface,
   canAccessWorkspaceRoute,
+  canAccessWorkspaceRouteForContext,
+  constrainAuthorizationHintsToContext,
   canUseEmployeeChat,
   canUseIntelligence,
   canUseKnowledgeWorkspace,
@@ -130,6 +132,97 @@ describe("AKB web authorization", () => {
         ["akb:chat"],
       ),
       false,
+    );
+  });
+
+  it("keeps read-only employees on document and chat surfaces", () => {
+    const roles = ["stratos_user"];
+    const capabilities = ["akb:access", "akb:chat", "akb:read_document"];
+
+    for (const route of ["/chat", "/help", "/documents", "/controlled-documentation"]) {
+      assert.equal(canAccessWorkspaceRoute(roles, route, capabilities), true, route);
+    }
+    for (const route of ["/dashboard", "/tasks", "/ingestion", "/intelligence", "/audit", "/admin"]) {
+      assert.equal(canAccessWorkspaceRoute(roles, route, capabilities), false, route);
+    }
+  });
+
+  it("maps operational surfaces to their exact central capabilities", () => {
+    const roles = ["stratos_user"];
+    const manager = ["akb:access", "akb:chat", "akb:read_document", "akb:manage_document"];
+    const auditor = ["akb:access", "akb:chat", "akb:read_document", "akb:read_audit"];
+    const uploader = ["akb:access", "akb:chat", "akb:upload"];
+
+    for (const route of ["/dashboard", "/tasks", "/ingestion", "/intelligence", "/sources"]) {
+      assert.equal(canAccessWorkspaceRoute(roles, route, manager), true, route);
+    }
+    for (const route of ["/dashboard", "/tasks", "/intelligence", "/audit"]) {
+      assert.equal(canAccessWorkspaceRoute(roles, route, auditor), true, route);
+    }
+    assert.equal(canAccessWorkspaceRoute(roles, "/ingestion", auditor), false);
+    assert.equal(canAccessWorkspaceRoute(roles, "/documents/new", uploader), true);
+    assert.equal(canAccessWorkspaceRoute(roles, "/upload", uploader), true);
+    assert.equal(canAccessWorkspaceRoute(roles, "/ingestion", uploader), false);
+  });
+
+  it("rejects every workspace route when central access is inactive", () => {
+    const context = {
+      roles: ["stratos_user"],
+      capabilities: ["akb:access", "akb:chat", "akb:read_document", "akb:manage_document"],
+      identityActive: true,
+      membershipActive: false,
+      applicationAccessActive: true,
+    };
+
+    assert.equal(canAccessWorkspaceRouteForContext(context, "/documents"), false);
+    assert.equal(canAccessWorkspaceRouteForContext({ ...context, membershipActive: true }, "/documents"), true);
+  });
+
+  it("intersects Registry action hints with the current access projection", () => {
+    const upstream = {
+      can_read: true,
+      can_update: true,
+      can_ingest: true,
+      can_publish: true,
+      can_read_audit: true,
+      can_manage_admin: true,
+    };
+
+    assert.deepEqual(
+      constrainAuthorizationHintsToContext(
+        {
+          roles: ["stratos_user"],
+          capabilities: ["akb:access", "akb:chat", "akb:read_document"],
+        },
+        upstream,
+      ),
+      {
+        can_read: true,
+        can_update: false,
+        can_ingest: false,
+        can_publish: false,
+        can_read_audit: false,
+        can_manage_admin: false,
+      },
+    );
+
+    assert.deepEqual(
+      constrainAuthorizationHintsToContext(
+        {
+          roles: ["stratos_user"],
+          capabilities: ["akb:manage_document", "akb:read_audit"],
+          applicationAccessActive: false,
+        },
+        upstream,
+      ),
+      {
+        can_read: false,
+        can_update: false,
+        can_ingest: false,
+        can_publish: false,
+        can_read_audit: false,
+        can_manage_admin: false,
+      },
     );
   });
 

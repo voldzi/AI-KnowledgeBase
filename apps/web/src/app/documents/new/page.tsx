@@ -1,14 +1,14 @@
 import { PageHeader } from "@/components/page-header";
 import { NewDocumentForm } from "@/features/documents/new-document-form";
 import { getServerApiClients, getServerRequestContextForPath } from "@/lib/api/server";
-import { requirePageAccess } from "@/lib/auth/server-route-guard";
+import { requireWorkspaceRouteAccess } from "@/lib/auth/server-route-guard";
 
 export const dynamic = "force-dynamic";
 
 export default async function NewDocumentPage() {
   const clients = getServerApiClients();
   const context = await getServerRequestContextForPath("/documents/new");
-  requirePageAccess(context, "knowledge_workspace");
+  requireWorkspaceRouteAccess(context, "/documents/new");
   const [authorization, directoryUsers] = await Promise.all([
     clients.registry.getAuthorizationHints(context),
     clients.registry.searchDirectoryUsers("", context, 50).catch(() => []),
