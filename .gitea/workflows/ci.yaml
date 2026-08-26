@@ -136,7 +136,9 @@ jobs:
             tar -xzf "${tmp_dir}/${archive}" -C "${cache_root}" gitleaks
             chmod 0755 "${binary}"
           fi
-          "${binary}" git . --config gitleaks.toml --redact --no-banner
+          # Verbose findings retain the rule, file, and commit while `--redact`
+          # prevents the matched value from entering the CI log.
+          "${binary}" git . --config gitleaks.toml --redact --no-banner --verbose
 
   immutable-release:
     name: Immutable release contract
