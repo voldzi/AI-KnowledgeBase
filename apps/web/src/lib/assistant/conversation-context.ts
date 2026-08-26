@@ -11,7 +11,6 @@ const FORBIDDEN_KEY = /(?:^|_)(?:access_?token|refresh_?token|bearer|authorizati
 const BULKY_CONTEXT_KEYS = new Set([
   "answer_format_instruction",
   "assistant_query_plan",
-  "assistant_report_request",
   "director_copilot_evidence",
   "director_copilot_v2_snapshot",
   "report_artifacts",

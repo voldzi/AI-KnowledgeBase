@@ -78,6 +78,26 @@ describe("assistant conversation context", () => {
     });
   });
 
+  it("preserves the bounded explicit report request needed by the current turn", () => {
+    const context = safeAssistantConversationContext({
+      assistant_report_request: {
+        enabled: true,
+        output_kind: "table",
+        template: "obligation_table",
+        columns: ["obligation_or_area", "owner_or_role"],
+      },
+      assistant_query_plan: { must_not_survive: true },
+    });
+
+    assert.deepEqual(context.assistant_report_request, {
+      enabled: true,
+      output_kind: "table",
+      template: "obligation_table",
+      columns: ["obligation_or_area", "owner_or_role"],
+    });
+    assert.equal("assistant_query_plan" in context, false);
+  });
+
   it("keeps current explicit state over older persisted state", () => {
     const context = mergeAssistantConversationContext(
       { controlled_rule_valid_on: "2025-01-01", stratos_query_state: { sources: ["budget"] } },
