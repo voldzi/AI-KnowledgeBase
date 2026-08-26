@@ -26,6 +26,13 @@ paths = ['''apps/web/src/lib/api/mock/evaluation-client\.ts$''']
 regexes = ['''key:\s*"retrieval_latency_p95_ms"''']
 
 [[rules.allowlists]]
+description = "Retired AIIP test-only synthetic idempotency fixtures in historical commits"
+condition = "AND"
+regexTarget = "line"
+paths = ['''services/rag-retrieval-service/tests/test_aiip_application_api\.py$''']
+regexes = ['''idempotency_key\s*=\s*"[^"]+"''']
+
+[[rules.allowlists]]
 description = "Pinned SHA-256 contract snapshot digests"
 condition = "AND"
 regexTarget = "line"
