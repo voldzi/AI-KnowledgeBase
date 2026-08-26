@@ -1,26 +1,42 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { applyAkbStratosAppsVisibility } from "../src/lib/stratos-app-switcher";
+import {
+  AKB_STRATOS_APP_IDS,
+  applyAkbStratosAppsVisibility,
+} from "../src/lib/stratos-app-switcher";
+
+const directoryIds = [
+  ...AKB_STRATOS_APP_IDS,
+  "retired-application",
+  "future-unapproved-application",
+];
 
 describe("AKB STRATOS application switcher", () => {
   it("does not hide any current STRATOS destination", () => {
-    const availability = applyAkbStratosAppsVisibility({});
+    const availability = applyAkbStratosAppsVisibility({}, directoryIds);
 
     assert.notEqual(availability["budget-contract"]?.visible, false);
     assert.notEqual(availability.projectflow?.visible, false);
+    assert.notEqual(availability.akb?.visible, false);
     assert.notEqual(availability.archflow?.visible, false);
   });
 
-  it("keeps retired applications hidden even when access is projected", () => {
-    const availability = applyAkbStratosAppsVisibility({
-      "security-preflight": { access: "granted" },
-      aiip: { access: "granted" },
-      processforge: { access: "granted" },
-    });
+  it("keeps every destination outside the current suite hidden", () => {
+    const availability = applyAkbStratosAppsVisibility(
+      Object.fromEntries(
+        directoryIds.map((id) => [id, { access: "granted" }]),
+      ),
+      directoryIds,
+    );
+    const allowed = new Set<string>(AKB_STRATOS_APP_IDS);
 
-    assert.equal(availability["security-preflight"]?.visible, false);
-    assert.equal(availability.aiip?.visible, false);
-    assert.equal(availability.processforge?.visible, false);
+    for (const id of directoryIds) {
+      if (allowed.has(id)) {
+        assert.notEqual(availability[id]?.visible, false);
+      } else {
+        assert.equal(availability[id]?.visible, false);
+      }
+    }
   });
 });

@@ -1,5 +1,10 @@
 # AKB Runbook
 
+For a portable incident model and dependency ownership outside the current
+site, use `docs/OPERATIONS/external-environment-runbook.md`. For recovery order,
+backup evidence and isolated restore acceptance, use
+`docs/OPERATIONS/disaster-recovery.md`.
+
 Use this runbook for first response. Detailed environment-specific procedures
 remain in `docs/deployment/` and `docs/OPERATIONS/`.
 
@@ -141,10 +146,9 @@ autorizace.
    is mounted read-only as `/run/secrets/svc-ingestion-client-secret`; never
    print the value.
 3. Confirm Registry trusted clients include `svc-ingestion` with exactly
-   `authz|audit|documents-read|ingestion-status`, while `aiip-service` remains
-   exactly `aiip-upload`.
+   `authz|audit|documents-read|ingestion-status`.
 4. Compare only token expiry/audience/client-id metadata or a short SHA-256
-   fingerprint. Never substitute the inbound AIIP bearer or LLM Gateway token.
+   fingerprint. Never substitute an inbound user bearer or LLM Gateway token.
 5. Recreate `ingestion-service`, wait for `/ready`, then run one disposable
    dedicated-confirm ingestion and verify status-only transition to `INDEXED`.
 

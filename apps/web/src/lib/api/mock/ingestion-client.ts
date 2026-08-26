@@ -120,7 +120,7 @@ export class MockIngestionClient implements IngestionApiClient {
     ].slice(0, options.limit ?? 8);
     const emailValues = [
       ...(includeRmo
-        ? [{ key: "aiip.office@example.cz", label: "aiip.office@example.cz", count: 5 }]
+        ? [{ key: "knowledge.office@example.cz", label: "knowledge.office@example.cz", count: 5 }]
         : []),
       ...(includeOperations
         ? [{ key: "ops@example.cz", label: "ops@example.cz", count: 3 }]
@@ -180,14 +180,14 @@ export class MockIngestionClient implements IngestionApiClient {
         classification: "internal",
         status: "valid",
         score: 8.4,
-        snippet: "RMO 12/2024 stanovuje odpovědnosti vlastníka procesu a kontaktní adresu aiip.office@example.cz.",
+        snippet: "RMO 12/2024 stanovuje odpovědnosti vlastníka procesu a kontaktní adresu knowledge.office@example.cz.",
         page_number: 3,
         section_title: "Odpovědnosti",
         section_path: ["Část I", "Článek 4"],
         source_file_name: "rmo-ai.pdf",
         entity_types: ["document_number", "email"],
-        entity_values: ["RMO12/2024", "aiip.office@example.cz"],
-        entity_pairs: ["document_number:RMO12/2024", "email:aiip.office@example.cz"]
+        entity_values: ["RMO12/2024", "knowledge.office@example.cz"],
+        entity_pairs: ["document_number:RMO12/2024", "email:knowledge.office@example.cz"]
       },
       {
         chunk_id: "chunk_mock_ops_1",
@@ -262,14 +262,14 @@ export class MockIngestionClient implements IngestionApiClient {
         classification: "internal",
         status: "valid",
         score: scopedRequest.query_mode === "fielded" ? 10.4 : 8.4,
-        snippet: "RMO 12/2024 stanovuje odpovědnosti vlastníka procesu a kontaktní adresu aiip.office@example.cz.",
+        snippet: "RMO 12/2024 stanovuje odpovědnosti vlastníka procesu a kontaktní adresu knowledge.office@example.cz.",
         page_number: 3,
         section_title: "Odpovědnosti",
         section_path: ["Část I", "Článek 4"],
         source_file_name: "rmo-ai.pdf",
         entity_types: ["document_number", "email"],
-        entity_values: ["RMO12/2024", "aiip.office@example.cz"],
-        entity_pairs: ["document_number:RMO12/2024", "email:aiip.office@example.cz"]
+        entity_values: ["RMO12/2024", "knowledge.office@example.cz"],
+        entity_pairs: ["document_number:RMO12/2024", "email:knowledge.office@example.cz"]
       },
       {
         chunk_id: "chunk_mock_ops_1",
@@ -323,7 +323,7 @@ export class MockIngestionClient implements IngestionApiClient {
     const coordinates = coordinateByDocumentId(options);
     const edges = [
       {
-        edge_id: "rel_mock_rmo_aiip",
+        edge_id: "rel_mock_rmo_contact",
         relationship_type: "co_occurs" as const,
         source: {
           entity_type: "document_number",
@@ -332,8 +332,8 @@ export class MockIngestionClient implements IngestionApiClient {
         },
         target: {
           entity_type: "email",
-          entity_value: "aiip.office@example.cz",
-          label: "Email: aiip.office@example.cz"
+          entity_value: "knowledge.office@example.cz",
+          label: "Email: knowledge.office@example.cz"
         },
         evidence_count: 7,
         document_count: 2,
@@ -345,7 +345,7 @@ export class MockIngestionClient implements IngestionApiClient {
             document_version_id: "ver_109_1",
             document_title: "Směrnice RMO 12/2024 pro řízení AI",
             version_label: "1.0",
-            snippet: "RMO 12/2024 stanovuje odpovědnosti vlastníka procesu a kontaktní adresu aiip.office@example.cz.",
+            snippet: "RMO 12/2024 stanovuje odpovědnosti vlastníka procesu a kontaktní adresu knowledge.office@example.cz.",
             page_number: 3,
             section_title: "Odpovědnosti",
             source_file_name: "rmo-ai.pdf"

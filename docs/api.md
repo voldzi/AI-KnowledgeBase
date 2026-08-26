@@ -6,22 +6,14 @@ The repository-level machine-readable API contract is:
 openapi/openapi.json
 ```
 
-The versioned public AIIP application fragment is:
-
-```text
-openapi/aiip-application-api.v1.json
-```
-
 The active Director Copilot contract is pinned under:
 
 ```text
 contracts/director-copilot/v2/
 ```
 
-V2 revision `2.0.3` dynamically validates the active source manifests for
-Budget, ProjectFlow and ArchFlow. The immutable bundle still carries the
-retired AIIP manifest for byte-level contract compatibility, but AKB neither
-loads nor calls it.
+V2 revision `2.0.4` dynamically validates the active source manifests for
+Budget, ProjectFlow and ArchFlow.
 Every target uses a separate single-audience service token and the independent
 current actor bearer. The shared request includes period, entity filters,
 granularity, grouping, scenario, `as_of`, cursor and limit. The assistant
@@ -106,14 +98,11 @@ missing or hash-inconsistent summary is not accepted as Director Copilot
 evidence.
 
 Policy-bearing document and version writes also register immutable central
-`GovernedInformationResource` coordinates. Normal writes use a verified user
-bearer or the dedicated `AKB_POLICY_SERVICE_TOKEN`, which resolves to the fixed
-`service:akb` identity and AKB namespace. AIIP does not use that broad service
-path: its dedicated upload contract requires the exact `aiip-service`
-transport, a separate current actor bearer, and an exact central confirmation
-made with the independent `AKB_AIIP_INGEST_SERVICE_TOKEN`. An invalid
-credential, inactive scope, unregistered source or binding, stale lineage, or
-missing capability aborts the complete write.
+`GovernedInformationResource` coordinates. Writes use a verified user bearer
+or the dedicated `AKB_POLICY_SERVICE_TOKEN`, which resolves to the fixed
+`service:akb` identity and AKB namespace. An invalid credential, inactive
+scope, unregistered source or binding, stale lineage, or missing capability
+aborts the complete write.
 
 ## API Surfaces
 
@@ -244,57 +233,6 @@ storage URI, content extraction, chunk, embedding, prompt, answer, or RAG
 field.
 
 Service-level summaries remain in `docs/api/`.
-
-AIIP uses the purpose-built server-to-server bridge operations
-`POST /api/integrations/aiip/v1/harmonize` and
-`POST /api/integrations/aiip/v1/duplicates/search`. The exact identity,
-idempotency, error, model fallback, tenant filtering, audit, and retention
-contract is documented in `docs/integration/AKB_AIIP_APPLICATION_API.md`.
-
-Governed AIIP document ingestion uses the browser-safe upload bridge and these
-internal Registry operations:
-
-```text
-POST  /api/v1/integrations/aiip-upload/external-documents/upsert
-PUT   /api/v1/integrations/aiip-upload/documents/{document_id}/versions
-PATCH /api/v1/integrations/aiip-upload/external-documents/{external_document_id}/current
-```
-
-They are not general integration endpoints. They accept only the
-`aiip-document-service=aiip-upload` route grant plus an independent
-`X-AIIP-Actor-Authorization` bearer, reject arbitrary metadata/owner fields,
-and return `governance_confirmation` containing the exact source and derived
-resource lineage. Details are in ADR 0008 and
-`docs/integration/STRATOS_EXTERNAL_DOCUMENTS_API.md`.
-
-The public machine contract models the corresponding web bridge as three
-operation-specific APIs rather than `GenericJson`:
-
-```text
-POST /api/stratos/upload/preflight
-PUT  /api/stratos/upload/sessions/{sessionId}/content
-POST /api/stratos/upload/sessions/{sessionId}/confirm
-```
-
-Preflight and confirm require both the `Authorization: Bearer <aiip-service>`
-transport credential and the independent
-`X-AIIP-Actor-Authorization: Bearer <current-person>` header. Their JSON bodies,
-Information Policy, AIIP-only integration envelope and successful responses
-are closed schemas; unknown fields are rejected. Preflight returns the opaque
-`X-AKL-Upload-Token` only inside its exact `required_headers` object. Content is
-a binary `PUT` authenticated by that header and accompanied by the exact
-`X-AKL-Content-SHA256`; HTTP `201` returns a required opaque
-`upload_receipt`. Confirm requires both `upload_token` and `upload_receipt`
-plus all signed file, policy, scope, and envelope fields. Both successful JSON
-operations return a closed, authoritative `governance_confirmation` schema.
-Its discriminated `scope` uses only the active coordinate: `ownerSubjectId` for
-`own`, or `id` for every other scope type. Mutually exclusive coordinates are
-omitted rather than serialized as `null`.
-
-`STRATOS_AIIP` is rejected by the generic external-document, version, and
-current-pointer write routes. Document-level synchronization outside the
-dedicated family is status-only for a current version already selected by the
-dedicated compare-and-swap operation; it cannot create or select AIIP lineage.
 
 Ingestion jobs accept an optional `extraction_profile` and return a `quality`
 block in job reports. The quality block records the parser/engine, pages with

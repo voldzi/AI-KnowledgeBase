@@ -4,6 +4,12 @@ This document is the flat operational entry point for AKB. Detailed deployment
 and runbook material remains in `docs/deployment/`, `docs/OPERATIONS/`, and
 service README files.
 
+Foreign-environment operators start with
+`docs/deployment/external-environment-installation.md`,
+`docs/OPERATIONS/external-environment-runbook.md` and
+`docs/OPERATIONS/disaster-recovery.md`. These guides distinguish portable
+requirements from the site-specific `docker.home.cz` immutable release.
+
 ## Server-side browser sessions
 
 Production OIDC uses database-backed AKB sessions. Configure two separate
@@ -231,9 +237,11 @@ shorter Director Copilot timeout.
 
 ### Director Copilot activation
 
-Director Copilot V2 is the only AKB federation path. It is pinned to wire
-contract `director-copilot-2`, revision `2.0.3`, and is enabled only when all
-three governed sources and the dedicated service identity are configured:
+Director Copilot V2 is the only AKB federation path. The current release
+candidate is pinned to wire contract `director-copilot-2`, revision `2.0.4`,
+and may be promoted only with the matching STRATOS revision. It is enabled only
+when all three governed sources and the dedicated service identity are
+configured:
 
 ```text
 AKL_DIRECTOR_COPILOT_ENABLED=false
@@ -252,11 +260,6 @@ AKL_DIRECTOR_COPILOT_BUDGET_BASE_URL=http://stratos-api:4000
 AKL_DIRECTOR_COPILOT_PROJECTFLOW_BASE_URL=http://projectflow-api:4010
 AKL_DIRECTOR_COPILOT_ARCHFLOW_BASE_URL=http://stratos-api:4000
 ```
-
-AIIP is not an active Director Copilot source. ArchFlow owns need and idea
-intake data. Do not provision an AIIP audience, route-bound scope or base URL
-for this runtime. Separate legacy AIIP document-ingestion APIs remain isolated
-from Director Copilot until they are retired independently.
 
 V2 returns the user-visible live-data answer and writes
 `assistant.director_copilot_v2_returned`. A live-source failure never falls
@@ -331,7 +334,7 @@ the entrypoint copies it to a private in-container tmpfs before dropping
 privileges. When enabled, immutable release preflight requires an absolute,
 operator-owned, single-link regular file with exact mode `0600` before the
 build boundary. The identity must be exactly `svc-akb-director-copilot`; never
-reuse the actor, web-ingestion, RAG, AIIP or broad AKB policy credential. Keep
+reuse the actor, web-ingestion, RAG or broad AKB policy credential. Keep
 the feature disabled if either source URL, token audience, current actor
 projection or source PEP cannot be verified.
 
@@ -382,28 +385,15 @@ the fixed `service:akb` identity; integration-envelope actors are stored only
 as audit metadata. A missing endpoint or service credential fails governed
 writes closed.
 
-AIIP governed upload additionally requires
-`AKL_STRATOS_AIIP_AKB_RESOURCES_URL` and
-`AKB_AIIP_INGEST_SERVICE_TOKEN`. The latter is a separate central-call
-credential and production start rejects it when it equals
-`AKB_POLICY_SERVICE_TOKEN`. Allow only the exact route grant
-`aiip-document-service=aiip-upload`; do not add `authz`, document administration, or a
-wildcard route grant to that client. The AKB web bridge forwards the
-`aiip-document-service` transport bearer and a separate current actor bearer; Registry
-must receive both. Rotate the two static AKB tokens independently, update the
-external secret store, restart Registry, and verify readiness plus one denied
-missing-actor probe before accepting traffic. Never print either token in
-shell output, logs, manifests, or test reports.
-
 The downstream ingestion pipeline has a third, independent Keycloak boundary.
 Provision `svc-ingestion` with role `service_ingestion`, audience `akl-api`, and
 store its secret in `/srv/akl/env/svc-ingestion.client-secret` mode `0600`.
 `ingestion-service` obtains short-lived tokens through
 `AKL_INGESTION_REGISTRY_TOKEN_URL`; the secret file is mounted read-only only
 into that container. Registry must trust the client with exactly
-`authz|audit|documents-read|ingestion-status`. Do not add generic grants to
-`aiip-service`, share either client secret, or use an inbound AIIP bearer as a
-fallback. `/ready` must return HTTP `503` with Registry `not_ready` when this
+`authz|audit|documents-read|ingestion-status`. Do not share either client
+secret or use an inbound user bearer as a fallback. `/ready` must return HTTP
+`503` with Registry `not_ready` when this
 identity cannot be obtained; rotate the secret and recreate only the ingestion
 container before a bounded ingestion smoke.
 
@@ -582,34 +572,13 @@ Production base-path deployment publishes the API variants under
 `/health` and `/ready` probes on `chat.zeleznalady.cz`; both responses are
 uncached and do not require an interactive OIDC session.
 
-## AIIP Application API
+## RAG Registry Service Identity
 
-Provision `aiip-service` in the STRATOS Keycloak realm only after both public
-AIIP operations are deployed. Assign only `service_aiip`, add audience
-`akb-api`, keep the generated secret outside Git with mode `0600`, and do not
-print the secret or access token in deployment logs.
-
-Provision the internal RAG-to-Registry credential with the same idempotent
-helper before restarting RAG:
-
-```bash
-AIIP_CLIENT_ID=akb-rag-service \
-AIIP_ROLE=service_rag \
-AIIP_AUDIENCE=akl-api \
-AIIP_SECRET_FILE=/srv/akl/env/akb-rag-service.client-secret \
-SERVICE_CLIENT_NAME='AKB RAG to Registry' \
-./scripts/ensure_aiip_service_client.sh
-```
-
-The RAG container mounts this file read-only and exchanges it for short-lived
-Registry tokens. It does not receive the `aiip-service` secret.
-
-After deployment, verify a synthetic `internal` harmonization, an authorized
-tenant-scoped duplicate search, exact idempotent replay, a conflicting replay,
-and `restricted` rejection. Existing AIIP documents require reingestion so the
-new tenant/source identity fields reach Qdrant and OpenSearch. Detailed
-contract and acceptance behavior is in
-`docs/integration/AKB_AIIP_APPLICATION_API.md`.
+Provision `akb-rag-service` in the STRATOS Keycloak realm with only the
+`service_rag` role and `akl-api` audience. Keep the generated secret outside
+Git in a mode-`0600` host file. The RAG container mounts that file read-only
+and exchanges it for short-lived Registry tokens. Never print the secret or
+access token in deployment logs.
 
 ## Backup And Restore
 

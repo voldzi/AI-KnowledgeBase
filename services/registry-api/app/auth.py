@@ -328,8 +328,6 @@ def _service_route_for_request(request: Request) -> str | None:
         return "stratos-budget-upload"
     if path.startswith("/integrations/controlled-rules-read/"):
         return "controlled-rules-read"
-    if path.startswith("/integrations/aiip-upload/"):
-        return "aiip-upload"
     if path == "/integrations/ingestion/readiness":
         return "authz"
     if path == "/integrations/ingestion/authorizations/confirm":

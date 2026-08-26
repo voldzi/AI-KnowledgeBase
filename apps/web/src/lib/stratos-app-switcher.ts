@@ -1,8 +1,11 @@
-const retiredSwitcherDestinations = [
-  "security-preflight",
-  "aiip",
-  "processforge",
+export const AKB_STRATOS_APP_IDS = [
+  "budget-contract",
+  "projectflow",
+  "akb",
+  "archflow",
 ] as const;
+
+const allowedSwitcherDestinations = new Set<string>(AKB_STRATOS_APP_IDS);
 
 type AppAvailability = Record<string, {
   visible?: boolean;
@@ -14,15 +17,18 @@ type AppAvailability = Record<string, {
 
 export function applyAkbStratosAppsVisibility(
   availability: AppAvailability,
+  directoryIds: readonly string[],
 ): AppAvailability {
-  return retiredSwitcherDestinations.reduce<AppAvailability>(
-    (result, application) => ({
-      ...result,
-      [application]: {
-        ...result[application],
-        visible: false,
-      },
-    }),
+  return directoryIds.reduce<AppAvailability>(
+    (result, id) => allowedSwitcherDestinations.has(id)
+      ? result
+      : {
+          ...result,
+          [id]: {
+            ...result[id],
+            visible: false,
+          },
+        },
     availability,
   );
 }

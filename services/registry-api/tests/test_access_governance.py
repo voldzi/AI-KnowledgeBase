@@ -49,13 +49,12 @@ def _settings(**overrides) -> Settings:
         "AKL_OIDC_JWKS_URL": "https://login.example/realms/stratos/certs",
         "AKL_STRATOS_AUTH_ME_URL": "https://stratos.example/api/v1/auth/me",
         "AKL_STRATOS_ACCESS_CACHE_TTL_SECONDS": 0,
-        "AKL_TRUSTED_SERVICE_CLIENT_IDS": "akb-rag-service,aiip-document-service,svc-ingestion",
+        "AKL_TRUSTED_SERVICE_CLIENT_IDS": "akb-rag-service,svc-ingestion",
         "AKL_SERVICE_CLIENT_ROUTE_GRANTS": (
             "akb-rag-service=authz|audit|idempotency,"
-            "aiip-document-service=aiip-upload,"
             "svc-ingestion=authz|audit|documents-read|ingestion-status"
         ),
-        "AKL_SERVICE_CLIENT_DELEGATIONS": "akb-rag-service=aiip-service",
+        "AKL_SERVICE_CLIENT_DELEGATIONS": "",
     }
     values.update(overrides)
     return Settings(**values)
@@ -452,7 +451,7 @@ def test_oidc_accepts_only_exact_trusted_service_account_binding(monkeypatch) ->
     assert principal.service_client_id == "akb-rag-service"
     assert principal.subject_id == claims["sub"]
 
-    claims["preferred_username"] = "service-account-aiip-service"
+    claims["preferred_username"] = "service-account-foreign-service"
     with pytest.raises(HTTPException) as mismatch:
         _oidc_principal(request, _settings())
     assert mismatch.value.status_code == 403
@@ -489,7 +488,7 @@ def test_oidc_accepts_route_bound_minimal_client_credentials_token(monkeypatch) 
         request,
         _settings(
             AKL_TRUSTED_SERVICE_CLIENT_IDS=(
-                "akb-rag-service,aiip-document-service,svc-ingestion,"
+                "akb-rag-service,svc-ingestion,"
                 "svc-budget-controlled-rules"
             )
         ),
@@ -660,7 +659,7 @@ def test_service_decision_uses_fixed_akb_central_identity(monkeypatch) -> None:
     with pytest.raises(HTTPException) as denied:
         _service_action_decision(
             principal=principal,
-            subject_id="service-account-aiip-service",
+            subject_id="service-account-foreign-service",
             action="rag.query",
             document=None,
         )
@@ -681,10 +680,10 @@ def test_service_decision_uses_fixed_akb_central_identity(monkeypatch) -> None:
         "policy_binding": None,
         "policy_hash": None,
     }]
-    assert _audit_service_decision_coordinates("aiip.harmonize.completed") == ("akb:chat", "ai")
+    assert _audit_service_decision_coordinates("assistant.response.completed") == ("akb:chat", "ai")
     assert _audit_service_decision_coordinates("ingestion.job.completed") == ("akb:manage_document", "upload")
 
-    audit_capability, audit_operation = _audit_service_decision_coordinates("aiip.harmonize.completed")
+    audit_capability, audit_operation = _audit_service_decision_coordinates("assistant.response.completed")
     audit_decision = _service_action_decision(
         principal=principal,
         subject_id=principal.subject_id,
@@ -771,11 +770,10 @@ def test_rag_service_client_is_default_denied_on_document_registry_routes(client
 def test_budget_upload_service_is_limited_to_dedicated_route() -> None:
     settings = _settings(
         AKL_TRUSTED_SERVICE_CLIENT_IDS=(
-            "akb-rag-service,aiip-document-service,stratos-akb-service,svc-ingestion"
+            "akb-rag-service,stratos-akb-service,svc-ingestion"
         ),
         AKL_SERVICE_CLIENT_ROUTE_GRANTS=(
             "akb-rag-service=authz|audit|idempotency,"
-            "aiip-document-service=aiip-upload,"
             "stratos-akb-service=stratos-budget-upload,"
             "svc-ingestion=authz|audit|documents-read|ingestion-status"
         ),

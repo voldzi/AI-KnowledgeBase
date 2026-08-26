@@ -91,17 +91,17 @@ describe("STRATOS upload confirmation idempotency", () => {
   it("binds a confirm replay to the external tenant, system, reference and document", () => {
     const actual = {
       document_id: "doc_1",
-      tenant_id: "tenant_aiip_default",
-      external_system: "STRATOS_AIIP",
-      external_ref: "aiip:idea:123"
+      tenant_id: "org_stratos",
+      external_system: "STRATOS_PROJECTFLOW",
+      external_ref: "project:123"
     };
 
     assert.deepEqual(
       externalUploadIdentityMismatches(actual, {
         documentId: "doc_1",
-        tenantId: "tenant_aiip_default",
-        externalSystem: "STRATOS_AIIP",
-        externalRef: "aiip:idea:123"
+        tenantId: "org_stratos",
+        externalSystem: "STRATOS_PROJECTFLOW",
+        externalRef: "project:123"
       }),
       []
     );
@@ -109,8 +109,8 @@ describe("STRATOS upload confirmation idempotency", () => {
       externalUploadIdentityMismatches(actual, {
         documentId: "doc_2",
         tenantId: "tenant_other",
-        externalSystem: "STRATOS_AIIP",
-        externalRef: "aiip:idea:123"
+        externalSystem: "STRATOS_PROJECTFLOW",
+        externalRef: "project:123"
       }),
       ["document_id", "tenant_id"]
     );

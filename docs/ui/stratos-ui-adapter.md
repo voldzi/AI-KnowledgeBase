@@ -43,7 +43,7 @@ ikony, poradi, dostupnost ProcessForge a vynechani aktualni aplikace z nabidky
 vlastni centralni katalog v `@voldzi/stratos-ui`.
 Dokud publikovany balicek `@voldzi/stratos-ui@0.3.37` obsahuje starsi sestaveny
 katalog, AKB pres `applyAkbStratosAppsVisibility` pouze skryva vyrazene cile
-SecurityPreflight, AIIP a ProcessForge. Metadata aktivnich aplikaci nadale
+SecurityPreflight a ProcessForge. Metadata aktivnich aplikaci nadale
 vlastni sdilena knihovna. Kompatibilitni filtr se odstrani po publikaci balicku,
 jehoz sestaveny katalog odpovida aktualnimu STRATOS zdroji.
 AKB nepridava mobilni opravy pro `.stratos-app-shell-main`,

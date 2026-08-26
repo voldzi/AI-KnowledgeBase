@@ -42,10 +42,10 @@ def _http_registry_settings(tmp_path):
 def test_registry_headers_never_reuse_caller_bearer(tmp_path) -> None:
     settings = _http_registry_settings(tmp_path)
     auth_context = AuthContext(
-        subject_id="service-account-aiip-service",
-        roles=("service_aiip",),
+        subject_id="service-account-source-service",
+        roles=("service_source",),
         groups=(),
-        bearer_token="aiip-caller-token",
+        bearer_token="source-caller-token",
         service_identity=True,
     )
 
@@ -55,7 +55,7 @@ def test_registry_headers_never_reuse_caller_bearer(tmp_path) -> None:
     )
 
     assert headers["Authorization"] == "Bearer ingestion-registry-token"
-    assert "aiip-caller-token" not in headers.values()
+    assert "source-caller-token" not in headers.values()
     assert "X-AKL-Subject" not in headers
     assert "X-AKL-Roles" not in headers
     assert "X-STRATOS-Capabilities" not in headers
@@ -122,13 +122,13 @@ def test_registry_pipeline_transport_uses_cached_internal_service_identity(
                     "correlation_id": request["correlation_id"],
                     "idempotency_key": request["idempotency_key"],
                 })
-            if url.endswith("/versions/ver-aiip-1"):
+            if url.endswith("/versions/ver-source-1"):
                 return Response(
                     {
-                        "version_label": "AIIP v1",
+                        "version_label": "Source v1",
                         "status": "valid",
                         "organization_id": "org_stratos",
-                        "policy_binding_id": "pb_aiip_12345678",
+                        "policy_binding_id": "pb_source_12345678",
                         "policy_version": "information-policy-2.0.0",
                         "policy_hash": "sha256:" + "a" * 64,
                         "policy_summary": {"handlingClass": "INTERNAL"},
@@ -142,11 +142,11 @@ def test_registry_pipeline_transport_uses_cached_internal_service_identity(
             if method == "PATCH":
                 request = kwargs["json"]
                 return Response({
-                    "document_id": "doc-aiip-1",
+                    "document_id": "doc-source-1",
                     "updated": 1,
                     "items": [],
                     "ingestion_attempt": {
-                        "document_id": "doc-aiip-1",
+                        "document_id": "doc-source-1",
                         "document_version_id": request["current_document_version_id"],
                         "ingestion_job_id": request["current_ingestion_job_id"],
                         "ingestion_status": request["current_ingestion_status"],
@@ -156,16 +156,16 @@ def test_registry_pipeline_transport_uses_cached_internal_service_identity(
                 return Response({"audit_event_id": "audit-ingestion-1"}, status_code=201)
             return Response(
                 {
-                    "title": "AIIP request",
+                    "title": "Source request",
                     "document_type": "ai_intake",
                     "status": "valid",
                     "classification": "internal",
-                    "tags": ["aiip"],
+                    "tags": ["source"],
                     "metadata": {
                         "external": {
                             "tenant_id": "org_stratos",
-                            "external_system": "STRATOS_AIIP",
-                            "external_ref": "aiip:idea:1:requirement-card",
+                            "external_system": "STRATOS_ARCHFLOW",
+                            "external_ref": "archflow:need:1:requirement-card",
                         }
                     },
                     "access_policies": [],
@@ -178,10 +178,10 @@ def test_registry_pipeline_transport_uses_cached_internal_service_identity(
 
     monkeypatch.setattr(registry_client_module.httpx, "AsyncClient", Client)
     caller = AuthContext(
-        subject_id="service-account-aiip-service",
-        roles=("service_aiip",),
+        subject_id="service-account-source-service",
+        roles=("service_source",),
         groups=(),
-        bearer_token="aiip-caller-token",
+        bearer_token="source-caller-token",
         service_identity=True,
     )
     client = RegistryClient(settings)
@@ -192,33 +192,33 @@ def test_registry_pipeline_transport_uses_cached_internal_service_identity(
             authorization_token="registry-proof-token",
             expected_subject_id=caller.subject_id,
             action="document.ingest",
-            document_id="doc-aiip-1",
-            document_version_id="ver-aiip-1",
+            document_id="doc-source-1",
+            document_version_id="ver-source-1",
             correlation_id="corr-test",
-            idempotency_key="confirm:doc-aiip-1:ver-aiip-1",
+            idempotency_key="confirm:doc-source-1:ver-source-1",
         )
         metadata = await client.get_document_metadata(
-            "doc-aiip-1",
-            "ver-aiip-1",
+            "doc-source-1",
+            "ver-source-1",
             auth_context=caller,
         )
-        assert metadata.external_system == "STRATOS_AIIP"
+        assert metadata.external_system == "STRATOS_ARCHFLOW"
         assert metadata.content_security_status == "clean"
         assert metadata.content_security_engine == "clamav"
         assert metadata.content_security_engine_version == "1.4.3"
         assert metadata.content_security_signature_version == "27654"
         assert metadata.content_security_scanned_at is not None
         await client.update_external_document_current(
-            document_id="doc-aiip-1",
-            document_version_id="ver-aiip-1",
-            ingestion_job_id="ing-aiip-1",
+            document_id="doc-source-1",
+            document_version_id="ver-source-1",
+            ingestion_job_id="ing-source-1",
             ingestion_status="INDEXED",
             auth_context=caller,
         )
         await client.write_audit_event(
             actor_id=caller.subject_id,
             event_type="ingestion.job.completed",
-            resource_id="ing-aiip-1",
+            resource_id="ing-source-1",
             auth_context=caller,
         )
 
@@ -230,7 +230,7 @@ def test_registry_pipeline_transport_uses_cached_internal_service_identity(
         call["headers"]["Authorization"] == "Bearer ingestion-registry-token"  # type: ignore[index]
         for call in registry_calls
     )
-    assert "aiip-caller-token" not in repr(registry_calls)
+    assert "source-caller-token" not in repr(registry_calls)
 
     proof_call = next(
         call for call in registry_calls
@@ -241,9 +241,9 @@ def test_registry_pipeline_transport_uses_cached_internal_service_identity(
 
     status_call = next(call for call in registry_calls if call["method"] == "PATCH")
     assert status_call["json"] == {
-        "current_document_version_id": "ver-aiip-1",
-        "expected_current_ingestion_job_id": "ing-aiip-1",
-        "current_ingestion_job_id": "ing-aiip-1",
+        "current_document_version_id": "ver-source-1",
+        "expected_current_ingestion_job_id": "ing-source-1",
+        "current_ingestion_job_id": "ing-source-1",
         "current_ingestion_status": "INDEXED",
     }
     audit_call = next(call for call in registry_calls if str(call["url"]).endswith("/audit/events"))
@@ -273,10 +273,10 @@ def test_registry_service_identity_failure_never_falls_back_to_caller(
 
     monkeypatch.setattr(registry_client_module.httpx, "AsyncClient", Client)
     caller = AuthContext(
-        subject_id="service-account-aiip-service",
-        roles=("service_aiip",),
+        subject_id="service-account-source-service",
+        roles=("service_source",),
         groups=(),
-        bearer_token="aiip-caller-token",
+        bearer_token="source-caller-token",
         service_identity=True,
     )
     client = RegistryClient(settings)
@@ -287,10 +287,10 @@ def test_registry_service_identity_failure_never_falls_back_to_caller(
                 authorization_token="registry-proof-token",
                 expected_subject_id=caller.subject_id,
                 action="document.ingest",
-                document_id="doc-aiip-1",
-                document_version_id="ver-aiip-1",
+                document_id="doc-source-1",
+                document_version_id="ver-source-1",
                 correlation_id="corr-test",
-                idempotency_key="confirm:doc-aiip-1:ver-aiip-1",
+                idempotency_key="confirm:doc-source-1:ver-source-1",
             )
         )
 
@@ -349,10 +349,10 @@ def test_local_registry_headers_keep_caller_only_as_on_behalf_of_context(tmp_pat
         }
     )
     auth_context = AuthContext(
-        subject_id="service-account-aiip-service",
-        roles=("service_aiip",),
+        subject_id="service-account-source-service",
+        roles=("service_source",),
         groups=(),
-        bearer_token="aiip-caller-token",
+        bearer_token="source-caller-token",
         service_identity=True,
     )
 
@@ -383,7 +383,7 @@ def test_embedding_headers_use_gateway_service_identity_instead_of_caller_token(
         }
     )
     caller = AuthContext(
-        subject_id="aiip-service",
+        subject_id="source-service",
         roles=("stratos_service",),
         groups=(),
         bearer_token="caller-oidc-token",
@@ -395,4 +395,4 @@ def test_embedding_headers_use_gateway_service_identity_instead_of_caller_token(
     assert headers["X-AKL-Subject"] == "svc-ingestion"
     assert headers["X-AKL-Roles"] == "service_ingestion,document_manager"
     assert headers["X-AKL-Audience"] == "llm-gateway-service"
-    assert headers["X-AKL-On-Behalf-Of"] == "aiip-service"
+    assert headers["X-AKL-On-Behalf-Of"] == "source-service"

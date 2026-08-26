@@ -813,9 +813,9 @@ def test_budget_bridge_attaches_only_authoritative_ingestion_job(client) -> None
             f"/api/v1/integrations/stratos-budget-upload/documents/{document['document_id']}/status",
             headers={
                 **_service_headers(),
-                "X-AKL-Service-Client-ID": "aiip-document-service",
-                "X-AKL-Subject": "service-account-aiip-document-service",
-                "X-AKL-Roles": "service_aiip_document",
+                "X-AKL-Service-Client-ID": "untrusted-document-service",
+                "X-AKL-Subject": "service-account-untrusted-document-service",
+                "X-AKL-Roles": "service_untrusted_document",
             },
         ).status_code
         == 403

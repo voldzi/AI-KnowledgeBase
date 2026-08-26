@@ -8,7 +8,7 @@ Tento dokument popisuje implementovaný tok `services/ingestion-service`.
 2. Služba uloží `IngestionJob` do lokálního job/report store.
 3. Pipeline získá krátkodobý OIDC token vlastního Registry clientu
    `svc-ingestion` a zavolá Registry API authz check pro `document.ingest`.
-   Inbound AIIP/user subject je pouze `subject_id` rozhodnutí; jeho bearer se
+   Inbound user subject je pouze `subject_id` rozhodnutí; jeho bearer se
    nepřeposílá.
 4. Pipeline pod stejnou vlastní service identity načte metadata dokumentu a
    verze přes Registry API.
@@ -21,8 +21,8 @@ Tento dokument popisuje implementovaný tok `services/ingestion-service`.
 11. Embedding klient pošle normalizované texty na LLM Gateway `/api/v1/embeddings` jako service identity `svc-ingestion`, s audience `llm-gateway-service`, rolí `service_ingestion` a samostatným gateway tokenem. Caller OIDC token se do gateway nepřeposílá. Dávky (`AKL_INGESTION_EMBEDDING_BATCH_SIZE`, default 32) běží paralelně s omezenou souběžností (`AKL_INGESTION_EMBEDDING_CONCURRENCY`, obecný default 2). Produkční docker-home profil používá konzervativní `AKL_INGESTION_EMBEDDING_CONCURRENCY=1`, aby re-index netlačil na jednu Ollama instanci více paralelními embedding požadavky. Pořadí vektorů je zachováno.
 12. Indexer uloží chunk payloady podle `AKL_INGESTION_INDEXER_MODE`: do Qdrantu pro vektorové vyhledávání a volitelně do OpenSearch pro fulltext. Entity typy, hodnoty a páry typ-hodnota se promítají také do top-level payload polí `entity_types`, `entity_values` a `entity_pairs`.
 13. Služba přes úzký `ingestion-status` route grant synchronizuje pouze job id a
-    `INGESTING`, `INDEXED` nebo `FAILED` pro přesnou verzi, kterou dedikovaný
-    AIIP confirm už nastavil jako current. Pointer, file, URI a lineage změnit
+    `INGESTING`, `INDEXED` nebo `FAILED` pro přesnou verzi, kterou řízený intake
+    už nastavil jako current. Pointer, file, URI a lineage změnit
     nesmí.
 14. Služba uloží `IngestionReport` a pod vlastní Registry service identity
     auditně zapíše start/completed/failed; inbound actor zůstává v payloadu jako

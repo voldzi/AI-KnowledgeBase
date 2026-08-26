@@ -1,5 +1,11 @@
 # AKB Architecture
 
+Portable architecture, runtime inventory and the supported-mode boundary for a
+foreign installation are documented in
+`docs/deployment/external-environment-architecture.md`. The current supported
+production mode is integrated with STRATOS identity/access/policy; the local
+development profile is not an autonomous production security profile.
+
 AKB is the Document AI backend for controlled documents and STRATOS knowledge
 workflows. It owns document metadata, versions, source-file references,
 ingestion, extraction, chunking, embeddings, Qdrant indexing, retrieval,
@@ -218,7 +224,6 @@ Detailed architecture references:
 - `docs/ARCHITECTURE/02_SERVICE_BOUNDARIES.md`
 - `docs/ARCHITECTURE/enterprise-architecture.md`
 - `docs/ARCHITECTURE/professional-knowledge-chat-plan.md`
-- `docs/ARCHITECTURE/director-copilot-implementation-plan.md`
 - `docs/ARCHITECTURE/standalone-chat-pwa.md`
 - `docs/integration/STRATOS_EXTERNAL_DOCUMENTS_API.md`
 - `docs/29_STRATOS_SHARED_LIBRARIES.md`

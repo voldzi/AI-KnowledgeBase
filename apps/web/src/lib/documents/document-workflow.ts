@@ -33,10 +33,10 @@ export const DOCUMENT_TYPE_CATALOG: readonly DocumentTypeCatalogEntry[] = [
   entry("meeting_record", "Záznam jednání", "Meeting record", "internal", ["meeting-record", "akb"], "plain_text", "semantic"),
   entry("contract", "Smlouva", "Contract", "restricted", ["controlled-document", "akb", "smlouva"], "controlled_document", "semantic"),
   entry("attachment", "Příloha", "Attachment", "internal", ["attachment", "akb"], "plain_text", "semantic"),
-  entry("ai_intake", "AI podnět", "AI intake", "internal", ["aiip", "ai-intake"], "plain_text", "semantic"),
-  entry("ai_requirement_card", "Karta AI požadavku", "AI requirement card", "internal", ["aiip", "ai-requirement"], "controlled_document", "semantic"),
-  entry("ai_security_appendix", "Bezpečnostní příloha AI", "AI security appendix", "restricted", ["aiip", "ai-security"], "controlled_document", "semantic"),
-  entry("ai_governance_evidence", "AI governance evidence", "AI governance evidence", "restricted", ["aiip", "ai-governance"], "controlled_document", "semantic"),
+  entry("ai_intake", "AI podnět", "AI intake", "internal", ["ai-intake", "akb"], "plain_text", "semantic"),
+  entry("ai_requirement_card", "Karta AI požadavku", "AI requirement card", "internal", ["ai-requirement", "akb"], "controlled_document", "semantic"),
+  entry("ai_security_appendix", "Bezpečnostní příloha AI", "AI security appendix", "restricted", ["ai-security", "akb"], "controlled_document", "semantic"),
+  entry("ai_governance_evidence", "AI governance evidence", "AI governance evidence", "restricted", ["ai-governance", "akb"], "controlled_document", "semantic"),
   entry("other", "Ostatní", "Other", "internal", ["akb"], "plain_text", "semantic"),
 ] as const;
 

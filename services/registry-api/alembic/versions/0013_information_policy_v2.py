@@ -1,7 +1,7 @@
 """add STRATOS Information Policy V2 binding snapshots
 
 Revision ID: 0013_information_policy_v2
-Revises: 0012_aiip_tenant_reconciliation
+Revises: 0010_integration_idempotency
 Create Date: 2026-07-12
 """
 
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 revision = "0013_information_policy_v2"
-down_revision = "0012_aiip_tenant_reconciliation"
+down_revision = "0010_integration_idempotency"
 branch_labels = None
 depends_on = None
 

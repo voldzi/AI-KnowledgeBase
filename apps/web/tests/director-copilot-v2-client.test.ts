@@ -49,7 +49,7 @@ describe("Director Copilot V2 manifest and execute client", () => {
       },
     });
 
-    assert.equal(catalog.contractRevision, "2.0.3");
+    assert.equal(catalog.contractRevision, "2.0.4");
     assert.equal(catalog.manifests.length, 4);
     assert.deepEqual(applications.sort(), ["archflow", "budget", "projectflow"]);
   });

@@ -1,13 +1,9 @@
 import "server-only";
 
-import { NextRequest, NextResponse } from "next/server";
-
 import { getAklConfig } from "@/lib/api/config";
 import { ApiClientError } from "@/lib/types";
 
-type AiipOperation = "harmonize" | "duplicates/search";
-
-type AiipPrincipal = {
+type ServicePrincipal = {
   subjectId: string;
   accessToken: string;
   roles: string[];
@@ -19,28 +15,15 @@ type ExactServiceProfile = {
   role: string;
 };
 
-export type StratosDocumentSourceSystem = "STRATOS_AIIP" | "STRATOS_BUDGET";
+export type StratosDocumentSourceSystem = "STRATOS_BUDGET";
 
 type StratosDocumentServiceProfile = ExactServiceProfile & {
   allowedSourceSystems: readonly StratosDocumentSourceSystem[];
 };
 
-export type StratosDocumentServicePrincipal = AiipPrincipal & {
+export type StratosDocumentServicePrincipal = ServicePrincipal & {
   clientId: string;
   allowedSourceSystems: readonly StratosDocumentSourceSystem[];
-};
-
-const AIIP_APPLICATION_SERVICE: ExactServiceProfile = {
-  clientId: "aiip-service",
-  audience: "akb-api",
-  role: "service_aiip",
-};
-
-const AIIP_DOCUMENT_SERVICE: StratosDocumentServiceProfile = {
-  clientId: "aiip-document-service",
-  audience: "akl-api",
-  role: "service_aiip_document",
-  allowedSourceSystems: ["STRATOS_AIIP"],
 };
 
 const STRATOS_BUDGET_DOCUMENT_SERVICE: StratosDocumentServiceProfile = {
@@ -50,82 +33,7 @@ const STRATOS_BUDGET_DOCUMENT_SERVICE: StratosDocumentServiceProfile = {
   allowedSourceSystems: ["STRATOS_BUDGET"],
 };
 
-const STRATOS_DOCUMENT_SERVICES = [
-  AIIP_DOCUMENT_SERVICE,
-  STRATOS_BUDGET_DOCUMENT_SERVICE,
-] as const;
-
-export async function authenticateAiipServiceRequest(
-  request: Request,
-): Promise<AiipPrincipal> {
-  try {
-    return await authenticateAiipService(request);
-  } catch (error) {
-    if (error instanceof AiipBridgeError) {
-      throw new ApiClientError(error.message, error.status, error.code, "web-aiip-service-auth");
-    }
-    throw error;
-  }
-}
-
-export async function authenticateAiipServiceJsonRequest(
-  request: Request,
-): Promise<{ principal: AiipPrincipal; body: Record<string, unknown> }> {
-  try {
-    rejectCallerInternalHeaders(request);
-    const principal = await authenticateAiipService(request);
-    enforceRateLimit(principal.subjectId);
-    enforceContentLength(request);
-    const body = await readBoundedJson(request);
-    return { principal, body };
-  } catch (error) {
-    if (error instanceof AiipBridgeError) {
-      throw new ApiClientError(error.message, error.status, error.code, "web-aiip-service-auth");
-    }
-    throw error;
-  }
-}
-
-export async function authenticateAiipDocumentServiceRequest(
-  request: Request,
-): Promise<AiipPrincipal> {
-  try {
-    return await authenticateExactService(request, AIIP_DOCUMENT_SERVICE);
-  } catch (error) {
-    if (error instanceof AiipBridgeError) {
-      throw new ApiClientError(
-        error.message,
-        error.status,
-        error.code,
-        "web-aiip-document-service-auth",
-      );
-    }
-    throw error;
-  }
-}
-
-export async function authenticateAiipDocumentServiceJsonRequest(
-  request: Request,
-): Promise<{ principal: AiipPrincipal; body: Record<string, unknown> }> {
-  try {
-    rejectCallerInternalHeaders(request);
-    const principal = await authenticateExactService(request, AIIP_DOCUMENT_SERVICE);
-    enforceRateLimit(principal.subjectId);
-    enforceContentLength(request);
-    const body = await readBoundedJson(request);
-    return { principal, body };
-  } catch (error) {
-    if (error instanceof AiipBridgeError) {
-      throw new ApiClientError(
-        error.message,
-        error.status,
-        error.code,
-        "web-aiip-document-service-auth",
-      );
-    }
-    throw error;
-  }
-}
+const STRATOS_DOCUMENT_SERVICES = [STRATOS_BUDGET_DOCUMENT_SERVICE] as const;
 
 export async function authenticateStratosDocumentServiceRequest(
   request: Request,
@@ -134,7 +42,7 @@ export async function authenticateStratosDocumentServiceRequest(
     rejectCallerInternalHeaders(request);
     return await authenticateStratosDocumentService(request);
   } catch (error) {
-    if (error instanceof AiipBridgeError) {
+    if (error instanceof ServiceBridgeError) {
       throw new ApiClientError(
         error.message,
         error.status,
@@ -158,7 +66,7 @@ export async function authenticateStratosDocumentServiceJsonRequest(
     const body = await readBoundedJson(request);
     return { principal, body };
   } catch (error) {
-    if (error instanceof AiipBridgeError) {
+    if (error instanceof ServiceBridgeError) {
       throw new ApiClientError(
         error.message,
         error.status,
@@ -175,7 +83,7 @@ export function requireStratosDocumentSourceAllowed(
   sourceSystem: unknown,
 ): StratosDocumentSourceSystem {
   if (
-    (sourceSystem !== "STRATOS_AIIP" && sourceSystem !== "STRATOS_BUDGET")
+    sourceSystem !== "STRATOS_BUDGET"
     || !principal.allowedSourceSystems.includes(sourceSystem)
   ) {
     throw new ApiClientError(
@@ -194,10 +102,9 @@ const MAX_PAYLOAD_BYTES = 64 * 1024;
 const RATE_LIMIT = 30;
 const RATE_WINDOW_MS = 60_000;
 const rateWindows = new Map<string, number[]>();
-const activeRequests = new Map<string, number>();
 let jwksCache: { expiresAt: number; keys: OidcJsonWebKey[] } | null = null;
 
-class AiipBridgeError extends Error {
+class ServiceBridgeError extends Error {
   constructor(
     readonly status: number,
     readonly code: string,
@@ -206,110 +113,6 @@ class AiipBridgeError extends Error {
   ) {
     super(message);
   }
-}
-
-export async function handleAiipApplicationRequest(
-  request: NextRequest,
-  operation: AiipOperation,
-): Promise<NextResponse> {
-  let requestId = request.headers.get("X-Request-ID")?.trim() || crypto.randomUUID();
-  let correlationId = request.headers.get("X-Correlation-ID")?.trim() || requestId;
-
-  try {
-    requestId = requiredIdentifier(request, "X-Request-ID");
-    correlationId = requiredIdentifier(request, "X-Correlation-ID");
-    rejectCallerInternalHeaders(request);
-    const idempotencyKey = requiredIdempotencyKey(request);
-    const principal = await authenticateAiipService(request);
-    enforceRateLimit(principal.subjectId);
-    enforceContentLength(request);
-    const body = await readBoundedJson(request);
-    enforceClassification(body);
-
-    const config = getAklConfig();
-    acquireConcurrency(principal.subjectId);
-    let upstream: Response;
-    try {
-      upstream = await fetch(
-        `${config.serviceBaseUrls.rag}/integrations/aiip/${operation}`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${principal.accessToken}`,
-            "Content-Type": "application/json",
-            Accept: "application/json",
-            "X-Request-ID": requestId,
-            "X-Correlation-ID": correlationId,
-            "Idempotency-Key": idempotencyKey,
-          },
-          body: JSON.stringify(body),
-          signal: AbortSignal.timeout(70_000),
-          cache: "no-store",
-        },
-      );
-    } finally {
-      releaseConcurrency(principal.subjectId);
-    }
-    let payload: unknown = await upstream.json().catch(() => ({
-      error: {
-        code: "UPSTREAM_INVALID_RESPONSE",
-        message: "AKB application service returned an invalid response.",
-      },
-    }));
-    if (!upstream.ok && (!payload || typeof payload !== "object" || !("error" in payload))) {
-      payload = {
-        error: {
-          code: "AKB_APPLICATION_ERROR",
-          message: "AKB application service rejected the request.",
-          details: {},
-        },
-      };
-    }
-    const response = NextResponse.json(withErrorIdentifiers(payload, requestId, correlationId), {
-      status: upstream.status,
-    });
-    response.headers.set("X-Request-ID", requestId);
-    response.headers.set("X-Correlation-ID", correlationId);
-    copyHeader(upstream, response, "Idempotency-Replayed");
-    copyHeader(upstream, response, "Retry-After");
-    return response;
-  } catch (error) {
-    const mapped = mapAiipError(error);
-    const response = NextResponse.json(
-      {
-        error: {
-          code: mapped.code,
-          message: mapped.message,
-          details: {},
-          trace_id: correlationId,
-          request_id: requestId,
-          correlation_id: correlationId,
-          audit_event_id: null,
-        },
-      },
-      { status: mapped.status },
-    );
-    response.headers.set("X-Request-ID", requestId);
-    response.headers.set("X-Correlation-ID", correlationId);
-    if (mapped.retryAfter) response.headers.set("Retry-After", String(mapped.retryAfter));
-    return response;
-  }
-}
-
-function requiredIdentifier(request: NextRequest, name: string): string {
-  const value = request.headers.get(name)?.trim() ?? "";
-  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/.test(value)) {
-    throw new AiipBridgeError(400, "REQUIRED_HEADER_INVALID", `${name} is required and must be a stable identifier.`);
-  }
-  return value;
-}
-
-function requiredIdempotencyKey(request: NextRequest): string {
-  const value = request.headers.get("Idempotency-Key")?.trim() ?? "";
-  if (value.length < 8 || value.length > 128) {
-    throw new AiipBridgeError(400, "IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key must contain 8 to 128 characters.");
-  }
-  return value;
 }
 
 function rejectCallerInternalHeaders(request: Request) {
@@ -321,7 +124,7 @@ function rejectCallerInternalHeaders(request: Request) {
     "X-AKL-On-Behalf-Of",
   ]) {
     if (request.headers.has(name)) {
-      throw new AiipBridgeError(400, "INTERNAL_HEADER_FORBIDDEN", `${name} is an AKB internal header.`);
+      throw new ServiceBridgeError(400, "INTERNAL_HEADER_FORBIDDEN", `${name} is an AKB internal header.`);
     }
   }
 }
@@ -331,16 +134,16 @@ function enforceContentLength(request: Request) {
   if (header === null) return;
   const value = Number(header);
   if (!Number.isSafeInteger(value) || value < 0) {
-    throw new AiipBridgeError(400, "CONTENT_LENGTH_INVALID", "Content-Length must be a non-negative integer.");
+    throw new ServiceBridgeError(400, "CONTENT_LENGTH_INVALID", "Content-Length must be a non-negative integer.");
   }
   if (value > MAX_PAYLOAD_BYTES) {
-    throw new AiipBridgeError(413, "PAYLOAD_TOO_LARGE", "The request body exceeds 64 kB.");
+    throw new ServiceBridgeError(413, "PAYLOAD_TOO_LARGE", "The request body exceeds 64 kB.");
   }
 }
 
 async function readBoundedJson(request: Request): Promise<Record<string, unknown>> {
   if (!request.body) {
-    throw new AiipBridgeError(400, "INVALID_JSON", "The request body must be a JSON object.");
+    throw new ServiceBridgeError(400, "INVALID_JSON", "The request body must be a JSON object.");
   }
   const reader = request.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -356,7 +159,7 @@ async function readBoundedJson(request: Request): Promise<Record<string, unknown
         } catch {
           // The size decision is authoritative even if the peer rejects cancellation.
         }
-        throw new AiipBridgeError(413, "PAYLOAD_TOO_LARGE", "The request body exceeds 64 kB.");
+        throw new ServiceBridgeError(413, "PAYLOAD_TOO_LARGE", "The request body exceeds 64 kB.");
       }
       chunks.push(value);
     }
@@ -375,23 +178,9 @@ async function readBoundedJson(request: Request): Promise<Record<string, unknown
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("object required");
     return value as Record<string, unknown>;
   } catch (error) {
-    if (error instanceof AiipBridgeError) throw error;
-    throw new AiipBridgeError(400, "INVALID_JSON", "The request body must be a JSON object.");
+    if (error instanceof ServiceBridgeError) throw error;
+    throw new ServiceBridgeError(400, "INVALID_JSON", "The request body must be a JSON object.");
   }
-}
-
-function enforceClassification(body: Record<string, unknown>) {
-  if (body.classification === "restricted" || body.classification === "confidential") {
-    throw new AiipBridgeError(
-      403,
-      "CLASSIFICATION_NOT_ALLOWED",
-      "AIIP processing is allowed only for public and internal data.",
-    );
-  }
-}
-
-async function authenticateAiipService(request: Request): Promise<AiipPrincipal> {
-  return authenticateExactService(request, AIIP_APPLICATION_SERVICE);
 }
 
 async function authenticateStratosDocumentService(
@@ -403,7 +192,7 @@ async function authenticateStratosDocumentService(
     (candidate) => candidate.clientId === authorizedParty,
   );
   if (!profile) {
-    throw new AiipBridgeError(
+    throw new ServiceBridgeError(
       403,
       "AUTH_FORBIDDEN",
       "A trusted STRATOS document service identity is required.",
@@ -417,13 +206,6 @@ async function authenticateStratosDocumentService(
   };
 }
 
-async function authenticateExactService(
-  request: Request,
-  profile: ExactServiceProfile,
-): Promise<AiipPrincipal> {
-  return authenticateResolvedExactService(await resolveServiceToken(request), profile);
-}
-
 async function resolveServiceToken(request: Request): Promise<{
   accessToken: string;
   claims: Record<string, unknown>;
@@ -431,11 +213,11 @@ async function resolveServiceToken(request: Request): Promise<{
   const authorization = request.headers.get("authorization") ?? "";
   const [scheme, accessToken] = authorization.trim().split(/\s+/, 2);
   if (scheme?.toLowerCase() !== "bearer" || !accessToken) {
-    throw new AiipBridgeError(401, "AUTH_REQUIRED", "Bearer token is required.");
+    throw new ServiceBridgeError(401, "AUTH_REQUIRED", "Bearer token is required.");
   }
   const config = getAklConfig();
   if (!config.oidc) {
-    throw new AiipBridgeError(503, "AUTH_VALIDATION_UNAVAILABLE", "OIDC token validation is not configured.");
+    throw new ServiceBridgeError(503, "AUTH_VALIDATION_UNAVAILABLE", "OIDC token validation is not configured.");
   }
   const claims = config.oidc.clientSecret
     ? await introspectAccessToken(config.oidc.issuer, config.oidc.clientId, config.oidc.clientSecret, accessToken)
@@ -446,7 +228,7 @@ async function resolveServiceToken(request: Request): Promise<{
 function authenticateResolvedExactService(
   resolved: { accessToken: string; claims: Record<string, unknown> },
   profile: ExactServiceProfile,
-): AiipPrincipal {
+): ServicePrincipal {
   const { accessToken, claims } = resolved;
   const authorizedParty = stringClaim(claims.azp);
   const clientId = stringClaim(claims.client_id);
@@ -454,7 +236,7 @@ function authenticateResolvedExactService(
     authorizedParty !== profile.clientId
     || (clientId !== null && clientId !== profile.clientId)
   ) {
-    throw new AiipBridgeError(
+    throw new ServiceBridgeError(
       403,
       "AUTH_FORBIDDEN",
       `The ${profile.clientId} client identity is required.`,
@@ -465,7 +247,7 @@ function authenticateResolvedExactService(
     !subjectId
     || stringClaim(claims.preferred_username) !== `service-account-${profile.clientId}`
   ) {
-    throw new AiipBridgeError(
+    throw new ServiceBridgeError(
       403,
       "AUTH_FORBIDDEN",
       `The exact ${profile.clientId} service-account identity is required.`,
@@ -473,7 +255,7 @@ function authenticateResolvedExactService(
   }
   const audiences = stringListClaim(claims.aud);
   if (!audiences.includes(profile.audience)) {
-    throw new AiipBridgeError(
+    throw new ServiceBridgeError(
       403,
       "AUTH_AUDIENCE_INVALID",
       `The token audience must include ${profile.audience}.`,
@@ -481,7 +263,7 @@ function authenticateResolvedExactService(
   }
   const roles = extractRoles(claims);
   if (!roles.includes(profile.role)) {
-    throw new AiipBridgeError(403, "AUTH_ROLE_REQUIRED", `The ${profile.role} role is required.`);
+    throw new ServiceBridgeError(403, "AUTH_ROLE_REQUIRED", `The ${profile.role} role is required.`);
   }
   return { subjectId, accessToken, roles: [profile.role] };
 }
@@ -500,11 +282,11 @@ async function introspectAccessToken(
     cache: "no-store",
   });
   if (!response.ok) {
-    throw new AiipBridgeError(503, "AUTH_VALIDATION_UNAVAILABLE", "OIDC token validation is unavailable.");
+    throw new ServiceBridgeError(503, "AUTH_VALIDATION_UNAVAILABLE", "OIDC token validation is unavailable.");
   }
   const claims = (await response.json()) as Record<string, unknown>;
   if (claims.active !== true) {
-    throw new AiipBridgeError(401, "AUTH_INVALID", "Bearer token is invalid or expired.");
+    throw new ServiceBridgeError(401, "AUTH_INVALID", "Bearer token is invalid or expired.");
   }
   return claims;
 }
@@ -512,7 +294,7 @@ async function introspectAccessToken(
 async function validateJwtAccessToken(issuer: string, accessToken: string): Promise<Record<string, unknown>> {
   const segments = accessToken.split(".");
   if (segments.length !== 3) {
-    throw new AiipBridgeError(401, "AUTH_INVALID", "Bearer token is invalid or expired.");
+    throw new ServiceBridgeError(401, "AUTH_INVALID", "Bearer token is invalid or expired.");
   }
   let header: Record<string, unknown>;
   let claims: Record<string, unknown>;
@@ -520,17 +302,17 @@ async function validateJwtAccessToken(issuer: string, accessToken: string): Prom
     header = JSON.parse(Buffer.from(segments[0], "base64url").toString("utf8"));
     claims = JSON.parse(Buffer.from(segments[1], "base64url").toString("utf8"));
   } catch {
-    throw new AiipBridgeError(401, "AUTH_INVALID", "Bearer token is invalid or expired.");
+    throw new ServiceBridgeError(401, "AUTH_INVALID", "Bearer token is invalid or expired.");
   }
   const kid = stringClaim(header.kid);
   if (header.alg !== "RS256" || !kid) {
-    throw new AiipBridgeError(401, "AUTH_INVALID", "Bearer token uses an unsupported signature.");
+    throw new ServiceBridgeError(401, "AUTH_INVALID", "Bearer token uses an unsupported signature.");
   }
   const keys = await loadOidcKeys(issuer);
   const jwk = keys.find((key) => key.kid === kid && (!key.alg || key.alg === "RS256"));
   if (!jwk) {
     jwksCache = null;
-    throw new AiipBridgeError(401, "AUTH_INVALID", "Bearer token signing key is not trusted.");
+    throw new ServiceBridgeError(401, "AUTH_INVALID", "Bearer token signing key is not trusted.");
   }
   let verified = false;
   try {
@@ -554,7 +336,7 @@ async function validateJwtAccessToken(issuer: string, accessToken: string): Prom
   const expiresAt = typeof claims.exp === "number" ? claims.exp : 0;
   const notBefore = typeof claims.nbf === "number" ? claims.nbf : 0;
   if (!verified || claims.iss !== issuer || expiresAt <= now - 30 || notBefore > now + 30) {
-    throw new AiipBridgeError(401, "AUTH_INVALID", "Bearer token is invalid or expired.");
+    throw new ServiceBridgeError(401, "AUTH_INVALID", "Bearer token is invalid or expired.");
   }
   return claims;
 }
@@ -566,11 +348,11 @@ async function loadOidcKeys(issuer: string): Promise<OidcJsonWebKey[]> {
     cache: "no-store",
   });
   if (!response.ok) {
-    throw new AiipBridgeError(503, "AUTH_VALIDATION_UNAVAILABLE", "OIDC signing keys are unavailable.");
+    throw new ServiceBridgeError(503, "AUTH_VALIDATION_UNAVAILABLE", "OIDC signing keys are unavailable.");
   }
   const payload = (await response.json()) as { keys?: unknown };
   if (!Array.isArray(payload.keys)) {
-    throw new AiipBridgeError(503, "AUTH_VALIDATION_UNAVAILABLE", "OIDC signing keys are invalid.");
+    throw new ServiceBridgeError(503, "AUTH_VALIDATION_UNAVAILABLE", "OIDC signing keys are invalid.");
   }
   const keys = payload.keys.filter((key): key is OidcJsonWebKey => Boolean(key && typeof key === "object"));
   jwksCache = { keys, expiresAt: Date.now() + 5 * 60_000 };
@@ -605,7 +387,12 @@ function enforceRateLimit(
   const active = (rateWindows.get(key) ?? []).filter((timestamp) => timestamp > now - rateWindowMs);
   if (active.length >= rateLimit) {
     const retryAfter = Math.max(1, Math.ceil((active[0] + rateWindowMs - now) / 1000));
-    throw new AiipBridgeError(429, "RATE_LIMIT_EXCEEDED", "AIIP request rate limit exceeded.", retryAfter);
+    throw new ServiceBridgeError(
+      429,
+      "RATE_LIMIT_EXCEEDED",
+      "STRATOS document service request rate limit exceeded.",
+      retryAfter,
+    );
   }
   active.push(now);
   rateWindows.set(key, active);
@@ -623,53 +410,6 @@ function boundedIntegerEnvironment(
   return Number.isSafeInteger(parsed) && parsed >= minimum && parsed <= maximum
     ? parsed
     : fallback;
-}
-
-function acquireConcurrency(subjectId: string) {
-  const active = activeRequests.get(subjectId) ?? 0;
-  if (active >= 4) {
-    throw new AiipBridgeError(429, "CONCURRENCY_LIMIT_EXCEEDED", "AIIP concurrency limit exceeded.", 1);
-  }
-  activeRequests.set(subjectId, active + 1);
-}
-
-function releaseConcurrency(subjectId: string) {
-  const active = activeRequests.get(subjectId) ?? 0;
-  if (active <= 1) activeRequests.delete(subjectId);
-  else activeRequests.set(subjectId, active - 1);
-}
-
-function withErrorIdentifiers(payload: unknown, requestId: string, correlationId: string): unknown {
-  if (!payload || typeof payload !== "object" || !("error" in payload)) return payload;
-  const envelope = payload as { error?: unknown };
-  const error = objectClaim(envelope.error);
-  if (!error) return payload;
-  return {
-    ...envelope,
-    error: {
-      ...error,
-      trace_id: correlationId,
-      request_id: requestId,
-      correlation_id: correlationId,
-      audit_event_id: error.audit_event_id ?? null,
-    },
-  };
-}
-
-function mapAiipError(error: unknown): AiipBridgeError {
-  if (error instanceof AiipBridgeError) return error;
-  if (
-    (error instanceof DOMException && error.name === "TimeoutError") ||
-    (error instanceof Error && error.name === "TimeoutError")
-  ) {
-    return new AiipBridgeError(503, "UPSTREAM_TIMEOUT", "AKB application processing timed out.");
-  }
-  return new AiipBridgeError(502, "AKB_APPLICATION_ERROR", "AKB application processing failed.");
-}
-
-function copyHeader(source: Response, target: NextResponse, name: string) {
-  const value = source.headers.get(name);
-  if (value) target.headers.set(name, value);
 }
 
 function stringClaim(value: unknown): string | null {

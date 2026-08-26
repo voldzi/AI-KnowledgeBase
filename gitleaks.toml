@@ -38,10 +38,3 @@ condition = "AND"
 regexTarget = "line"
 paths = ['''docs/integration/DIRECTOR_COPILOT_V2_IMPLEMENTATION\.md$''']
 regexes = ['''OpenAPI SHA-256:\s*`[a-f0-9]{64}`''']
-
-[[rules.allowlists]]
-description = "AIIP duplicate-search idempotency fixture"
-condition = "AND"
-regexTarget = "line"
-paths = ['''services/rag-retrieval-service/tests/test_aiip_application_api\.py$''']
-regexes = ['''idempotency_key="idem-duplicates-[0-9]+"''']

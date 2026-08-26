@@ -33,9 +33,6 @@ from app.schemas import (
     ArchflowArchitectureExtractionResponse,
     ArchflowGoalExtractionProposeRequest,
     ArchflowGoalExtractionResponse,
-    AiipApplicationResponse,
-    AiipDuplicateSearchRequest,
-    AiipHarmonizeRequest,
     ContractExtractionProfilesResponse,
     ContractExtractionProposeRequest,
     ContractExtractionResponse,
@@ -208,56 +205,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             len(payload.chunks),
         )
         return await _service(request).answer(payload, auth_context=auth_context)
-
-    @app.post(
-        "/api/v1/integrations/aiip/harmonize",
-        response_model=AiipApplicationResponse,
-        tags=["aiip-integration"],
-    )
-    async def aiip_harmonize(
-        payload: AiipHarmonizeRequest,
-        request: Request,
-        response: Response,
-    ) -> AiipApplicationResponse:
-        auth_context = _guard_aiip_request(
-            request,
-            classification=payload.classification,
-            tenant_id=payload.tenant_id,
-        )
-        idempotency_key = _aiip_idempotency_key(request)
-        execution = await _service(request).aiip_harmonize(
-            payload,
-            idempotency_key=idempotency_key,
-            auth_context=auth_context,
-        )
-        if execution.replayed:
-            response.headers["Idempotency-Replayed"] = "true"
-        return execution.response
-
-    @app.post(
-        "/api/v1/integrations/aiip/duplicates/search",
-        response_model=AiipApplicationResponse,
-        tags=["aiip-integration"],
-    )
-    async def aiip_duplicate_search(
-        payload: AiipDuplicateSearchRequest,
-        request: Request,
-        response: Response,
-    ) -> AiipApplicationResponse:
-        auth_context = _guard_aiip_request(
-            request,
-            classification=payload.classification,
-            tenant_id=payload.tenant_id,
-        )
-        idempotency_key = _aiip_idempotency_key(request)
-        execution = await _service(request).aiip_duplicate_search(
-            payload,
-            idempotency_key=idempotency_key,
-            auth_context=auth_context,
-        )
-        if execution.replayed:
-            response.headers["Idempotency-Replayed"] = "true"
-        return execution.response
 
     @app.get("/api/v1/chunks/{chunk_id}/source-context", response_model=SourceContextResponse, tags=["viewer"])
     async def chunk_source_context(chunk_id: str, request: Request, subject_id: str = "user_dev") -> SourceContextResponse:
@@ -605,51 +552,6 @@ def _guard_subject_request(request: Request, subject_id: str) -> AuthContext:
                 status_code=403,
             )
     return context
-
-
-def _guard_aiip_request(
-    request: Request,
-    *,
-    classification: str,
-    tenant_id: str,
-) -> AuthContext:
-    context = _authenticate_request(request)
-    settings = _settings(request)
-    if (
-        not context.service_identity
-        or context.service_client_id not in settings.aiip_service_client_ids
-        or "service_aiip" not in context.roles
-    ):
-        raise RetrievalError(
-            "AUTH_FORBIDDEN",
-            "This endpoint requires an explicitly allowed AIIP service client.",
-            status_code=403,
-        )
-    if tenant_id != "org_stratos":
-        raise RetrievalError(
-            "ORGANIZATION_SCOPE_NOT_ALLOWED",
-            "AIIP processing is restricted to organization org_stratos.",
-            status_code=403,
-        )
-    if classification not in {"public", "internal"}:
-        raise RetrievalError(
-            "CLASSIFICATION_NOT_ALLOWED",
-            "AIIP processing is allowed only for public and internal data.",
-            status_code=403,
-            details={"classification": classification},
-        )
-    return context
-
-
-def _aiip_idempotency_key(request: Request) -> str:
-    value = request.headers.get("Idempotency-Key", "").strip()
-    if len(value) < 8 or len(value) > 128:
-        raise RetrievalError(
-            "IDEMPOTENCY_KEY_REQUIRED",
-            "Idempotency-Key must contain between 8 and 128 characters.",
-            status_code=400,
-        )
-    return value
 
 
 try:

@@ -696,7 +696,6 @@ test.describe("Document Workbench product paths", () => {
     const projectFlow = appMenu.getByRole("menuitem", { name: "ProjectFlow" });
     const archFlow = appMenu.getByRole("menuitem", { name: "ArchFlow" });
     await expect(appMenu.getByText("SecurityPreflight", { exact: true })).toHaveCount(0);
-    await expect(appMenu.getByText("AI Innovation Portal", { exact: true })).toHaveCount(0);
     await expect(appMenu.getByText("ProcessForge", { exact: true })).toHaveCount(0);
     await expect(budget).toBeFocused();
     await page.keyboard.press("ArrowDown");

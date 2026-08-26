@@ -112,7 +112,7 @@ curl http://localhost:8090/ready
 | `AKL_INGESTION_JOB_STORE_PATH` | Lokální adresář pro job/report JSON záznamy. |
 | `AKL_INGESTION_PROCESS_JOBS_INLINE` | `true` zpracuje job v requestu; `false` pouze uloží queued job pro budoucí worker. |
 
-`AKL_ENV=production` odmítne start s `AKL_AUTH_MODE=disabled`, `AKL_AUTH_MODE=mock`, mock Registry klientem, mock object storage, mock embedding klientem nebo mock indexerem. Odmítne také chybějící/neúplnou Registry client-credentials trojici, client id jiné než vlastní service subject a pokus použít `aiip-service` jako ingestion transport.
+`AKL_ENV=production` odmítne start s `AKL_AUTH_MODE=disabled`, `AKL_AUTH_MODE=mock`, mock Registry klientem, mock object storage, mock embedding klientem nebo mock indexerem. Odmítne také chybějící nebo neúplnou Registry client-credentials trojici a client id jiné než vlastní service subject.
 
 V `AKL_AUTH_MODE=oidc` služba ověří podpis, issuer, audience a přesnou strojovou
 identitu. Interaktivní job create/read/cancel přijímá jen
@@ -350,7 +350,7 @@ Služba přes Registry API volá:
 - `PATCH /api/v1/documents/{document_id}/external-references/current` (attempt CAS/status-only)
 - `POST /api/v1/audit/events`
 
-Všechny uvedené cesty používají vlastní `svc-ingestion` bearer. Osobní/AIIP
+Všechny uvedené cesty používají vlastní `svc-ingestion` bearer. Osobní
 caller bearer se neobjeví v Ingestion ani generic Registry transportu. `/ready`
 je samo autentizované a vrátí HTTP `503` s `registry=not_ready`, pokud nelze
 získat nebo použít vlastní Registry service identity. Deploy používá interní

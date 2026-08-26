@@ -433,16 +433,16 @@ def test_opensearch_filter_limits_classification() -> None:
     assert {"terms": {"classification": ["public", "internal", "restricted"]}} in filters
 
 
-def test_aiip_tenant_filters_apply_to_both_retrieval_indexes() -> None:
+def test_external_tenant_filters_apply_to_both_retrieval_indexes() -> None:
     filters = RagQueryFilters(
-        tenant_id="tenant-aiip",
-        external_system="STRATOS_AIIP",
+        tenant_id="org-stratos",
+        external_system="STRATOS_PROJECTFLOW",
     )
 
-    assert {"key": "tenant_id", "match": {"value": "tenant-aiip"}} in _qdrant_filter(filters)["must"]
-    assert {"key": "external_system", "match": {"value": "STRATOS_AIIP"}} in _qdrant_filter(filters)["must"]
-    assert {"term": {"tenant_id": "tenant-aiip"}} in _opensearch_filter(filters)
-    assert {"term": {"external_system": "STRATOS_AIIP"}} in _opensearch_filter(filters)
+    assert {"key": "tenant_id", "match": {"value": "org-stratos"}} in _qdrant_filter(filters)["must"]
+    assert {"key": "external_system", "match": {"value": "STRATOS_PROJECTFLOW"}} in _qdrant_filter(filters)["must"]
+    assert {"term": {"tenant_id": "org-stratos"}} in _opensearch_filter(filters)
+    assert {"term": {"external_system": "STRATOS_PROJECTFLOW"}} in _opensearch_filter(filters)
 
 
 def test_document_version_filters_apply_to_both_retrieval_indexes() -> None:
