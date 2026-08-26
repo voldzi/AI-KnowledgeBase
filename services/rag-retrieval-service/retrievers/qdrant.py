@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import ssl
 from datetime import UTC, datetime
 from typing import Any
@@ -19,6 +20,7 @@ from retrievers.scoring import (
     hybrid_score,
     normalize_text,
     sparse_score,
+    tokenize,
 )
 
 
@@ -843,6 +845,26 @@ def _opensearch_query(*, query: str, filters: RagQueryFilters, limit: int) -> di
         },
         *_opensearch_identifier_clauses(query),
     ]
+    fuzzy_query = _bounded_fuzzy_query(query)
+    if fuzzy_query:
+        should.append(
+            {
+                "multi_match": {
+                    "query": fuzzy_query,
+                    "fields": [
+                        "document_title^2",
+                        "section_title^1.5",
+                        "search_text",
+                    ],
+                    "type": "best_fields",
+                    "operator": "or",
+                    "fuzziness": "AUTO",
+                    "prefix_length": 2,
+                    "max_expansions": 12,
+                    "boost": 0.2,
+                }
+            }
+        )
     return {
         "size": limit,
         "track_total_hits": False,
@@ -855,6 +877,14 @@ def _opensearch_query(*, query: str, filters: RagQueryFilters, limit: int) -> di
             }
         },
     }
+
+
+def _bounded_fuzzy_query(query: str) -> str | None:
+    first_line = re.sub(r"\s+", " ", query.split("\n", 1)[0]).strip()[:160]
+    token_count = len(tokenize(first_line))
+    if token_count < 2 or token_count > 12:
+        return None
+    return first_line
 
 
 def _opensearch_filter(filters: RagQueryFilters) -> list[dict[str, Any]]:

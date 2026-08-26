@@ -12,6 +12,7 @@ import {
   safeAssistantConversationContext,
 } from "@/lib/assistant/conversation-context";
 import {
+  answerModeForAssistantRequest,
   ragContextForAssistantRoute,
   routeAssistantMessage,
   routeAssistantMessageForRag,
@@ -22,7 +23,6 @@ import {
 } from "@/lib/assistant/controlled-rule-answer";
 import { composeMixedEvidenceAssistantResponse } from "@/lib/assistant/mixed-evidence-answer";
 import {
-  answerModeForAssistantGoal,
   isAnalyticalAssistantGoal,
   queryStateForAssistantGoal,
 } from "@/lib/assistant/user-goal";
@@ -209,7 +209,7 @@ async function handlePost(request: NextRequest) {
                     assistant_goal: assistantGoal,
                     mixed_evidence_role: "document_guidance",
                   }, documentRoute),
-                  mode: answerModeForAssistantGoal(assistantGoal),
+                  mode: documentRoute.answerMode,
                   response_language: responseLanguage,
                   persist_conversation: false,
                 },
@@ -456,7 +456,7 @@ async function handlePost(request: NextRequest) {
         conversation_id: conversationId,
         message,
         context: ragContextForAssistantRoute(requestContext, assistantRoute),
-        mode: body.mode ?? answerModeForAssistantGoal(assistantGoal),
+        mode: answerModeForAssistantRequest(assistantRoute, body.mode),
         response_language: responseLanguage
       },
       context

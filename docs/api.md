@@ -389,12 +389,22 @@ router keeps technical routing metadata out of user-facing answers and only
 adds a bounded `answer_format_instruction` when a RAG answer needs a meaningful
 multi-column table or obligation report.
 
+The document route also classifies general employee tasks such as finding a
+procedure, form, support channel, owner, responsibility, deadline, obligation,
+or policy. Generic browser `ask` requests use the server-selected specialized
+answer mode. Bounded synonym hints are added to retrieval only, never to answer
+evidence or persisted conversation text. A referential follow-up may inherit
+the task class; a self-contained new question does not. The route never invents
+a form, link, contact, deadline, owner, or support channel when authorized
+citable documents do not provide one.
+
 Returned assistant responses include an internal enterprise envelope in
 `current_context` (`assistant_contract_version`, `assistant_tool`,
 `assistant_tool_reason`, `assistant_query_plan`, `answer_source`, and
 report/request flags). `assistant_query_plan` records the selected intent,
 backend tool, expected output kind, registry topics, and quality gates such as
-row-level citation requirements. STRATOS UI clients should treat these fields as
+row-level citation requirements. Its retrieval section also records the
+bounded `document_knowledge_intent`. STRATOS UI clients should treat these fields as
 machine-readable state for continuation, diagnostics, and audit context, not as
 text to render to end users.
 

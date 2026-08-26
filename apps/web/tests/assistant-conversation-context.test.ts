@@ -110,4 +110,26 @@ describe("assistant conversation context", () => {
     assert.equal(hasAssistantContinuityContext({ answer_source: "rag_retrieval" }), false);
     assert.equal(hasAssistantContinuityContext({ status: "published" }), false);
   });
+
+  it("preserves document task continuity across a page reload", () => {
+    const context = assistantConversationContextFromMessages([
+      assistantMessage({
+        answer_source: "rag_retrieval",
+        document_knowledge_state: {
+          version: "document-knowledge-intent-1",
+          intent: "procedure",
+          answer_mode: "find_procedure",
+          task_oriented: true,
+        },
+      }),
+    ]);
+
+    assert.deepEqual(context.document_knowledge_state, {
+      version: "document-knowledge-intent-1",
+      intent: "procedure",
+      answer_mode: "find_procedure",
+      task_oriented: true,
+    });
+    assert.equal(hasAssistantContinuityContext(context), true);
+  });
 });

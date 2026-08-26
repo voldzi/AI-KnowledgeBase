@@ -63,6 +63,16 @@ intelligence workbench -> AKB web bridge -> Ingestion OpenSearch intelligence en
 director copilot -> AKB orchestrator -> authorized read-only STRATOS domain tools -> evidence snapshot -> answer/artifact
 ```
 
+Before a document question enters RAG, the web bridge deterministically maps
+ordinary employee language to a bounded document task such as procedure,
+resource, support channel, owner, responsibility, deadline, obligation, or
+policy lookup. The task selects an existing citation-bound answer mode and
+retrieval-only vocabulary expansion. It never changes authorization or source
+precedence: Registry and Information Policy still select the allowed current or
+historically effective versions, and only retrieved chunks may support the
+answer. Task state can continue across a referential follow-up and page reload,
+but a self-contained new topic resets it.
+
 ## Portable Knowledge Bundles
 
 AKB supports a STRATOS profile for Open Knowledge Format as a portable

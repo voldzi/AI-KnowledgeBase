@@ -3,13 +3,17 @@
 ## Účel
 
 AKB používá lokální verzovaný snapshot Sémantického slovníku pojmů veřejné
-správy (SSP) jako českou lexikálně-sémantickou vrstvu Copilota. Produkční chat
-se při zpracování dotazu nepřipojuje k veřejnému SPARQL endpointu.
+správy (SSP) jako českou lexikálně-sémantickou vrstvu Copilota a dokumentového
+vyhledávání. Produkční chat se při zpracování dotazu nepřipojuje k veřejnému
+SPARQL endpointu.
 
 Snapshot obsahuje české preferované názvy, alternativní názvy, definice a
-vztahy `broader` a `related`. Směrování na Budget, ProjectFlow, ArchFlow nebo
-AIIP mohou ovlivnit pouze samostatně schválené vazby. Celý importovaný slovník
-není automaticky důvěryhodným routerem.
+vztahy `broader` a `related`. Směrování na Budget, ProjectFlow nebo ArchFlow
+mohou ovlivnit pouze samostatně schválené vazby. Celý importovaný slovník není
+automaticky důvěryhodným routerem. Jednoznačné názvy a alternativní názvy z
+celého snapshotu se mohou použít pouze jako omezené retrieval hints. Nevstupují
+do promptu odpovědi, nevytvářejí fakta a nemění autorizaci ani Information
+Policy.
 
 ## Soubory
 
@@ -81,3 +85,14 @@ Sémantický registr určuje pouze kandidátní význam dotazu. Nikdy:
 - nezvyšuje klasifikaci ani povolenou datovou třídu;
 - neposílá uživatelský dotaz na veřejný SSP endpoint;
 - nenahrazuje autorizaci cílového doménového nástroje.
+
+## Retrieval použití
+
+- obecné a opakovaně použité jednoslovné názvy jsou z expanze vyloučeny;
+- nejednoznačný název sdílený více pojmy se nepoužije;
+- jeden dotaz získá nejvýše několik ekvivalentů a zbytek se zahodí;
+- české skloňování se toleruje pouze krátkou změnou koncovky;
+- nízko vážené fuzzy hledání OpenSearch toleruje běžné překlepy jen u krátkého
+  uživatelského dotazu;
+- konečná odpověď nadále vyžaduje autorizovaný dokument, přesnou citaci a
+  průchod evidence gate.

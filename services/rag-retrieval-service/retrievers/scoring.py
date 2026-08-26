@@ -53,6 +53,13 @@ QUERY_EXPANSION_GROUPS: tuple[tuple[str, ...], ...] = (
     ("produkt", "produkty", "statisticky produkt", "katalog produktu", "statisticka publikace", "casova rada", "verejna databaze", "open data"),
     ("it sluzby", "rizeni it sluzeb", "itsm", "it service management", "itil", "fitsm", "sprava it sluzeb"),
     ("servisni pozadavek", "incident", "problem", "zmena", "service request", "change"),
+    ("postup", "navod", "kroky", "instrukce", "manual", "prirucka", "napoveda", "pracovni postup", "how to"),
+    ("formular", "zadost", "sablona", "vzor", "tiskopis", "form"),
+    ("technicka podpora", "it podpora", "hlaseni problemu", "hlaseni incidentu", "servisni pozadavek", "helpdesk"),
+    ("kontakt", "kontaktni misto", "odpovedna role", "gestor", "vlastnik", "schvalovatel"),
+    ("lhuta", "termin", "doba", "periodicita", "deadline"),
+    ("dovolena", "cerpani dovolene", "zadost o dovolenou", "nepritomnost", "volno"),
+    ("sluzebni cesta", "pracovni cesta", "zahranicni cesta", "cestovni prikaz", "vyuctovani cesty"),
     ("informacni system verejne spravy", "isvs", "rizeni informatiky", "informacni koncepce"),
 )
 
@@ -124,7 +131,29 @@ def _contains_normalized_term(normalized_text: str, term: str) -> bool:
     if not normalized_term:
         return False
     pattern = rf"(?<![a-z0-9]){re.escape(normalized_term)}(?![a-z0-9])"
-    return re.search(pattern, normalized_text) is not None
+    if re.search(pattern, normalized_text) is not None:
+        return True
+    text_tokens = TOKEN_RE.findall(normalized_text)
+    term_tokens = TOKEN_RE.findall(normalized_term)
+    if not term_tokens or len(term_tokens) > len(text_tokens):
+        return False
+    for start in range(len(text_tokens) - len(term_tokens) + 1):
+        window = text_tokens[start : start + len(term_tokens)]
+        if all(
+            left == right or _tokens_share_inflection_stem(left, right)
+            for left, right in zip(window, term_tokens, strict=True)
+        ):
+            return True
+    return False
+
+
+def _tokens_share_inflection_stem(left: str, right: str) -> bool:
+    if min(len(left), len(right)) < STEM_MIN_PREFIX:
+        return False
+    longest = max(len(left), len(right))
+    shortest = min(len(left), len(right))
+    required_prefix = max(STEM_MIN_PREFIX, longest - STEM_MAX_SUFFIX)
+    return shortest >= required_prefix and left[:required_prefix] == right[:required_prefix]
 
 
 def _normalize_identifier(value: str) -> str:
@@ -179,12 +208,7 @@ def _stem_match_tf(query_token: str, text_counts: Counter[str]) -> int:
     for text_token, count in text_counts.items():
         if len(text_token) < STEM_MIN_PREFIX:
             continue
-        longest = max(len(query_token), len(text_token))
-        required_prefix = max(STEM_MIN_PREFIX, longest - STEM_MAX_SUFFIX)
-        shortest = min(len(query_token), len(text_token))
-        if shortest < required_prefix:
-            continue
-        if query_token[:required_prefix] == text_token[:required_prefix]:
+        if _tokens_share_inflection_stem(query_token, text_token):
             total += count
     return total
 

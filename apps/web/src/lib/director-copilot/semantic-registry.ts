@@ -53,6 +53,14 @@ export interface SemanticRegistryMatch {
   targets: SemanticRegistryTarget[];
 }
 
+interface SemanticRegistryRetrievalTerm {
+  label: string;
+  normalized_label: string;
+  label_tokens: string[];
+  acronym: boolean;
+  alternatives: string[];
+}
+
 const SOURCE_VALUES = new Set<StratosSemanticSource>([
   "budget",
   "projectflow",
@@ -74,6 +82,27 @@ const METRIC_VALUES = new Set<StratosSemanticMetric>([
   "archflow.need.decision",
   "archflow.need.budget_handoff_status",
 ]);
+const AMBIGUOUS_RETRIEVAL_LABELS = new Set([
+  "akce",
+  "aplikace",
+  "datum",
+  "dokument",
+  "druh",
+  "informace",
+  "kategorie",
+  "objekt",
+  "platnost",
+  "polozka",
+  "projekt",
+  "role",
+  "sluzba",
+  "stav",
+  "typ",
+  "udaj",
+  "udalost",
+  "vlastnost",
+  "vztah",
+]);
 
 const snapshot = parseSnapshot(snapshotJson);
 const conceptByUri = new Map(snapshot.concepts.map((concept) => [concept.uri, concept]));
@@ -89,6 +118,7 @@ const approvedTerms = snapshot.bindings.flatMap((binding) => {
       targets: binding.targets,
     }));
 }).sort((left, right) => right.label.length - left.label.length);
+const retrievalTerms = buildRetrievalTerms(snapshot.concepts);
 
 export function semanticRegistryMatches(
   normalizedText: string,
@@ -138,6 +168,35 @@ export function semanticRegistryMetricsForText(
   );
 }
 
+/**
+ * Return bounded, retrieval-only lexical equivalents from the complete SSP
+ * snapshot. These hints improve document recall, but never create source
+ * bindings, capabilities, scopes, facts, or answers.
+ */
+export function semanticRegistryRetrievalHintsForText(
+  text: string,
+  limit = 6,
+): string[] {
+  const boundedLimit = Math.max(0, Math.min(limit, 12));
+  if (boundedLimit === 0) return [];
+  const normalizedText = normalizeRegistryText(text).slice(0, 4_000);
+  if (!normalizedText) return [];
+  const queryTokens = registryTokens(normalizedText);
+  const hints: string[] = [];
+  const seen = new Set<string>();
+  for (const term of retrievalTerms) {
+    if (!registryRetrievalTermMatches(normalizedText, queryTokens, term)) continue;
+    for (const alternative of term.alternatives) {
+      const normalizedAlternative = normalizeRegistryText(alternative);
+      if (!normalizedAlternative || seen.has(normalizedAlternative)) continue;
+      seen.add(normalizedAlternative);
+      hints.push(alternative);
+      if (hints.length >= boundedLimit) return hints;
+    }
+  }
+  return hints;
+}
+
 export function semanticRegistryStatus() {
   return {
     schema_version: snapshot.schema_version,
@@ -146,8 +205,94 @@ export function semanticRegistryStatus() {
     source_id: snapshot.source.id,
     concept_count: snapshot.concept_count,
     binding_count: snapshot.binding_count,
+    retrieval_term_count: retrievalTerms.length,
     content_sha256: snapshot.content_sha256,
   };
+}
+
+function buildRetrievalTerms(
+  concepts: SemanticRegistryConcept[],
+): SemanticRegistryRetrievalTerm[] {
+  const conceptsWithLabels = concepts.map((concept) => ({
+    labels: unique([concept.pref_label, ...concept.alt_labels])
+      .map((label) => label.trim().slice(0, 160))
+      .filter(Boolean),
+  }));
+  const labelUseCount = new Map<string, number>();
+  for (const entry of conceptsWithLabels) {
+    for (const normalizedLabel of unique(entry.labels.map(normalizeRegistryText))) {
+      labelUseCount.set(normalizedLabel, (labelUseCount.get(normalizedLabel) ?? 0) + 1);
+    }
+  }
+
+  return conceptsWithLabels
+    .flatMap(({ labels }) => {
+      const safeLabels = labels.filter((label) => {
+        const normalizedLabel = normalizeRegistryText(label);
+        return labelUseCount.get(normalizedLabel) === 1
+          && safeRegistryRetrievalLabel(label, normalizedLabel);
+      });
+      if (safeLabels.length < 2) return [];
+      return safeLabels.map((label) => {
+        const normalizedLabel = normalizeRegistryText(label);
+        return {
+          label,
+          normalized_label: normalizedLabel,
+          label_tokens: registryTokens(normalizedLabel),
+          acronym: isRegistryAcronym(label),
+          alternatives: safeLabels.filter(
+            (alternative) => normalizeRegistryText(alternative) !== normalizedLabel,
+          ),
+        } satisfies SemanticRegistryRetrievalTerm;
+      });
+    })
+    .sort((left, right) => (
+      right.label_tokens.length - left.label_tokens.length
+      || right.normalized_label.length - left.normalized_label.length
+    ));
+}
+
+function safeRegistryRetrievalLabel(label: string, normalizedLabel: string): boolean {
+  if (!normalizedLabel || normalizedLabel.length > 160) return false;
+  if (AMBIGUOUS_RETRIEVAL_LABELS.has(normalizedLabel)) return false;
+  if (isRegistryAcronym(label)) return normalizedLabel.length >= 3;
+  const tokens = registryTokens(normalizedLabel);
+  if (tokens.length >= 2) return normalizedLabel.length >= 8;
+  return normalizedLabel.length >= 8;
+}
+
+function isRegistryAcronym(label: string): boolean {
+  return /^[\p{Lu}\p{N}][\p{Lu}\p{N}.-]{2,15}$/u.test(label.trim());
+}
+
+function registryRetrievalTermMatches(
+  normalizedText: string,
+  queryTokens: string[],
+  term: SemanticRegistryRetrievalTerm,
+): boolean {
+  const paddedText = ` ${normalizedText} `;
+  if (paddedText.includes(` ${term.normalized_label} `)) return true;
+  if (term.acronym || term.label_tokens.length === 0) return false;
+  if (term.label_tokens.length > queryTokens.length) return false;
+  for (let start = 0; start <= queryTokens.length - term.label_tokens.length; start += 1) {
+    const window = queryTokens.slice(start, start + term.label_tokens.length);
+    if (window.every((token, index) => registryTokensShareStem(token, term.label_tokens[index]!))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function registryTokensShareStem(left: string, right: string): boolean {
+  if (left === right) return true;
+  if (Math.min(left.length, right.length) < 4) return false;
+  const requiredPrefix = Math.max(4, Math.max(left.length, right.length) - 3);
+  return Math.min(left.length, right.length) >= requiredPrefix
+    && left.slice(0, requiredPrefix) === right.slice(0, requiredPrefix);
+}
+
+function registryTokens(value: string): string[] {
+  return value.match(/[\p{Letter}\p{Number}]+/gu) ?? [];
 }
 
 function parseSnapshot(value: unknown): SemanticRegistrySnapshot {

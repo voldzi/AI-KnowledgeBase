@@ -1488,7 +1488,23 @@ class RagRetrievalService:
             payload.context.get("director_copilot_evidence")
         ) is not None
         requested_facets = _requested_answer_facets(payload.message)
-        max_chunks = 3 if director_copilot_request else (10 if len(requested_facets) >= 2 else 6)
+        document_task_request = payload.mode in {
+            "find_procedure",
+            "find_owner",
+            "find_responsibility",
+            "extract_deadlines",
+            "extract_obligations",
+            "normative_with_citations",
+        }
+        max_chunks = (
+            3
+            if director_copilot_request
+            else 10
+            if len(requested_facets) >= 2
+            else 8
+            if document_task_request
+            else 6
+        )
         run = await self._retrieve_authorized(
             payload=RetrieveRequest(
                 subject_id=payload.user_id,
@@ -3486,6 +3502,8 @@ ASSISTANT_INTERNAL_CONTEXT_KEYS = {
     "assistant_tool",
     "assistant_tool_reason",
     "director_copilot_evidence",
+    "document_knowledge_state",
+    "document_retrieval_hints",
     "live_sources",
     "mixed_evidence",
     "stratos_query_state",
@@ -3497,6 +3515,7 @@ ASSISTANT_PERSISTED_CONTEXT_OMIT_KEYS = {
     "assistant_report_request",
     "director_copilot_evidence",
     "director_copilot_v2_snapshot",
+    "document_retrieval_hints",
     "earlier_user_questions",
     "report_artifacts",
 }
@@ -3716,7 +3735,31 @@ def _assistant_query(
             retrieval_hint = inherited_legal_hint
     if retrieval_hint and not inherited_legal_hint:
         query = f"{query}\n\nKanonický právní zdroj pro vyhledání: {retrieval_hint}"
+    document_hints = (
+        _assistant_document_retrieval_hints(context)
+        if include_retrieval_hint
+        else []
+    )
+    if document_hints:
+        query = (
+            f"{query}\n\nVyhledávací význam zaměstnaneckého dotazu: "
+            + "; ".join(document_hints)
+        )
     return query[:max_query_length]
+
+
+def _assistant_document_retrieval_hints(context: dict[str, object]) -> list[str]:
+    value = context.get("document_retrieval_hints")
+    if not isinstance(value, list):
+        return []
+    hints: list[str] = []
+    for item in value[:12]:
+        if not isinstance(item, str):
+            continue
+        normalized = re.sub(r"\s+", " ", item).strip()[:80]
+        if normalized and normalized not in hints:
+            hints.append(normalized)
+    return hints
 
 
 def _assistant_internal_context_key(key: str) -> bool:
@@ -4102,7 +4145,18 @@ def _clarification_questions(
 ) -> list[ClarificationQuestion]:
     normalized = _normalize_for_assistant(message)
     questions: list[ClarificationQuestion] = []
-    if _is_access_query(normalized):
+    document_intent = _assistant_document_knowledge_intent(context)
+    documented_task = document_intent in {
+        "procedure",
+        "resource",
+        "support_channel",
+        "owner",
+        "responsibility",
+        "deadline",
+        "obligation",
+        "policy",
+    }
+    if _is_access_query(normalized) and not documented_task:
         if not context.get("system"):
             questions.append(
                 ClarificationQuestion(
@@ -4137,7 +4191,7 @@ def _clarification_questions(
                     ],
                 )
             )
-    if _is_incident_query(normalized):
+    if _is_incident_query(normalized) and not documented_task:
         if not context.get("system"):
             questions.append(
                 ClarificationQuestion(
@@ -4653,6 +4707,14 @@ def _parse_follow_up_questions(raw: str) -> list[str]:
         if len(questions) == 3:
             break
     return questions
+
+
+def _assistant_document_knowledge_intent(context: dict[str, object]) -> str | None:
+    value = context.get("document_knowledge_state")
+    if not isinstance(value, dict):
+        return None
+    intent = value.get("intent")
+    return intent if isinstance(intent, str) else None
 
 
 def _normalize_follow_up_question(value: str) -> str:

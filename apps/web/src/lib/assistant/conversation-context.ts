@@ -23,6 +23,7 @@ const CONTINUITY_KEYS = new Set([
   "clarification_kind",
   "document_id",
   "document_version_id",
+  "document_knowledge_state",
   "registry_report_kind",
 ]);
 

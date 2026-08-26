@@ -105,9 +105,12 @@ OpenSearch dotaz používá vážený `multi_match` přes `document_title`,
 `search_text`, `text` a `normalized_text`, plus phrase boost pro přesné názvy a
 formulace. Dotaz se konzervativně rozšiřuje o doménová synonyma pro řízené
 dokumenty, například `RMO` -> `rozkaz ministra obrany`, `gestor` ->
-`odpovedny/vlastnik`, `cl` -> `clanek` a `odst` -> `odstavec`. Identifikátory
-typu `RMO 12/2024`, `cl. 4` a `odst. 2` dostávají samostatné phrase/wildcard
-boosty, aby přesné citace porážely obecné textové shody.
+`odpovedny/vlastnik`, `cl` -> `clanek` a `odst` -> `odstavec`. Jednoznačné
+ekvivalenty z lokálního SSP snapshotu se používají pouze jako omezené
+retrieval hints; neschválený pojem nesmí směrovat na živou aplikaci. Krátký
+uživatelský dotaz má navíc nízko váženou fuzzy větev pro běžné překlepy.
+Identifikátory typu `RMO 12/2024`, `cl. 4` a `odst. 2` dostávají samostatné
+phrase/wildcard boosty, aby přesné citace porážely obecné textové shody.
 
 Filtry na `classification`, `document_type`, `tags`, `status`, `valid_from` a `valid_to` se
 aplikují už v OpenSearch dotazu. Registry authorization zůstává samostatná

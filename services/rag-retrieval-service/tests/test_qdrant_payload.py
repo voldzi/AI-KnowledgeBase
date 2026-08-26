@@ -412,6 +412,15 @@ def test_opensearch_query_contains_weighted_fields_and_filters() -> None:
         and clause["multi_match"].get("boost") == 5
         for clause in bool_query["should"]
     )
+    fuzzy_clause = next(
+        clause["multi_match"]
+        for clause in bool_query["should"]
+        if clause.get("multi_match", {}).get("fuzziness") == "AUTO"
+    )
+    assert fuzzy_clause["query"] == "RMO 12/2024 gestor"
+    assert fuzzy_clause["prefix_length"] == 2
+    assert fuzzy_clause["max_expansions"] == 12
+    assert fuzzy_clause["boost"] == 0.2
     assert any("wildcard" in clause and clause["wildcard"]["document_title.keyword"]["value"] == "*rmo 12/2024*" for clause in bool_query["should"])
     assert {"terms": {"document_type": ["directive"]}} in bool_query["filter"]
     assert {"terms": {"tags": ["logistika"]}} in bool_query["filter"]

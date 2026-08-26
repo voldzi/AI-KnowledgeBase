@@ -20,7 +20,7 @@ describe("assistant query planner", () => {
     const second = buildAssistantQueryPlan(input);
 
     assert.equal(first.plan_id, second.plan_id);
-    assert.equal(first.version, "2026-08-25");
+    assert.equal(first.version, "2026-08-26");
     assert.equal(first.goal, "lookup");
     assert.equal(first.intent, "obligation_table");
     assert.equal(first.output.kind, "table");
@@ -94,5 +94,23 @@ describe("assistant query planner", () => {
     assert.equal(plan.quality_gates.row_citations_required, false);
     assert.equal(plan.quality_gates.registry_metadata_without_chunk_citations_allowed, true);
     assert.deepEqual(plan.retrieval.topics, ["digitalizace"]);
+  });
+
+  it("records a document task intent without weakening citation gates", () => {
+    const plan = buildAssistantQueryPlan({
+      message: "Kde najdu formulář na zahraniční cestu?",
+      language: "cs",
+      tool: "rag_document_answer",
+      reason: "rag_document_task",
+      structuredOutput: false,
+      obligationOutput: false,
+      registryReportKind: null,
+      registryTopics: [],
+      documentKnowledgeIntent: "resource",
+    });
+
+    assert.equal(plan.intent, "resource_location");
+    assert.equal(plan.retrieval.document_knowledge_intent, "resource");
+    assert.equal(plan.quality_gates.citations_required, true);
   });
 });

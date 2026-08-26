@@ -9,10 +9,11 @@ import {
   resolveAssistantUserGoal,
   type AssistantUserGoal,
 } from "./user-goal";
+import type { DocumentKnowledgeIntent } from "./document-knowledge-intent";
 
 import type { AssistantToolName, AssistantToolRouteReason } from "./assistant-tool-router";
 
-export const ASSISTANT_QUERY_PLAN_VERSION = "2026-08-25";
+export const ASSISTANT_QUERY_PLAN_VERSION = "2026-08-26";
 export const ASSISTANT_REPORT_ARTIFACT_CONTRACT_VERSION = "report.v2";
 
 export type AssistantQueryIntent =
@@ -25,6 +26,14 @@ export type AssistantQueryIntent =
   | "diagnosis"
   | "recommendation"
   | "scenario_analysis"
+  | "procedure_lookup"
+  | "resource_location"
+  | "support_channel"
+  | "owner_lookup"
+  | "responsibility_lookup"
+  | "deadline_lookup"
+  | "obligation_lookup"
+  | "policy_lookup"
   | "structured_report"
   | "obligation_table";
 
@@ -58,6 +67,7 @@ export interface AssistantQueryPlan {
   retrieval: {
     registry_report_kind: RegistryReportKind | null;
     topics: string[];
+    document_knowledge_intent: DocumentKnowledgeIntent;
   };
 }
 
@@ -70,6 +80,7 @@ export function buildAssistantQueryPlan(input: {
   obligationOutput: boolean;
   registryReportKind: RegistryReportKind | null;
   registryTopics: string[];
+  documentKnowledgeIntent?: DocumentKnowledgeIntent;
   reportRequest?: AssistantReportRequest | null;
 }): AssistantQueryPlan {
   const goal = resolveAssistantUserGoal(input.message).goal;
@@ -113,7 +124,8 @@ export function buildAssistantQueryPlan(input: {
     },
     retrieval: {
       registry_report_kind: input.registryReportKind,
-      topics: input.registryTopics
+      topics: input.registryTopics,
+      document_knowledge_intent: input.documentKnowledgeIntent ?? "general",
     }
   };
 }
@@ -123,6 +135,7 @@ function queryIntentFor(input: {
   structuredOutput: boolean;
   obligationOutput: boolean;
   registryReportKind: RegistryReportKind | null;
+  documentKnowledgeIntent?: DocumentKnowledgeIntent;
   reportRequest?: AssistantReportRequest | null;
 }, goal: AssistantUserGoal): AssistantQueryIntent {
   if (input.tool === "registry_document_report") {
@@ -137,6 +150,14 @@ function queryIntentFor(input: {
   if (input.structuredOutput) {
     return "structured_report";
   }
+  if (input.documentKnowledgeIntent === "procedure") return "procedure_lookup";
+  if (input.documentKnowledgeIntent === "resource") return "resource_location";
+  if (input.documentKnowledgeIntent === "support_channel") return "support_channel";
+  if (input.documentKnowledgeIntent === "owner") return "owner_lookup";
+  if (input.documentKnowledgeIntent === "responsibility") return "responsibility_lookup";
+  if (input.documentKnowledgeIntent === "deadline") return "deadline_lookup";
+  if (input.documentKnowledgeIntent === "obligation") return "obligation_lookup";
+  if (input.documentKnowledgeIntent === "policy") return "policy_lookup";
   if (goal === "explain") return "explanation";
   if (goal === "compare") return "comparison";
   if (goal === "diagnose") return "diagnosis";
