@@ -34,6 +34,13 @@ The browser cookie contains only an opaque selector. Operators may inspect
 session counts and revocation audit events, but must not export the encrypted
 payload, selector hash or authentication material.
 
+Every protected page entry completes a short silent Keycloak SSO round trip.
+This replaces an existing AKB session when the browser's current STRATOS user
+has changed. The loop-prevention cookie is an AKB-only, signed, `HttpOnly`
+marker bound to the opaque selector and expires within seconds; it is neither a
+credential nor a replacement for the 15-minute identity validation or the
+per-request access projection.
+
 ## STRATOS content-security profile
 
 AKB owns the central Document Intake malware boundary for all document

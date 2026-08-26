@@ -15,7 +15,12 @@ import {
   sessionFromTokens
 } from "@/lib/auth/oidc";
 import {
+  centralSsoSyncCookieOptions,
+  CENTRAL_SSO_SYNC_COOKIE,
+  createCentralSsoSyncMarker,
   createServerSession,
+  resolveServerSession,
+  revokeServerSession,
   serverSessionCookieOptions,
   SERVER_SESSION_COOKIE,
 } from "@/lib/auth/server-session";
@@ -29,6 +34,7 @@ export async function GET(request: NextRequest) {
   const state = request.nextUrl.searchParams.get("state");
   const expectedState = request.cookies.get(OIDC_STATE_COOKIE)?.value;
   const codeVerifier = request.cookies.get(OIDC_PKCE_COOKIE)?.value;
+  const previousSelector = request.cookies.get(SERVER_SESSION_COOKIE)?.value;
   const returnTo = normalizeReturnToForPublicBase(
     config,
     safeReturnToFromState(state, "/"),
@@ -54,6 +60,9 @@ export async function GET(request: NextRequest) {
     } else {
       console.warn("Interactive OIDC authorization was not completed.");
     }
+    if (parsedState.mode === "silent" && previousSelector) {
+      await revokeServerSession(config, previousSelector, "central_sso_unavailable").catch(() => null);
+    }
     return redirectToLogin(config, returnTo);
   }
 
@@ -71,7 +80,13 @@ export async function GET(request: NextRequest) {
   }
 
   const session = sessionFromTokens(tokens);
-  const persistent = parsedState.remember;
+  const previousSession =
+    parsedState.mode === "silent" && previousSelector
+      ? await resolveServerSession(config, previousSelector).catch(() => null)
+      : null;
+  const persistent = parsedState.mode === "silent"
+    ? (previousSession?.persistent ?? false)
+    : parsedState.remember;
   let selector: string;
   try {
     selector = await createServerSession(config, session, persistent);
@@ -83,6 +98,14 @@ export async function GET(request: NextRequest) {
   response.cookies.delete(OIDC_STATE_COOKIE);
   response.cookies.delete(OIDC_PKCE_COOKIE);
   response.cookies.set(SERVER_SESSION_COOKIE, selector, serverSessionCookieOptions(config, persistent));
+  response.cookies.set(
+    CENTRAL_SSO_SYNC_COOKIE,
+    await createCentralSsoSyncMarker(config, selector),
+    centralSsoSyncCookieOptions(config),
+  );
+  if (previousSelector && previousSelector !== selector) {
+    await revokeServerSession(config, previousSelector, "central_sso_replaced").catch(() => null);
+  }
   response.cookies.delete(OIDC_ACCESS_COOKIE);
   response.cookies.delete(OIDC_REFRESH_COOKIE);
   return response;
@@ -96,6 +119,7 @@ function redirectToLogin(config: ReturnType<typeof getAklConfig>, returnTo: stri
   response.cookies.delete(OIDC_SESSION_COOKIE);
   response.cookies.delete(OIDC_ACCESS_COOKIE);
   response.cookies.delete(OIDC_REFRESH_COOKIE);
+  response.cookies.delete(CENTRAL_SSO_SYNC_COOKIE);
   return response;
 }
 

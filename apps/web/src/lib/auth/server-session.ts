@@ -11,6 +11,7 @@ import {
 } from "@/lib/auth/oidc";
 
 export const SERVER_SESSION_COOKIE = "akl_session";
+export const CENTRAL_SSO_SYNC_COOKIE = "akl_sso_sync";
 
 type StoredSession = {
   session_id: string;
@@ -50,6 +51,9 @@ const secretCache = new Map<string, Promise<string>>();
 const ABSOLUTE_TTL_MS = 90 * 86_400_000;
 const IDLE_TTL_MS = 30 * 86_400_000;
 const IDENTITY_VALIDATION_INTERVAL_MS = 15 * 60_000;
+// This marker breaks the silent-SSO redirect loop while keeping each new
+// application entry tied to the current Keycloak browser session.
+const CENTRAL_SSO_SYNC_TTL_MS = 5_000;
 
 export async function createServerSession(
   config: AklConfig,
@@ -237,6 +241,58 @@ export function serverSessionCookieOptions(config: AklConfig, persistent: boolea
     path,
     ...(persistent ? { maxAge: Math.floor((oidc.sessionAbsoluteTtlMs ?? ABSOLUTE_TTL_MS) / 1000) } : {}),
   };
+}
+
+export function centralSsoSyncCookieOptions(config: AklConfig) {
+  return {
+    ...serverSessionCookieOptions(config, false),
+    maxAge: Math.ceil(CENTRAL_SSO_SYNC_TTL_MS / 1_000),
+  };
+}
+
+export async function createCentralSsoSyncMarker(
+  config: AklConfig,
+  selector: string,
+  nowMs = Date.now(),
+): Promise<string> {
+  const expiresAt = nowMs + CENTRAL_SSO_SYNC_TTL_MS;
+  const payload = `${expiresAt}.${selectorHash(selector)}`;
+  const signature = crypto
+    .createHmac("sha256", await sessionStoreSecret(config))
+    .update(`central-sso-sync:${payload}`)
+    .digest("base64url");
+  return `${payload}.${signature}`;
+}
+
+export async function hasCurrentCentralSsoSyncMarker(
+  config: AklConfig,
+  selector: string,
+  marker: string | undefined,
+  nowMs = Date.now(),
+): Promise<boolean> {
+  if (!marker || !validSelector(selector)) return false;
+  const [rawExpiry, sessionHash, signature, ...extra] = marker.split(".");
+  const expiresAt = Number(rawExpiry);
+  if (
+    extra.length > 0 ||
+    !Number.isSafeInteger(expiresAt) ||
+    expiresAt < nowMs ||
+    sessionHash !== selectorHash(selector) ||
+    !signature
+  ) {
+    return false;
+  }
+  const payload = `${rawExpiry}.${sessionHash}`;
+  const expected = crypto
+    .createHmac("sha256", await sessionStoreSecret(config))
+    .update(`central-sso-sync:${payload}`)
+    .digest("base64url");
+  const received = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expected);
+  return (
+    received.length === expectedBuffer.length &&
+    crypto.timingSafeEqual(received, expectedBuffer)
+  );
 }
 
 async function readStoredSession(config: AklConfig, sessionHash: string): Promise<StoredSession | null> {

@@ -13,6 +13,8 @@ import {
   type OidcSession,
 } from "../auth/oidc";
 import {
+  CENTRAL_SSO_SYNC_COOKIE,
+  hasCurrentCentralSsoSyncMarker,
   resolveServerSession,
   SERVER_SESSION_COOKIE,
 } from "../auth/server-session";
@@ -53,12 +55,38 @@ export async function getServerRequestContext(): Promise<ApiRequestContext> {
 export async function getServerRequestContextForPath(
   returnTo: string,
 ): Promise<ApiRequestContext> {
+  await requireCurrentCentralSso(returnTo);
   const context = await getOptionalServerRequestContext();
   if (context) {
     return context;
   }
 
   const config = getAklConfig();
+  redirect(
+    buildPublicAppUrl(
+      config,
+      `/api/auth/sso?return_to=${encodeURIComponent(returnTo)}`,
+    ),
+  );
+}
+
+async function requireCurrentCentralSso(returnTo: string): Promise<void> {
+  const config = getAklConfig();
+  if (config.authMode !== "oidc") return;
+
+  const cookieStore = await cookies();
+  const selector = cookieStore.get(SERVER_SESSION_COOKIE)?.value;
+  if (
+    selector &&
+    await hasCurrentCentralSsoSyncMarker(
+      config,
+      selector,
+      cookieStore.get(CENTRAL_SSO_SYNC_COOKIE)?.value,
+    )
+  ) {
+    return;
+  }
+
   redirect(
     buildPublicAppUrl(
       config,

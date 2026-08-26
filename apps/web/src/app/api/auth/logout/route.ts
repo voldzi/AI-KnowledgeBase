@@ -13,6 +13,7 @@ import {
   requireOidcConfig,
 } from "@/lib/auth/oidc";
 import {
+  CENTRAL_SSO_SYNC_COOKIE,
   revokeServerSession,
   serverSessionCookieOptions,
   SERVER_SESSION_COOKIE,
@@ -45,6 +46,7 @@ export async function POST(request: NextRequest) {
   response.cookies.delete(OIDC_SESSION_COOKIE);
   response.cookies.delete(OIDC_STATE_COOKIE);
   response.cookies.delete(OIDC_PKCE_COOKIE);
+  response.cookies.delete(CENTRAL_SSO_SYNC_COOKIE);
   response.cookies.set(SERVER_SESSION_COOKIE, "", { ...serverSessionCookieOptions(config, false), maxAge: 0 });
   return response;
 }

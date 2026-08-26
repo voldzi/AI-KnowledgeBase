@@ -3,7 +3,10 @@ import { describe, it } from "node:test";
 
 import type { AklConfig } from "../src/lib/api/config";
 import {
+  centralSsoSyncCookieOptions,
+  createCentralSsoSyncMarker,
   createServerSession,
+  hasCurrentCentralSsoSyncMarker,
   resolveServerSession,
   serverSessionCookieOptions,
 } from "../src/lib/auth/server-session";
@@ -49,6 +52,32 @@ describe("server-side OIDC session cookie", () => {
   it("bounds a trusted-device cookie to 90 days", () => {
     const options = serverSessionCookieOptions(config, true);
     assert.equal(options.maxAge, 90 * 24 * 60 * 60);
+  });
+
+  it("binds the short-lived central SSO marker to one server session", async () => {
+    const selector = "a".repeat(43);
+    const now = Date.UTC(2026, 7, 26, 8, 0, 0);
+    const marker = await createCentralSsoSyncMarker(config, selector, now);
+
+    assert.equal(
+      await hasCurrentCentralSsoSyncMarker(config, selector, marker, now + 1_000),
+      true,
+    );
+    assert.equal(
+      await hasCurrentCentralSsoSyncMarker(config, "b".repeat(43), marker, now + 1_000),
+      false,
+    );
+    assert.equal(
+      await hasCurrentCentralSsoSyncMarker(config, selector, `${marker}x`, now + 1_000),
+      false,
+    );
+    assert.equal(
+      await hasCurrentCentralSsoSyncMarker(config, selector, marker, now + 6_000),
+      false,
+    );
+    const options = centralSsoSyncCookieOptions(config);
+    assert.equal(options.maxAge, 5);
+    assert.equal(options.httpOnly, true);
   });
 
   it("stores tokens only in the encrypted server record and enforces 30/90 day bounds", async () => {

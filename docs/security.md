@@ -16,13 +16,17 @@ host applications do not make authorization decisions for AKB documents.
   by default. Identity is revalidated with Keycloak at most 15 minutes after
   the previous successful validation. A new authorization request reuses an
   existing valid STRATOS SSO session; it does not force another password prompt.
-  Keycloak still requests credentials when no valid SSO session exists. An
-  existing valid AKB server-side session is unaffected.
+  Keycloak still requests credentials when no valid SSO session exists.
 - Opening a protected AKB page first performs a silent authorization round trip
   through the shared STRATOS realm. An active STRATOS browser SSO session opens
   AKB without another screen or password prompt. If no central session exists,
   AKB falls back once to its interactive login page; tokens and application
-  cookies are never passed between STRATOS applications.
+  cookies are never passed between STRATOS applications. The short-lived
+  AKB-only synchronization marker is signed, `HttpOnly`, bound to one opaque
+  server-session selector and used solely to complete this round trip. It is
+  not an identity token. A successful central check replaces and revokes any
+  previous AKB session in that browser, so a user switch in STRATOS cannot
+  retain the former user's AKB identity.
 - Cookie-authenticated state-changing API requests (`POST`, `PUT`, `PATCH`,
   `DELETE`) require an exact `Origin` match with `AKL_WEB_PUBLIC_BASE_URL`.
   Browser form navigations that omit `Origin` are accepted only when both an
