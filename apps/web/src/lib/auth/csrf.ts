@@ -30,7 +30,7 @@ export function hasAllowedSessionRequestOrigin(
     const configuredOrigin = new URL(configuredPublicBaseUrl).origin;
     if (request.origin) {
       if (request.origin === "null") {
-        return isVerifiedSameOriginLoginNavigation(request);
+        return isVerifiedSameOriginAuthNavigation(request);
       }
       return new URL(request.origin).origin === configuredOrigin;
     }
@@ -43,17 +43,19 @@ export function hasAllowedSessionRequestOrigin(
   }
 }
 
-function isVerifiedSameOriginLoginNavigation(request: RequestMetadata): boolean {
-  return isLoginPath(request.pathname)
+function isVerifiedSameOriginAuthNavigation(request: RequestMetadata): boolean {
+  return isAuthNavigationPath(request.pathname)
     && request.secFetchSite === "same-origin"
     && request.secFetchMode === "navigate"
     && request.secFetchDest === "document";
 }
 
-function isLoginPath(pathname: string): boolean {
+function isAuthNavigationPath(pathname: string): boolean {
   const normalized = pathname.split(/[?#]/, 1)[0] || "/";
   return normalized === "/api/auth/login"
-    || normalized.endsWith("/api/auth/login");
+    || normalized.endsWith("/api/auth/login")
+    || normalized === "/api/auth/logout"
+    || normalized.endsWith("/api/auth/logout");
 }
 
 function isApiPath(pathname: string): boolean {

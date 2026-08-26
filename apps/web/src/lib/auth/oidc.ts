@@ -101,7 +101,7 @@ export function isAllowedPublicOrigin(
   }
 }
 
-export function isAllowedLoginRequestOrigin(
+export function isAllowedAuthNavigationRequestOrigin(
   config: AklConfig,
   headers: Pick<Headers, "get">,
 ): boolean {

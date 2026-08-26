@@ -3,7 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAklConfig } from "@/lib/api/config";
 import {
   buildLogoutUrl,
-  isAllowedPublicOrigin,
+  buildPublicAppUrl,
+  isAllowedAuthNavigationRequestOrigin,
   OIDC_ACCESS_COOKIE,
   OIDC_REFRESH_COOKIE,
   OIDC_SESSION_COOKIE,
@@ -20,13 +21,14 @@ import {
 export const runtime = "nodejs";
 
 export async function GET() {
-  return new NextResponse(`<!doctype html><html lang="cs"><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Odhlášení</title></head><body><form method="post"><button type="submit">Odhlásit z AKB</button></form></body></html>`, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Content-Security-Policy": "default-src 'none'; form-action 'self'; frame-ancestors 'none'" } });
+  const config = getAklConfig();
+  const action = escapeHtml(buildPublicAppUrl(config, "/api/auth/logout"));
+  return new NextResponse(`<!doctype html><html lang="cs"><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Odhlášení</title></head><body><form method="post" action="${action}"><button type="submit">Odhlásit z AKB</button></form></body></html>`, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Content-Security-Policy": "default-src 'none'; form-action 'self'; frame-ancestors 'none'" } });
 }
 
 export async function POST(request: NextRequest) {
   const config = getAklConfig();
-  const origin = request.headers.get("origin");
-  if (!isAllowedPublicOrigin(config, origin)) {
+  if (!isAllowedAuthNavigationRequestOrigin(config, request.headers)) {
     return NextResponse.json({ error: { code: "AUTH_ORIGIN_REJECTED", message: "Odhlášení z tohoto zdroje není povoleno." } }, { status: 403 });
   }
   const selector = request.cookies.get(SERVER_SESSION_COOKIE)?.value;
@@ -45,6 +47,10 @@ export async function POST(request: NextRequest) {
   response.cookies.delete(OIDC_PKCE_COOKIE);
   response.cookies.set(SERVER_SESSION_COOKIE, "", { ...serverSessionCookieOptions(config, false), maxAge: 0 });
   return response;
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character] ?? character);
 }
 
 async function revokeRefreshToken(config: ReturnType<typeof getAklConfig>, refreshToken: string): Promise<void> {

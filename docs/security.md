@@ -27,8 +27,9 @@ host applications do not make authorization decisions for AKB documents.
   `DELETE`) require an exact `Origin` match with `AKL_WEB_PUBLIC_BASE_URL`.
   Browser form navigations that omit `Origin` are accepted only when both an
   exact-origin `Referer` and `Sec-Fetch-Site: same-origin` are present. A
-  browser-managed opaque `Origin: null` is accepted only by the login form
-  when Fetch Metadata proves a same-origin top-level document navigation.
+  browser-managed opaque `Origin: null` is accepted only by the login or
+  logout form when Fetch Metadata proves a same-origin top-level document
+  navigation.
   Missing or foreign evidence fails with `SESSION_REQUEST_ORIGIN_FORBIDDEN`
   before route handling. Audience-bound bearer-only service integrations do
   not use the browser cookie and remain on their existing token boundary.

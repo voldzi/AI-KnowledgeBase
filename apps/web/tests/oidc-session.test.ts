@@ -4,7 +4,7 @@ import { describe, it } from "node:test";
 import {
   buildAuthorizationUrl,
   buildPublicAppUrl,
-  isAllowedLoginRequestOrigin,
+  isAllowedAuthNavigationRequestOrigin,
   isAllowedPublicOrigin,
   contextFromOidcAccessToken,
   contextFromOidcSession,
@@ -197,7 +197,7 @@ describe("OIDC web session", () => {
     const headers = (values: Record<string, string>) => new Headers(values);
 
     assert.equal(
-      isAllowedLoginRequestOrigin(
+      isAllowedAuthNavigationRequestOrigin(
         config,
         headers({
           origin: "null",
@@ -209,7 +209,7 @@ describe("OIDC web session", () => {
       true,
     );
     assert.equal(
-      isAllowedLoginRequestOrigin(
+      isAllowedAuthNavigationRequestOrigin(
         config,
         headers({
           origin: "null",
@@ -221,7 +221,7 @@ describe("OIDC web session", () => {
       false,
     );
     assert.equal(
-      isAllowedLoginRequestOrigin(
+      isAllowedAuthNavigationRequestOrigin(
         config,
         headers({ origin: "null", "sec-fetch-site": "same-origin" }),
       ),

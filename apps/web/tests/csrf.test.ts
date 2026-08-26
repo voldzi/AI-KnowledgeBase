@@ -39,7 +39,7 @@ describe("session request origin protection", () => {
     );
   });
 
-  it("accepts an opaque Origin only for a verified same-origin login navigation", () => {
+  it("accepts an opaque Origin only for verified same-origin authentication navigations", () => {
     const request = {
       method: "POST",
       pathname: "/akb/api/auth/login",
@@ -52,6 +52,13 @@ describe("session request origin protection", () => {
     };
 
     assert.equal(hasAllowedSessionRequestOrigin(request, publicBaseUrl), true);
+    assert.equal(
+      hasAllowedSessionRequestOrigin(
+        { ...request, pathname: "/akb/api/auth/logout" },
+        publicBaseUrl,
+      ),
+      true,
+    );
     assert.equal(
       hasAllowedSessionRequestOrigin(
         { ...request, pathname: "/akb/api/documents" },
