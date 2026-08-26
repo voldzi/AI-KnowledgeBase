@@ -104,10 +104,16 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          fetch-depth: 0
+        env:
+          GITEA_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "${{ github.server_url }}/${{ github.repository }}.git"
+          git -c http.extraheader="Authorization: token ${GITEA_TOKEN}" fetch --quiet origin \
+            '+refs/heads/*:refs/remotes/origin/*' --tags
+          git checkout --detach "${{ github.sha }}"
+          [[ "$(git rev-parse HEAD)" == "${{ github.sha }}" ]]
       - name: Verify repository contracts
         run: |
           set -euo pipefail
