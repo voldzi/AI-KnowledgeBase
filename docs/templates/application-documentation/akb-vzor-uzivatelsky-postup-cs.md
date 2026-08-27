@@ -12,7 +12,7 @@ source_system: git
 tags: [dokumentace, vzor, autorstvi, uzivatel]
 documentation_profile: akb-application-docs-1
 documentation_kind: vzor
-document_revision: "1.0"
+document_revision: "1.1"
 target_environment: obecne
 applies_to: "Vzor pro autory; není návodem konkrétní aplikace"
 reviewed_on: "2026-08-27"
@@ -63,7 +63,7 @@ DOPLNIT: Jak zjistit, zda se operace již provedla, než ji uživatel zopakuje. 
 
 ## Související formuláře a návody
 
-DOPLNIT: Odkaz na konkrétní přílohu a její použitelnost, kontaktní místo podpory a související postup. Nevymýšlejte Service Desk, pokud není zaveden.
+DOPLNIT: Odkaz na konkrétní přílohu a její použitelnost, skutečné kontaktní místo podpory a související postup.
 
 ## Co má jít podle návodu zjistit
 

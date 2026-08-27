@@ -12,7 +12,7 @@ source_system: git
 tags: [dokumentace, metodika, autorstvi, akb]
 documentation_profile: akb-application-docs-1
 documentation_kind: metodika
-document_revision: "1.0"
+document_revision: "1.1"
 target_environment: obecne
 applies_to: "Dokumentace aplikací předávaná do AKB"
 reviewed_on: "2026-08-27"
@@ -24,7 +24,7 @@ reviewed_on: "2026-08-27"
 
 Metodika sjednocuje dokumentaci AKB, STRATOS a dalších aplikací. Autor má jasnou osnovu, uživatel dohledá správný návod a Chat získá zdroj s rozpoznatelnou aplikací, verzí a účelem. Platí pro návody, technické reference a provozní podklady. Nenahrazuje schvalování interních předpisů ani rozhodnutí o přístupu.
 
-Jde o návrh redakčních pravidel k převzetí vlastníkem dokumentace. Označení `akb-application-docs-1` je název této metodiky, nikoli nová verze API nebo již implementovaný automatický importér.
+Redakční profil `akb-application-docs-1` určuje jednotnou podobu dokumentace. Neuděluje přístupy a nenahrazuje kontrolu metadat při vložení do AKB.
 
 ## Rychlý postup autora
 
@@ -107,6 +107,8 @@ Každý postup má jasný účel, určení čtenáře, předpoklady, číslovan�
 - Příkazy mají předpoklady, rozsah dopadu a ověření. Destruktivní krok musí mít schválení a obnovu.
 - Neuvádějte hesla, tokeny, privátní klíče ani reálné osobní údaje v příkladech či snímcích.
 - Fakt, doporučení, návrh a neověřený předpoklad musí být rozlišitelné.
+- Návod popisuje současné chování aplikace. Neobsahuje neaktivní funkce, pracovní poznámky autora ani nesouvisející interní záznamy.
+- Do zákaznické sady zahrnujte pouze soubory uvedené v jejím schváleném seznamu. Stejnou kontrolou musí projít PDF, přílohy a distribuční ZIP.
 
 ## Markdown, PDF a přílohy
 

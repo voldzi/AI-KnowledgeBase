@@ -12,7 +12,7 @@ source_system: git
 tags: [dokumentace, csu-pilot, katalog-funkci, akb, stratos]
 documentation_profile: akb-application-docs-1
 documentation_kind: reference
-document_revision: "1.0"
+document_revision: "1.1"
 target_environment: csu-test
 applies_to: "Návrh pilotu; konkrétní release se určí při převzetí"
 reviewed_on: "2026-08-27"
@@ -22,35 +22,30 @@ reviewed_on: "2026-08-27"
 
 ## Jak katalog číst
 
-Katalog rozlišuje autoritativní zdroj od uživatelského rozhraní. **Podklady** znamená funkci popsanou v dostupné dokumentaci či implementaci, nikoli akceptační PASS v ČSÚ. **Integrace** navíc vyžaduje funkční rozhraní a společný test. **Rozvoj** není závazek pro pilot. Každý provozní scénář se před předáním ověří pro konkrétní release a uživatelský profil.
+Katalog popisuje funkce aplikací a určuje, kde se spravují jejich data. Přístup uživatele závisí na jeho roli a povoleném rozsahu. Živé dotazy v chatu navíc vyžadují zapojené integrační rozhraní. Dostupnost vybraných scénářů v ČSÚ se ověří při převzetí pilotu.
 
-| Oblast | Schopnost | Autoritativní zdroj | Primární uživatelé | Stav |
-| --- | --- | --- | --- | --- |
-| AKB | registr dokumentů, verzí, příloh a účinnosti | Registry + objektové úložiště | čtenář, gestor | Podklady |
-| AKB | karanténa a antivirová kontrola | ingestion + ClamAV | gestor, správce | Podklady |
-| AKB | vytěžení, indexace a citace | ingestion, Qdrant, OpenSearch | oprávnění čtenáři | Podklady |
-| AKB | náhled podle podporovaného formátu | viewer a originální objekt | oprávnění čtenáři | Podklady |
-| AKB | schválení, publikace, přílohy a historie | Registry | gestor, schvalovatel | Podklady |
-| AKB | Controlled Rules nad zákony a směrnicemi | schválené balíčky v Registry | Chat, Budget | Integrace |
-| AKB | chat nad dokumenty a postupy | RAG + citace | zaměstnanec, vedení | Podklady |
-| AKB | analytický workbench a evidenční případy | AKB Intelligence | analytik, auditor | Podklady |
-| AKB | obecné AI insighty s dalším schvalováním | budoucí workflow | gestor | Rozvoj |
-| Budget & Contract | rozpočtový plán, akce, smlouvy, skutečnost | Budget & Contract | finance, vedení | Podklady |
-| Budget & Contract | finanční dotazy v Chatu | Director Copilot | oprávnění uživatelé | Integrace |
-| ProjectFlow | projektový plán, rizika, rozhodnutí a stav | ProjectFlow | projektový tým | Podklady |
-| ProjectFlow | read-only portfolio v Chatu | Director Copilot | oprávnění uživatelé | Integrace |
-| ArchFlow | potřeby, posouzení a převod do plánování | ArchFlow | pověřené role | Podklady |
-| ArchFlow | read-only potřeby v Chatu | Director Copilot | oprávnění uživatelé | Integrace |
-| Executive Center | manažerské přehledy | STRATOS read-modely | vedení | Podklady |
-| STRATOS Access Center | capabilities, scope a projekce přístupů | STRATOS | správce přístupů | Integrace |
-| Společné | OIDC a serverové relace | Keycloak + aplikace | všichni uživatelé | Integrace |
-| Společné | audit a bezpečné odmítnutí | auditní hranice AKB a STRATOS | auditor, podpora | Integrace |
+| Oblast | Funkce | Zdroj dat | Uživatelé |
+| --- | --- | --- | --- |
+| AKB | registr dokumentů, verzí, příloh a účinnosti | registr a objektové úložiště AKB | čtenář, gestor |
+| AKB | karanténa, antivirová kontrola a zpracování souboru | příjem dokumentů a ClamAV | gestor, správce |
+| AKB | vyhledávání v textu a podle významu, přesné citace | dokumenty a odvozené indexy | oprávnění čtenáři |
+| AKB | náhled a stažení dokumentu | přesná verze originálu | oprávnění čtenáři |
+| AKB | kontrola, schválení, publikace a nahrazení vydání | registr AKB | gestor, schvalovatel |
+| AKB | ověřená pravidla a limity ze zákonů a směrnic | schválené, účinné balíčky AKB | Chat, Budget |
+| AKB | chat nad dokumenty, návody a souvislostmi | autorizované dokumenty s citacemi | zaměstnanec, vedení |
+| AKB | analytický pracovní prostor a evidenční případy | AKB Intelligence | analytik, auditor |
+| Budget & Contract | rozpočtový plán, akce, smlouvy a skutečnost | Budget & Contract | finance, vedení |
+| Budget & Contract | finanční dotazy v chatu | živé rozhraní Budgetu | oprávnění uživatelé |
+| ProjectFlow | projektový plán, milníky, rizika, rozhodnutí a stav | ProjectFlow | projektový tým |
+| ProjectFlow | přehled portfolia v chatu | živé rozhraní ProjectFlow | oprávnění uživatelé |
+| ArchFlow | potřeby, posouzení a návaznost na plánování | ArchFlow | pověřené role |
+| ArchFlow | přehled potřeb v chatu | živé rozhraní ArchFlow | oprávnění uživatelé |
+| STRATOS | společné manažerské přehledy | zdrojové aplikace STRATOS | vedení |
+| STRATOS | správa oprávnění a rozsahu přístupů | STRATOS Access Center | správce přístupů |
+| Společné | jednotné přihlášení a serverové relace | Keycloak a aplikace | všichni uživatelé |
+| Společné | audit operací a přístupových rozhodnutí | AKB a STRATOS | auditor, podpora |
 
 Náhled není zárukou totožného vzhledu všech formátů. Office využívá odvozené PDF; u Markdownu současná aplikace zobrazuje obsah a umožňuje stažení zdroje, ale negeneruje PDF celého dokumentu. PDF předávací sady je samostatně vytvořený odvozený výstup.
-
-## Retired a neaktivní oblasti
-
-AIIP a ProcessForge nejsou aktivní samostatné aplikace. Processní rytmus je realizován v ProjectFlow; intake potřeb realizuje ArchFlow. Tyto názvy se nemají uvádět v uživatelské navigaci ani v nabídce nového pilotu.
 
 ## Pravidla pro integraci
 
@@ -62,4 +57,4 @@ AIIP a ProcessForge nejsou aktivní samostatné aplikace. Processní rytmus je r
 
 ## Vlastnictví katalogu
 
-AKB tým aktualizuje řádky AKB a společné chatové hranice. STRATOS tým potvrzuje řádky svých aplikací. Označení „ověřeno“ lze doplnit teprve s datem, releasem, profilem uživatele a výsledkem konkrétního testu. Otevřené body a zdroje obsahuje [předávací list](../handover/akb-stratos-predani-dokumentace-csu-cs.md).
+Za dokumentové funkce a chat odpovídá vlastník AKB. Za Budget, ProjectFlow, ArchFlow a společné funkce STRATOS odpovídá vlastník STRATOS. Rozsah a výsledky převzetí se zaznamenají pro konkrétní vydání a role podle [předávacího listu](../handover/akb-stratos-predani-dokumentace-csu-cs.md).

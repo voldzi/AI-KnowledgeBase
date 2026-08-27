@@ -12,7 +12,7 @@ source_system: git
 tags: [dokumentace, csu-pilot, bezpecnost, obnova, akb, stratos]
 documentation_profile: akb-application-docs-1
 documentation_kind: bezpecnost
-document_revision: "1.0"
+document_revision: "1.1"
 target_environment: csu-test
 applies_to: "Návrh pilotu; konkrétní release se určí při převzetí"
 reviewed_on: "2026-08-27"
@@ -32,6 +32,8 @@ reviewed_on: "2026-08-27"
 - Neznámý manifest, špatná audience, manipulovaný cursor, neúplné stránkování nebo výpadek zdroje nikdy nesmí být nahrazen domyšleným výsledkem.
 
 ## RTO a RPO pilotu
+
+**RPO** je nejvyšší přijatelná ztráta dat vyjádřená časem od poslední použitelné zálohy. **RTO** je cílová doba obnovení služby. Oba cíle schvaluje provozovatel a ověřuje je testem obnovy.
 
 Pro první testovací etapu stanovte před zahájením provozu minimálně:
 

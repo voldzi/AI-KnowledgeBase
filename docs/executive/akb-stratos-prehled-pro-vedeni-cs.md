@@ -12,7 +12,7 @@ source_system: git
 tags: [dokumentace, csu-pilot, vedeni, akb, stratos]
 documentation_profile: akb-application-docs-1
 documentation_kind: prehled
-document_revision: "1.0"
+document_revision: "1.1"
 target_environment: csu-test
 applies_to: "Návrh pilotu; konkrétní release se určí při převzetí"
 reviewed_on: "2026-08-27"
@@ -22,7 +22,7 @@ reviewed_on: "2026-08-27"
 
 ## Účel
 
-Předávací návrh pro vedení organizace a vlastníky aplikací. Popis vychází z dostupných repozitářových podkladů; není potvrzením instalace ani akceptace v ČSÚ. Uvedené příklady vyžadují odpovídající dokumenty, integrace a oprávnění. Za věcný popis částí STRATOS odpovídá jeho vlastník.
+Přehled vysvětluje přínosy, odpovědnosti a hranice AKB a STRATOS. Slouží k rozhodnutí o interním pilotu v ČSÚ. Konkrétní rozsah nasazení se potvrdí při převzetí; příklady použití vyžadují odpovídající dokumenty, integrace a oprávnění.
 
 AKB a STRATOS tvoří jednu integrovanou pracovní platformu, nikoli jednu databázi nebo jeden monolit. Každá část má jasně vymezenou odpovědnost:
 
@@ -30,7 +30,8 @@ AKB a STRATOS tvoří jednu integrovanou pracovní platformu, nikoli jednu datab
 - **Budget & Contract** je zdrojem financí, rozpočtů, zakázek, smluv a finančních plánů.
 - **ProjectFlow** je zdrojem projektové reality: plánů, milníků, rizik, problémů, rozhodnutí a stavových aktualizací.
 - **ArchFlow** eviduje a posuzuje strategické nebo architektonické potřeby a převádí schválené potřeby do plánování.
-- **Executive Center** skládá ověřený manažerský pohled nad zdrojovými aplikacemi; nenahrazuje jejich pracovní data.
+
+Společné manažerské přehledy STRATOS skládají údaje ze zdrojových aplikací. Nejsou samostatnou evidencí a nenahrazují pracovní data Budgetu, ProjectFlow ani ArchFlow.
 
 Společné přihlášení přes Keycloak dává uživateli jednotný vstup. Oprávnění se však vyhodnocují v každé aplikaci podle aktuální role, rozsahu a Information Policy. Přihlášení proto samo o sobě neznamená přístup ke všem datům.
 
@@ -81,9 +82,9 @@ Pro řízená pravidla platí:
 
 ## Hranice produktu
 
-AKB není náhrada ekonomického systému, ITSM, CMDB, monitoringu ani vlastního projektového řízení. V integračním návrhu nemá STRATOS provozovat druhou neřízenou kopii dokumentového korpusu AKB. Dodržení této hranice je součástí akceptace, nikoli závěrem auditu provedeného tímto dokumentem.
+AKB nenahrazuje účetní systém, evidenci IT incidentů, správu konfigurací ani provozní monitoring. Projektové řízení zůstává v ProjectFlow. Dokumentové originály a jejich verze spravuje AKB; integrované aplikace na ně odkazují a nemají vytvářet vlastní neřízené kopie.
 
-Funkce uvedené jako budoucí, například další analytické exporty, watchlisty, pokročilé schvalovací scénáře nebo rozšířené doménové integrace, se nesmějí prezentovat jako dostupný závazek před vlastním akceptačním ověřením.
+Chat poskytuje podklady pro rozhodnutí. Neprovádí automaticky schválení smlouvy, změnu rozpočtu ani jiný úkon vyhrazený odpovědné osobě.
 
 ## Metriky pro vedení
 
@@ -100,4 +101,4 @@ Technické metriky a obsahovou kvalitu vždy interpretují příslušní vlastn�
 
 ## Stav a další řízení
 
-Tento dokument je manažerský rozcestník, nikoli provozní návod. Rozsah a omezení popisuje [katalog funkcí](akb-stratos-reference-katalog-funkci-cs.md), bezpečnostní podmínky [podklad pro bezpečnostní posouzení](akb-stratos-bezpecnost-posouzeni-cs.md). Celou sadu, její zdrojové revize a otevřené podmínky obsahuje [předávací list](../handover/akb-stratos-predani-dokumentace-csu-cs.md).
+Rozsah řešení popisuje [katalog funkcí](akb-stratos-reference-katalog-funkci-cs.md), bezpečnostní podmínky [podklad pro bezpečnostní posouzení](akb-stratos-bezpecnost-posouzeni-cs.md). Dokumenty, odpovědnosti a podmínky převzetí jsou shrnuty v [předávacím listu](../handover/akb-stratos-predani-dokumentace-csu-cs.md).

@@ -12,7 +12,7 @@ source_system: git
 tags: [dokumentace, csu-pilot, predani, akb, stratos]
 documentation_profile: akb-application-docs-1
 documentation_kind: prehled
-document_revision: "1.0"
+document_revision: "1.1"
 target_environment: csu-test
 applies_to: "Příprava malého interního testovacího nasazení"
 reviewed_on: "2026-08-27"
@@ -22,11 +22,20 @@ reviewed_on: "2026-08-27"
 
 ## Co se předává
 
-Revize sady **1.0**, připravená **27. 8. 2026**, je podkladem pro posouzení vedením, bezpečnostní komunitou a IT správci. Zahrnuje návrh malého pilotu dostupného pouze ve vnitřní síti ČSÚ, nikoli z internetu. Nevydává návrh kapacit, příklad otázky ani popis funkce za potvrzený stav cílového prostředí.
+Dokumentační sada **1.1** ze dne **27. 8. 2026** popisuje AKB a STRATOS a požadavky na jejich malé testovací nasazení v ČSÚ. Pilot je dostupný **pouze ve vnitřní síti ČSÚ**, nikoli z internetu. Sada je určena vedení, bezpečnostnímu týmu, IT správcům, autorům dokumentace a pilotním uživatelům.
 
 Předání obsahuje osm věcných podkladů, tento rozcestník, metodiku, postup vložení a pět autorských vzorů. Markdown je kanonický zdroj; odvozená PDF a kontrolní součty slouží pro pohodlné čtení a kontrolu distribuční sady.
 
-**Stav:** dokumentační návrh. Nejde o nasazení, schválení provozu, přidělení externích oprávnění ani potvrzení, že sada už byla vložena a publikována v aplikaci AKB. Vložení se dokládá samostatným protokolem s ID dokumentů a verzí.
+**Určení:** posouzení a příprava pilotu. Kapacity jsou návrhem k potvrzení IT ČSÚ. Konkrétní vydání aplikací, přístupy, provozní odpovědnosti a výsledky ověření se zaznamenají při převzetí instalace. Dokumenty se v AKB zpřístupní až po obsahovém schválení a nastavení příjemců.
+
+## Rozsah řešení
+
+- **AKB** spravuje dokumenty, přílohy, pravidla, vyhledávání a citované odpovědi chatu.
+- **Budget & Contract** spravuje rozpočty, finanční plány, zakázky a smluvní evidenci.
+- **ProjectFlow** spravuje projekty, milníky, rizika, rozhodnutí a stav portfolia.
+- **ArchFlow** spravuje potřeby, jejich posouzení a návaznost na plánování.
+
+STRATOS zajišťuje společné prostředí svých aplikací, správu přístupů a manažerské přehledy. AKB s ním spolupracuje přes zabezpečená rozhraní. Jednotné přihlášení nemění rozdělení odpovědností ani oprávnění k datům.
 
 ## Kudy začít
 
@@ -53,21 +62,9 @@ Autorské vzory jsou rovnocennou součástí sady, ale **nejsou schválenými pr
 
 ## Identita, revize a přílohy
 
-Stálé identifikátory jsou uvedeny v YAML každého dokumentu a ve strojové inventuře `akb-stratos-dokumentacni-sada.json`. Inventura také zachycuje původní názvy před sjednocením. Při aktualizaci již vložených podkladů se musí použít jejich existující identita; samotné přejmenování nesmí vytvořit duplicitu.
+Stálé identifikátory jsou uvedeny v metadatech každého dokumentu a v [seznamu souborů sady](akb-stratos-dokumentacni-sada.json). Při aktualizaci již vložených podkladů se použije existující identita dokumentu a založí jeho nová verze.
 
 Revize dokumentace není totéž co release aplikace. Přiložené PDF musí vždy odpovídat stejné revizi MD; má vlastní hash a dohledatelný zdroj. Distribuční souhrnné PDF není novou autoritou nad jednotlivými dokumenty. Při importu se nemá indexovat společně se všemi originály jako další nezávislý zdroj týchž faktů.
-
-## Z čeho sada vychází
-
-Kontrola vychází z lokálních repozitářových podkladů:
-
-- AKB baseline commit `48c4637e2257731341ae511841d723a8dbe904e0`: standardní architektura, bezpečnost, provoz, integrační profily, dokumentové UI a konverze náhledů.
-- STRATOS baseline commit `32a47f74b8f3a16111db8a203df82a575545596e`: `docs/03_ARCHITECTURE.md`, `docs/05_SECURITY.md`, `docs/09_DEPLOYMENT.md`, `docs/10_OPERATIONS.md`, `docs/16_PRODUCT_SUITE.md`.
-- Rozpracované předávací texty byly v této revizi sjednoceny a doplněny. Baseline SHA nejsou tvrzením o aktuálně běžící produkci ani o commitu nově připravených textů.
-
-Dokumenty STRATOS `docs/60_STRATOS_AKB_INTEGRATION_AND_SECURITY_GUIDE.md` a `docs/62_AKB_DOCUMENTATION_SUITE_TASK.md` nebyly v dostupném pracovním stromu při přípravě nalezeny. Vlastník STRATOS je musí poskytnout nebo potvrdit náhradní autoritativní podklady před instalační akceptací. AKB je nenahrazuje smyšleným kontraktem.
-
-Současná podpora Markdownu, konverze Office a inventury byla ověřována také v `services/ingestion-service/renditions/pdf.py`, `apps/web/src/features/documents/document-detail.tsx` a `tools/okf_profile.py`. Jde o kontrolu implementace, nikoli provedený test cílového ČSÚ prostředí.
 
 ## Co je nutné doplnit před instalací
 
@@ -82,7 +79,7 @@ Současná podpora Markdownu, konverze Office a inventury byla ověřována tak�
 | Metodika, skutečné názvy rolí a kontakty | vlastníci dokumentace | věcné potvrzení a publikace |
 | Import této sady do AKB | oprávněný správce dokumentace | ID/verze, scan, citace, stažení a test čtenáře |
 
-AKB může být nasazeno bez živých doménových dotazů Director Copilot, ale tím automaticky nezmizí závislost podporovaného profilu na Access Governance. Skutečný standalone režim bez STRATOS musí mít zvlášť doložený podporovaný způsob autorizace; neověřená hlavička ani mock nejsou náhradou.
+Pilot může používat jen dokumentové funkce AKB, nebo také živé dotazy do Budgetu, ProjectFlow a ArchFlow. Obě varianty potřebují ověřenou identitu a centrální správu přístupů. Samostatná instalace bez STRATOS Access Governance není předmětem této sady.
 
 ## Doporučené pořadí převzetí
 

@@ -12,7 +12,7 @@ source_system: git
 tags: [dokumentace, csu-pilot, provoz, sprava, akb, stratos]
 documentation_profile: akb-application-docs-1
 documentation_kind: provoz
-document_revision: "1.0"
+document_revision: "1.1"
 target_environment: csu-test
 applies_to: "Návrh pilotu; konkrétní release se určí při převzetí"
 reviewed_on: "2026-08-27"
@@ -26,7 +26,7 @@ reviewed_on: "2026-08-27"
 
 ČSÚ IT provozuje infrastrukturu a společné platformní služby. AKB tým provozuje AKB a jeho dokumentové workflow. STRATOS tým provozuje STRATOS, Budget, ProjectFlow a ArchFlow. Každý tým odpovídá za vlastní release, databázové migrace a incidenty své aplikace.
 
-AKB ani STRATOS nemají používat domácí DNS jména, konfiguraci ani identity z referenčního prostředí. Každé prostředí ČSÚ dostane samostatné databáze, bucket, OIDC klienty, service identities, monitoring labels a zálohovací sadu.
+Každé prostředí ČSÚ má vlastní interní DNS, konfiguraci, databáze, objektový bucket, OIDC klienty, účty služeb, označení v monitoringu a zálohovací sadu. Údaje ani přístupové klíče se nesdílejí mezi testovacím a ostrým prostředím.
 
 ## Denní provozní kontrola
 

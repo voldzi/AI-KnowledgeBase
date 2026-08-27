@@ -12,7 +12,7 @@ source_system: git
 tags: [dokumentace, import, predani, akb]
 documentation_profile: akb-application-docs-1
 documentation_kind: provoz
-document_revision: "1.0"
+document_revision: "1.1"
 target_environment: obecne
 applies_to: "Řízené vložení dokumentační sady do AKB"
 reviewed_on: "2026-08-27"
@@ -22,11 +22,9 @@ reviewed_on: "2026-08-27"
 
 ## Předpoklady
 
-Potřebujete oprávnění k vložení dokumentu v cílovém prostředí, určeného vlastníka, schválený rozsah příjemců a zdravou příjmovou cestu včetně skeneru. Publikaci provádí pouze oprávněná role. Pouhá přítomnost souboru v Gitu ani v lokálním vývojářském indexu Chroma neznamená vložení do aplikace AKB.
+Potřebujete oprávnění k vložení dokumentů, funkční skener a schválené publikum. Před založením konceptu vyberte z adresáře gestora a odlišného schvalovatele. Stejný účet v obou rolích zablokuje odeslání; kontrolu neobcházejte ani jako administrátor.
 
-Současný formulář nového dokumentu vyžaduje gestora a odlišného schvalovatele již při založení konceptu. Předem určete dvě odpovědné osoby z adresáře. Stejný účet v obou rolích zablokuje odeslání; tuto kontrolu neobcházejte ani administrátorským účtem.
-
-Přehled dodávaných dokumentů je v [předávacím listu](../handover/akb-stratos-predani-dokumentace-csu-cs.md); strojová inventura je v `akb-stratos-dokumentacni-sada.json` vedle něj. Inventura není spustitelný importní manifest pro produkci a neobsahuje přihlašovací údaje.
+Dokumenty uvádí [předávací list](../handover/akb-stratos-predani-dokumentace-csu-cs.md) a přiložená inventura `akb-stratos-dokumentacni-sada.json`. Inventura není příkazem k importu. Předání souborů neznamená jejich zveřejnění; publikovat smí pouze oprávněná osoba.
 
 ## 1. Ověřte obsah a duplicity
 
@@ -39,7 +37,7 @@ Přehled dodávaných dokumentů je v [předávacím listu](../handover/akb-stra
 
 Použijte aktuální dokumentové UI nebo dokumentované autentizované intake API. Každý soubor projde validací a ClamAV. Při `FOUND`, chybě nebo timeoutu se dokument nesmí považovat za čistý ani zpřístupnit.
 
-Hostitelské nástroje `tools/import_docs_folder.py` a `tools/import_original_pdf_versions.py` slouží pouze k inventuře a dry-run; jejich mutační režim je zrušen. Neobcházejte aplikaci přímým zápisem do databáze, S3, indexu nebo manipulací se stavem skenu.
+Dokumenty vkládejte pouze přes autorizované rozhraní AKB. Přímý zápis do databáze, objektového úložiště nebo indexu nenahrazuje kontrolovaný příjem a není přípustnou cestou publikace.
 
 MD je originál. Má-li být dostupné PDF, použijte dodaný odvozený soubor stejné revize a svázání s přesnou verzí zdroje dostupné v řízeném workflow. Pokud aktuální obrazovka nepodporuje správnou vazbu, neřešte to dvěma nesouvisejícími publikovanými kopiemi; ponechte PDF v distribučním balíčku do vyřešení vazby.
 
@@ -54,7 +52,7 @@ Přílohy, PDF a formuláře musí být spojeny s přesnou verzí. U nové reviz
 - Návrhy a nevyplněné šablony nezpřístupňujte automaticky všem zaměstnancům.
 - Pro schválenou metodiku a vzory určete cílové autory; ověřte jejich čitelnost i chování Chatu.
 - U dokumentů určených externí firmě ověřte konkrétní grant a Information Policy včetně příloh. Nerušte užší omezení jiných dokumentů.
-- Jedno schválení sady není blanket oprávnění publikovat další provozní, právní nebo bezpečnostní podklady.
+- Schválení se vztahuje jen na určené dokumenty a verze, nikoli na další provozní, právní nebo bezpečnostní podklady.
 
 Po věcné kontrole provede oprávněná osoba odpovídající schválení a publikaci. Běžné manuály nevyžadují krok „Navrhnout pravidla“ v Controlled Rules. Publikace metodiky nepublikuje automaticky dokumenty vytvořené podle ní.
 

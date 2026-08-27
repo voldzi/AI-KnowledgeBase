@@ -12,7 +12,7 @@ source_system: git
 tags: [dokumentace, csu-pilot, bezpecnost, akb, stratos]
 documentation_profile: akb-application-docs-1
 documentation_kind: bezpecnost
-document_revision: "1.0"
+document_revision: "1.1"
 target_environment: csu-test
 applies_to: "Návrh pilotu; konkrétní release se určí při převzetí"
 reviewed_on: "2026-08-27"
@@ -26,10 +26,12 @@ Dokument umožňuje vedení a bezpečnostní komunitě posoudit podmínky pilotu
 
 ## Bezpečnostní principy
 
+V tomto dokumentu znamená **oprávnění (capability)** povolení konkrétního úkonu, **rozsah (scope)** vymezení dostupných dat a **Information Policy** pravidla nakládání s konkrétním obsahem. **Fail-closed** znamená, že při neověřeném oprávnění nebo nedoloženém výsledku aplikace chráněný obsah nevydá.
+
 1. **Určený vlastník dat.** Dokumenty, živá data, oprávnění a audit mají určenou autoritu. Akceptace má ověřit, že nevznikají neřízené kopie cizích dat.
 2. **Nejnižší nutné oprávnění.** Přístup je průnik aktivní identity, členství, capability, scope, audience, klasifikace a Information Policy.
 3. **Fail-closed.** Nejistota v identitě, zdroji, pravidle, stránkování nebo integraci nevede k domyšlené odpovědi ani k širšímu přístupu.
-4. **Dohledatelnost bez úniku obsahu.** Audit a telemetrie nesou technické metadata a correlation ID, nikoli soubory, prompty, odpovědi či credentials.
+4. **Dohledatelnost bez úniku obsahu.** Audit a telemetrie nesou technická metadata a correlation ID, nikoli soubory, prompty, odpovědi či přístupové údaje.
 5. **Obnovitelnost.** Kanonická data se zálohují; indexy se obnovují kontrolovaně z kanonických zdrojů.
 
 ## Hlavní kontrolní oblasti
@@ -74,9 +76,4 @@ Dokument umožňuje vedení a bezpečnostní komunitě posoudit podmínky pilotu
 5. Aktivní monitoring, alerty, zálohy a izolovaný restore test.
 6. Záznam o release SHA, image identitě, konfiguraci bez secret hodnot a známých omezeních pilotu.
 
-## Navazující podklady
-
-- [Infrastruktura pilotu](../deployment/akb-stratos-instalace-infrastruktura-pilotu-csu-cs.md).
-- [Obnova a kontinuita](../deployment/akb-stratos-bezpecnost-obnova-pilotu-csu-cs.md).
-- [Předávací list a zdrojové podklady](../handover/akb-stratos-predani-dokumentace-csu-cs.md).
-- Detailní podklady mimo předávací sadu: AKB `docs/security.md`, `docs/security/`, `docs/integration/`, `docs/CONTRACTS/`; STRATOS `docs/05_SECURITY.md`.
+**Navazující podklady:** [Infrastruktura pilotu](../deployment/akb-stratos-instalace-infrastruktura-pilotu-csu-cs.md), [obnova a kontinuita](../deployment/akb-stratos-bezpecnost-obnova-pilotu-csu-cs.md), [předávací list a podmínky převzetí](../handover/akb-stratos-predani-dokumentace-csu-cs.md).

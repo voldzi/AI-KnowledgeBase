@@ -12,7 +12,7 @@ source_system: git
 tags: [dokumentace, csu-pilot, instalace, akceptace, akb, stratos]
 documentation_profile: akb-application-docs-1
 documentation_kind: instalace
-document_revision: "1.0"
+document_revision: "1.1"
 target_environment: csu-test
 applies_to: "Návrh pilotu; konkrétní release se určí při převzetí"
 reviewed_on: "2026-08-27"
@@ -45,7 +45,7 @@ Před nasazením se ověří, že z uživatelské VLAN jsou dostupné jen intern
 
 ## Fáze 1: AKB bez živých doménových integrací
 
-Před startem potvrďte podporovaný profil přístupové projekce a Information Policy. Samostatné OIDC nestačí k nahrazení STRATOS Access Governance. Pokud není tato závislost vyřešena, instalaci nepřijímejte jako funkční standalone provoz.
+Před startem ověřte centrální přístupovou projekci a Information Policy ze STRATOS. Samotné přihlášení přes OIDC nenahrazuje správu oprávnění. Dokumentové funkce se zpřístupní až po úspěšném ověření této závislosti.
 
 Vlastník AKB provede nasazení přes neměnný release z ověřeného commitu. Build nesmí poprvé vznikat na cílovém produkčním hostiteli. Konfigurace se předává výhradně chráněným mechanismem prostředí; `.env`, tokeny, klientské secrety a privátní klíče nepatří do repozitáře ani image.
 
@@ -83,7 +83,7 @@ Akceptační dotazy se provádějí vždy pod reálným pilotním uživatelem:
 | --- | --- | --- |
 | Dokumenty | „Kde najdu formulář pro zahraniční cestu?“ | citovatelný dokument nebo bezpečný nedostatek zdroje |
 | Řízená pravidla | „Jaký je limit průzkumu trhu?“ | správná verze, účinnost, precedence a citace |
-| Budget | „Jaký má IT rozpočet na rok 2025?“ | pouze autorizovaný rozsah, viditelná neúplnost, pokud existuje |
+| Budget | „Jaký má IT rozpočet na letošní rok?“ | pouze autorizovaný rozsah, viditelná neúplnost, pokud existuje |
 | ProjectFlow | „Jaký je stav projektového portfolia?“ | pouze autorizované projekty a živý zdroj |
 | ArchFlow | „Jaké potřeby čekají na posouzení?“ | pouze povolená data nebo bezpečný `no_data`/`denied` |
 
@@ -122,8 +122,8 @@ Při ukončení instalace předají vlastníci aplikací společný záznam obsa
 - ověření zálohy, obnovy, monitoringu a alertů;
 - známá omezení, odpovědné osoby a postup eskalace incidentu.
 
-## Zdroje aktuálního stavu
+## Navazující postupy
 
-Tento runbook vychází z aktuálních AKB dokumentů `docs/deployment/`, `docs/security.md`, `docs/observability.md` a `docs/OPERATIONS/backup-restore.md` a z aktuálních STRATOS dokumentů `docs/03_ARCHITECTURE.md`, `docs/05_SECURITY.md`, `docs/09_DEPLOYMENT.md` a `docs/10_OPERATIONS.md` v repozitáři STRATOS.
-
-Zadání označovaná jako `docs/60_STRATOS_AKB_INTEGRATION_AND_SECURITY_GUIDE.md` a `docs/62_AKB_DOCUMENTATION_SUITE_TASK.md` nebyla při přípravě 27. 8. 2026 v dostupném pracovním stromu STRATOS nalezena. Po jejich zpřístupnění je potřeba provést věcnou kontrolu a zapracovat případné rozdíly před ostrým nasazením. Přesné podklady a otevřené body jsou v [předávacím rozcestníku](../handover/akb-stratos-predani-dokumentace-csu-cs.md).
+- [Provoz a správa pilotu](akb-stratos-provoz-pilot-csu-cs.md).
+- [Bezpečnost a obnova pilotu](akb-stratos-bezpecnost-obnova-pilotu-csu-cs.md).
+- [Předávací list a odpovědnosti](../handover/akb-stratos-predani-dokumentace-csu-cs.md).

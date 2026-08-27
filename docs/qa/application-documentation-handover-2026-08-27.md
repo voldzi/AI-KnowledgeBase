@@ -28,9 +28,10 @@ jako nezávislý zdroj.
 - Současné stahování zdroje vrací původní MD. Dodané PDF je připravený
   odvozený výstup; tímto úkolem nebyl přidán automatický MD-to-PDF export.
 
-Inventura: [dokumentační sada](../handover/akb-stratos-dokumentacni-sada.json).
-Použité baseline a chybějící integrační podklady STRATOS jsou zaznamenány
-v [předávacím listu](../handover/akb-stratos-predani-dokumentace-csu-cs.md).
+Aktuální zákaznická inventura: [dokumentační sada](../handover/akb-stratos-dokumentacni-sada.json).
+Interní záznam původního importu včetně ID a podkladů je oddělen v
+[evidenci importu](application-documentation-import-state-2026-08-27.json).
+Tento QA protokol ani evidence importu se zákazníkovi nepředávají.
 
 ## Ověření v aplikaci
 
@@ -66,7 +67,7 @@ databáze, S3 ani indexu nebyl použit.
 
 - [Metodika tvorby dokumentace](https://stratos.zeleznalady.cz/akb/documents/doc_4485b317129d4826b50de62cbb3c186a)
 - [Předávací list](https://stratos.zeleznalady.cz/akb/documents/doc_a855194f747748b89c3f8eb9f3bbbca2)
-- Ostatní vazby na soubory a ID: [inventura sady](../handover/akb-stratos-dokumentacni-sada.json).
+- Ostatní vazby na soubory a ID: [interní evidence importu](application-documentation-import-state-2026-08-27.json).
 
 Identifikátory `external_ref` jsou zachovány ve zdrojovém YAML a v explicitním
 štítku. Formulář nepřenesl všechny doplňkové položky YAML do samostatných

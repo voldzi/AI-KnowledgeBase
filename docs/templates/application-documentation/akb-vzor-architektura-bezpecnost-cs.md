@@ -12,7 +12,7 @@ source_system: git
 tags: [dokumentace, vzor, autorstvi, architektura, bezpecnost]
 documentation_profile: akb-application-docs-1
 documentation_kind: vzor
-document_revision: "1.0"
+document_revision: "1.1"
 target_environment: obecne
 applies_to: "Vzor pro autory; není bezpečnostním posudkem"
 reviewed_on: "2026-08-27"

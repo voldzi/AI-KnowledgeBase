@@ -12,7 +12,7 @@ source_system: git
 tags: [dokumentace, csu-pilot, infrastruktura, akb, stratos]
 documentation_profile: akb-application-docs-1
 documentation_kind: instalace
-document_revision: "1.0"
+document_revision: "1.1"
 target_environment: csu-test
 applies_to: "Návrh pilotu; konkrétní release se určí při převzetí"
 reviewed_on: "2026-08-27"
@@ -20,7 +20,7 @@ reviewed_on: "2026-08-27"
 
 # AKB a STRATOS: infrastruktura interního pilotu ČSÚ
 
-> Předávací návrh k posouzení ČSÚ IT. Kapacity nejsou naměřeným minimem ani potvrzením připravenosti prostředí. Výchozí stav dokumentu v AKB je koncept.
+> Návrh pro posouzení ČSÚ IT. Uvedené kapacity se potvrdí podle rozsahu pilotu a měřením; nejde o naměřené minimum.
 
 ## Účel a hranice
 
@@ -54,9 +54,9 @@ Databáze, objektové úložiště, vyhledávací indexy, ClamAV, Redis, intern�
 
 ## Varianty pilotu
 
-### A. AKB samostatně
+### A. Dokumentové funkce AKB bez živých doménových dat
 
-Varianta bez živých dat Budgetu, ProjectFlow a ArchFlow. Vyžaduje AKB, OIDC, PostgreSQL, objektové úložiště, vyhledávací služby, scanner a schválenou embedding službu. Vypnutí Director Copilotu samo neodstraňuje závislost na centrální přístupové projekci a Information Policy. Plně samostatný provoz bez STRATOS Access Governance musí vlastník AKB doložit podporovaným autorizačním profilem; není zde prohlášen za hotový instalační režim. Mock autorizace není přípustnou náhradou.
+Varianta pro správu dokumentů, hledání a citované odpovědi bez živých dotazů do Budgetu, ProjectFlow a ArchFlow. Vyžaduje AKB, OIDC, PostgreSQL, objektové úložiště, vyhledávací služby, scanner a schválenou embedding službu. Přístupová oprávnění a Information Policy poskytuje centrální správa přístupů STRATOS. Tato varianta tedy není plně samostatnou instalací bez STRATOS Access Governance; taková instalace není předmětem této sady.
 
 ### B. AKB a STRATOS integrovaně
 
