@@ -20,13 +20,17 @@ export function isSameAppRscNavigation(
 
   try {
     const app = new URL(buildPublicAppUrl(config, "/"));
-    const referer = new URL(headers.get("referer") ?? "");
-    const basePath = app.pathname.replace(/\/+$/, "");
     const origin = headers.get("origin");
+    if (origin !== null && origin !== app.origin) return false;
+    const rawReferer = headers.get("referer");
+    // AKB's no-referrer policy omits this even for same-origin router.refresh().
+    // Fetch Metadata classifies transport; the caller still validates the session.
+    if (rawReferer === null) return true;
+    const referer = new URL(rawReferer);
+    const basePath = app.pathname.replace(/\/+$/, "");
     return (
       referer.origin === app.origin &&
       !referer.username && !referer.password &&
-      (!origin || origin === app.origin) &&
       (!basePath || referer.pathname === basePath || referer.pathname.startsWith(`${basePath}/`))
     );
   } catch {

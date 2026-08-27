@@ -9,6 +9,7 @@ import { GET as login } from "../src/app/api/auth/login/route";
 import { GET as sso } from "../src/app/api/auth/sso/route";
 import { isSameAppRscNavigation } from "../src/lib/auth/login-navigation";
 import { identityFixture, managedConfig, managedEnv, SUBJECT } from "./helpers/managed-identity";
+import nextConfig from "../next.config";
 
 const DAY = 86_400_000;
 const now = Date.UTC(2026, 7, 27, 10);
@@ -91,7 +92,17 @@ describe("central SSO redirect guard", () => {
     "sec-fetch-site": "same-origin",
     "sec-fetch-mode": "cors",
     "sec-fetch-dest": "empty",
-    referer: "https://akb.example/akb/documents/doc_test",
+  });
+
+  it("supports the configured no-referrer policy without weakening fetch metadata", async () => {
+    const configuredHeaders = await nextConfig.headers!();
+    assert.ok(configuredHeaders.some((entry) => entry.headers.some((header) =>
+      header.key.toLowerCase() === "referrer-policy" && header.value === "no-referrer")));
+    const headers = rscHeaders();
+    assert.equal(headers.get("referer"), null);
+    assert.equal(isSameAppRscNavigation(managedConfig(), headers), true);
+    headers.set("referer", "https://akb.example/akb/documents/doc_test");
+    assert.equal(isSameAppRscNavigation(managedConfig(), headers), true);
   });
 
   it("distinguishes an internal RSC refresh from a new application entry", () => {
@@ -101,7 +112,7 @@ describe("central SSO redirect guard", () => {
     fullNavigation.set("sec-fetch-dest", "document");
     fullNavigation.set("sec-fetch-mode", "navigate");
     assert.equal(isSameAppRscNavigation(config, fullNavigation), false);
-    for (const header of ["rsc", "sec-fetch-site", "sec-fetch-mode", "sec-fetch-dest", "referer"]) {
+    for (const header of ["rsc", "sec-fetch-site", "sec-fetch-mode", "sec-fetch-dest"]) {
       const missing = rscHeaders();
       missing.delete(header);
       assert.equal(isSameAppRscNavigation(config, missing), false, header);
@@ -120,12 +131,13 @@ describe("central SSO redirect guard", () => {
       "http://akb.example/akb/chat",
       "/akb/chat",
       "null",
+      "",
     ]) {
       const headers = rscHeaders();
       headers.set("referer", referer);
       assert.equal(isSameAppRscNavigation(config, headers), false, referer);
     }
-    for (const [name, value] of [["rsc", "0"], ["sec-fetch-site", "same-site"], ["sec-fetch-site", "cross-site"], ["sec-fetch-mode", "no-cors"], ["origin", "null"], ["origin", "https://foreign.example"]]) {
+    for (const [name, value] of [["rsc", "0"], ["sec-fetch-site", "same-site"], ["sec-fetch-site", "cross-site"], ["sec-fetch-mode", "no-cors"], ["origin", "null"], ["origin", ""], ["origin", "https://foreign.example"]]) {
       const headers = rscHeaders();
       headers.set(name, value);
       assert.equal(isSameAppRscNavigation(config, headers), false, `${name}=${value}`);
@@ -136,6 +148,7 @@ describe("central SSO redirect guard", () => {
     const config = managedConfig();
     config.oidc!.redirectUri = "https://chat.example/api/auth/callback";
     const headers = rscHeaders();
+    assert.equal(isSameAppRscNavigation(config, headers), true);
     headers.set("referer", "https://chat.example/chat?thread=conv_test");
     headers.set("sec-fetch-mode", "same-origin");
     assert.equal(isSameAppRscNavigation(config, headers), true);

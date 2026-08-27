@@ -71,11 +71,14 @@ revokes the prior browser session; it does not merge accounts by login/email.
 Same-app RSC navigation and `router.refresh()` do not start that additional
 top-level OIDC synchronization. They still resolve the opaque server session
 and current access projection, including expiry, revocation and required
-identity revalidation. The RSC flag, same-origin Fetch Metadata and in-app
-referrer classify transport only; none of them grants access. A full document
-navigation, sibling-application entry or missing/foreign navigation metadata
-keeps the central synchronization guard. This prevents a successful mutation
-from being followed by an OIDC redirect inside a background refresh.
+identity revalidation. The RSC flag and same-origin Fetch Metadata classify
+transport only; none of them grants access. AKB retains `Referrer-Policy:
+no-referrer`, so an absent `Referer` is expected for these background requests.
+When present, `Referer` must point inside this application and `Origin` must
+match its public origin. Full document navigation, including sibling-application
+entry, and missing/foreign Fetch Metadata keep the central synchronization
+guard. This prevents a successful mutation from being followed by an OIDC
+redirect inside a background refresh without weakening session authorization.
 Local logout does not prove immediate revocation of every other application's
 session. Test the actual propagation with IAM.
 
