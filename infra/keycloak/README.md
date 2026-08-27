@@ -24,8 +24,8 @@ The roles mirror `docs/CONTRACTS/06_SECURITY_AUTHZ_MODEL.md`:
 - `reviewer`
 - `reader`
 - `auditor`
-- `service_aiip`
 - `service_ingestion`
+- `service_aiip`
 - `service_rag`
 - `service_llm_gateway`
 - `service_evaluation`
@@ -118,8 +118,16 @@ with trusted client `svc-ingestion` and exact grants
 `authz|audit|documents-read|ingestion-status`; never add those grants to
 `aiip-service`.
 
-Provision the separate `svc-akb-web-ingestion` web-to-ingestion transport
-identity with role `service_akb_web_ingestion` and audience `akl-api`.
+Provision the separate AKB web-to-ingestion transport identity as well:
+
+```bash
+AIIP_CLIENT_ID=svc-akb-web-ingestion \
+AIIP_ROLE=service_akb_web_ingestion \
+AIIP_AUDIENCE=akl-api \
+AIIP_SECRET_FILE=/srv/akl/env/svc-akb-web-ingestion.client-secret \
+SERVICE_CLIENT_NAME="AKB Web Ingestion Transport" \
+./scripts/ensure_aiip_service_client.sh
+```
 
 Mount this secret read-only only into the AKB web container. The ingestion
 service validates the exact `azp`, service-account username, audience and role;
