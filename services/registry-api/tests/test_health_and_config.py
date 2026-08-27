@@ -80,6 +80,24 @@ def test_production_rejects_unknown_service_route():
         )
 
 
+def test_production_ignores_retired_aiip_route_without_granting_it():
+    settings = _production_settings(
+        AKL_SERVICE_CLIENT_ROUTE_GRANTS=(
+            "akb-rag-service=authz|audit|idempotency,"
+            "stratos-akb-service=stratos-budget-upload,"
+            "svc-budget-controlled-rules=controlled-rules-read,"
+            "svc-ingestion=authz|audit|documents-read|ingestion-status,"
+            "service_aiip=aiip-upload"
+        ),
+        AKL_TRUSTED_SERVICE_CLIENT_IDS=(
+            "akb-rag-service,stratos-akb-service,svc-budget-controlled-rules,"
+            "svc-ingestion,service_aiip"
+        ),
+    )
+
+    assert settings.service_route_grants["service_aiip"] == frozenset()
+
+
 def test_production_requires_explicit_service_client_and_route_allowlists():
     with pytest.raises(ValidationError, match="AKL_TRUSTED_SERVICE_CLIENT_IDS"):
         _production_settings(AKL_TRUSTED_SERVICE_CLIENT_IDS="")
