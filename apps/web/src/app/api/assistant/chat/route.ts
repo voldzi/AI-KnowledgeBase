@@ -106,6 +106,7 @@ async function handlePost(request: NextRequest) {
     const config = getAklConfig();
     const directorConfig = getDirectorCopilotConfig(config);
     const assistantRoute = routeAssistantMessage(message, responseLanguage, requestContext);
+    const documentationRequest = assistantRoute.documentKnowledge.applicationDocumentation;
     const assistantGoal = assistantRoute.queryPlan.goal;
     const directorQuery = resolveConversationQuery({
       message,
@@ -155,7 +156,7 @@ async function handlePost(request: NextRequest) {
         : undefined;
       const directorPromise: Promise<AssistantChatResponse> = directorConfig.enabled
         ? runDirectorCopilotV2Chat({
-            message,
+            message: documentationRequest?.liveMessage ?? message,
             conversationId,
             responseLanguage,
             actorContext: context,
@@ -187,14 +188,15 @@ async function handlePost(request: NextRequest) {
             error: new Error("DIRECTOR_COPILOT_V2_DISABLED"),
             queryState: directorQueryState,
           }));
-      const analyticalGoal = isAnalyticalAssistantGoal(assistantGoal);
+      const includeDocumentEvidence = isAnalyticalAssistantGoal(assistantGoal)
+        || Boolean(documentationRequest?.liveMessage);
       const documentResultPromise: Promise<{
         response: AssistantChatResponse | null;
         unavailable: boolean;
-      }> = analyticalGoal
+      }> = includeDocumentEvidence
         ? (async () => {
             const documentRoute = routeAssistantMessageForRag(
-              message,
+              documentationRequest?.documentMessage ?? message,
               responseLanguage,
               requestContext,
             );
@@ -203,7 +205,7 @@ async function handlePost(request: NextRequest) {
                 {
                   user_id: context.subjectId,
                   conversation_id: conversationId,
-                  message,
+                  message: documentationRequest?.documentMessage ?? message,
                   context: ragContextForAssistantRoute({
                     ...requestContext,
                     assistant_goal: assistantGoal,
@@ -233,7 +235,7 @@ async function handlePost(request: NextRequest) {
         directorPromise,
         documentResultPromise,
       ]);
-      const composedResponse = analyticalGoal
+      const composedResponse = includeDocumentEvidence
         ? composeMixedEvidenceAssistantResponse({
             directorResponse,
             documentResponse: documentResult.response,
@@ -255,7 +257,7 @@ async function handlePost(request: NextRequest) {
               {
                 ...directorCopilotV2PersistenceMetadata(composedResponse, context),
                 assistant_goal: assistantGoal,
-                answer_composition: analyticalGoal
+                answer_composition: includeDocumentEvidence
                   ? "live_and_document_evidence"
                   : "live_data",
               },

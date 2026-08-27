@@ -2,7 +2,7 @@
 
 Date: 2026-08-27. Implementation worktree: `codex/document-approval-workspace`,
 based on `957c1d5e445970568e46c61a78d9227b1ff4fcf7`.
-Status: locally verified, not committed, not deployed. This is not production
+Status: locally verified, consolidated as described below, not deployed. This is not production
 acceptance evidence or authorization to publish existing documents.
 
 ## Delivered Scope
@@ -95,6 +95,17 @@ No migration, SMTP credential, Keycloak grant or STRATOS modification is part
 of this increment. See `docs/ui/workflow-inbox.md` for the separately approved
 outbox/e-mail design.
 
-The managed Chroma index currently targets the original repository path, not
-this isolated worktree. Reindex the implemented branch after integration into
-that managed path; an original-path refresh does not index this new code.
+## Consolidation Into The Managed Repository
+
+The isolated work was preserved in commit
+`ff6128813e80162ac92decf1880e77f4c44aa424` and integrated as
+`af90137a38a73b2c7cc4a97f2ee949a11f8ce422` on
+`codex/chat-handover-readiness`, based on Gitea main
+`dbe8042be7581defc315fd9966b19204a496a5d4`. That baseline contains the
+verified production SHA above. The original worktree and its commit remain
+available; no production approval or publication was performed.
+
+The managed Chroma index targets the main repository directory, where the
+consolidated implementation is now present. See the follow-up
+[handover readiness verification](chat-handover-readiness-2026-08-27.md)
+for final local checks and outstanding production acceptance.

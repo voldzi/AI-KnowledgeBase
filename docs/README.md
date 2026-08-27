@@ -59,6 +59,12 @@ from the flat standard documents.
    - `OPERATIONS/immutable-docker-home-release.md`
    - `OPERATIONS/external-environment-runbook.md`
    - `OPERATIONS/disaster-recovery.md`
+   - `handover/akb-stratos-predani-dokumentace-csu-cs.md`
+   - `deployment/akb-stratos-instalace-infrastruktura-pilotu-csu-cs.md`
+   - `deployment/akb-stratos-instalace-prevzeti-pilotu-csu-cs.md`
+   - `deployment/akb-stratos-provoz-pilot-csu-cs.md`
+   - `deployment/akb-stratos-uzivatel-pilot-csu-cs.md`
+   - `deployment/akb-stratos-bezpecnost-obnova-pilotu-csu-cs.md`
 5. STRATOS shared integration:
    - `29_STRATOS_SHARED_LIBRARIES.md`
    - `ui/stratos-ui-adapter.md`
@@ -85,6 +91,16 @@ from the flat standard documents.
    - `ui/user-manual.md`
    - `security/standalone-and-stratos-integration.md`
    - `governance/documentation-lifecycle.md`
+10. Management and security overview:
+   - `executive/akb-stratos-prehled-pro-vedeni-cs.md`
+   - `executive/akb-stratos-reference-katalog-funkci-cs.md`
+   - `executive/akb-stratos-bezpecnost-posouzeni-cs.md`
+11. Application documentation authoring and handover:
+   - `how-to/akb-metodika-tvorba-dokumentace-aplikaci-cs.md`
+   - `how-to/akb-postup-vlozeni-predavaci-dokumentace-cs.md`
+   - `templates/application-documentation/`
+   - `handover/akb-stratos-dokumentacni-sada.json`
+   - `qa/chat-handover-readiness-2026-08-27.md`
 
 ## Active Documentation Homes
 

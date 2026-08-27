@@ -3748,6 +3748,7 @@ def _clarification_questions(
     questions: list[ClarificationQuestion] = []
     document_intent = _assistant_document_knowledge_intent(context)
     documented_task = document_intent in {
+        "application_documentation",
         "procedure",
         "resource",
         "support_channel",

@@ -1,15 +1,21 @@
 import type { AnswerMode } from "@/lib/types";
 import { semanticRegistryRetrievalHintsForText } from "@/lib/director-copilot/semantic-registry";
+import {
+  applicationDocumentationHints,
+  resolveApplicationDocumentationRequest,
+  type ApplicationDocumentationRequest,
+} from "./application-documentation-intent";
 
 import {
   answerModeForAssistantGoal,
   resolveAssistantUserGoal,
 } from "./user-goal";
 
-export const DOCUMENT_KNOWLEDGE_INTENT_VERSION = "document-knowledge-intent-1" as const;
+export const DOCUMENT_KNOWLEDGE_INTENT_VERSION = "document-knowledge-intent-2" as const;
 
 export type DocumentKnowledgeIntent =
   | "general"
+  | "application_documentation"
   | "procedure"
   | "resource"
   | "support_channel"
@@ -27,9 +33,11 @@ export interface DocumentKnowledgeIntentResolution {
   explicit: boolean;
   inherited: boolean;
   retrievalHints: string[];
+  applicationDocumentation: ApplicationDocumentationRequest | null;
 }
 
 const INTENT_ANSWER_MODES: Record<Exclude<DocumentKnowledgeIntent, "general">, AnswerMode> = {
+  application_documentation: "explain_process",
   procedure: "find_procedure",
   resource: "find_procedure",
   support_channel: "find_procedure",
@@ -41,6 +49,7 @@ const INTENT_ANSWER_MODES: Record<Exclude<DocumentKnowledgeIntent, "general">, A
 };
 
 const INTENT_RETRIEVAL_HINTS: Record<Exclude<DocumentKnowledgeIntent, "general">, string[]> = {
+  application_documentation: [],
   procedure: ["postup", "návod", "kroky", "podmínky"],
   resource: ["formulář", "žádost", "šablona", "vzor", "umístění"],
   support_channel: ["IT podpora", "hlášení problému", "incident", "servisní požadavek", "kontakt"],
@@ -55,7 +64,7 @@ const SUPPORT_SIGNAL = /\b(problem\w*|nefung\w*|poruch\w*|chyb\w*|incident\w*|po
 const SUPPORT_CHANNEL_SIGNAL = /\b(kde|kam|komu|naps\w*|nahlas\w*|hlasi\w*|obrat\w*|kontakt\w*|podpor\w*|helpdesk|service\s*desk)\b/;
 const RESOURCE_SIGNAL = /\b(formular\w*|sablon\w*|vzor\w*|zadost\w*|tiskopis\w*|manual\w*|priruck\w*|napoved\w*|odkaz\w*|soubor\w*|dokument\w*)\b/;
 const RESOURCE_ACTION_SIGNAL = /\b(kde|najd\w*|stahn\w*|otevr\w*|zisk\w*|vypln\w*)\b/;
-const OWNER_SIGNAL = /\b(?:komu|kam\s+se|na\s+koho|kontakt\w*|gestor\w*|vlastnik\w*|schvaluj\w*|odpovid\w*|resi\w*|spravuj\w*)\b|\bkdo\s+(?:je\s+)?(?:gestor\w*|vlastnik\w*|odpovedn\w*|schvaluj\w*|resi\w*|spravuj\w*)\b/;
+const OWNER_SIGNAL = /\b(?:komu|kam\s+se|na\s+koho|kontakt\w*|gestor\w*|vlastnik\w*|schvaluj\w*)\b|\bkdo\s+(?:je\s+)?(?:gestor\w*|vlastnik\w*|odpovedn\w*|odpovida\w*|schvaluj\w*|resi\w*|spravuj\w*)\b/;
 const RESPONSIBILITY_SIGNAL = /\b(odpovednost\w*|kompetenc\w*|pusobnost\w*|za\s+co\s+odpovid\w*|co\s+ma\s+na\s+starost)\b/;
 const DEADLINE_SIGNAL = /\b(?:do\s+kdy|od\s+kdy|jak\s+dlouho)\b|\bkdy\s+(?:musim|mame|ma|je|jsou|se)\b|\b(?:jaka|jaky|jake)\s+(?:je|jsou\s+)?(?:lhut\w*|termin\w*|periodicit\w*|platnost\w*|ucinnost\w*)\b/;
 const OBLIGATION_SIGNAL = /\b(co\s+musim|kdo\s+mus\w*|kdo\s+je\s+povinen|co\s+je\s+treba|co\s+potrebuj\w*|jake\s+doklad\w*|jake\s+nalezitost\w*|povinnost\w*|pozadavk\w*)\b/;
@@ -77,10 +86,6 @@ const DOMAIN_RETRIEVAL_HINTS: Array<{ signal: RegExp; hints: string[] }> = [
     signal: /\b(zahranicn\w*\s+cest\w*|sluzebn\w*\s+cest\w*|pracovn\w*\s+cest\w*|cestovn\w*\s+prikaz\w*|cestak\w*)\b/,
     hints: ["služební cesta", "zahraniční pracovní cesta", "cestovní příkaz", "vyúčtování cesty"],
   },
-  {
-    signal: /\b(it|informacn\w*\s+technolog\w*|pocitac\w*|tiskarn\w*|aplikac\w*)\b/,
-    hints: ["IT podpora", "hlášení incidentu", "servisní požadavek"],
-  },
 ];
 
 export function resolveDocumentKnowledgeIntent(
@@ -88,7 +93,11 @@ export function resolveDocumentKnowledgeIntent(
   context: Record<string, unknown> = {},
 ): DocumentKnowledgeIntentResolution {
   const normalized = normalizeDocumentKnowledgeText(message);
-  const detectedIntent = explicitDocumentKnowledgeIntent(normalized);
+  const applicationDocumentation = resolveApplicationDocumentationRequest(message, context);
+  const explicitIntent = explicitDocumentKnowledgeIntent(normalized);
+  const detectedIntent = applicationDocumentation && ["general", "obligation"].includes(explicitIntent)
+    ? "application_documentation"
+    : explicitIntent;
   const previousIntent = documentKnowledgeIntentFromContext(context);
   const inherited = Boolean(previousIntent && isDocumentKnowledgeFollowUp(normalized, detectedIntent));
   const intent = detectedIntent === "general" && inherited
@@ -99,13 +108,17 @@ export function resolveDocumentKnowledgeIntent(
     ? answerModeForAssistantGoal(goal)
     : INTENT_ANSWER_MODES[intent];
   const hints = intent === "general" ? [] : [...INTENT_RETRIEVAL_HINTS[intent]];
+  if (intent === "resource" && /\b(manual\w*|priruck\w*|navod\w*)\b/.test(normalized)) {
+    hints.splice(0, hints.length, "uživatelská příručka", "manuál", "návod", "umístění");
+  }
+  if (applicationDocumentation) hints.push(...applicationDocumentationHints(applicationDocumentation.topic));
   if (inherited && previousIntent && previousIntent !== "general" && previousIntent !== intent) {
     hints.push(...INTENT_RETRIEVAL_HINTS[previousIntent]);
   }
   for (const domain of DOMAIN_RETRIEVAL_HINTS) {
     if (domain.signal.test(normalized)) hints.push(...domain.hints);
   }
-  hints.push(...semanticRegistryRetrievalHintsForText(message, 4));
+  if (!applicationDocumentation) hints.push(...semanticRegistryRetrievalHintsForText(message, 4));
   return {
     version: DOCUMENT_KNOWLEDGE_INTENT_VERSION,
     intent,
@@ -114,6 +127,7 @@ export function resolveDocumentKnowledgeIntent(
     explicit: detectedIntent !== "general",
     inherited,
     retrievalHints: [...new Set(hints)].slice(0, 12),
+    applicationDocumentation,
   };
 }
 
@@ -155,6 +169,7 @@ function isDocumentKnowledgeFollowUp(
 function isDocumentKnowledgeIntent(value: unknown): value is DocumentKnowledgeIntent {
   return typeof value === "string" && [
     "general",
+    "application_documentation",
     "procedure",
     "resource",
     "support_channel",

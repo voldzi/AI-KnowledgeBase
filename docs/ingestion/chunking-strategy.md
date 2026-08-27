@@ -30,13 +30,24 @@ Chunker pracuje nad `ParserResult.blocks`. Každý blok obsahuje:
 - `char_end`,
 - typ bloku.
 
-TXT/MD parser rozpoznává Markdown nadpisy, `Čl. N`, `Article N`, `Odst. N` a jednoduché číslované nadpisy. PDF a DOCX parsery převádějí extrahovaný text na stejný blokový model.
+TXT parser rozpoznává `Čl. N`, `Article N`, `Odst. N` a jednoduché číslované
+nadpisy. MD používá strukturální CommonMark parser; rozpoznává i samostatné
+nadpisy článků a odstavců bez `#`. DOCX zachovává pořadí obsahu a hierarchii
+stylových nadpisů. PDF používá stejný výsledný blokový model.
+`page_number` je u MD a DOCX bez renderované mapy `null`; nesmí se dopočítat
+z pořadí chunku. MD rozsahy odpovídají původnímu textu, DOCX rozsahy
+odpovídají extrahovanému textu (`offset_basis=extracted_text`).
 
 ## Pravidla
 
 - Chunk se flushne při změně `section_path`.
 - Chunk se flushne při překročení `AKL_INGESTION_CHUNK_TARGET_CHARS`.
 - Blok větší než `AKL_INGESTION_MAX_CHUNK_CHARS` se rozdělí s překryvem `AKL_INGESTION_CHUNK_OVERLAP_CHARS`.
+- Výjimkou jsou tabulky s rozpoznanou hlavičkou: dělí se pouze mezi řádky,
+  s opakováním hlavičky a bez duplicitního překryvu řádků. Rozsah pokračování
+  odkazuje na jeho původní řádky, samostatná metadata na původní hlavičku.
+  Pokud se hlavička s jediným řádkem nevejde do maxima, zpracování skončí
+  `TABLE_ROW_EXCEEDS_CHUNK_LIMIT`; hodnoty se potichu nekrátí ani nepřesouvají.
 - `chunk_id` je deterministický hash z `document_version_id`, indexu chunku a `text_hash`.
 - `text_hash` je `sha256` normalizovaného textu.
 - Qdrant point id je UUID odvozené z `chunk_id`; kontraktové `chunk_id` zůstává v payloadu.

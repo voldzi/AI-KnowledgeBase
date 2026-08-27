@@ -10,6 +10,7 @@ import {
 } from "./semantic-catalog";
 import { semanticRegistrySourcesForText } from "./semantic-registry";
 import { matchesSemanticConcept } from "./semantic-matcher";
+import { resolveApplicationDocumentationRequest } from "../assistant/application-documentation-intent";
 
 export const CONVERSATION_QUERY_STATE_VERSION = "stratos-conversation-query-state-4" as const;
 const LEGACY_QUERY_STATE_VERSIONS = new Set([
@@ -193,11 +194,15 @@ export function resolveConversationQuery(input: {
   now?: Date;
 }): ResolvedConversationQuery {
   const now = input.now ?? new Date();
-  const normalized = normalizeSemanticText(input.message);
-  const previous = conversationQueryState(input.context?.stratos_query_state, now)
-    ?? legacyConversationQueryState(input.context ?? {}, now);
+  const documentation = resolveApplicationDocumentationRequest(input.message, input.context);
+  const documentOnly = Boolean(documentation && !documentation.liveMessage);
+  const normalized = normalizeSemanticText(documentation?.liveMessage ?? input.message);
+  const previous = documentOnly ? null : (
+    conversationQueryState(input.context?.stratos_query_state, now)
+    ?? legacyConversationQueryState(input.context ?? {}, now)
+  );
   const detectedMetrics = unique(
-    semanticMetricsForText(normalized),
+    documentOnly ? [] : semanticMetricsForText(normalized),
   );
   const explicitMetrics = hasAmbiguousPlanMeaning(normalized)
     && previous?.sources.length === 1
@@ -205,7 +210,7 @@ export function resolveConversationQuery(input: {
     ? detectedMetrics.filter((metric) => metric !== "budget.plan_amount")
     : detectedMetrics;
   const metricSources = unique(explicitMetrics.map(sourceForMetric));
-  const detectedSemanticSources = semanticSourcesForText(normalized);
+  const detectedSemanticSources = documentOnly ? [] : semanticSourcesForText(normalized);
   const registrySources = semanticRegistrySourcesForText(normalized);
   const projectFlowIsOnlyEntityMention = detectedSemanticSources.includes("projectflow")
     && !registrySources.includes("projectflow")
@@ -326,7 +331,7 @@ export function resolveConversationQuery(input: {
     recognized: sources.length > 0 && (!documentQuestion || LIVE_APPLICATION_SIGNAL.test(normalized)),
     inherited,
     pending_sources: pendingSemanticSources(sources),
-    clarification: planMeaningClarification(normalized, previous),
+    clarification: documentOnly ? null : planMeaningClarification(normalized, previous),
   };
 }
 

@@ -1,5 +1,6 @@
 import { resolveConversationQuery } from "@/lib/director-copilot/query-state";
 import { hasExplicitNonProcurementLegalTopic } from "@/lib/assistant/controlled-rule-answer";
+import { resolveApplicationDocumentationRequest } from "@/lib/assistant/application-documentation-intent";
 
 import type { DirectorCopilotIntent } from "./shared";
 
@@ -17,7 +18,8 @@ export function classifyDirectorCopilotV2Intent(
   message: string,
   context: Record<string, unknown> = {},
 ): DirectorCopilotIntent | null {
-  const normalized = normalizeForIntent(message);
+  const documentation = resolveApplicationDocumentationRequest(message, context);
+  const normalized = normalizeForIntent(documentation?.liveMessage ?? message);
   if (hasExplicitNonProcurementLegalTopic(message)) return null;
   const resolved = resolveConversationQuery({ message, context });
   if (!resolved.recognized) return null;

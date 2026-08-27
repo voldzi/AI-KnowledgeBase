@@ -126,15 +126,33 @@ Do not push directly to `main`.
 
 ## Local Fast Check
 
+Before resuming an old branch, inspect `git status`, `git worktree list` and
+fetch Gitea `origin`. The root working directory is not automatically updated
+when another worktree builds or deploys a release. Run the read-only guard:
+
+```bash
+python3 scripts/ci/check_working_baseline.py --base origin/main --production-sha <verified-full-production-sha>
+```
+
+It refuses a candidate missing either main or the supplied production commit.
+It does not fetch refs or discover production, change files, merge, reset, or
+authorize deployment. Obtain a fresh production SHA from the verified release;
+without the optional argument it explicitly reports `production_checked=false`.
+Keep useful work before rebasing or moving it to a new branch. Archive unique
+historical commits until reviewed; remove only branches demonstrably merged
+into main. A stale remote-tracking ref cannot prove current server state.
+
 The MacBook can provide fast developer feedback before the trusted Gitea run:
 
 ```bash
-scripts/ci/local-fast-check.sh --base origin/main
+scripts/ci/local-fast-check.sh --base origin/main --production-sha <verified-full-production-sha>
 ```
 
-The helper classifies the exact diff using the same fail-closed impact matrix
-as Gitea CI and runs independent Python and web checks in parallel. Use
-`--full` when the comparison base is uncertain. Use `--skip-install` only when
+The helper first runs the lineage guard, then classifies committed, staged,
+unstaged and untracked changes using the same fail-closed impact matrix as
+Gitea CI and runs independent Python and web checks in parallel. Use `--full`
+for broad verification after establishing a valid baseline; it does not bypass
+the lineage guard. Use `--skip-install` only when
 the local dependency environments are already current. The helper uses local
 development configuration only; it never reads production env files, sends
 credentials to a remote host, or authorizes a deployment.
@@ -199,7 +217,7 @@ fail-closed release controls while avoiding repeated merge/build/deploy loops.
    is unavailable, use:
 
    ```bash
-   "/Users/voldzi/Documents/Development/18 2026/chromadb/tools/chroma-dev.sh" \
+   "/Users/voldzi/Developer/18 2026/chromadb/tools/chroma-dev.sh" \
      reindex --root .
    ```
 

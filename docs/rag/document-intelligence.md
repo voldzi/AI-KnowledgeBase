@@ -102,6 +102,8 @@ hard-coded complete questions:
 - procedure and how-to requests;
 - form, template, file, or other resource location;
 - documented support and incident-reporting channels;
+- application overview, installation/infrastructure, security, operations and
+  manuals, independently of similarly named live business sources;
 - owner, approver, contact, responsibility, deadline, obligation, and policy
   lookup.
 
@@ -113,6 +115,23 @@ that explicitly requests another valid specialized mode remains compatible.
 The intent state is bounded, persisted with conversation continuity, and may be
 inherited only by a referential follow-up. A new self-contained topic starts a
 fresh document intent.
+
+`application-documentation-intent.ts` separates requests such as "Jak funguje
+ProjectFlow?" and "Jak nainstaluji Budget?" from live portfolio and financial
+queries. An explicit new documentation topic clears inherited financial entity
+state. A short referential follow-up can retain the documentation topic; a new
+live-data question cannot inherit it. A PDF manual lookup is a resource request,
+not a request to generate a report. Application documentation avoids unrelated
+SSP ambiguity and generic IT-support hints.
+
+Explicit compound questions with independently identifiable clauses can request
+both paths, for example "Popiš infrastrukturu AKB a kolik akcí má plán na rok
+2025?". The live clause goes to Director Copilot; the document clause goes to
+authorized RAG in parallel. The existing mixed-evidence composer preserves
+separate evidence, partial/unavailable states and history reauthorization. A
+document answer never fills a missing live number. This is bounded deterministic
+routing, not proof that every possible compound formulation is understood;
+ambiguous questions still require clarification or insufficient-source handling.
 
 The router does not expose technical tool names in the user-facing answer and
 does not send registry routing metadata into the RAG prompt. For RAG calls it

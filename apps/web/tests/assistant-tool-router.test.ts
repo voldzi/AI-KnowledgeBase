@@ -241,12 +241,13 @@ describe("assistant tool router", () => {
     assert.equal(context.tenant_id, "tenant-1");
     assert.equal((context.assistant_query_plan as { intent?: string }).intent, "owner_lookup");
     assert.deepEqual(context.document_knowledge_state, {
-      version: "document-knowledge-intent-1",
+      version: "document-knowledge-intent-2",
       intent: "owner",
       answer_mode: "find_owner",
       task_oriented: true,
       explicit: true,
       inherited: false,
+      application_topic: null,
     });
   });
 

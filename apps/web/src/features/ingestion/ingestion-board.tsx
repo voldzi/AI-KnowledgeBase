@@ -297,7 +297,8 @@ function processingResultText(
   const chunks = formatNumber(report.chunks_created, language);
   const pageLabel = localizedCountLabel(report.pages_processed, copy.pageSingular, copy.pageFew, copy.pagePlural);
   const chunkLabel = localizedCountLabel(report.chunks_created, copy.segmentSingular, copy.segmentFew, copy.segmentPlural);
-  return `${copy.readSummaryPrefix}: ${pages} ${pageLabel}. ${copy.citationsSummaryPrefix}: ${chunks} ${chunkLabel}.`;
+  const pageSummary = report.pages_processed > 0 ? `${copy.readSummaryPrefix}: ${pages} ${pageLabel}. ` : "";
+  return `${pageSummary}${copy.citationsSummaryPrefix}: ${chunks} ${chunkLabel}.`;
 }
 
 function localizedCountLabel(count: number, singular: string, few: string, plural: string): string {

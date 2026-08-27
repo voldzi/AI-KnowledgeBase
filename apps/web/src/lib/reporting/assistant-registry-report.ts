@@ -263,8 +263,8 @@ const DOCUMENT_TYPE_ALIASES: Array<{ type: Document["document_type"]; terms: str
 export function isRegistryDocumentReportQuestion(message: string, context: Record<string, unknown> = {}): boolean {
   const normalized = normalizeText(message);
   if (!normalized) return false;
-  const hasInventoryIntent = INVENTORY_INTENT_WORDS.some((word) => normalized.includes(word));
-  const hasStructuredOutputIntent = STRUCTURED_OUTPUT_WORDS.some((word) => normalized.includes(word));
+  const hasInventoryIntent = INVENTORY_INTENT_WORDS.some((word) => includesWordStem(normalized, word));
+  const hasStructuredOutputIntent = STRUCTURED_OUTPUT_WORDS.some((word) => includesWordStem(normalized, word));
   const hasDocumentOrDomain = DOCUMENT_OR_DOMAIN_WORDS.some((word) => normalizedIncludesTerm(normalized, word));
   const asksForContentInterpretation = CONTENT_INTERPRETATION_WORDS.some((word) => normalized.includes(word));
   const asksForDocumentTypeBreakdown = hasDocumentTypeBreakdownIntent(normalized);
@@ -280,9 +280,9 @@ export function isRegistryDocumentReportQuestion(message: string, context: Recor
 
 export function registryReportKindFromMessage(message: string, context: Record<string, unknown> = {}): RegistryReportKind {
   const normalized = normalizeText(message);
-  const asksForCount = COUNT_INTENT_WORDS.some((word) => normalized.includes(word));
-  const asksForList = LIST_INTENT_WORDS.some((word) => normalized.includes(word));
-  const asksForStructuredOutput = STRUCTURED_OUTPUT_WORDS.some((word) => normalized.includes(word));
+  const asksForCount = COUNT_INTENT_WORDS.some((word) => includesWordStem(normalized, word));
+  const asksForList = LIST_INTENT_WORDS.some((word) => includesWordStem(normalized, word));
+  const asksForStructuredOutput = STRUCTURED_OUTPUT_WORDS.some((word) => includesWordStem(normalized, word));
   const asksForDocumentTypeBreakdown = hasDocumentTypeBreakdownIntent(normalized);
   const hasDocumentOrDomain = DOCUMENT_OR_DOMAIN_WORDS.some((word) => normalizedIncludesTerm(normalized, word));
   if (asksForDocumentTypeBreakdown && (asksForCount || asksForStructuredOutput || hasDocumentOrDomain || isRegistryMetadataContext(context))) {
@@ -1287,6 +1287,11 @@ function normalizedIncludesTerm(normalizedValue: string, term: string): boolean 
     return new RegExp(`(?:^|[^a-z0-9])${escapeRegex(normalizedTerm)}(?:[^a-z0-9]|$)`).test(normalizedValue);
   }
   return normalizedValue.includes(normalizedTerm);
+}
+
+function includesWordStem(normalizedValue: string, term: string): boolean {
+  // Match inflections, but not an embedded word such as "pocet" in "rozpocet".
+  return new RegExp(`(?:^|[^a-z0-9])${escapeRegex(normalizeText(term))}`).test(normalizedValue);
 }
 
 function slugify(value: string): string {

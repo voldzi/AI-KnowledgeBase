@@ -477,16 +477,20 @@ def _quality_report(parser_result, *, extraction_profile: str) -> IngestionQuali
     pages_with_text = int(metadata.get("pages_with_text") or _pages_with_text(parser_result))
     empty_pages = [int(page) for page in metadata.get("empty_pages", []) if isinstance(page, int)]
     text_chars = int(metadata.get("text_chars_extracted") or parser_result.text_length)
-    coverage = (pages_with_text / pages_processed) if pages_processed else 0.0
-    expected_chars = max(1, pages_processed * 250)
+    # Non-paginated sources have one logical body, not an invented page.
+    non_paginated = metadata.get("page_mapping") == "unavailable"
+    coverage_units = 1 if non_paginated else pages_processed
+    units_with_text = int(text_chars > 0) if non_paginated else pages_with_text
+    coverage = (units_with_text / coverage_units) if coverage_units else 0.0
+    expected_chars = max(1, coverage_units * 250)
     density = min(1.0, text_chars / expected_chars)
     quality_score = round(max(0.0, min(1.0, (coverage * 0.7) + (density * 0.3))), 2)
     quality_tier = _quality_tier(
         quality_score=quality_score,
-        pages_processed=pages_processed,
+        coverage_units=coverage_units,
         empty_pages=empty_pages,
     )
-    requires_review = quality_tier == "poor" or (
+    requires_review = metadata.get("requires_review") is True or quality_tier == "poor" or (
         parser_result.ocr_used and (quality_score < 0.75 or bool(empty_pages))
     )
 
@@ -546,8 +550,8 @@ def _pages_with_text(parser_result) -> int:
     return len({block.page_number for block in parser_result.blocks if block.page_number and block.text.strip()})
 
 
-def _quality_tier(*, quality_score: float, pages_processed: int, empty_pages: list[int]) -> str:
-    if pages_processed <= 0 or quality_score < 0.45:
+def _quality_tier(*, quality_score: float, coverage_units: int, empty_pages: list[int]) -> str:
+    if coverage_units <= 0 or quality_score < 0.45:
         return "poor"
     if quality_score >= 0.75 and not empty_pages:
         return "good"

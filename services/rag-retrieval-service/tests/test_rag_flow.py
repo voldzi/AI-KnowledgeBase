@@ -669,7 +669,7 @@ def test_director_copilot_fast_path_survives_rag_v2_integration_without_chat_llm
     assert response.status_code == 200
     body = response.json()
     assert body["response_type"] == "answer"
-    assert body["answer"].startswith("Citované výňatky ze smluvního podkladu:")
+    assert body["answer"].startswith("Citované výňatky z dokumentových podkladů:")
     assert 1 <= len(body["citations"]) <= 3
     assert service._llm_client.chat_completion_result.await_count == 0
     assert "CONVERSATION_HISTORY_DISABLED_FOR_GOVERNED_FEDERATION" in body["warnings"]

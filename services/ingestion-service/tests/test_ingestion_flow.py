@@ -85,6 +85,9 @@ def test_text_ingestion_creates_report(tmp_path: Path) -> None:
     assert report.json()["ocr_used"] is False
     assert report.json()["quality"]["extraction_profile"] == "document_text_v1"
     assert report.json()["quality"]["text_chars_extracted"] > 0
+    assert report.json()["quality"]["quality_tier"] == "good"
+    assert report.json()["quality"]["requires_review"] is False
+    assert report.json()["quality"]["pages_processed"] == 0
     assert report.json()["errors"] == []
     assert [item["ingestion_status"] for item in external_statuses] == ["INGESTING", "INDEXED"]
     assert all(item["ingestion_job_id"] == body["job_id"] for item in external_statuses)

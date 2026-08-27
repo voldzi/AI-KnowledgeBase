@@ -6,6 +6,7 @@ set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BASE_REF=""
+PRODUCTION_SHA=""
 FULL=false
 SKIP_INSTALL=false
 
@@ -15,6 +16,7 @@ Usage: scripts/ci/local-fast-check.sh [options]
 
 Options:
   --base REF       Compare the working tree to REF (default: origin/main)
+  --production-sha SHA  Also require the current production full SHA in HEAD
   --full           Run every local application check
   --skip-install   Do not install Node or Python dependencies
   -h, --help       Show this help
@@ -28,6 +30,11 @@ while [[ $# -gt 0 ]]; do
       BASE_REF="$2"
       shift 2
       ;;
+    --production-sha)
+      [[ $# -ge 2 ]] || { usage >&2; exit 2; }
+      PRODUCTION_SHA="$2"
+      shift 2
+      ;;
     --full) FULL=true; shift ;;
     --skip-install) SKIP_INSTALL=true; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -37,6 +44,11 @@ done
 
 cd "$ROOT_DIR"
 BASE_REF="${BASE_REF:-origin/main}"
+baseline_args=(--base "$BASE_REF")
+if [[ -n "$PRODUCTION_SHA" ]]; then
+  baseline_args+=(--production-sha "$PRODUCTION_SHA")
+fi
+python3 scripts/ci/check_working_baseline.py "${baseline_args[@]}"
 changed_file="$(mktemp)"
 log_dir="$(mktemp -d "${TMPDIR:-/tmp}/akb-local-ci.XXXXXX")"
 cleanup() { rm -f "$changed_file"; rm -rf "$log_dir"; }
@@ -47,6 +59,7 @@ if [[ "$FULL" == true ]]; then
 else
   {
     git diff --name-only "$BASE_REF"...HEAD --
+    git diff --cached --name-only --
     git diff --name-only --
     git ls-files --others --exclude-standard
   } | sort -u >"$changed_file" || {

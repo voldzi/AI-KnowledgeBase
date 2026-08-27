@@ -21,11 +21,11 @@ The goal in this repository is:
   - `search_all` when the location is unclear
   - `get_file_context` only after selecting a relevant hit
 - If MCP tools are not exposed as native tools in the current agent session, use the CLI fallback:
-  - `"/Users/voldzi/Documents/Development/18 2026/chromadb/tools/chroma-dev.sh" search-all "<query>" --root . --limit 5`
+  - `"/Users/voldzi/Developer/18 2026/chromadb/tools/chroma-dev.sh" search-all "<query>" --root . --limit 5`
   - then read only the selected files or ranges directly
 - CLI fallback is still compliant retrieval-first behavior. Mention it once if relevant; do not repeat it as a blocker when retrieval succeeded.
 - If the index may be stale after meaningful repository changes, use `reindex_repo` when MCP tools are available, otherwise run:
-  - `"/Users/voldzi/Documents/Development/18 2026/chromadb/tools/chroma-dev.sh" reindex --root .`
+  - `"/Users/voldzi/Developer/18 2026/chromadb/tools/chroma-dev.sh" reindex --root .`
 - This repository ships a repo-local Chroma override in `.chroma-dev.yaml`. The standard `chroma-dev.sh ... --root .` command auto-loads it; do not pass a separate config unless you intentionally want a different indexing scope.
 - If retrieval tools are unavailable, Chroma is down, or the index returns no useful hits, fall back to direct repository inspection and state that retrieval was unavailable or insufficient.
 - Never print unredacted secrets, passwords, bearer tokens, session secrets, private keys, or full connection strings from env files or production commands. Prefer key names plus redacted values.
@@ -69,6 +69,17 @@ The goal in this repository is:
 
 ## Fast and Safe Release Discipline
 
+- At the start of resumed work, inspect the current branch, worktrees and dirty
+  files, fetch Gitea `origin`, and run
+  `python3 scripts/ci/check_working_baseline.py --base origin/main`.
+  For production-bound work add `--production-sha <verified-full-sha>`.
+  Do not continue editing a branch missing current main or production: preserve
+  its work, review unique commits, and reconcile onto current main first. Never
+  confuse a temporary release worktree with the main open working directory.
+- After a release, fast-forward the clean local main from Gitea, record the
+  working branch and active production SHA, and remove only verified merged
+  local branches and stale worktree registrations. Preserve unmerged work for
+  explicit review; do not rewrite or delete remote history automatically.
 - Treat production deployment as promotion of an already verified release
   candidate, not as the first place where its Docker images are built.
 - Before opening or merging a release PR, compare the candidate with the
@@ -153,7 +164,7 @@ chromadb tooling repository under `docs/standards/`. Binding summary:
 
 - After code changes, run the smallest relevant verification first.
 - For Chroma retrieval verification:
-  - `"/Users/voldzi/Documents/Development/18 2026/chromadb/tools/chroma-dev.sh" search-all "<query>" --root . --limit 5`
+  - `"/Users/voldzi/Developer/18 2026/chromadb/tools/chroma-dev.sh" search-all "<query>" --root . --limit 5`
 - For skeleton/OpenAPI validation:
   - `bash scripts/validate-skeleton.sh`
   - `ruby scripts/generate_openapi_index.rb --check`

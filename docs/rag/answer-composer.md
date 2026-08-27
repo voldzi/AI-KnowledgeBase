@@ -40,6 +40,14 @@ output policy or source boundary and cannot request hidden prompts, credentials
 or tokens. This prompt boundary supplements, but never replaces, Registry
 authorization and citation validation.
 
+Application documentation also retains its evidence qualifications: application,
+environment, source revision, units, conditions and uncertainty. Proposed pilot
+sizing, examples and unfilled templates are not observed settings or guaranteed
+RPO/RTO. A manual cannot prove the caller's permissions or current domain facts.
+The composer must expose conflicting or missing support, not silently combine
+different environments or source versions. These are prompt-level safeguards,
+not a substitute for factual review and the evidence gate.
+
 The service never calls Ollama or vLLM directly.
 
 ## Citations
@@ -62,6 +70,15 @@ Ordinary employee questions use six chunks. Explicit multi-facet questions use
 up to ten chunks, and an exact-document question may use all selected chunks
 from that document. Authorization, score thresholds and the configured context
 character limit remain enforced.
+
+The character cap also applies to the first chunk. Oversized chunks are skipped
+whole, never truncated into a potentially misleading number or table; later
+smaller candidates may still fit. Empty text is skipped. If no usable chunk
+remains, normal, streaming and federated document-extract paths return
+`insufficient_source`, no citations and `NO_USABLE_CONTEXT` without calling an
+LLM. Budget-related skips additionally retain `CONTEXT_TRUNCATED`. This bounds
+source text, not the model's complete token budget including instructions and
+conversation history.
 
 Relevant continuation can use up to 12 earlier user questions, 800 characters
 per question and 6000 characters in total. Retrieval receives a shorter bounded

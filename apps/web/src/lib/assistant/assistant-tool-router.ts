@@ -84,7 +84,8 @@ export function routeAssistantMessage(
 ): AssistantToolRoute {
   const reportRequest = assistantReportRequestFromContext(context);
   const documentKnowledge = resolveDocumentKnowledgeIntent(message, context);
-  const structuredOutput = Boolean(reportRequest) || STRUCTURED_OUTPUT_RE.test(message);
+  const structuredOutput = Boolean(reportRequest)
+    || (documentKnowledge.intent !== "resource" && STRUCTURED_OUTPUT_RE.test(message));
   const obligationOutput = reportRequest?.template === "obligation_table" || OBLIGATION_OUTPUT_RE.test(message);
   const controlledRuleIntent = controlledRuleIntentFromMessage(message, context);
   if (controlledRuleIntent) {
@@ -204,9 +205,13 @@ export function ragContextForAssistantRoute(
       task_oriented: route.documentKnowledge.taskOriented,
       explicit: route.documentKnowledge.explicit,
       inherited: route.documentKnowledge.inherited,
+      application_topic: route.documentKnowledge.applicationDocumentation?.topic ?? null,
     },
     document_retrieval_hints: route.documentKnowledge.retrievalHints,
   };
+  if (route.documentKnowledge.applicationDocumentation && !route.documentKnowledge.applicationDocumentation.liveMessage) {
+    routedContext.stratos_query_state = null;
+  }
   if (route.answerFormatInstruction) {
     routedContext.answer_format_instruction = route.answerFormatInstruction;
   }
@@ -292,6 +297,11 @@ function ragAnswerFormatInstruction(
   if (documentKnowledge.taskOriented) {
     instructions.push(documentTaskInstruction(language, documentKnowledge.intent));
   }
+  if (documentKnowledge.applicationDocumentation) {
+    instructions.push(language === "en"
+      ? "Separate the applications, environments and source revisions. Distinguish verified operation from proposed sizing, a pilot, a template or a future feature. Never turn an example or an unfilled placeholder into a real setting, guarantee, capacity, RPO or RTO. Answer every requested topic supported by the sources; explicitly identify missing evidence. Cite each factual part."
+      : "Odděl aplikace, prostředí a revize zdrojů. Rozliš ověřený provoz od návrhu dimenzování, pilotu, šablony nebo budoucí funkce. Příklad ani nevyplněný zástupný údaj nevydávej za skutečné nastavení, garanci, kapacitu, RPO či RTO. Odpověz na všechny požadované části podložené zdroji; chybějící podklad výslovně označ. Každou věcnou část dolož citací.");
+  }
   return instructions.length ? instructions.join("\n\n") : null;
 }
 
@@ -305,6 +315,7 @@ function documentTaskInstruction(
   const instructions: Record<DocumentKnowledgeIntentResolution["intent"], string> = language === "en"
     ? {
         general: "Answer the question from cited evidence.",
+        application_documentation: "Explain the documented capabilities, prerequisites, security boundaries or operating procedure at the requested level of detail.",
         procedure: "Give actionable ordered steps, prerequisites, responsible roles, and the next action when stated.",
         resource: "Identify the exact resource and where to find it. Include a link or file name only when present in a citation.",
         support_channel: "Identify the documented support channel and what information to provide. Do not assume a service desk exists.",
@@ -316,6 +327,7 @@ function documentTaskInstruction(
       }
     : {
         general: "Odpověz na dotaz z citované evidence.",
+        application_documentation: "Vysvětli doložené funkce, předpoklady, bezpečnostní hranice nebo provozní postup v požadované podrobnosti.",
         procedure: "Uveď proveditelné kroky v pořadí, podmínky, odpovědné role a další krok, pokud je zdroj stanoví.",
         resource: "Urči přesný formulář nebo zdroj a kde jej najít. Odkaz či název souboru uveď jen tehdy, když je ve zdroji.",
         support_channel: "Urči doložený kanál podpory a údaje potřebné k nahlášení. Nepředpokládej, že existuje Service Desk.",

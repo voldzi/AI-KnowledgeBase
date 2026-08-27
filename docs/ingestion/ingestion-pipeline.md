@@ -28,6 +28,32 @@ Tento dokument popisuje implementovaný tok `services/ingestion-service`.
     auditně zapíše start/completed/failed; inbound actor zůstává v payloadu jako
     neautoritativní reported actor.
 
+## Struktura aplikační dokumentace
+
+- Markdown se parsuje přes CommonMark s tabulkami a front matter. Zachovává
+  hierarchii nadpisů, celé řádky tabulek a znakové rozsahy originálu. HTML
+  se nespouští a odkazy se nestahují. YAML front matter nemůže určit publikaci,
+  schválení ani Information Policy; ty pocházejí výhradně z Registry.
+- DOCX zachovává pořadí odstavců a tabulek v těle dokumentu, stylové nadpisy
+  a prázdné buňky. Obrázky, textová pole, sledované změny a vnořené tabulky
+  vyžadují kontrolu vykresleného zdroje. Jejich `requires_review` nezanikne
+  pouze proto, že je ostatního textu dostatek.
+- XLSX zachovává prázdné buňky, aby se hodnota nepřiřadila k jiné hlavičce.
+  Tabulkové pokračování opakuje hlavičku a nedělí jednotlivé řádky.
+- Markdown a DOCX bez renderované mapy mají `page_number=null` a počet
+  zjištěných fyzických stran `pages_processed=0`. Hodnocení textové kvality
+  používá jeden logický dokument, nikoli vymyšlenou stranu 1. Citace se
+  opírají o sekci a znakový rozsah; u DOCX je rozsah v extrahovaném textu.
+  Nulový počet známých stran sám neznamená nekvalitní nebo prázdný text.
+- Kvalita extrakce není důkaz věcné správnosti, úplnosti obrázků ani platnosti
+  dokumentu. Návrhy infrastruktury a autorské vzory se nesmějí vydávat za
+  ověřené nastavení konkrétní instalace.
+
+Změna parseru sama nepřepíše existující index. Již vložené dokumenty je
+nutné po ověření releasu řízeně znovu zpracovat přes existující ingestion
+workflow s přesnou verzí a hashem zdroje. Nevytvářet duplicitní dokumenty,
+neobcházet antivirovou kontrolu, revizi ani publikaci.
+
 ## Integrační Body
 
 Registry API:

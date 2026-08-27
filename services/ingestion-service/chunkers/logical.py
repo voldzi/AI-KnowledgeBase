@@ -3,14 +3,14 @@ from __future__ import annotations
 import hashlib
 import re
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from app.config import Settings
 from app.object_storage import SourceObject
 from app.schemas import DocumentChunk, DocumentMetadata
 from intelligence.entities import build_intelligence_metadata
-from parsers.base import ParsedBlock, ParserResult
+from parsers.base import ParsedBlock, ParserError, ParserResult
 
 
 @dataclass(frozen=True)
@@ -210,7 +210,7 @@ class LogicalStructureChunker:
             source_size_bytes=source.size_bytes,
             source_sha256=source.sha256,
             char_start=first.char_start,
-            char_end=max(last.char_end, first.char_start + len(text)),
+            char_end=last.char_end,
             text_hash=text_hash,
             classification=document_metadata.classification,
             tags=document_metadata.tags,
@@ -222,6 +222,8 @@ class LogicalStructureChunker:
         )
 
     def _split_large_block(self, block: ParsedBlock) -> list[ParsedBlock]:
+        if block.block_type == "table" and isinstance(block.metadata.get("table_header"), str):
+            return self._split_table_block(block)
         pieces: list[ParsedBlock] = []
         text = block.text
         start = 0
@@ -254,6 +256,40 @@ class LogicalStructureChunker:
             if end >= len(text):
                 break
             start = max(end - self.settings.chunk_overlap_chars, start + 1)
+        return pieces
+
+    def _split_table_block(self, block: ParsedBlock) -> list[ParsedBlock]:
+        header = block.metadata["table_header"]
+        header_count = int(block.metadata.get("table_header_line_count", 1))
+        lines = block.text.splitlines(keepends=True)
+        offset = sum(len(line) for line in lines[:header_count])
+        pieces: list[ParsedBlock] = []
+        rows: list[str] = []
+        row_start = offset
+
+        def flush(end: int) -> None:
+            if rows:
+                pieces.append(replace(
+                    block, text=header + "\n" + "\n".join(rows),
+                    char_start=block.char_start + row_start,
+                    char_end=block.char_start + end,
+                    metadata={**block.metadata, "table_header_repeated": True,
+                              "table_header_char_start": block.char_start, "table_row_char_end": block.char_start + end},
+                ))
+
+        for line in lines[header_count:]:
+            row = line.rstrip("\r\n")
+            if len(header) + 1 + len(row) > self.settings.max_chunk_chars:
+                raise ParserError("TABLE_ROW_EXCEEDS_CHUNK_LIMIT", "A table row and its header exceed the safe extraction limit.")
+            if rows and len(header) + 1 + sum(len(value) + 1 for value in rows) + len(row) > self.settings.chunk_target_chars:
+                flush(offset)
+                rows = []
+                row_start = offset
+            rows.append(row)
+            offset += len(line)
+        flush(offset)
+        if not pieces:
+            raise ParserError("TABLE_ROW_EXCEEDS_CHUNK_LIMIT", "A table header exceeds the safe extraction limit.")
         return pieces
 
 
