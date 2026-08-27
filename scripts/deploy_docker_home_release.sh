@@ -1206,11 +1206,11 @@ else
       services/llm-gateway-service/*)
         add_service llm-gateway-service
         ;;
-      infra/keycloak/realm-stratos.json|infra/keycloak/update-stratos-public-routing.sh)
+      infra/keycloak/README.md|infra/keycloak/realm-stratos.json|infra/keycloak/update-stratos-public-routing.sh)
         # The shared Keycloak realm and public-routing client reconciliation
-        # are applied and verified outside the AKB Compose release. These exact
-        # declarative/admin resources do not select or mutate an AKB runtime
-        # service.
+        # are applied and verified outside the AKB Compose release. This guide
+        # documents that external boundary; these exact paths do not select or
+        # mutate an AKB runtime service.
         # Live-realm reconciliation evidence remains an independent prerequisite.
         ;;
       services/*|apps/*|infra/reverse-proxy/*|infra/keycloak/*|infra/monitoring/*|infra/postgres/*)
