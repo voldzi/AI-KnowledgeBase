@@ -33,6 +33,13 @@ paths = ['''services/rag-retrieval-service/tests/test_aiip_application_api\.py$'
 regexes = ['''idempotency_key\s*=\s*"[^"]+"''']
 
 [[rules.allowlists]]
+description = "Retired AIIP governance test-only synthetic idempotency fixtures in historical commits"
+condition = "AND"
+regexTarget = "line"
+paths = ['''apps/web/tests/aiip-governance-confirmation\.test\.ts$''']
+regexes = ['''idempotency_key:\s*"idem-[0-9-]+"''']
+
+[[rules.allowlists]]
 description = "Pinned SHA-256 contract snapshot digests"
 condition = "AND"
 regexTarget = "line"
