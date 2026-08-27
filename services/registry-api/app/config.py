@@ -30,6 +30,11 @@ def parse_service_client_mapping(
     return {caller: frozenset(values) for caller, values in mapping.items()}
 
 
+# Kept only for rolling upgrades: stale production configuration must not
+# re-enable a retired integration route.
+_RETIRED_SERVICE_ROUTES = frozenset({"aiip-upload"})
+
+
 class Settings(BaseSettings):
     service_name: str = "registry-api"
     service_version: str = Field(default="dev", alias="AKL_SERVICE_VERSION")
@@ -234,10 +239,14 @@ class Settings(BaseSettings):
 
     @property
     def service_route_grants(self) -> dict[str, frozenset[str]]:
-        return parse_service_client_mapping(
+        parsed = parse_service_client_mapping(
             self.service_client_route_grants,
             variable_name="AKL_SERVICE_CLIENT_ROUTE_GRANTS",
         )
+        return {
+            client_id: frozenset(route for route in routes if route not in _RETIRED_SERVICE_ROUTES)
+            for client_id, routes in parsed.items()
+        }
 
     @property
     def ingestion_authorization_signing_secret(self) -> str:
