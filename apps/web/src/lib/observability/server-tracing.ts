@@ -17,7 +17,6 @@ export async function withServerSpan<T>(
       span.setStatus({ code: SpanStatusCode.OK });
       return result;
     } catch (error) {
-      span.recordException(error instanceof Error ? error : new Error("Unknown server error"));
       span.setStatus({ code: SpanStatusCode.ERROR });
       throw error;
     } finally {

@@ -9,6 +9,7 @@ from jwt import PyJWKClient
 
 from app.config import Settings
 from app.errors import RetrievalError
+from app.managed_identity import ManagedIdentityInvalid, ManagedIdentityUnavailable, managed_verifier, validate_user
 
 
 @dataclass(frozen=True)
@@ -138,6 +139,15 @@ def _csv_header(value: str | None) -> tuple[str, ...]:
 
 
 def _verified_oidc_claims(token: str, settings: Settings) -> dict[str, Any]:
+    if settings.identity_mode == "managed":
+        try:
+            claims = managed_verifier(settings.oidc_issuer, settings.managed_identity_issuer).verify(token)
+            validate_user(claims)
+            return claims
+        except ManagedIdentityUnavailable as exc:
+            raise RetrievalError("IDENTITY_PROVIDER_UNAVAILABLE", "Identity verification is unavailable", status_code=503) from exc
+        except ManagedIdentityInvalid as exc:
+            raise RetrievalError("AUTH_REQUIRED", "Invalid managed bearer identity", status_code=401) from exc
     accepted_audience = settings.oidc_user_audience
     if not settings.oidc_issuer or not accepted_audience or not settings.oidc_jwks_url:
         raise RetrievalError("AUTH_CONFIG_INVALID", "OIDC verification is not configured", status_code=503)
@@ -156,6 +166,9 @@ def _verified_oidc_claims(token: str, settings: Settings) -> dict[str, Any]:
 
 
 def _oidc_context(claims: dict[str, Any], token: str, settings: Settings) -> AuthContext:
+    if settings.identity_mode == "managed":
+        validate_user(claims)
+        return AuthContext(subject_id=claims["sub"], roles=(), groups=(), bearer_token=token, identity_active=False, membership_active=False, application_access_active=False)
     roles = _claim_roles(claims)
     subject = _claim_str(claims, "sub")
     if not subject:

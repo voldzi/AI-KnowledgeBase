@@ -12,23 +12,26 @@ requirements from the site-specific `docker.home.cz` immutable release.
 
 ## Server-side browser sessions
 
-Production OIDC uses database-backed AKB sessions. Configure two separate
+Production OIDC uses database-backed AKB sessions. Configure three separate
 operator-owned files with mode `0600`:
 
 ```dotenv
 AKL_WEB_SESSION_ENCRYPTION_KEY_SOURCE_FILE=/srv/akl/env/akb-web-session-encryption.key
+AKL_CHAT_WEB_SESSION_ENCRYPTION_KEY_SOURCE_FILE=/srv/akl/env/akb-chat-session-encryption.key
 AKL_WEB_SESSION_STORE_SECRET_SOURCE_FILE=/srv/akl/env/akb-web-session-store.secret
 AKL_WEB_SESSION_ABSOLUTE_TTL_DAYS=90
 AKL_WEB_SESSION_IDLE_TTL_DAYS=30
 AKL_WEB_IDENTITY_VALIDATION_INTERVAL_MINUTES=15
 ```
 
-Both web profiles need the encryption key. Both web profiles and Registry API
-need the store secret. Values must be independent random secrets of at least 32
-bytes and must not be placed in Git, Compose, logs or deployment reports. A key
-rotation invalidates sessions that cannot be decrypted; plan it as a controlled
-global logout. Apply Alembic migration `0026_web_sessions` before starting the
-new web image.
+Web and standalone Chat have different encryption keys. Only the internal
+AKB session-store HMAC credential is shared with Registry; it is not a browser
+session secret and is never shared with STRATOS. Values must be independent
+random secrets of at least 32 bytes and must not be placed in Git, Compose,
+logs or deployment reports. Provision the distinct Chat key before promoting
+this release. Rotating a key and restarting its consumer invalidates sessions
+that cannot be decrypted; plan a controlled re-login for that application.
+Apply Alembic migration `0026_web_sessions` on installations missing it.
 
 On `docker.home.cz`, the operator-owned source files are mounted read-only in
 the web containers. Their root entrypoint copies each required session secret
@@ -40,12 +43,25 @@ The browser cookie contains only an opaque selector. Operators may inspect
 session counts and revocation audit events, but must not export the encrypted
 payload, selector hash or authentication material.
 
-Every protected page entry completes a short silent Keycloak SSO round trip.
-This replaces an existing AKB session when the browser's current STRATOS user
-has changed. The loop-prevention cookie is an AKB-only, signed, `HttpOnly`
-marker bound to the opaque selector and expires within seconds; it is neither a
-credential nor a replacement for the 15-minute identity validation or the
-per-request access projection.
+A first protected page entry without an AKB session starts one normal PKCE
+redirect to the approved issuer. With an existing session, a silent central
+check can replace a different prior browser identity. The short signed
+synchronization marker is bound to the selector and is not an authorization
+credential. Separate session-only attempt and signed-out markers prevent
+automatic retries after an error or logout. A manual retry is required.
+
+Persistence comes only from the verified central access-token policy, never
+from an AKB checkbox. The configured 90-day / 30-day values are upper bounds;
+the absolute deadline starts at `stratos_session_started_at`, not at entry
+into AKB. Short sessions are limited to 24 hours absolute / 8 hours idle.
+IAM must coordinate the Keycloak `stratos-session-policy-mapper` for both
+browser clients before accepting persistent SSO. Missing policy does not
+silently create a long-lived cookie.
+
+See [central SSO and managed identity](security/managed-identity.md) for exact
+configuration, the read-only preflight, the separate-browser acceptance
+matrix and the remaining worker-identity gate for managed mode. This change
+does not activate managed identity or change production IAM configuration.
 
 ## STRATOS content-security profile
 

@@ -145,14 +145,14 @@ class StratosGovernanceClient:
         if callable(close):
             close()
 
-    def user_projection(self, token: str, *, token_expires_at: float | None) -> AccessProjection:
+    def user_projection(self, token: str, *, token_expires_at: float | None, expected_subject: str | None = None, identity_audience: str | None = None) -> AccessProjection:
         if not self.settings.stratos_auth_me_url:
             raise GovernanceUnavailable("STRATOS access projection is not configured")
         cache_key = sha256(token.encode("utf-8")).hexdigest()
         now = time.time()
         with self._lock:
             cached = self._cache.get(cache_key)
-            if cached and cached[0] > now:
+            if self.settings.identity_mode != "managed" and cached and cached[0] > now:
                 return cached[1]
         try:
             response = self._http_client.get(
@@ -169,13 +169,19 @@ class StratosGovernanceClient:
             )
         try:
             body = response.json()
+            if not isinstance(body, dict):
+                raise ValueError("Invalid projection object")
+            if expected_subject and (body.get("id") != expected_subject or body.get("identitySubject", expected_subject) != expected_subject or any(body.get(key) is False for key in ("isActive", "active", "identityActive"))):
+                raise GovernanceDenied("Projection identity does not match the bearer")
             projection = self._parse_projection(body)
+            if identity_audience == "external" and "recipient_set:employee-directives" in projection.scopes:
+                raise GovernanceDenied("Employee scope is not valid for this identity")
         except (ValueError, TypeError) as exc:
             raise GovernanceUnavailable("STRATOS access projection is malformed") from exc
 
         ttl = self.settings.stratos_access_cache_ttl_seconds
         expires_at = min(now + ttl, token_expires_at or now + ttl)
-        if ttl > 0 and expires_at > now:
+        if self.settings.identity_mode != "managed" and ttl > 0 and expires_at > now:
             with self._lock:
                 self._cache[cache_key] = (expires_at, projection)
         return projection

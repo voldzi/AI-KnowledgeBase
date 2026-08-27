@@ -14,7 +14,7 @@ afterEach(() => {
 });
 
 describe("automatic STRATOS SSO", () => {
-  it("starts a silent PKCE authorization without making the session persistent", async () => {
+  it("starts ordinary PKCE authorization once without forcing a fresh login", async () => {
     configureOidc();
     const response = await beginSilentSso(
       new NextRequest("https://stratos.example/akb/api/auth/sso?return_to=%2Fchat"),
@@ -23,7 +23,9 @@ describe("automatic STRATOS SSO", () => {
     assert.equal(response.status, 303);
     assert.equal(response.headers.get("cache-control"), "no-store, max-age=0");
     const location = new URL(response.headers.get("location") ?? "");
-    assert.equal(location.searchParams.get("prompt"), "none");
+    assert.equal(location.searchParams.get("prompt"), null);
+    assert.equal(location.searchParams.get("max_age"), null);
+    assert.ok(location.searchParams.get("nonce"));
     assert.equal(location.searchParams.get("code_challenge_method"), "S256");
     assert.match(response.headers.get("set-cookie") ?? "", /akl_oidc_state=/);
     assert.doesNotMatch(response.headers.get("set-cookie") ?? "", /akl_session=/);
@@ -42,7 +44,7 @@ describe("automatic STRATOS SSO", () => {
     assert.equal(response.status, 303);
     assert.equal(
       response.headers.get("location"),
-      "https://stratos.example/akb/api/auth/login?return_to=%2Fchat",
+      "https://stratos.example/akb/api/auth/login?return_to=%2Fchat&retry=required",
     );
   });
 
@@ -59,7 +61,7 @@ describe("automatic STRATOS SSO", () => {
     assert.equal(response.status, 303);
     assert.equal(
       response.headers.get("location"),
-      "https://stratos.example/akb/api/auth/login?return_to=%2Fchat",
+      "https://stratos.example/akb/api/auth/login?return_to=%2Fchat&retry=required",
     );
   });
 });

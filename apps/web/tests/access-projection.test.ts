@@ -149,7 +149,7 @@ describe("STRATOS access projection", () => {
     );
   });
 
-  it("logs only the bounded upstream rejection reason", async () => {
+  it("logs only status, never upstream bodies or token claims", async () => {
     const token = jwt({
       sub: "user-123",
       exp: 2_000,
@@ -187,11 +187,7 @@ describe("STRATOS access projection", () => {
       authorizedParty?: unknown;
     };
     assert.equal(detail.status, 401);
-    assert.equal(typeof detail.reason, "string");
-    assert.equal((detail.reason as string).includes("\n"), false);
-    assert.equal((detail.reason as string).length, 160);
-    assert.deepEqual(detail.audiences, ["akl-api", "budget-web"]);
-    assert.equal(detail.authorizedParty, "akb-chat-web");
+    assert.deepEqual(detail, { status: 401 });
   });
 });
 

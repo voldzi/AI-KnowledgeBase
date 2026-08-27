@@ -2819,6 +2819,75 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                session_id_hash:
+                  pattern: ^[0-9a-f]{64}$
+                  title: Session Id Hash
+                  type: string
+                subject_id:
+                  maxLength: 160
+                  minLength: 1
+                  title: Subject Id
+                  type: string
+                issuer:
+                  maxLength: 512
+                  minLength: 1
+                  title: Issuer
+                  type: string
+                client_id:
+                  maxLength: 160
+                  minLength: 1
+                  title: Client Id
+                  type: string
+                keycloak_session_id:
+                  anyOf:
+                  - maxLength: 160
+                    type: string
+                  - type: 'null'
+                  title: Keycloak Session Id
+                encrypted_payload:
+                  maxLength: 65536
+                  minLength: 40
+                  title: Encrypted Payload
+                  type: string
+                persistent:
+                  default: false
+                  title: Persistent
+                  type: boolean
+                identity_validated_at:
+                  format: date-time
+                  title: Identity Validated At
+                  type: string
+                last_seen_at:
+                  format: date-time
+                  title: Last Seen At
+                  type: string
+                idle_expires_at:
+                  format: date-time
+                  title: Idle Expires At
+                  type: string
+                absolute_expires_at:
+                  format: date-time
+                  title: Absolute Expires At
+                  type: string
+              required:
+              - session_id_hash
+              - subject_id
+              - issuer
+              - client_id
+              - encrypted_payload
+              - identity_validated_at
+              - last_seen_at
+              - idle_expires_at
+              - absolute_expires_at
+              title: WebSessionWrite
+              type: object
   /api/v1/internal/web-sessions/{session_id_hash}:
     get:
       tags:
@@ -2894,6 +2963,66 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '409':
+          description: Expired, revoked or concurrently changed session; token and
+            policy rotation require expected_updated_at.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                expected_updated_at:
+                  anyOf:
+                  - format: date-time
+                    type: string
+                  - type: 'null'
+                  title: Expected Updated At
+                encrypted_payload:
+                  anyOf:
+                  - maxLength: 65536
+                    minLength: 40
+                    type: string
+                  - type: 'null'
+                  title: Encrypted Payload
+                identity_validated_at:
+                  anyOf:
+                  - format: date-time
+                    type: string
+                  - type: 'null'
+                  title: Identity Validated At
+                last_seen_at:
+                  anyOf:
+                  - format: date-time
+                    type: string
+                  - type: 'null'
+                  title: Last Seen At
+                idle_expires_at:
+                  anyOf:
+                  - format: date-time
+                    type: string
+                  - type: 'null'
+                  title: Idle Expires At
+                absolute_expires_at:
+                  anyOf:
+                  - format: date-time
+                    type: string
+                  - type: 'null'
+                  title: Absolute Expires At
+                persistent:
+                  anyOf:
+                  - type: boolean
+                  - type: 'null'
+                  title: Persistent
+                revoked_reason:
+                  anyOf:
+                  - maxLength: 80
+                    type: string
+                  - type: 'null'
+                  title: Revoked Reason
+              title: WebSessionPatch
+              type: object
     delete:
       tags:
       - Web sessions
@@ -3108,6 +3237,48 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/WorkflowDocumentListResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/internal/director-copilot/audit:
+    post:
+      tags:
+      - Internal Director audit
+      summary: Write Director Audit
+      operationId: write_director_audit_api_v1_internal_director_copilot_audit_post
+      parameters:
+      - name: X-AKB-Session-Timestamp
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Akb-Session-Timestamp
+      - name: X-AKB-Session-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Akb-Session-Signature
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DirectorAuditWrite'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+                title: Response Write Director Audit Api V1 Internal Director Copilot
+                  Audit Post
         '422':
           description: Validation Error
           content:
@@ -9028,6 +9199,7 @@ components:
           type: string
           format: date-time
           title: Updated At
+      additionalProperties: false
       type: object
       required:
       - session_id_hash
@@ -9360,6 +9532,59 @@ components:
       - limit
       - offset
       title: WorkflowDocumentListResponse
+    DirectorAuditWrite:
+      properties:
+        actor_id:
+          type: string
+          format: uuid
+          title: Actor Id
+        event_type:
+          type: string
+          enum:
+          - assistant.director_copilot_v2_returned
+          - assistant.director_copilot_v2_failed
+          title: Event Type
+        resource_type:
+          type: string
+          const: assistant_conversation
+          title: Resource Type
+        resource_id:
+          type: string
+          pattern: ^[A-Za-z0-9_.:-]{1,160}$
+          title: Resource Id
+        severity:
+          type: string
+          enum:
+          - info
+          - warning
+          - error
+          title: Severity
+        correlation_id:
+          anyOf:
+          - type: string
+            pattern: ^[A-Za-z0-9_.:-]{1,160}$
+          - type: 'null'
+          title: Correlation Id
+        metadata:
+          additionalProperties:
+            anyOf:
+            - type: string
+            - type: integer
+            - type: number
+            - type: boolean
+            - type: 'null'
+          type: object
+          title: Metadata
+      additionalProperties: false
+      type: object
+      required:
+      - actor_id
+      - event_type
+      - resource_type
+      - resource_id
+      - severity
+      - metadata
+      title: DirectorAuditWrite
   securitySchemes:
     akbPublicDeliveryToken:
       type: apiKey

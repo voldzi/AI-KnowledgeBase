@@ -12,7 +12,7 @@ source_system: git
 tags: [dokumentace, csu-pilot, uzivatel, manual, akb, stratos]
 documentation_profile: akb-application-docs-1
 documentation_kind: uzivatel
-document_revision: "1.1"
+document_revision: "1.2"
 target_environment: csu-test
 applies_to: "Návrh pilotu; konkrétní release se určí při převzetí"
 reviewed_on: "2026-08-27"
@@ -28,7 +28,9 @@ Potřebujete schválený osobní účet, přístup z vnitřní sítě a přiděl
 
 AKB a STRATOS používají společné přihlášení přes Keycloak. Při přechodu mezi aplikacemi uživatel obvykle nevyplňuje heslo znovu, protože aplikace ověří existující centrální SSO relaci. Každá aplikace však samostatně kontroluje aktuální oprávnění; úspěšné přihlášení samo o sobě nedává přístup ke všem dokumentům, financím nebo projektům.
 
-Volbu důvěryhodného zařízení používejte jen na vlastním nebo spravovaném zařízení. Po odhlášení, odebrání oprávnění nebo vypršení relace chráněný obsah zůstane nedostupný.
+Volbu „Zůstat přihlášen na tomto zařízení“ nastavujete pouze na centrální přihlašovací stránce, nikoliv znovu v AKB. Používejte ji jen na vlastním nebo spravovaném zařízení. Doložená důvěryhodná relace trvá nejvýše 90 dní od začátku centrálního přihlášení a skončí po 30 dnech neaktivity. Přechod mezi aplikacemi tuto dobu neprodlužuje. Bez této doložené volby má relace AKB nejvýše 8 hodin neaktivity a 24 hodin celkové platnosti a prohlížeč dostane pouze dočasnou cookie.
+
+Pro plynulý přechod používejte stejný prohlížeč a uživatelský profil. Samostatně instalovaný Chat může při prvním spuštění vyžadovat vlastní přihlášení. Po odhlášení, odebrání oprávnění nebo vypršení relace chráněný obsah zůstane nedostupný. Samotné zavření okna není spolehlivé odhlášení: některé prohlížeče relaci při obnovení oken zachovají. Na sdíleném zařízení se vždy výslovně odhlaste.
 
 ## Práce s dokumenty
 

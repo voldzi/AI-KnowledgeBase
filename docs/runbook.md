@@ -8,6 +8,17 @@ backup evidence and isolated restore acceptance, use
 Use this runbook for first response. Detailed environment-specific procedures
 remain in `docs/deployment/` and `docs/OPERATIONS/`.
 
+## Central SSO Or Managed Identity Change
+
+Use [the identity runbook](security/managed-identity.md). Keep the approved
+external issuer until a separate managed cutover is accepted. The supplied
+preflight only prepares disabled client proposals and optionally reads public
+discovery; it never registers clients or applies configuration. Missing
+remember-policy claims do not authorize a persistent cookie. Do not fix login
+errors by disabling signature, audience, Origin, projection or policy checks.
+Full managed activation is blocked until the remaining AKB worker identity
+contracts and end-to-end acceptance are complete.
+
 ## Application Does Not Start
 
 1. Check the active environment file exists and contains no empty required

@@ -16,7 +16,9 @@ import {
   CENTRAL_SSO_SYNC_COOKIE,
   hasCurrentCentralSsoSyncMarker,
   resolveServerSession,
+  serverSessionCookieOptions,
   SERVER_SESSION_COOKIE,
+  type ResolvedServerSession,
 } from "../auth/server-session";
 import { contextFromStratosAccessProjection } from "../auth/access-projection";
 
@@ -36,7 +38,7 @@ type CookieReader = {
   get(name: string): { value: string } | undefined;
 };
 
-const requestOidcSessions = new WeakMap<object, Promise<OidcSession | null>>();
+const requestOidcSessions = new WeakMap<object, Promise<ResolvedServerSession | null>>();
 
 export function getServerApiClients() {
   return createApiClients();
@@ -163,6 +165,10 @@ export async function getOptionalServerRequestContext(
 export async function getOptionalServerOidcSession(
   request?: RequestLike,
 ): Promise<OidcSession | null> {
+  return (await getOptionalResolvedServerSession(request))?.oidc ?? null;
+}
+
+export async function getOptionalResolvedServerSession(request?: RequestLike): Promise<ResolvedServerSession | null> {
   if (request) {
     const pending = requestOidcSessions.get(request);
     if (pending) return pending;
@@ -175,7 +181,7 @@ export async function getOptionalServerOidcSession(
 
 async function resolveOptionalServerOidcSession(
   request?: RequestLike,
-): Promise<OidcSession | null> {
+): Promise<ResolvedServerSession | null> {
   const config = getAklConfig();
   if (config.authMode !== "oidc") {
     return null;
@@ -186,7 +192,16 @@ async function resolveOptionalServerOidcSession(
   const selector = cookieStore.get(SERVER_SESSION_COOKIE)?.value;
   if (!selector) return null;
   const resolved = await resolveServerSession(config, selector);
-  return resolved?.oidc ?? null;
+  if (resolved && request) {
+    try {
+      // Route handlers propagate a policy downgrade to the browser immediately.
+      (await cookies()).set(SERVER_SESSION_COOKIE, selector, serverSessionCookieOptions(config, resolved.persistent, resolved.absoluteExpiresAt));
+    } catch {
+      // Read-only rendering cannot set cookies; /api/auth/session synchronizes
+      // them. Server expiry and revocation remain authoritative in either case.
+    }
+  }
+  return resolved;
 }
 
 function cookieReaderFromRequest(request: RequestLike): CookieReader {

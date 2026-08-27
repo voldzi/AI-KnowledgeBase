@@ -85,6 +85,47 @@ if PATH="${BIN_DIR}:${PATH}" \
 fi
 grep -Fxq 'chat object storage is not available' "${TEST_ROOT}/missing.err"
 
+for domain in budget projectflow archflow legacy; do
+  printf 'synthetic-%s-credential\n' "$domain" >"${TEST_ROOT}/${domain}.source"
+done
+
+run_director_fixture() {
+  env PATH="${BIN_DIR}:${PATH}" \
+    AKL_WEB_PROFILE=chat \
+    AKL_WEB_OBJECT_STORAGE_ROOT="$STORAGE_DIR" \
+    AKL_TEST_CHOWN_LOG="$CHOWN_LOG" \
+    AKL_DIRECTOR_COPILOT_ENABLED=true \
+    AKL_IDENTITY_MODE=managed \
+    AKL_DIRECTOR_COPILOT_CLIENT_SECRET_SOURCE_FILE="${TEST_ROOT}/missing-legacy" \
+    AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE="${TEST_ROOT}/runtime/legacy" \
+    AKL_DIRECTOR_COPILOT_BUDGET_CLIENT_SECRET_SOURCE_FILE="${TEST_ROOT}/budget.source" \
+    AKL_DIRECTOR_COPILOT_BUDGET_CLIENT_SECRET_FILE="${TEST_ROOT}/runtime/budget" \
+    AKL_DIRECTOR_COPILOT_PROJECTFLOW_CLIENT_SECRET_SOURCE_FILE="${TEST_ROOT}/projectflow.source" \
+    AKL_DIRECTOR_COPILOT_PROJECTFLOW_CLIENT_SECRET_FILE="${TEST_ROOT}/runtime/projectflow" \
+    AKL_DIRECTOR_COPILOT_ARCHFLOW_CLIENT_SECRET_SOURCE_FILE="${TEST_ROOT}/archflow.source" \
+    AKL_DIRECTOR_COPILOT_ARCHFLOW_CLIENT_SECRET_FILE="${TEST_ROOT}/runtime/archflow" \
+    "$@" sh "$ENTRYPOINT" sh -c 'exit 0'
+}
+
+run_director_fixture
+for domain in budget projectflow archflow; do
+  cmp "${TEST_ROOT}/${domain}.source" "${TEST_ROOT}/runtime/${domain}"
+  test -n "$(find "${TEST_ROOT}/runtime/${domain}" -perm 0400 -print)"
+done
+test ! -e "${TEST_ROOT}/runtime/legacy"
+
+if run_director_fixture AKL_DIRECTOR_COPILOT_BUDGET_CLIENT_SECRET_SOURCE_FILE='' \
+  >"${TEST_ROOT}/managed-missing.out" 2>"${TEST_ROOT}/managed-missing.err"; then
+  printf 'Managed Director accepted a missing per-domain credential.\n' >&2
+  exit 1
+fi
+grep -Fxq 'managed director copilot secret paths are not configured' "${TEST_ROOT}/managed-missing.err"
+
+run_director_fixture AKL_IDENTITY_MODE=external_oidc \
+  AKL_DIRECTOR_COPILOT_CLIENT_SECRET_SOURCE_FILE="${TEST_ROOT}/legacy.source" \
+  AKL_DIRECTOR_COPILOT_BUDGET_CLIENT_SECRET_SOURCE_FILE="${TEST_ROOT}/missing-managed"
+cmp "${TEST_ROOT}/legacy.source" "${TEST_ROOT}/runtime/legacy"
+
 grep -Fxq \
   'COPY --from=builder --chown=nextjs:nextjs /app/public ./public' \
   "$DOCKERFILE" \

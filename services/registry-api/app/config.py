@@ -42,6 +42,8 @@ class Settings(BaseSettings):
         default="development", alias="AKL_ENV"
     )
     auth_mode: Literal["mock", "oidc"] = Field(default="mock", alias="AKL_AUTH_MODE")
+    identity_mode: Literal["external_oidc", "managed"] = Field(default="external_oidc", alias="AKL_IDENTITY_MODE")
+    managed_identity_issuer: str | None = Field(default=None, alias="AKL_MANAGED_IDENTITY_ISSUER")
     database_url: str = Field(
         default="sqlite+pysqlite:///./registry.db", alias="AKL_DATABASE_URL"
     )
@@ -297,12 +299,25 @@ class Settings(BaseSettings):
                 for name, value in {
                     "AKL_OIDC_ISSUER": self.oidc_issuer,
                     "AKL_OIDC_AUDIENCE": self.oidc_audience,
-                    "AKL_OIDC_JWKS_URL": self.oidc_jwks_url,
+                    **({"AKL_OIDC_JWKS_URL": self.oidc_jwks_url} if self.identity_mode != "managed" else {}),
                 }.items()
                 if not value
             ]
             if missing:
                 raise ValueError(f"OIDC auth mode requires: {', '.join(missing)}")
+
+        if self.identity_mode == "managed":
+            from app.managed_identity import approved_issuer
+            approved_issuer(self.oidc_issuer, self.managed_identity_issuer)
+            if self.auth_mode != "oidc" or self.oidc_audience != "akl-api" or self.stratos_access_cache_ttl_seconds != 0:
+                raise ValueError("Managed identity requires OIDC, akl-api and uncached access projection")
+            from urllib.parse import urlsplit
+            projection = urlsplit(self.stratos_auth_me_url or "")
+            if projection.scheme != "https" or not projection.hostname or projection.username or projection.password or projection.query or projection.fragment:
+                raise ValueError("Managed identity requires an approved HTTPS access projection endpoint")
+            grants = self.service_route_grants.get("svc-budget-controlled-rules", frozenset())
+            if grants and grants != frozenset({"controlled-rules-read"}):
+                raise ValueError("Managed Budget rules identity must have only the controlled-rules-read route")
 
         trusted_service_clients = self.trusted_service_clients
         service_delegations = self.service_namespace_delegations

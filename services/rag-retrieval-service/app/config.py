@@ -225,6 +225,8 @@ class Settings:
     high_quality_min_context_chunks: int
     mock_chat_response: str | None
     mock_registry_denied_document_ids: tuple[str, ...]
+    identity_mode: str = "external_oidc"
+    managed_identity_issuer: str | None = None
 
 
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:
@@ -232,6 +234,14 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
 
     env_name = _get(source, "AKL_ENV", "development").strip().lower()
     auth_mode = _get(source, "AKL_AUTH_MODE", "disabled").strip().lower()
+    identity_mode = _get(source, "AKL_IDENTITY_MODE", "external_oidc")
+    if identity_mode not in {"external_oidc", "managed"}:
+        raise ConfigError("Invalid AKL_IDENTITY_MODE")
+    if identity_mode == "managed":
+        from app.managed_identity import approved_issuer
+        approved_issuer(source.get("AKL_OIDC_ISSUER"), source.get("AKL_MANAGED_IDENTITY_ISSUER"))
+        if auth_mode != "oidc" or source.get("AKL_RAG_USER_OIDC_AUDIENCE") != "akl-api":
+            raise ConfigError("Managed RAG requires OIDC and akl-api user audience")
     service_token = source.get("AKL_SERVICE_TOKEN") or None
     dependency_mode = _get(source, "AKL_RAG_DEPENDENCY_MODE", "mock").strip().lower()
     authz_mode = _get(source, "AKL_RAG_AUTHZ_MODE", "dev").strip().lower()
@@ -466,7 +476,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
             raise ConfigError("Production RAG requires AKL_AUTH_MODE=oidc for user delegation")
         if auth_mode == "oidc" and not all(
             source.get(name)
-            for name in ("AKL_OIDC_ISSUER", "AKL_OIDC_AUDIENCE", "AKL_OIDC_JWKS_URL")
+            for name in (("AKL_OIDC_ISSUER", "AKL_OIDC_AUDIENCE") if identity_mode == "managed" else ("AKL_OIDC_ISSUER", "AKL_OIDC_AUDIENCE", "AKL_OIDC_JWKS_URL"))
         ):
             raise ConfigError("Production OIDC requires issuer, audience, and JWKS URL")
         if not source.get("AKL_RAG_USER_OIDC_AUDIENCE"):
@@ -495,6 +505,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         env=env_name,
         log_level=_get(source, "AKL_LOG_LEVEL", "INFO").upper(),
         auth_mode=auth_mode,
+        identity_mode=identity_mode,
+        managed_identity_issuer=source.get("AKL_MANAGED_IDENTITY_ISSUER") or None,
         service_token=service_token,
         upstream_bearer_token=source.get("AKL_UPSTREAM_BEARER_TOKEN") or None,
         service_account_subject=_get(source, "AKL_SERVICE_ACCOUNT_SUBJECT", "svc-rag"),

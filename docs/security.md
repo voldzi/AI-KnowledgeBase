@@ -11,27 +11,34 @@ host applications do not make authorization decisions for AKB documents.
 ## Authentication
 
 - Local development may use mock/dev auth.
-- Production and STRATOS integration use OIDC/SSO through the STRATOS realm.
+- Production uses the explicitly approved OIDC issuer. The default
+  `external_oidc` mode retains the existing Keycloak integration. The optional
+  `managed` mode consumes STRATOS discovery only after explicit issuer approval;
+  AKB never connects to LDAP or accepts directory passwords.
 - Interactive OIDC login terminates in a server-side AKB session. The browser
   receives only an opaque 256-bit session selector in an `HttpOnly`, `Secure`,
   `SameSite=Lax` cookie scoped to the AKB base path. Access and refresh tokens
   are encrypted at rest on the server and are never stored in browser storage.
-- A normal login is a browser-session cookie. The optional trusted-device mode
-  has a 90-day absolute limit, a 30-day inactivity limit and is never selected
-  by default. Identity is revalidated with Keycloak at most 15 minutes after
-  the previous successful validation. A new authorization request reuses an
-  existing valid STRATOS SSO session; it does not force another password prompt.
-  Keycloak still requests credentials when no valid SSO session exists.
-- Opening a protected AKB page first performs a silent authorization round trip
-  through the shared STRATOS realm. An active STRATOS browser SSO session opens
-  AKB without another screen or password prompt. If no central session exists,
-  AKB falls back once to its interactive login page; tokens and application
-  cookies are never passed between STRATOS applications. The short-lived
+- Only the signature-verified access token determines persistence:
+  `stratos_remember_device=true` and a valid `stratos_session_started_at`
+  allow at most 30 days idle and 90 days from the central session start.
+  AKB has no separate remember-device checkbox. A missing or invalid policy
+  on an otherwise valid external identity permits only a session cookie,
+  at most 8 hours idle and 24 hours absolute. Invalid token signature, issuer
+  or audience rejects login, rather than enabling a shorter fallback login.
+  Refresh, step-up `auth_time`, and entry into another application never extend
+  an existing absolute deadline. Identity is revalidated on the next active
+  request at most 15 minutes after its previous successful validation.
+- Without an AKB session, a protected page starts one normal Authorization
+  Code + PKCE redirect, without `prompt=login` or `max_age=0`. A valid central
+  session in the same browser/profile avoids another password form. Existing
+  AKB page-entry sessions use a silent central identity check. The short-lived
   AKB-only synchronization marker is signed, `HttpOnly`, bound to one opaque
   server-session selector and used solely to complete this round trip. It is
-  not an identity token. A successful central check replaces and revokes any
-  previous AKB session in that browser, so a user switch in STRATOS cannot
-  retain the former user's AKB identity.
+  not an identity token. Failed callbacks and logout require explicit retry;
+  there is no repeating automatic login loop. A successful central identity
+  change replaces and revokes the previous AKB session in that browser. An
+  expired or revoked session cannot be recreated by a late silent callback.
 - Cookie-authenticated state-changing API requests (`POST`, `PUT`, `PATCH`,
   `DELETE`) require an exact `Origin` match with `AKL_WEB_PUBLIC_BASE_URL`.
   Browser form navigations that omit `Origin` are accepted only when both an
@@ -42,13 +49,16 @@ host applications do not make authorization decisions for AKB documents.
   Missing or foreign evidence fails with `SESSION_REQUEST_ORIGIN_FORBIDDEN`
   before route handling. Audience-bound bearer-only service integrations do
   not use the browser cookie and remain on their existing token boundary.
-- Local session revocation does not depend on Keycloak availability. The
-  primary logout then continues to the Keycloak end-session endpoint so the
-  visible STRATOS environment is signed out as one application. Selective
-  device-session revocation remains local to AKB.
+- Local session revocation does not depend on issuer availability. Logout
+  then continues to its approved end-session endpoint when available.
+  Revoking one AKB session does not prove immediate logout of every other
+  application; that propagation needs joint acceptance. Selective device
+  revocation remains local to AKB. A restored browser session cookie cannot
+  override server expiry or revocation; closing a window is not logout.
   Current STRATOS capabilities, scopes and Information Policy are still
   evaluated on every relevant request and are not copied into the session as
-  durable authority. See `docs/adr/0014-server-side-browser-sessions.md`.
+  durable authority. See [central SSO and managed identity](security/managed-identity.md)
+  and [ADR 0015](adr/0015-central-sso-and-managed-identity.md).
 - Server-to-server calls use service tokens or OIDC client credentials.
 - Service calls preserve `X-Request-ID` and `X-Correlation-ID`.
 - Web-to-Governance calls use the internal
@@ -94,6 +104,12 @@ host applications do not make authorization decisions for AKB documents.
   surface. A valid service token without a matching Registry proof is denied.
 - RAG uses user audience `akl-api`. End-user routes reject service identities
   and bind the request subject to the verified user bearer.
+
+The service-account names above describe the existing external OIDC runtime.
+Managed mode currently specifies the three separate Director clients and the
+Budget Controlled Rules reader only. The remaining worker identities require
+an agreed contract before a full managed production cutover; unknown services
+are denied, not mapped to a human user or given legacy credentials.
 
 ## Authorization
 

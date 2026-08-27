@@ -27,7 +27,7 @@ describe("OIDC login page", () => {
     });
 
     const response = await GET(
-      new NextRequest("https://stratos.example/api/auth/login?return_to=%2Fchat"),
+      new NextRequest("https://stratos.example/api/auth/login?return_to=%2Fchat&retry=required"),
     );
     const html = await response.text();
 
@@ -36,8 +36,7 @@ describe("OIDC login page", () => {
       html,
       /<form method="post" action="https:\/\/stratos\.example\/akb\/api\/auth\/login">/,
     );
-    assert.match(html, /name="remember"/);
-    assert.doesNotMatch(html, /name="remember"[^>]*checked/);
+    assert.doesNotMatch(html, /name="remember"/);
     assert.equal(
       response.headers.get("content-security-policy"),
       "default-src 'none'; style-src 'unsafe-inline'; form-action 'self' https://login.example; base-uri 'none'; frame-ancestors 'none'",

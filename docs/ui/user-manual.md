@@ -6,6 +6,7 @@
 | --- | --- |
 | Status | Draft for product-owner review |
 | Evidence baseline | AKB web and role matrix at `6405261f9279031bb090a85930fad61397fafe47`, 2026-08-26 |
+| SSO verification | [Central SSO local verification](../qa/central-sso-managed-identity-verification.md); target browser acceptance pending |
 | Owner | AKB product owner |
 | Approvers | Product, accessibility and records-management owners |
 | Classification | Internal; publishable to authenticated AKB users after approval |
@@ -28,9 +29,17 @@ STRATOS/Keycloak sign-in, AKB normally opens as the same user without another
 password prompt. AKB still maintains its own secure server-side session; no
 token is copied between applications or stored in browser storage.
 
-The optional **Stay signed in on this device** setting is intended only for a
-personal or managed device. Its maximum duration is 90 days and it expires
-after 30 days without activity. Access can be withdrawn sooner.
+Choose **Stay signed in on this device** only on the central sign-in page,
+and only for a personal or managed device. AKB has no second checkbox. Its
+maximum duration is 90 days from the central session's start and it expires
+after 30 days without activity. Switching applications does not restart this
+period. Without verified remembered-device policy, the AKB session is limited
+to 8 hours without activity and 24 hours in total, with a session-only cookie.
+Access can be withdrawn sooner.
+
+Use the same browser and profile when switching applications. A separately
+installed Chat app may need its own first sign-in. If sign-in fails, AKB offers
+an explicit retry instead of repeatedly redirecting you.
 
 Signing out revokes the local AKB session. When central logout is available,
 AKB also continues to the central sign-out flow. Never share an authenticated

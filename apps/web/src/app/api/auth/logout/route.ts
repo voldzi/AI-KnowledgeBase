@@ -2,21 +2,21 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getAklConfig } from "@/lib/api/config";
 import {
-  buildLogoutUrl,
+  resolveLogoutUrl,
+  revokeOidcRefreshToken,
   buildPublicAppUrl,
   isAllowedAuthNavigationRequestOrigin,
   OIDC_ACCESS_COOKIE,
   OIDC_REFRESH_COOKIE,
-  OIDC_SESSION_COOKIE,
   OIDC_STATE_COOKIE,
   OIDC_PKCE_COOKIE,
-  requireOidcConfig,
 } from "@/lib/auth/oidc";
 import {
   CENTRAL_SSO_SYNC_COOKIE,
   revokeServerSession,
   serverSessionCookieOptions,
   SERVER_SESSION_COOKIE,
+  SSO_SIGNED_OUT_COOKIE,
 } from "@/lib/auth/server-session";
 
 export const runtime = "nodejs";
@@ -33,31 +33,35 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: { code: "AUTH_ORIGIN_REJECTED", message: "Odhlášení z tohoto zdroje není povoleno." } }, { status: 403 });
   }
   const selector = request.cookies.get(SERVER_SESSION_COOKIE)?.value;
-  const session = selector ? await revokeServerSession(config, selector) : null;
-  if (session?.refreshToken) {
-    await revokeRefreshToken(config, session.refreshToken).catch(() => undefined);
+  let session = null;
+  let revocationFailed = false;
+  try {
+    session = selector ? await revokeServerSession(config, selector) : null;
+  } catch {
+    revocationFailed = true;
   }
-  const response = NextResponse.redirect(
-    buildLogoutUrl(config),
+  if (session?.refreshToken) {
+    await revokeOidcRefreshToken(config, session).catch(() => undefined);
+  }
+  const response = revocationFailed ? NextResponse.json({ error: { code: "SESSION_REVOCATION_UNAVAILABLE", message: "Relaci se nepodařilo odvolat. Zkuste odhlášení znovu." } }, { status: 503 }) : NextResponse.redirect(
+    await resolveLogoutUrl(config).catch(() => buildPublicAppUrl(config, "/api/auth/login?retry=required")),
     303,
   );
   response.cookies.delete(OIDC_ACCESS_COOKIE);
   response.cookies.delete(OIDC_REFRESH_COOKIE);
-  response.cookies.delete(OIDC_SESSION_COOKIE);
-  response.cookies.delete(OIDC_STATE_COOKIE);
-  response.cookies.delete(OIDC_PKCE_COOKIE);
-  response.cookies.delete(CENTRAL_SSO_SYNC_COOKIE);
-  response.cookies.set(SERVER_SESSION_COOKIE, "", { ...serverSessionCookieOptions(config, false), maxAge: 0 });
+  const expired = { ...serverSessionCookieOptions(config, false), maxAge: 0 };
+  response.cookies.set(OIDC_STATE_COOKIE, "", expired);
+  response.cookies.set(OIDC_PKCE_COOKIE, "", expired);
+  response.cookies.set(CENTRAL_SSO_SYNC_COOKIE, "", expired);
+  // Preserve the opaque selector on a store outage so a retry can revoke it.
+  if (!revocationFailed) {
+    response.cookies.set(SERVER_SESSION_COOKIE, "", expired);
+    response.cookies.set(SSO_SIGNED_OUT_COOKIE, "1", serverSessionCookieOptions(config, false));
+  }
+  response.headers.set("cache-control", "no-store");
   return response;
 }
 
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character] ?? character);
-}
-
-async function revokeRefreshToken(config: ReturnType<typeof getAklConfig>, refreshToken: string): Promise<void> {
-  const oidc = requireOidcConfig(config);
-  const body = new URLSearchParams({ token: refreshToken, token_type_hint: "refresh_token", client_id: oidc.clientId });
-  if (oidc.clientSecret) body.set("client_secret", oidc.clientSecret);
-  await fetch(`${oidc.issuer}/protocol/openid-connect/revoke`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body, signal: AbortSignal.timeout(3_000) });
 }

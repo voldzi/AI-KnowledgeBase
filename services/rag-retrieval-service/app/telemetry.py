@@ -48,13 +48,14 @@ def configure_telemetry(app: FastAPI, *, service_name: str, service_version: str
         from opentelemetry.sdk.resources import Resource
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
+        from app.safe_telemetry import SafeSpanExporter
     except ImportError as exc:
         logger.warning("otel_instrumentation_unavailable reason=%s", exc.__class__.__name__)
         return
 
     if not _configured:
         provider = TracerProvider(resource=Resource.create(_resource_attributes(service_name, service_version)))
-        provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+        provider.add_span_processor(BatchSpanProcessor(SafeSpanExporter(OTLPSpanExporter())))
         try:
             trace.set_tracer_provider(provider)
         except Exception as exc:  # pragma: no cover - defensive for reused test processes

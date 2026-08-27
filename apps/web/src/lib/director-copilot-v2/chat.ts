@@ -9,10 +9,7 @@ import type {
   AssistantChatResponse,
   ResponseLanguage,
 } from "@/lib/types";
-import {
-  DIRECTOR_COPILOT_AUDIT_TARGET,
-  directorCopilotServiceToken,
-} from "@/lib/director-copilot/service-identity";
+import { writeDirectorAudit } from "@/lib/director-copilot/audit-writer";
 import type { ConversationQueryState } from "@/lib/director-copilot/query-state";
 import { DirectorCopilotTransportError } from "@/lib/director-copilot/transport-error";
 
@@ -32,7 +29,6 @@ import {
 } from "./orchestrator";
 import type { DirectorCopilotIntent } from "./shared";
 
-const SERVICE_CLIENT_ID = "svc-akb-director-copilot";
 
 export async function runDirectorCopilotV2Chat(input: {
   message: string;
@@ -130,26 +126,10 @@ export async function auditDirectorCopilotV2Failure(input: {
   mode: "active";
   error: unknown;
 }): Promise<void> {
-  const serviceToken = await directorCopilotServiceToken(
-    input.config,
-    fetch,
-    DIRECTOR_COPILOT_AUDIT_TARGET,
-  );
-  const serviceContext: ApiRequestContext = {
-    ...input.actorContext,
-    subjectId: SERVICE_CLIENT_ID,
-    accessToken: serviceToken,
-    roles: [],
-    groups: [],
-    capabilities: [],
-    scopes: [],
-    applicationAccess: [],
-    serviceClientId: SERVICE_CLIENT_ID,
-  };
   const errorCode = input.error instanceof DirectorCopilotTransportError
     ? input.error.code
     : "DIRECTOR_COPILOT_V2_FAILED";
-  await input.clients.registry.createAuditEvent({
+  await writeDirectorAudit(input.config, input.clients, input.actorContext, {
     actor_id: input.actorContext.subjectId,
     event_type: "assistant.director_copilot_v2_failed",
     resource_type: "assistant_conversation",
@@ -179,7 +159,7 @@ export async function auditDirectorCopilotV2Failure(input: {
         ?? input.actorContext.requestId
         ?? null,
     },
-  }, serviceContext);
+  });
 }
 
 function composeResponse(
@@ -1006,23 +986,7 @@ async function auditResult(
   orchestration: DirectorCopilotV2OrchestrationResult,
   response: AssistantChatResponse,
 ): Promise<void> {
-  const serviceToken = await directorCopilotServiceToken(
-    input.config,
-    fetch,
-    DIRECTOR_COPILOT_AUDIT_TARGET,
-  );
-  const serviceContext: ApiRequestContext = {
-    ...input.actorContext,
-    subjectId: SERVICE_CLIENT_ID,
-    accessToken: serviceToken,
-    roles: [],
-    groups: [],
-    capabilities: [],
-    scopes: [],
-    applicationAccess: [],
-    serviceClientId: SERVICE_CLIENT_ID,
-  };
-  await input.clients.registry.createAuditEvent({
+  await writeDirectorAudit(input.config, input.clients, input.actorContext, {
     actor_id: input.actorContext.subjectId,
     event_type: "assistant.director_copilot_v2_returned",
     resource_type: "assistant_conversation",
@@ -1095,7 +1059,7 @@ async function auditResult(
       status: orchestration.status,
       failure_reason_code: primaryFailureReasonCode(orchestration),
     },
-  }, serviceContext);
+  });
 }
 
 function primaryFailureReasonCode(

@@ -15,6 +15,7 @@ import {
   pinnedDirectorCopilotV2CatalogForTests,
   resetDirectorCopilotV2ManifestCacheForTests,
 } from "../src/lib/director-copilot-v2/manifest-catalog";
+import { managedConfig } from "./helpers/managed-identity";
 
 const projectFixture = fixture("projectflow-portfolio-delivery-overview.json");
 
@@ -82,6 +83,55 @@ describe("Director Copilot V2 manifest and execute client", () => {
     assert.equal(headers.get("x-akb-domain-tool-contract"), "director-copilot-2");
     assert.equal(headers.has("x-stratos-capabilities"), false);
     assert.equal(headers.has("x-stratos-scopes"), false);
+  });
+
+  it("binds cached manifests to the issuer and all managed service clients", async () => {
+    let calls = 0;
+    const fetcher: typeof fetch = async (input) => {
+      calls += 1;
+      return manifestResponse(String(input));
+    };
+    const serviceToken = async () => "synthetic-service-token";
+    const external = config();
+    await loadDirectorCopilotV2ManifestCatalog({ config: external, fetcher, serviceToken });
+    await loadDirectorCopilotV2ManifestCatalog({ config: external, fetcher, serviceToken });
+    assert.equal(calls, 3);
+
+    const managed = { ...managedConfig(), directorCopilot: { ...external.directorCopilot!,
+      managedIssuer: managedConfig().oidc!.issuer,
+      managedClients: {
+        "budget-api": { clientId: "budget-reader" },
+        "projectflow-api": { clientId: "projectflow-reader" },
+        "archflow-api": { clientId: "archflow-reader" },
+      },
+    } } satisfies AklConfig;
+    await loadDirectorCopilotV2ManifestCatalog({ config: managed, fetcher, serviceToken });
+    assert.equal(calls, 6);
+    managed.directorCopilot.managedClients["budget-api"].clientId = "new-budget-reader";
+    await loadDirectorCopilotV2ManifestCatalog({ config: managed, fetcher, serviceToken });
+    assert.equal(calls, 9);
+    managed.oidc!.issuer = managed.directorCopilot.managedIssuer = "https://other.example/identity";
+    await loadDirectorCopilotV2ManifestCatalog({ config: managed, fetcher, serviceToken });
+    assert.equal(calls, 12);
+  });
+
+  it("does not share an in-flight manifest lookup across identity configurations", async () => {
+    let unblock!: () => void;
+    const gate = new Promise<void>((resolve) => { unblock = resolve; });
+    const fetcher: typeof fetch = async (input) => manifestResponse(String(input));
+    const first = loadDirectorCopilotV2ManifestCatalog({
+      config: config(), fetcher, serviceToken: async () => { await gate; return "first-service"; },
+    });
+    let secondCalls = 0;
+    const secondConfig = config();
+    secondConfig.directorCopilot!.tokenUrl = "https://other.example/token";
+    const second = loadDirectorCopilotV2ManifestCatalog({
+      config: secondConfig, fetcher, serviceToken: async () => { secondCalls += 1; return "second-service"; },
+    });
+    unblock();
+    await first;
+    await second;
+    assert.equal(secondCalls, 3);
   });
 
   it("rejects runtime manifest drift before any execute request", async () => {
@@ -171,6 +221,14 @@ function applicationFromUrl(
   if (url.includes("projectflow")) return "projectflow";
   if (url.includes("archflow")) return "archflow";
   return "budget";
+}
+
+function manifestResponse(url: string): Response {
+  const audience = `${applicationFromUrl(url)}-api`;
+  return Response.json({
+    schema_version: "director-copilot-2",
+    manifests: pinnedDirectorCopilotV2ManifestBundle().manifests.filter((manifest) => manifest.audience === audience),
+  });
 }
 
 function fixture(name: string): {

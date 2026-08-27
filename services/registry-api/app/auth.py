@@ -8,6 +8,7 @@ from starlette import status
 from app.config import Settings, get_settings
 from app.access_governance import GovernanceDenied, GovernanceUnavailable, governance_client
 from app.errors import problem
+from app.managed_identity import ManagedIdentityInvalid, ManagedIdentityUnavailable, managed_verifier, validate_rules_service, validate_user
 
 
 @dataclass(frozen=True)
@@ -84,6 +85,8 @@ def _oidc_principal(request: Request, settings: Settings) -> Principal:
         raise problem(status.HTTP_401_UNAUTHORIZED, "unauthorized", "Bearer token is required")
 
     token = authorization.removeprefix("Bearer ").strip()
+    if settings.identity_mode == "managed":
+        return _managed_principal(token, settings)
     try:
         jwk_client = PyJWKClient(settings.oidc_jwks_url)
         signing_key = jwk_client.get_signing_key_from_jwt(token)
@@ -168,6 +171,29 @@ def _oidc_principal(request: Request, settings: Settings) -> Principal:
         service_client_id=None,
         bearer_token=token,
     )
+
+
+def _managed_principal(token: str, settings: Settings) -> Principal:
+    try:
+        claims = managed_verifier(settings.oidc_issuer, settings.managed_identity_issuer).verify(token)
+        if claims.get("stratos_service") is True:
+            validate_rules_service(claims)
+            client_id = claims["client_id"]
+            if client_id not in settings.trusted_service_clients or settings.service_route_grants.get(client_id) != frozenset({"controlled-rules-read"}):
+                raise ManagedIdentityInvalid("Service route is not granted")
+            return Principal(subject_id=claims["sub"], roles={"service_budget_rules_read"}, groups=set(), service_identity=True, service_client_id=client_id, application_access_active=False, bearer_token=token)
+        validate_user(claims)
+    except ManagedIdentityUnavailable as exc:
+        raise problem(503, "identity_provider_unavailable", "Identity verification is unavailable") from exc
+    except ManagedIdentityInvalid as exc:
+        raise problem(401, "unauthorized", "Invalid managed bearer identity") from exc
+    try:
+        projection = governance_client(settings).user_projection(token, token_expires_at=claims["exp"], expected_subject=claims["sub"], identity_audience=claims["identity_audience"])
+    except GovernanceDenied as exc:
+        raise problem(403, "access_projection_denied", "STRATOS rejected the identity or access projection") from exc
+    except GovernanceUnavailable as exc:
+        raise problem(503, "access_projection_unavailable", "STRATOS access projection is unavailable") from exc
+    return Principal(subject_id=claims["sub"], roles=set(), groups=set(), capabilities=set(projection.capabilities), scopes=set(projection.scopes), organization_id=projection.organization_id, identity_active=projection.identity_active, membership_active=projection.membership_active, application_access_active=projection.application_access_active, dynamic_access_loaded=True, bearer_token=token)
 
 
 def _header_bool(request: Request, name: str, default: bool) -> bool:

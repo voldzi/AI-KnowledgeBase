@@ -12,7 +12,7 @@ import {
   normalizeReturnToForPublicBase,
   safeReturnToFromState,
   parseState,
-  sessionFromTokens
+  verifiedSessionFromTokens
 } from "@/lib/auth/oidc";
 import {
   centralSsoSyncCookieOptions,
@@ -22,8 +22,13 @@ import {
   resolveServerSession,
   revokeServerSession,
   serverSessionCookieOptions,
+  serverSessionDeadline,
+  synchronizeServerSession,
   SERVER_SESSION_COOKIE,
+  SSO_ATTEMPT_COOKIE,
+  SSO_SIGNED_OUT_COOKIE,
 } from "@/lib/auth/server-session";
+import { manualLoginUrl } from "@/lib/auth/login-navigation";
 
 export const runtime = "nodejs";
 
@@ -79,47 +84,67 @@ export async function GET(request: NextRequest) {
     return redirectToLogin(config, returnTo);
   }
 
-  const session = sessionFromTokens(tokens);
+  let session;
+  try {
+    session = await verifiedSessionFromTokens(config, tokens, parsedState.nonce);
+  } catch {
+    console.warn("OIDC callback identity validation failed.");
+    return redirectToLogin(config, returnTo);
+  }
   const previousSession =
     parsedState.mode === "silent" && previousSelector
       ? await resolveServerSession(config, previousSelector).catch(() => null)
       : null;
-  const persistent = parsedState.mode === "silent"
-    ? (previousSession?.persistent ?? false)
-    : parsedState.remember;
+  if (parsedState.mode === "silent" && !previousSession) {
+    // Silent synchronization cannot replace an expired or revoked BFF session.
+    return redirectToLogin(config, returnTo);
+  }
+  let persistent = session.rememberDevice === true;
+  const priorDeadline = previousSession?.oidc.subjectId === session.subjectId ? previousSession.absoluteExpiresAt : undefined;
+  const nowMs = Date.now();
   let selector: string;
+  let absoluteExpiresAt: number;
   try {
-    selector = await createServerSession(config, session, persistent);
+    if (previousSelector && previousSession?.oidc.subjectId === session.subjectId) {
+      const synchronized = await synchronizeServerSession(config, previousSelector, previousSession, session, nowMs);
+      selector = previousSelector;
+      persistent = synchronized.persistent;
+      absoluteExpiresAt = synchronized.absoluteExpiresAt;
+    } else {
+      if (previousSelector) await revokeServerSession(config, previousSelector, "central_sso_replaced");
+      selector = await createServerSession(config, session, persistent, nowMs, priorDeadline);
+      absoluteExpiresAt = serverSessionDeadline(config, session, persistent, nowMs, priorDeadline);
+    }
   } catch {
     console.error("OIDC callback could not create a server session.");
     return redirectToLogin(config, returnTo);
   }
   const response = redirectTo(buildPublicAppUrl(config, returnTo));
-  response.cookies.delete(OIDC_STATE_COOKIE);
-  response.cookies.delete(OIDC_PKCE_COOKIE);
-  response.cookies.set(SERVER_SESSION_COOKIE, selector, serverSessionCookieOptions(config, persistent));
+  response.cookies.set(OIDC_STATE_COOKIE, "", { ...serverSessionCookieOptions(config, false), maxAge: 0 });
+  response.cookies.set(OIDC_PKCE_COOKIE, "", { ...serverSessionCookieOptions(config, false), maxAge: 0 });
+  response.cookies.set(SERVER_SESSION_COOKIE, selector, serverSessionCookieOptions(config, persistent, absoluteExpiresAt, nowMs));
+  for (const name of [SSO_ATTEMPT_COOKIE, SSO_SIGNED_OUT_COOKIE]) response.cookies.set(name, "", { ...serverSessionCookieOptions(config, false), maxAge: 0 });
   response.cookies.set(
     CENTRAL_SSO_SYNC_COOKIE,
     await createCentralSsoSyncMarker(config, selector),
     centralSsoSyncCookieOptions(config),
   );
-  if (previousSelector && previousSelector !== selector) {
-    await revokeServerSession(config, previousSelector, "central_sso_replaced").catch(() => null);
-  }
   response.cookies.delete(OIDC_ACCESS_COOKIE);
   response.cookies.delete(OIDC_REFRESH_COOKIE);
   return response;
 }
 
 function redirectToLogin(config: ReturnType<typeof getAklConfig>, returnTo: string) {
-  const loginUrl = buildPublicAppUrl(config, `/api/auth/login?return_to=${encodeURIComponent(returnTo)}`);
+  const loginUrl = manualLoginUrl(config, returnTo);
   const response = redirectTo(loginUrl);
-  response.cookies.delete(OIDC_STATE_COOKIE);
-  response.cookies.delete(OIDC_PKCE_COOKIE);
-  response.cookies.delete(OIDC_SESSION_COOKIE);
+  const expired = { ...serverSessionCookieOptions(config, false), maxAge: 0 };
+  response.cookies.set(OIDC_STATE_COOKIE, "", expired);
+  response.cookies.set(OIDC_PKCE_COOKIE, "", expired);
+  response.cookies.set(OIDC_SESSION_COOKIE, "", expired);
   response.cookies.delete(OIDC_ACCESS_COOKIE);
   response.cookies.delete(OIDC_REFRESH_COOKIE);
-  response.cookies.delete(CENTRAL_SSO_SYNC_COOKIE);
+  response.cookies.set(CENTRAL_SSO_SYNC_COOKIE, "", expired);
+  response.cookies.set(SSO_ATTEMPT_COOKIE, "1", serverSessionCookieOptions(config, false));
   return response;
 }
 

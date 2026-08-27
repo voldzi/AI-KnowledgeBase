@@ -43,10 +43,13 @@ def register_exception_handlers(app: FastAPI) -> None:
         return JSONResponse(status_code=exc.status_code, content=payload, headers=exc.headers)
 
     @app.exception_handler(RequestValidationError)
-    async def validation_exception_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
+    async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+        errors = exc.errors()
+        if request.url.path.startswith("/api/v1/internal/"):
+            errors = [{"type": item["type"], "loc": item["loc"], "msg": "Invalid internal request field"} for item in errors]
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            content=error_payload("validation_error", "Request validation failed", {"errors": json_safe(exc.errors())}),
+            content=error_payload("validation_error", "Request validation failed", {"errors": json_safe(errors)}),
         )
 
     @app.exception_handler(Exception)

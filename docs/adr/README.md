@@ -9,3 +9,5 @@ Rules:
 - supersede old decisions with a new ADR instead of rewriting history,
 - add an ADR when a change affects architecture, API contracts, data handling,
   security boundaries, deployment, rollback, or STRATOS integration contracts.
+
+Current identity decision: [0015: central SSO and optional managed identity](0015-central-sso-and-managed-identity.md).

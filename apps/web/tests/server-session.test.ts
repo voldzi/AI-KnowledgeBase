@@ -116,6 +116,7 @@ describe("server-side OIDC session cookie", () => {
         expiresAt: now + 60 * 60_000,
         subjectId: "user-123",
         keycloakSessionId: "kc-session-123",
+        rememberDevice: true, centralSessionStartedAt: now / 1000, sessionPolicyReason: "CENTRAL_REMEMBER_DEVICE", sessionAbsoluteExpiresAt: now + 90 * 86_400_000,
         roles: [],
         groups: [],
       }, true, now);
@@ -223,6 +224,7 @@ describe("server-side OIDC session cookie", () => {
         refreshToken: "refresh",
         expiresAt: now + 60 * 60_000,
         subjectId: "disabled-user",
+        rememberDevice: true, centralSessionStartedAt: now / 1000, sessionPolicyReason: "CENTRAL_REMEMBER_DEVICE", sessionAbsoluteExpiresAt: now + 90 * 86_400_000,
         roles: [],
         groups: [],
       }, true, now);
