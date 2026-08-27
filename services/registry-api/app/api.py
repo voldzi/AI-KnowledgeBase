@@ -58,6 +58,13 @@ from app.content_security import (
     verify_content_security_attestation,
 )
 from app.database import get_db
+from app.document_workflow import (
+    assignment_matches,
+    personal_roles,
+    review_due_date,
+    review_snapshot,
+    task_is_mine,
+)
 from app.errors import problem
 from app.information_policy import (
     InformationPolicyBinding,
@@ -201,6 +208,7 @@ from app.schemas import (
     DocumentReadinessSeverity,
     GovernanceScope,
     DocumentResponse,
+    DocumentReviewRequest,
     DocumentStatus,
     DocumentType,
     ExternalSourceSystem,
@@ -232,12 +240,15 @@ from app.schemas import (
     PublicDocumentMetadataResponse,
     PublicDocumentSourceResolutionResponse,
     SourceLocationKind,
+    WorkflowTaskAction,
     WorkflowTaskActionRequest,
     WorkflowTaskKind,
     WorkflowTaskListResponse,
     WorkflowTaskPriority,
     WorkflowTaskResponse,
     WorkflowTaskStatus,
+    WorkflowDocumentListResponse,
+    WorkflowDocumentResponse,
     AssistantConversationCreateRequest,
     AssistantConversationDetailResponse,
     AssistantConversationListItemResponse,
@@ -1964,9 +1975,12 @@ def _workflow_action_version(
     return _latest_document_version(db, task.document_id)
 
 
-def _approve_document_for_publication(db: Session, document: Document) -> DocumentVersion | None:
-    _transition_document_status(document, DocumentStatus.approved)
-    version = _latest_document_version(db, document.document_id)
+def _approve_document_for_publication(
+    db: Session, document: Document, version: DocumentVersion | None = None,
+) -> DocumentVersion | None:
+    if document.status != DocumentStatus.valid.value:
+        _transition_document_status(document, DocumentStatus.approved)
+    version = version or _latest_document_version(db, document.document_id)
     if version is not None and version.status in {DocumentStatus.draft.value, DocumentStatus.review.value}:
         version.status = DocumentStatus.approved.value
     return version
@@ -1975,8 +1989,93 @@ def _approve_document_for_publication(db: Session, document: Document) -> Docume
 def _request_document_changes(document: Document, version: DocumentVersion | None = None) -> None:
     if document.status in {DocumentStatus.review.value, DocumentStatus.approved.value}:
         _transition_document_status(document, DocumentStatus.draft)
-    if version is not None and version.status == DocumentStatus.approved.value:
+    if version is not None and version.status in {DocumentStatus.review.value, DocumentStatus.approved.value}:
         version.status = DocumentStatus.draft.value
+
+
+def _review_assignment(document: Document) -> DocumentAssignment | None:
+    return _select_assignment(
+        list(document.assignments),
+        [DocumentAssignmentRole.approver.value, DocumentAssignmentRole.reviewer.value],
+    )
+
+
+def _require_review_source(db: Session, version: DocumentVersion) -> None:
+    if not version.source_file_uri or not version.file_hash or version.valid_from is None:
+        raise problem(409, "review_source_incomplete", "Source, hash and effective date are required for review")
+    files = list(db.scalars(select(DocumentFile).where(
+        DocumentFile.document_version_id == version.document_version_id,
+    )))
+    required = get_settings().content_security_required
+    accepted = {"clean"} if required else {None, "clean", "not_performed"}
+    if any(item.content_security_status not in accepted for item in files):
+        raise problem(409, "review_scan_incomplete", "All source files must pass security scanning")
+    if required:
+        source = next((item for item in files if item.uri == version.source_file_uri), None)
+        if (
+            source is None or source.content_security_status != "clean"
+            or not source.content_security_attestation_sha256
+            or (source.sha256 or "").removeprefix("sha256:") != version.file_hash.removeprefix("sha256:")
+        ):
+            raise problem(409, "review_scan_incomplete", "The exact source must have a clean intake attestation")
+
+
+def _require_review_decision(
+    db: Session, principal: Principal, task: WorkflowTask, document: Document,
+) -> DocumentVersion:
+    context = require_global_action(principal, Action.workflow_task_write, db)
+    if principal.service_identity:
+        raise problem(403, "review_human_required", "A document review requires an authenticated person")
+    assignment = _review_assignment(document)
+    if assignment is not None and not assignment_matches(assignment, context):
+        raise problem(403, "review_assignee_required", "Only the assigned approver may decide this review")
+    if task.status not in ACTIVE_TASK_STATUSES or task.kind != WorkflowTaskKind.review.value:
+        raise problem(409, "review_task_not_active", "This review is no longer active")
+    if task.document_version_id is None:
+        raise problem(409, "review_version_required", "Submit an exact document version for review")
+    version = _get_version(db, document.document_id, task.document_version_id)
+    latest = _latest_document_version(db, document.document_id)
+    if latest is None or latest.document_version_id != version.document_version_id:
+        raise problem(409, "review_source_changed", "A newer version requires a new review")
+    if (task.task_metadata or {}).get("review_snapshot"):
+        if task.task_metadata.get("submitted_by") == principal.subject_id:
+            raise problem(403, "review_self_approval_forbidden", "The submitter cannot decide their own review")
+        if (
+            assignment is None
+            or task.owner_id != assignment.subject_id
+            or version.status != DocumentStatus.review.value
+            or task.task_metadata["review_snapshot"] != review_snapshot(document, version)
+        ):
+            raise problem(409, "review_source_changed", "The source or assignment changed; submit a new review")
+        _require_review_source(db, version)
+    # Approval uses the existing publication capability, not an assignment as a grant.
+    require_document_action(principal, Action.document_version_publish, document, db)
+    if context.access_v2:
+        require_document_version_action(principal, Action.document_version_publish, document, version, db)
+    return version
+
+
+def _workflow_task_response(
+    task: WorkflowTask, context: SubjectContext, document: Document | None = None,
+) -> WorkflowTaskResponse:
+    response = WorkflowTaskResponse.model_validate(task)
+    response.assigned_to_me = task_is_mine(task, context)
+    if not evaluate_global_action(context, Action.workflow_task_write.value).allowed:
+        return response
+    required_action = Action.document_version_publish if task.kind == WorkflowTaskKind.review.value else Action.document_update
+    if document is None or not evaluate_document_access(context, required_action.value, document).allowed:
+        return response
+    if task.kind == WorkflowTaskKind.review.value:
+        assignment = _review_assignment(document)
+        if task.status in ACTIVE_TASK_STATUSES and task.document_version_id and (
+            assignment is None or assignment_matches(assignment, context)
+        ) and not ((task.task_metadata or {}).get("review_snapshot") and task.task_metadata.get("submitted_by") == context.subject_id):
+            response.allowed_actions = [WorkflowTaskAction.approve, WorkflowTaskAction.request_changes]
+    elif task.status in ACTIVE_TASK_STATUSES:
+        response.allowed_actions = [WorkflowTaskAction.assign, WorkflowTaskAction.resolve]
+        if task.kind == WorkflowTaskKind.draft.value:
+            response.allowed_actions.append(WorkflowTaskAction.request_changes)
+    return response
 
 
 def _publish_version(
@@ -1999,7 +2098,27 @@ def _publish_version(
         and version.valid_to is not None
         and _is_official_public_source_document(document)
     )
-    if document.status != DocumentStatus.approved.value and not is_historical_official_source:
+    review_tasks = list(db.scalars(select(WorkflowTask).where(
+        WorkflowTask.document_id == document.document_id,
+        WorkflowTask.kind == WorkflowTaskKind.review.value,
+    ).order_by(desc(WorkflowTask.created_at), desc(WorkflowTask.task_id))))
+    bound_reviews = [task for task in review_tasks if (task.task_metadata or {}).get("review_snapshot")]
+    if bound_reviews:
+        approval = next((task for task in bound_reviews if task.document_version_id == version.document_version_id), None)
+        if (
+            approval is None
+            or version.status != DocumentStatus.approved.value
+            or approval.status != WorkflowTaskStatus.resolved.value
+            or approval.task_metadata.get("last_action") != "approve"
+            or approval.task_metadata["review_snapshot"] != review_snapshot(document, version)
+        ):
+            raise problem(409, "review_source_changed", "The exact current source requires approval before publication")
+        _require_review_source(db, version)
+    if (
+        document.status != DocumentStatus.approved.value
+        and not (document.status == DocumentStatus.valid.value and version.status == DocumentStatus.approved.value)
+        and not is_historical_official_source
+    ):
         raise problem(
             status.HTTP_409_CONFLICT,
             "publish_requires_approval",
@@ -2104,6 +2223,8 @@ def _upsert_derived_task(
     for key, value in values.items():
         if has_manual_decision and key in {"status", "owner_id", "owner_label"}:
             continue
+        if key == "document_version_id" and task.kind == WorkflowTaskKind.review.value and task.document_version_id:
+            continue
         if key == "task_metadata":
             if has_manual_decision:
                 task.task_metadata = {**dict(value), **existing_metadata}
@@ -2141,16 +2262,23 @@ def _sync_derived_workflow_tasks(db: Session) -> None:
                     & (Document.status != DocumentStatus.valid.value)
                 )
             )
-            .options(selectinload(Document.assignments))
+            .options(selectinload(Document.assignments), selectinload(Document.versions))
         ).scalars()
     )
     for document in documents:
-        if document.status == DocumentStatus.review.value:
+        bound_review = any(
+            task.document_id == document.document_id
+            and task.kind == WorkflowTaskKind.review.value
+            and task.status in ACTIVE_TASK_STATUSES
+            and (task.task_metadata or {}).get("review_snapshot")
+            for task in existing_tasks_by_source_key.values()
+        )
+        if document.status == DocumentStatus.review.value and not bound_review:
             review_context = _workflow_assignment_context(
                 document,
                 roles=[
-                    DocumentAssignmentRole.reviewer.value,
                     DocumentAssignmentRole.approver.value,
+                    DocumentAssignmentRole.reviewer.value,
                     DocumentAssignmentRole.gestor.value,
                     DocumentAssignmentRole.owner.value,
                 ],
@@ -2178,7 +2306,10 @@ def _sync_derived_workflow_tasks(db: Session) -> None:
                     "role": review_context["role"],
                     "document_id": document.document_id,
                     "document_title": document.title,
-                    "document_version_id": None,
+                    "document_version_id": (
+                        max(document.versions, key=lambda version: version.created_at).document_version_id
+                        if document.versions else None
+                    ),
                     "audit_event_id": None,
                     "job_id": None,
                     "due_at": _add_days(document.updated_at, int(review_context["sla_days"])),
@@ -2191,7 +2322,14 @@ def _sync_derived_workflow_tasks(db: Session) -> None:
                 existing_tasks_by_source_key=existing_tasks_by_source_key,
             )
 
-        if document.status == DocumentStatus.draft.value:
+        returned_for_changes = any(
+            task.document_id == document.document_id
+            and task.kind == WorkflowTaskKind.draft.value
+            and task.status in ACTIVE_TASK_STATUSES
+            and (task.task_metadata or {}).get("review_task_id")
+            for task in existing_tasks_by_source_key.values()
+        )
+        if document.status == DocumentStatus.draft.value and not returned_for_changes:
             draft_context = _workflow_assignment_context(
                 document,
                 roles=[DocumentAssignmentRole.owner.value, DocumentAssignmentRole.gestor.value],
@@ -2392,7 +2530,7 @@ def _escalate_overdue_tasks(db: Session) -> None:
 
         previous_owner_id = task.owner_id
         escalation_subject_id = metadata.get("escalation_subject_id")
-        if isinstance(escalation_subject_id, str) and escalation_subject_id:
+        if isinstance(escalation_subject_id, str) and escalation_subject_id and not metadata.get("review_snapshot"):
             task.owner_id = escalation_subject_id
             task.owner_label = str(metadata.get("escalation_label") or escalation_subject_id)
         task.priority = _PRIORITY_ESCALATION.get(task.priority, WorkflowTaskPriority.critical.value)
@@ -7054,6 +7192,8 @@ def replace_document_assignments(
     principal: Principal = Depends(get_current_principal),
 ) -> DocumentAssignmentListResponse:
     document = _get_document(db, document_id)
+    _lock_publication_source(db, document_id=document_id)
+    db.refresh(document)
     require_document_action(principal, Action.document_update, document, db)
     assignment_payloads = _validated_assignment_payloads(payload.assignments)
 
@@ -7092,6 +7232,8 @@ def patch_document(
     principal: Principal = Depends(get_current_principal),
 ) -> Document:
     document = _get_document(db, document_id)
+    _lock_publication_source(db, document_id=document_id)
+    db.refresh(document)
     subject_context = require_document_action(
         principal, Action.document_update, document, db
     )
@@ -7099,6 +7241,12 @@ def patch_document(
     changes = payload.model_dump(exclude_unset=True)
     if not changes:
         raise problem(status.HTTP_400_BAD_REQUEST, "empty_patch", "PATCH body must contain at least one field")
+    if payload.status in {DocumentStatus.approved, DocumentStatus.valid} and payload.status.value != document.status:
+        reviews = db.scalars(select(WorkflowTask).where(
+            WorkflowTask.document_id == document_id, WorkflowTask.kind == WorkflowTaskKind.review.value,
+        ))
+        if any((task.task_metadata or {}).get("review_snapshot") for task in reviews):
+            raise problem(409, "review_action_required", "Use the version-bound review and publication actions")
 
     if payload.title is not None:
         document.title = payload.title
@@ -7235,6 +7383,8 @@ def create_document_version(
     principal: Principal = Depends(get_current_principal),
 ) -> DocumentVersionResponse:
     document = _get_document(db, document_id)
+    _lock_publication_source(db, document_id=document_id)
+    db.refresh(document)
     budget_external_ref = db.execute(
         select(ExternalDocumentRef.external_document_id).where(
             ExternalDocumentRef.document_id == document_id,
@@ -7887,8 +8037,13 @@ def publish_document_version(
     principal: Principal = Depends(get_current_principal),
 ) -> DocumentVersionResponse:
     document = _get_document(db, document_id)
-    require_document_action(principal, Action.document_version_publish, document, db)
     version = _get_version(db, document_id, version_id)
+    _lock_publication_source(db, document_id=document_id, document_version_id=version_id)
+    db.refresh(document)
+    db.refresh(version)
+    context = require_document_action(principal, Action.document_version_publish, document, db)
+    if context.access_v2:
+        require_document_version_action(principal, Action.document_version_publish, document, version, db)
     _publish_version(db, document=document, version=version, actor_id=principal.subject_id)
     _commit_or_conflict(db)
     db.refresh(version)
@@ -8704,6 +8859,158 @@ def _candidate_document_coordinates_allowed(
     )
 
 
+@router.post(
+    "/documents/{document_id}/versions/{version_id}/submit-review",
+    response_model=WorkflowTaskResponse,
+)
+def submit_document_review(
+    document_id: str,
+    version_id: str,
+    payload: DocumentReviewRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> WorkflowTaskResponse:
+    document = _get_document(db, document_id)
+    version = _get_version(db, document_id, version_id)
+    _lock_publication_source(db, document_id=document_id, document_version_id=version_id)
+    db.refresh(document)
+    db.refresh(version)
+    context = require_document_action(principal, Action.document_update, document, db)
+    require_global_action(principal, Action.workflow_task_write, db)
+    if principal.service_identity:
+        raise problem(403, "review_human_required", "A document review requires an authenticated person")
+    if context.access_v2:
+        require_document_version_action(principal, Action.document_update, document, version, db)
+    latest = _latest_document_version(db, document_id)
+    if (
+        latest is None or latest.document_version_id != version_id
+        or version.status not in {DocumentStatus.draft.value, DocumentStatus.review.value, DocumentStatus.approved.value}
+        or document.status in {DocumentStatus.archived.value, DocumentStatus.cancelled.value, DocumentStatus.superseded.value}
+    ):
+        raise problem(409, "review_version_not_eligible", "Only the current unpublished version can be submitted for review")
+    approver = _review_assignment(document)
+    if approver is None or approver.subject_type not in {"user", "group"}:
+        raise problem(409, "review_assignee_required", "Assign an active person or group as approver first")
+    _require_review_source(db, version)
+    snapshot = review_snapshot(document, version)
+    active = list(db.scalars(select(WorkflowTask).where(
+        WorkflowTask.document_id == document_id,
+        WorkflowTask.kind.in_([WorkflowTaskKind.review.value, WorkflowTaskKind.draft.value]),
+        WorkflowTask.status.in_(ACTIVE_TASK_STATUSES),
+    )))
+    for task in active:
+        if (
+            task.kind == WorkflowTaskKind.review.value and task.document_version_id == version_id
+            and (task.task_metadata or {}).get("review_snapshot") == snapshot
+        ):
+            return _workflow_task_response(task, context, document)
+    now = utcnow()
+    for task in active:
+        task.status = WorkflowTaskStatus.cancelled.value if task.kind == WorkflowTaskKind.review.value else WorkflowTaskStatus.resolved.value
+        task.resolved_at = now
+        task.task_metadata = {**dict(task.task_metadata or {}), "superseded_by_review": True}
+    version.status = DocumentStatus.review.value
+    if document.status != DocumentStatus.valid.value:
+        _transition_document_status(document, DocumentStatus.review)
+    task_id = make_id("task")
+    task = WorkflowTask(
+        task_id=task_id,
+        source_key=f"document-review:{document_id}:{task_id}",
+        kind=WorkflowTaskKind.review.value,
+        priority=WorkflowTaskPriority.medium.value,
+        status=WorkflowTaskStatus.open.value,
+        title="Document review required",
+        description="Review the exact submitted version before approval.",
+        source="Document review submission",
+        owner_id=approver.subject_id,
+        owner_label=approver.display_label or approver.subject_id,
+        role=approver.role,
+        document_id=document_id,
+        document_title=document.title,
+        document_version_id=version_id,
+        due_at=now + timedelta(days=approver.sla_days or DEFAULT_ASSIGNMENT_SLA_DAYS[approver.role]),
+        task_metadata={
+            "review_snapshot": snapshot,
+            "submitted_by": principal.subject_id,
+            "submitted_at": now.isoformat(),
+            "submission_comment": payload.comment,
+            "assignment_id": approver.assignment_id,
+            "assignment_role": approver.role,
+            "assignment_subject_type": approver.subject_type,
+            "assignment_subject_id": approver.subject_id,
+            "version_label": version.version_label,
+        },
+    )
+    db.add(task)
+    add_audit_event(
+        db, actor_id=principal.subject_id, event_type="document.review.submitted",
+        resource_type="workflow_task", resource_id=task_id,
+        metadata={"document_id": document_id, "document_version_id": version_id, "assignment_id": approver.assignment_id},
+    )
+    _commit_or_conflict(db)
+    db.refresh(task)
+    return _workflow_task_response(task, context, document)
+
+
+@router.get("/workflow/documents", response_model=WorkflowDocumentListResponse)
+def list_personal_workflow_documents(
+    limit: Limit = 100,
+    offset: Offset = 0,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> WorkflowDocumentListResponse:
+    context = require_global_action(principal, Action.workflow_task_read, db)
+    assigned_ids = select(DocumentAssignment.document_id).where(
+        DocumentAssignment.active.is_(True),
+        (
+            (DocumentAssignment.subject_type == "user") & (DocumentAssignment.subject_id == context.subject_id)
+        ) | (
+            (DocumentAssignment.subject_type == "group") & DocumentAssignment.subject_id.in_(context.groups)
+        ),
+    )
+    documents = db.scalars(select(Document).where(
+        (Document.owner_id == context.subject_id) | Document.document_id.in_(assigned_ids),
+    ).options(
+        selectinload(Document.assignments), selectinload(Document.versions),
+        selectinload(Document.access_policies), selectinload(Document.publications),
+    ).order_by(Document.title, Document.document_id))
+    items = []
+    for document in documents:
+        try:
+            require_document_action(principal, Action.document_read, document, db)
+        except HTTPException as exc:
+            if exc.status_code == 403:
+                continue
+            raise
+        versions = []
+        for version in document.versions:
+            if context.access_v2:
+                try:
+                    require_document_version_action(principal, Action.document_read, document, version, db)
+                except HTTPException as exc:
+                    if exc.status_code in {403, 409}:
+                        continue
+                    raise
+            versions.append(version)
+        versions.sort(key=lambda item: (item.created_at, item.document_version_id), reverse=True)
+        latest = versions[0] if versions else None
+        published = next((item for item in versions if item.status == DocumentStatus.valid.value), None)
+        review_date, invalid_review_date = review_due_date(document)
+        items.append(WorkflowDocumentResponse(
+            document_id=document.document_id, title=document.title, document_type=document.document_type,
+            status=document.status, assignment_roles=personal_roles(document, context),
+            document_version_id=latest.document_version_id if latest else None,
+            version_label=latest.version_label if latest else None,
+            version_status=latest.status if latest else None,
+            valid_from=latest.valid_from if latest else None, valid_to=latest.valid_to if latest else None,
+            published_version_label=published.version_label if published else None,
+            published_valid_to=published.valid_to if published else None,
+            review_due_on=review_date, review_date_invalid=invalid_review_date,
+            updated_at=document.updated_at,
+        ))
+    return WorkflowDocumentListResponse(items=items[offset:offset + limit], total=len(items), limit=limit, offset=offset)
+
+
 @router.get("/workflow/tasks", response_model=WorkflowTaskListResponse)
 def list_workflow_tasks(
     db: Session = Depends(get_db),
@@ -8713,16 +9020,17 @@ def list_workflow_tasks(
     priority: WorkflowTaskPriority | None = None,
     document_id: str | None = None,
     owner_id: str | None = None,
+    assigned_to_me: bool = False,
     include_resolved: bool = False,
     limit: Limit = 100,
     offset: Offset = 0,
 ) -> WorkflowTaskListResponse:
-    require_global_action(principal, Action.workflow_task_read, db)
+    context = require_global_action(principal, Action.workflow_task_read, db)
     _sync_derived_workflow_tasks(db)
     _escalate_overdue_tasks(db)
     _commit_or_conflict(db)
 
-    stmt = select(WorkflowTask).order_by(WorkflowTask.due_at, WorkflowTask.created_at).limit(limit).offset(offset)
+    stmt = select(WorkflowTask).order_by(WorkflowTask.due_at, WorkflowTask.created_at, WorkflowTask.task_id)
     if status_filter:
         stmt = stmt.where(WorkflowTask.status == status_filter.value)
     elif not include_resolved:
@@ -8735,9 +9043,10 @@ def list_workflow_tasks(
         stmt = stmt.where(WorkflowTask.document_id == document_id)
     if owner_id:
         stmt = stmt.where(WorkflowTask.owner_id == owner_id)
+    if assigned_to_me:
+        stmt = stmt.where(WorkflowTask.owner_id.in_({context.subject_id, *context.groups}))
 
     tasks = list(db.execute(stmt).scalars())
-    context = context_for_principal(principal, db)
     document_ids = {task.document_id for task in tasks if task.document_id}
     documents_by_id = {
         document.document_id: document
@@ -8748,24 +9057,36 @@ def list_workflow_tasks(
                 selectinload(Document.access_policies),
                 selectinload(Document.versions),
                 selectinload(Document.publications),
+                selectinload(Document.assignments),
             )
         ).scalars()
     }
     elevated_task_roles = {"admin", "document_manager", "auditor", "service_governance"}
     visible_tasks = []
     for task in tasks:
+        if assigned_to_me and not task_is_mine(task, context):
+            continue
         if task.document_id is None:
             if context.roles & elevated_task_roles:
-                visible_tasks.append(task)
+                visible_tasks.append(_workflow_task_response(task, context))
             continue
         document = documents_by_id.get(task.document_id)
         if document is None:
             continue
-        decision = evaluate_document_access(context, Action.document_read.value, document)
-        if decision.allowed:
-            visible_tasks.append(task)
+        try:
+            require_document_action(principal, Action.document_read, document, db)
+            if context.access_v2 and task.document_version_id:
+                version = next((item for item in document.versions if item.document_version_id == task.document_version_id), None)
+                if version is None:
+                    continue
+                require_document_version_action(principal, Action.document_read, document, version, db)
+        except HTTPException as exc:
+            if exc.status_code in {403, 409}:
+                continue
+            raise
+        visible_tasks.append(_workflow_task_response(task, context, document))
 
-    return WorkflowTaskListResponse(items=visible_tasks, limit=limit, offset=offset)
+    return WorkflowTaskListResponse(items=visible_tasks[offset:offset + limit], total=len(visible_tasks), limit=limit, offset=offset)
 
 
 @router.post("/workflow/tasks/{task_id}/actions", response_model=WorkflowTaskResponse)
@@ -8774,23 +9095,37 @@ def apply_workflow_task_action(
     payload: WorkflowTaskActionRequest,
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
-) -> WorkflowTask:
-    require_global_action(principal, Action.workflow_task_write, db)
+) -> WorkflowTaskResponse:
+    context = require_global_action(principal, Action.workflow_task_write, db)
     task = _get_workflow_task(db, task_id)
     document: Document | None = None
     if task.document_id:
         document = _get_document(db, task.document_id)
+        _lock_publication_source(db, document_id=document.document_id, document_version_id=task.document_version_id)
+        db.refresh(document)
+        db.refresh(task, with_for_update=True)
         require_document_action(principal, Action.document_read, document, db)
+        if context.access_v2 and task.document_version_id:
+            require_document_version_action(
+                principal, Action.document_read, document,
+                _get_version(db, document.document_id, task.document_version_id), db,
+            )
 
     now = utcnow()
+    bound_review = bool((task.task_metadata or {}).get("review_snapshot"))
+    if bound_review and payload.action.value not in {"approve", "request_changes", "publish"}:
+        raise problem(409, "review_action_required", "Use the assigned review decision for this task")
+    if payload.assignee_id and (payload.action.value != "assign" or bound_review):
+        raise problem(400, "review_assignment_immutable", "Review assignment cannot be changed in a decision")
     if payload.assignee_id:
         task.owner_id = payload.assignee_id
         task.owner_label = payload.assignee_id
 
     if payload.action.value == "approve":
-        if document is not None and task.kind == WorkflowTaskKind.review.value:
-            require_document_action(principal, Action.document_update, document, db)
-            _approve_document_for_publication(db, document)
+        if document is None or task.kind != WorkflowTaskKind.review.value:
+            raise problem(409, "review_task_required", "Only a document review can be approved")
+        version = _require_review_decision(db, principal, task, document)
+        _approve_document_for_publication(db, document, version)
         task.status = WorkflowTaskStatus.resolved.value
         task.resolved_at = now
     elif payload.action.value == "publish":
@@ -8800,6 +9135,8 @@ def apply_workflow_task_action(
         version = _workflow_action_version(db, task=task, payload=payload)
         if version is None:
             raise problem(status.HTTP_409_CONFLICT, "no_publishable_version", "Workflow task has no version to publish")
+        if context.access_v2:
+            require_document_version_action(principal, Action.document_version_publish, document, version, db)
         _publish_version(db, document=document, version=version, actor_id=principal.subject_id)
         task.document_version_id = version.document_version_id
         task.status = WorkflowTaskStatus.resolved.value
@@ -8816,16 +9153,42 @@ def apply_workflow_task_action(
         task.status = WorkflowTaskStatus.resolved.value
         task.resolved_at = now
     elif payload.action.value == "resolve":
+        if document is not None:
+            require_document_action(principal, Action.document_update, document, db)
         task.status = WorkflowTaskStatus.resolved.value
         task.resolved_at = now
     elif payload.action.value == "request_changes":
         if document is not None:
-            require_document_action(principal, Action.document_update, document, db)
-            version = _workflow_action_version(db, task=task, payload=payload)
+            if task.kind == WorkflowTaskKind.review.value and bound_review:
+                version = _require_review_decision(db, principal, task, document)
+            else:
+                require_document_action(principal, Action.document_update, document, db)
+                version = _workflow_action_version(db, task=task, payload=payload)
             _request_document_changes(document, version)
-        task.status = WorkflowTaskStatus.open.value
-        task.resolved_at = None
+        task.status = WorkflowTaskStatus.resolved.value if bound_review else WorkflowTaskStatus.open.value
+        task.resolved_at = now if bound_review else None
+        if bound_review and document is not None:
+            owner = _workflow_assignment_context(
+                document, roles=[DocumentAssignmentRole.gestor.value, DocumentAssignmentRole.owner.value],
+                fallback_owner_id=document.owner_id, fallback_owner_label=document.owner_id,
+                fallback_role="Document manager", default_sla_days=5, base_time=now,
+            )
+            _upsert_derived_task(db, source_key=f"document-returned:{task.task_id}", values={
+                "kind": WorkflowTaskKind.draft.value, "priority": WorkflowTaskPriority.medium.value,
+                "status": WorkflowTaskStatus.open.value, "title": "Document changes requested",
+                "description": "Review feedback before submitting a new review.", "source": "Document review decision",
+                "owner_id": owner["owner_id"], "owner_label": owner["owner_label"], "role": owner["role"],
+                "document_id": document.document_id, "document_title": document.title,
+                "document_version_id": task.document_version_id, "due_at": now + timedelta(days=int(owner["sla_days"])),
+                "task_metadata": {
+                    "review_task_id": task.task_id, "last_comment": payload.comment,
+                    "version_label": version.version_label if version is not None else None,
+                    **dict(owner["assignment_metadata"]),
+                },
+            })
     elif payload.action.value == "assign":
+        if document is not None:
+            require_document_action(principal, Action.document_update, document, db)
         task.status = WorkflowTaskStatus.open.value
 
     task.task_metadata = {
@@ -8854,7 +9217,7 @@ def apply_workflow_task_action(
     )
     _commit_or_conflict(db)
     db.refresh(task)
-    return task
+    return _workflow_task_response(task, context, document)
 
 
 ANALYST_CASE_ADMIN_ROLES = {"admin", "document_manager", "auditor"}

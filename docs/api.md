@@ -408,6 +408,35 @@ extraction/OCR quality review signals. Registry derives this report from
 metadata and version records only; content extraction and RAG remain owned by
 Ingestion/RAG services.
 
+### Personal document work and approval
+
+`GET /api/v1/workflow/documents` returns documents owned by the current subject
+or actively assigned to that person/group. It includes the latest authorized
+version, published-version expiry, `review_due_on`, role and status. It accepts
+only bounded `limit`/`offset`, not an arbitrary subject. Authorization precedes
+pagination and `total` counts only authorized results.
+
+`GET /api/v1/workflow/tasks?assigned_to_me=true` returns the current subject's
+personal queue, including verified group assignments. The response adds `total`;
+each task includes `assigned_to_me` and server-derived `allowed_actions`. These
+are UI hints, never a substitute for authorization of a subsequent action.
+
+`POST /api/v1/documents/{document_id}/versions/{version_id}/submit-review`
+accepts only an optional `comment` (at most 1,000 characters). It submits the
+latest unpublished version to its active approver/reviewer person or group.
+The same unchanged active submission is idempotent. Changing the source,
+metadata, files, policy or assignments requires a new review. It returns the
+persisted `WorkflowTaskResponse`; it never grants access or publishes content.
+The browser bridge is `/api/documents/{documentId}/versions/{versionId}/submit-review`
+under the configured web base path, with same-origin write protection.
+
+`POST /api/v1/workflow/tasks/{task_id}/actions` checks current authority and the
+exact submitted version. `approve` and `request_changes` close that review;
+requesting changes creates one task for the gestor. The submitter cannot decide
+their own explicit review. Publication checks the latest approval snapshot
+again through the existing publication endpoint. No database migration or
+service identity change is needed. See [workflow lifecycle](ui/workflow-inbox.md).
+
 Registry API also owns persisted assistant conversation history. RAG appends
 turns through the compatibility persistence endpoint and the AKB web BFF reads
 and manages conversation history through the non-conflicting history contract:

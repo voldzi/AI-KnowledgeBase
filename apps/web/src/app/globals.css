@@ -4743,6 +4743,91 @@ button {
   max-width: 940px;
 }
 
+.workflow-workspace, .workflow-workspace > *, .workflow-workspace .panel {
+  min-width: 0;
+}
+
+.workflow-workspace .workflow-workspace__heading {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.workflow-workspace__heading .icon-button {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.workflow-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  padding: 18px 0;
+  margin: 0;
+  border-block: 1px solid var(--border);
+}
+
+.workflow-summary dt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.workflow-summary dt svg { flex: 0 0 auto; }
+.workflow-summary dd { margin: 8px 0 0; font-size: 24px; font-weight: 700; }
+.workflow-deadline-list { display: grid; justify-items: start; gap: 6px; }
+.workflow-deadline-list .status-badge { white-space: normal; }
+
+.workflow-document-filters {
+  display: grid;
+  grid-template-columns: minmax(210px, 1.3fr) repeat(3, minmax(160px, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.workflow-workspace .panel {
+  box-shadow: none;
+  border-radius: 0;
+}
+
+.workflow-workspace .cell-title > a {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.document-review-panel {
+  border-block: 1px solid var(--border);
+  padding: 20px 0;
+}
+
+.document-review-panel__heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.document-review-panel h2 { margin: 0; font-size: 20px; }
+.document-review-panel dl { margin: 0; }
+.document-review-panel dt { color: var(--muted); font-size: 13px; }
+.document-review-panel dd { margin: 6px 0 0; font-weight: 600; overflow-wrap: anywhere; }
+.document-review-panel textarea { min-height: 72px; max-width: 100%; resize: vertical; }
+
+@media (max-width: 1000px) {
+  .workflow-document-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 620px) {
+  .workflow-summary { grid-template-columns: 1fr; gap: 12px; }
+  .workflow-summary > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .workflow-summary dd { margin: 0; font-size: 20px; }
+  .workflow-document-filters { grid-template-columns: minmax(0, 1fr); }
+  .workflow-workspace .task-inbox-layout { grid-template-columns: minmax(0, 1fr); }
+  .workflow-workspace .task-detail { position: static; }
+}
+
 .task-toolbar {
   align-items: end;
   display: grid;

@@ -118,6 +118,26 @@ authoritative document/version. Review the source, metadata, attachments,
 effective dates and any extraction/compliance warnings before choosing an
 action. Do not approve solely because a generated proposal looks plausible.
 
+**Tasks > Awaiting approval (Ke schvaleni)** contains reviews assigned to you
+or your approval group. Open the exact version, then approve or request changes.
+Approval does not publish it. The submitter cannot decide their own submission;
+an assignment alone does not grant approval permission.
+
+**Tasks > My documents (Moje dokumenty)** lists documents you own, manage or
+approve. Filter by your responsibility, version state, expiry or review due
+date. The upcoming-deadline window is 30 days in the Prague calendar. A pending
+replacement does not hide the expiry of the published version. An overdue
+review is a warning, not an automatic withdrawal of the document.
+
+Gestors submit the latest prepared version from the approval section of the
+document detail. Returned comments appear in their personal task. After changes,
+submit a new review. A changed source, policy or assignment invalidates the
+old approval. Publication remains a separate authorized action.
+
+The lists refresh on opening, after decisions, or with the refresh control.
+Automatic e-mail delivery is not enabled. See [workflow details and planned
+notifications](workflow-inbox.md).
+
 ## Create or replace a document
 
 This section is visible only to authorized content roles.

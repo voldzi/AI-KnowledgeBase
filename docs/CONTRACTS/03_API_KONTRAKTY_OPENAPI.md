@@ -234,6 +234,8 @@ Audit event request:
 
 ```text
 GET  /workflow/tasks
+GET  /workflow/documents
+POST /documents/{document_id}/versions/{version_id}/submit-review
 POST /workflow/tasks/{task_id}/actions
 ```
 
@@ -247,12 +249,19 @@ kind=review|draft|ingestion|governance|audit
 priority=critical|high|medium|low
 document_id=doc_123
 owner_id=user_123
+assigned_to_me=true
 include_resolved=false
 limit=100
 offset=0
 ```
 
 Workflow task response:
+
+List obsahuje autorizovany `total`; task pridava `assigned_to_me` a
+`allowed_actions`. Osobni seznam zahrnuje aktivni prirazeni osoby nebo jeji
+overene skupiny a nikdy nerozsiruje document-read ani rozhodovaci prava.
+Presne predani verze a publikacni gate jsou popsany v
+[pracovnim prehledu](../ui/workflow-inbox.md).
 
 ```json
 {

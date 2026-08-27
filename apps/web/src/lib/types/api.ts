@@ -66,7 +66,7 @@ import type {
   EvaluationRun,
   EvaluationRunRequest
 } from "./evaluation";
-import type { ApplyWorkflowTaskActionRequest, RegistryWorkflowTask, WorkflowTaskListOptions } from "./workflow";
+import type { ApplyWorkflowTaskActionRequest, DocumentReviewRequest, RegistryWorkflowTask, WorkflowDocument, WorkflowTaskListOptions } from "./workflow";
 import type {
   AssistantChatRequest,
   AssistantChatResponse,
@@ -288,6 +288,8 @@ export interface RegistryApiClient {
     context: ApiRequestContext
   ): Promise<IntelligenceScopeAuthorizationResponse>;
   listWorkflowTasks(context: ApiRequestContext, options?: WorkflowTaskListOptions): Promise<RegistryWorkflowTask[]>;
+  listWorkflowDocuments(context: ApiRequestContext): Promise<WorkflowDocument[]>;
+  submitDocumentReview(documentId: string, versionId: string, request: DocumentReviewRequest, context: ApiRequestContext): Promise<RegistryWorkflowTask>;
   applyWorkflowTaskAction(
     taskId: string,
     request: ApplyWorkflowTaskActionRequest,

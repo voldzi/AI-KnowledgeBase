@@ -431,6 +431,21 @@ they do not replace capability, scope or Information Policy checks.
 
 ## Audit
 
+Document approval is bound to an exact version and a snapshot of source files,
+metadata, policy and active responsibilities. A new source or changed binding
+requires fresh approval. The approver must be the assigned person or a verified
+member of the assigned group, with current workflow-write and document-publish
+authority. Service identities and the submitter of an explicit review cannot
+approve it. Assignment is not an authorization grant. The document and exact
+version policy are rechecked when deciding and publishing; publication cannot
+be bypassed through generic task closure or document status patching.
+
+Personal task/document lists filter by verified subject/group membership and
+fresh document authorization before counting or pagination. Review comments
+are authorized workflow data, not audit metadata. Audit events retain only
+technical review/document/version/assignment coordinates and decision types;
+they do not include comments, document content, session values or credentials.
+
 AKB records audit events for document changes, workflow decisions, assistant
 queries, answer/no-answer events, source opening, and citation opening. Audit
 events carry correlation ids and avoid storing full prompt/answer/source text

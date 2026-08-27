@@ -3919,6 +3919,16 @@
             }
           },
           {
+            "name": "assigned_to_me",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Assigned To Me"
+            }
+          },
+          {
             "name": "include_resolved",
             "in": "query",
             "required": false,
@@ -6098,6 +6108,143 @@
             }
           }
         }
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8001",
+          "description": "Local direct Registry API"
+        },
+        {
+          "url": "http://localhost:8080/registry",
+          "description": "Local reverse proxy Registry API"
+        }
+      ]
+    },
+    "/api/v1/documents/{document_id}/versions/{version_id}/submit-review": {
+      "post": {
+        "summary": "Submit Document Review",
+        "operationId": "registry_api_submit_document_review_api_v1_documents__document_id__versions__version_id__submit_review_post",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistryApiDocumentReviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiWorkflowTaskResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiHTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Registry API"
+        ]
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8001",
+          "description": "Local direct Registry API"
+        },
+        {
+          "url": "http://localhost:8080/registry",
+          "description": "Local reverse proxy Registry API"
+        }
+      ]
+    },
+    "/api/v1/workflow/documents": {
+      "get": {
+        "summary": "List Personal Workflow Documents",
+        "operationId": "registry_api_list_personal_workflow_documents_api_v1_workflow_documents_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiWorkflowDocumentListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiHTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Registry API"
+        ]
       },
       "servers": [
         {
@@ -11646,6 +11793,74 @@
         ],
         "summary": "POST /api/documents/{documentId}/versions/{versionId}/source/open",
         "operationId": "web_post_api_documents_documentId_versions_versionId_source_open",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericJson"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AkbErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "versionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenericJson"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/documents/{documentId}/versions/{versionId}/submit-review": {
+      "servers": [
+        {
+          "url": "http://localhost:3002",
+          "description": "Local AKB web API"
+        },
+        {
+          "url": "https://stratos.zeleznalady.cz/akb",
+          "description": "Production AKB web API"
+        }
+      ],
+      "post": {
+        "tags": [
+          "AKB Web API"
+        ],
+        "summary": "POST /api/documents/{documentId}/versions/{versionId}/submit-review",
+        "operationId": "web_post_api_documents_documentId_versions_versionId_submit_review",
         "responses": {
           "200": {
             "description": "Successful response",
@@ -22678,6 +22893,11 @@
           "offset": {
             "type": "integer",
             "title": "Offset"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "default": 0
           }
         },
         "type": "object",
@@ -22841,6 +23061,18 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "allowed_actions": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiWorkflowTaskAction"
+            },
+            "type": "array",
+            "title": "Allowed Actions"
+          },
+          "assigned_to_me": {
+            "type": "boolean",
+            "title": "Assigned To Me",
+            "default": false
           }
         },
         "type": "object",
@@ -22878,6 +23110,200 @@
           "cancelled"
         ],
         "title": "WorkflowTaskStatus"
+      },
+      "RegistryApiDocumentReviewRequest": {
+        "properties": {
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "DocumentReviewRequest"
+      },
+      "RegistryApiWorkflowDocumentResponse": {
+        "properties": {
+          "document_id": {
+            "type": "string",
+            "title": "Document Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "document_type": {
+            "$ref": "#/components/schemas/RegistryApiDocumentType"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RegistryApiDocumentStatus"
+          },
+          "assignment_roles": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiDocumentAssignmentRole"
+            },
+            "type": "array",
+            "title": "Assignment Roles"
+          },
+          "document_version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Version Id"
+          },
+          "version_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version Label"
+          },
+          "version_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RegistryApiDocumentStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "valid_from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid From"
+          },
+          "valid_to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid To"
+          },
+          "published_version_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published Version Label"
+          },
+          "published_valid_to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published Valid To"
+          },
+          "review_due_on": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Due On"
+          },
+          "review_date_invalid": {
+            "type": "boolean",
+            "title": "Review Date Invalid",
+            "default": false
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "document_id",
+          "title",
+          "document_type",
+          "status",
+          "assignment_roles",
+          "document_version_id",
+          "version_label",
+          "version_status",
+          "valid_from",
+          "valid_to",
+          "published_version_label",
+          "published_valid_to",
+          "review_due_on",
+          "updated_at"
+        ],
+        "title": "WorkflowDocumentResponse"
+      },
+      "RegistryApiWorkflowDocumentListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RegistryApiWorkflowDocumentResponse"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "WorkflowDocumentListResponse"
       },
       "IngestionServiceAnalystSearchRequest": {
         "properties": {

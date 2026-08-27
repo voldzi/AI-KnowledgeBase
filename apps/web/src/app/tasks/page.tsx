@@ -1,96 +1,46 @@
-import { PageHeader } from "@/components/page-header";
-import { WorkflowInbox } from "@/features/tasks/workflow-inbox";
+import { WorkflowWorkspace } from "@/features/tasks/workflow-workspace";
 import { getServerApiClients, getServerRequestContextForPath } from "@/lib/api/server";
 import { requireWorkspaceRouteAccess } from "@/lib/auth/server-route-guard";
-import { ApiClientError, type AuditEvent, type RegistryWorkflowTask } from "@/lib/types";
-import type { AuthorizationHint, IngestionJob } from "@/lib/types";
-import { listVisibleIngestionJobs } from "@/lib/ingestion/governed-operations";
+import { ApiClientError, type AuthorizationHint, type RegistryWorkflowTask } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
+
+const noActions: AuthorizationHint = {
+  can_read: true, can_update: false, can_ingest: false,
+  can_publish: false, can_read_audit: false, can_manage_admin: false,
+};
 
 export default async function TasksPage() {
   const clients = getServerApiClients();
   const context = await getServerRequestContextForPath("/tasks");
   requireWorkspaceRouteAccess(context, "/tasks");
-  const documents = await clients.registry.listDocuments(context);
-  const [jobs, auditEvents, registryTasks, authorization] = await Promise.all([
-    listAvailableIngestionJobs(listVisibleIngestionJobs(clients, documents, context)),
-    listVisibleAuditEvents(clients.registry.listAuditEvents(context)),
-    listVisibleWorkflowTasks(clients.registry.listWorkflowTasks(context)),
-    availableAuthorization(clients.registry.getAuthorizationHints(context))
+  const [authorization, documents, tasks] = await Promise.all([
+    available(clients.registry.getAuthorizationHints(context), noActions),
+    available(clients.registry.listWorkflowDocuments(context), []),
+    available(clients.registry.listWorkflowTasks(context, { assignedToMe: true }), []),
   ]);
+  const team = authorization.value.can_manage_admin
+    ? await available(clients.registry.listWorkflowTasks(context), [])
+    : { value: [] as RegistryWorkflowTask[], available: true };
 
-  return (
-    <>
-      <PageHeader
-        title={{ cs: "Workflow úkoly", en: "Workflow tasks" }}
-        description={{
-          cs: "Organizační fronta pro revize dokumentů, governance kontroly, ingestion varování a auditní signály.",
-          en: "Organizational queue for document reviews, governance checks, ingestion warnings and audit signals."
-        }}
-      />
-      <WorkflowInbox
-        documents={documents}
-        jobs={jobs}
-        auditEvents={auditEvents}
-        registryTasks={registryTasks}
-        authorization={authorization}
-        nowIso={new Date().toISOString()}
-      />
-    </>
-  );
+  return <WorkflowWorkspace
+    documents={documents.value} tasks={tasks.value} teamTasks={team.value}
+    authorization={authorization.value} nowIso={new Date().toISOString()}
+    unavailable={[
+      ...(!authorization.available ? ["authorization"] : []),
+      ...(!documents.available ? ["documents"] : []),
+      ...(!tasks.available ? ["tasks"] : []),
+      ...(!team.available ? ["team"] : []),
+    ]}
+  />;
 }
 
-async function listVisibleWorkflowTasks(request: Promise<RegistryWorkflowTask[]>) {
+async function available<T>(request: Promise<T>, fallback: T): Promise<{ value: T; available: boolean }> {
   try {
-    return await request;
+    return { value: await request, available: true };
   } catch (error) {
-    if (error instanceof ApiClientError && [403, 503].includes(error.status)) {
-      return undefined;
-    }
-    throw error;
-  }
-}
-
-async function listVisibleAuditEvents(request: Promise<AuditEvent[]>) {
-  try {
-    return await request;
-  } catch (error) {
-    if (error instanceof ApiClientError && [403, 503].includes(error.status)) {
-      return [];
-    }
-    throw error;
-  }
-}
-
-async function listAvailableIngestionJobs(
-  request: Promise<IngestionJob[]>,
-): Promise<IngestionJob[]> {
-  try {
-    return await request;
-  } catch (error) {
-    if (error instanceof ApiClientError && error.status === 503) {
-      return [];
-    }
-    throw error;
-  }
-}
-
-async function availableAuthorization(
-  request: Promise<AuthorizationHint>,
-): Promise<AuthorizationHint> {
-  try {
-    return await request;
-  } catch (error) {
-    if (error instanceof ApiClientError && error.status === 503) {
-      return {
-        can_read: true,
-        can_update: false,
-        can_ingest: false,
-        can_publish: false,
-        can_read_audit: false,
-        can_manage_admin: false,
-      };
+    if (error instanceof ApiClientError && (error.status === 403 || error.status >= 500)) {
+      return { value: fallback, available: false };
     }
     throw error;
   }

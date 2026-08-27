@@ -1838,10 +1838,44 @@ class WorkflowTaskResponse(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict, validation_alias="task_metadata")
     created_at: datetime
     updated_at: datetime
+    allowed_actions: list[WorkflowTaskAction] = Field(default_factory=list)
+    assigned_to_me: bool = False
 
 
 class WorkflowTaskListResponse(BaseModel):
     items: list[WorkflowTaskResponse]
+    limit: int
+    offset: int
+    total: int = 0
+
+
+class DocumentReviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    comment: str | None = Field(default=None, max_length=1000)
+
+
+class WorkflowDocumentResponse(BaseModel):
+    document_id: str
+    title: str
+    document_type: DocumentType
+    status: DocumentStatus
+    assignment_roles: list[DocumentAssignmentRole]
+    document_version_id: str | None
+    version_label: str | None
+    version_status: DocumentStatus | None
+    valid_from: date | None
+    valid_to: date | None
+    published_version_label: str | None
+    published_valid_to: date | None
+    review_due_on: date | None
+    review_date_invalid: bool = False
+    updated_at: datetime
+
+
+class WorkflowDocumentListResponse(BaseModel):
+    items: list[WorkflowDocumentResponse]
+    total: int
     limit: int
     offset: int
 

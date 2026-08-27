@@ -1229,6 +1229,7 @@ describe("production API clients", () => {
             updated_at: "2026-06-05T10:00:00Z"
           }
         ],
+        total: 1,
         limit: 100,
         offset: 0
       });
@@ -1240,7 +1241,7 @@ describe("production API clients", () => {
     });
 
     assert.equal(tasks[0].task_id, "task_1");
-    assert.equal(calls[0][0], "https://registry.local/api/v1/workflow/tasks?document_id=doc_1&include_resolved=true");
+    assert.equal(calls[0][0], "https://registry.local/api/v1/workflow/tasks?document_id=doc_1&include_resolved=true&limit=100&offset=0");
     assert.equal(calls[0][1]?.method, "GET");
   });
 

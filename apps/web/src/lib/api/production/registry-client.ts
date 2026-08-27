@@ -39,6 +39,8 @@ import type {
   DocumentReadinessReport,
   DocumentReadinessReportOptions,
   DocumentVersion,
+  DocumentReviewRequest,
+  WorkflowDocument,
   IngestionAuthorizationRequest,
   IngestionAuthorizationResponse,
   RegistryIngestionAttempt,
@@ -542,6 +544,9 @@ export class ProductionRegistryClient implements RegistryApiClient {
     if (options.ownerId) {
       params.set("owner_id", options.ownerId);
     }
+    if (options.assignedToMe !== undefined) {
+      params.set("assigned_to_me", String(options.assignedToMe));
+    }
     if (options.includeResolved !== undefined) {
       params.set("include_resolved", String(options.includeResolved));
     }
@@ -551,13 +556,49 @@ export class ProductionRegistryClient implements RegistryApiClient {
     if (options.offset !== undefined) {
       params.set("offset", String(options.offset));
     }
-    const query = params.toString();
-    const response = await this.get<ListEnvelope<RegistryWorkflowTask>>(
-      `/workflow/tasks${query ? `?${query}` : ""}`,
-      "listWorkflowTasks",
-      context
+    if (options.limit !== undefined || options.offset !== undefined) {
+      return (await this.get<ListEnvelope<RegistryWorkflowTask>>(
+        `/workflow/tasks?${params}`, "listWorkflowTasks", context,
+      )).items;
+    }
+    return this.workflowPages<RegistryWorkflowTask>("/workflow/tasks", params, "listWorkflowTasks", context);
+  }
+
+  listWorkflowDocuments(context: ApiRequestContext): Promise<WorkflowDocument[]> {
+    return this.workflowPages<WorkflowDocument>("/workflow/documents", new URLSearchParams(), "listWorkflowDocuments", context);
+  }
+
+  private async workflowPages<T>(path: string, params: URLSearchParams, operation: string, context: ApiRequestContext): Promise<T[]> {
+    const items: T[] = [];
+    const ids = new Set<string>();
+    let expectedTotal: number | undefined;
+    const incomplete = () => new ApiClientError("Workflow result is incomplete", 503, "WORKFLOW_INCOMPLETE", context.correlationId ?? "");
+    for (let page = 0; page < 100; page += 1) {
+      params.set("limit", "100");
+      params.set("offset", String(page * 100));
+      const result = await this.get<ListEnvelope<T> & { total: number }>(`${path}?${params}`, operation, context);
+      if (!Array.isArray(result?.items) || !Number.isSafeInteger(result.total) || result.total < 0
+        || result.items.length > 100 || (expectedTotal !== undefined && expectedTotal !== result.total)) throw incomplete();
+      expectedTotal = result.total;
+      for (const item of result.items) {
+        if (!item || typeof item !== "object") throw incomplete();
+        const row = item as Record<string, unknown>;
+        const id = row.task_id ?? row.document_id;
+        if (typeof id !== "string" || !id || ids.has(id)) throw incomplete();
+        ids.add(id);
+      }
+      items.push(...result.items);
+      if (items.length === expectedTotal) return items;
+      if (items.length > expectedTotal || result.items.length < 100) throw incomplete();
+    }
+    throw incomplete();
+  }
+
+  submitDocumentReview(documentId: string, versionId: string, request: DocumentReviewRequest, context: ApiRequestContext): Promise<RegistryWorkflowTask> {
+    return this.post<RegistryWorkflowTask>(
+      `/documents/${encodeURIComponent(documentId)}/versions/${encodeURIComponent(versionId)}/submit-review`,
+      request, "submitDocumentReview", context,
     );
-    return response.items;
   }
 
   applyWorkflowTaskAction(

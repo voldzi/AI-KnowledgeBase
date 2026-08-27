@@ -55,10 +55,10 @@ Purpose:
 
 Purpose:
 
-- provide an organizational workflow inbox for document reviews, governance checks, ingestion warnings and audit signals
+- provide personal approval, task and assigned-document views; show the team queue only to AKB administrators
 - show priority, owner/gestor responsibility, due date and source signal
 - route users to the authoritative source screen for the task
-- read persistent Registry API workflow tasks and merge in ingestion-owned operational warnings
+- read persistent Registry tasks and personal document deadlines; keep full ingestion/audit diagnostics on their dedicated surfaces
 - write Registry-owned task decisions through the workflow action endpoint
 
 ### Documents

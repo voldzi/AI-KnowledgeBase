@@ -8,7 +8,7 @@ Implementovano ve web aplikaci:
 
 - registr dokumentu s metrikami, fulltext filtrem, filtrem podle stavu, typu a klasifikace,
 - ulozene pracovni pohledy: vsechny dokumenty, fronta revize, platna znalost, omezene zdroje a archiv,
-- organizacni workflow inbox na `/tasks` pro revize, ingestion varovani, governance kontroly a auditni signaly,
+- osobni pracovni prehled `/tasks`: `Ke schvaleni`, `Moje ukoly` a `Moje dokumenty`; tymovy prehled zustava jen spravci AKB,
 - detail dokumentu vede uzivatele peti hlavnimi kroky:
   - zakladni udaje,
   - dokument a prilohy,
@@ -39,8 +39,8 @@ Implementovano ve web aplikaci:
 - citace z Employee Chat Portal pouzivaji jednotny citation viewer: hlavni odpoved zustava cista pro netechnicke role, technicke identifikatory jsou oddelene v detailu a akce `Otevrit dokument` otevre v novem tabu primo zdrojovy soubor pres assistant citation redirect,
 - pokud je podepsany zdroj dostupny a source-context obsahuje `page_number`, viewer nabidne otevreni zdroje na strance citace pomoci `#page=N`,
 - nativni preview nad signed source zobrazuje PDF pres pdf.js render citacni strany s textovou vrstvou a bbox overlayem, Office formaty pres serverovou PDF zobrazovaci kopii, Markdown jako formatovany dokument s GFM tabulkami, obsahem a zvyraznenim citace, image/OCR jako obrazek s bbox overlayem, text jako bezpecny textovy nahled a CSV jako tabulku s aktivnim radkem,
-- `/tasks` umoznuje nad Registry workflow tasky spustit `assign`, `request_changes`, `approve` a `resolve`,
-- workflow zalozka detailu dokumentu ma publish gate: publikace je dostupna jen pro `approved` dokument a archivace jen pro aktualni `valid` verzi,
+- `/tasks` zobrazuje pouze serverem povolene akce; predany schvalovaci ukol muze rozhodnout prirazeny schvalovatel nad presnou verzi, nikoli obecnou akci `resolve`,
+- workflow zalozka detailu dokumentu umoznuje `Predat ke schvaleni`; publikace vyzaduje schvalenou presnou verzi, nezmeneny zdroj a aktualni opravneni. Starsi publikovana verze zustava platna behem pripravy nahrady. Archivace je samostatna akce pro aktualni `valid` verzi,
 - verze zalozka detailu dokumentu obsahuje navodny panel s aktualnim stavem verze, doporucenym dalsim krokem a vysvetlenim, ze nova verze ma vznikat pres originalni soubor a rizene volby zmeny, ne jako volna poznamka,
 - upload preflight s nazvem souboru, velikosti, MIME typem a SHA-256 hashem,
 - podepsana upload session na `/api/controlled-document/upload/preflight` a PUT do `/api/controlled-document/upload/sessions/{sessionId}/content`,
@@ -60,8 +60,8 @@ Produkci workflow ma byt:
 5. spustit ingestion,
 6. zkontrolovat parser, chunking, OCR a indexaci,
 7. spustit governance kontroly,
-8. predat vlastnikovi nebo gestorovi do revize,
-9. schvalit dokument do stavu `approved`,
+8. predat pripravenou presnou verzi prirazenemu schvalovateli,
+9. schvalit verzi do stavu `approved`, nebo ji vratit gestorovi s pripominkami,
 10. publikovat platnou verzi,
 11. archivovat nebo supersedovat predchozi verze.
 

@@ -82,6 +82,9 @@ import type {
 } from "@/lib/types";
 import { documentTypeLabel, formatDate, formatDateTime } from "@/lib/format";
 import { accessAuditToneForSeverity } from "@/features/audit/access-audit-items";
+import { DocumentReviewPanel } from "./document-review-panel";
+import { latestDocumentVersion, selectedDocumentVersion } from "@/lib/documents/review-version";
+import { documentReviewError } from "@/lib/documents/review-errors";
 import {
   documentInformationPolicyDetails,
   versionInformationPolicyDetails,
@@ -94,12 +97,14 @@ interface DocumentDetailProps {
   authorization: AuthorizationHint;
   assignments?: DocumentAssignment[];
   workflowTasks?: RegistryWorkflowTask[];
+  workflowAvailable?: boolean;
   auditEvents?: AuditEvent[];
   publication?: DocumentPublication | null;
   controlledDomain?: string | null;
   controlledPackages?: ControlledDocumentPackage[];
   controlledRules?: ControlledRule[];
   controlledDataAvailable?: boolean;
+  unavailableSections?: string[];
 }
 
 interface AssignmentFormRow {
@@ -773,12 +778,14 @@ export function DocumentDetail({
   authorization,
   assignments = [],
   workflowTasks = [],
+  workflowAvailable = true,
   auditEvents = [],
   publication,
   controlledDomain = null,
   controlledPackages = [],
   controlledRules = [],
   controlledDataAvailable = true,
+  unavailableSections = [],
 }: DocumentDetailProps) {
   const { language } = useLanguage();
   const router = useRouter();
@@ -813,7 +820,8 @@ export function DocumentDetail({
   const [assignmentRows, setAssignmentRows] = useState<AssignmentFormRow[]>(() =>
     assignmentRowsFrom(assignments.length > 0 ? assignments : document.assignments ?? [], document.document_id)
   );
-  const currentVersion = versions.find((version) => version.status === "valid") ?? versions[0];
+  const currentVersion = selectedDocumentVersion(versions, searchParams.get("version"));
+  const workflowVersion = latestDocumentVersion(versions);
   const versionPolicy = versionInformationPolicyDetails(currentVersion, publication);
   const documentPolicy = documentInformationPolicyDetails(document);
   const [activeTab, setActiveTab] = useState<DetailTab>(() => tabFromSearchParams(searchParams.get("tab")) ?? "overview");
@@ -867,9 +875,9 @@ export function DocumentDetail({
       : null;
   const canPublishCurrentVersion = Boolean(
     authorization.can_publish &&
-      currentVersion &&
-      document.status === "approved" &&
-      !["valid", "superseded", "archived", "cancelled"].includes(currentVersion.status)
+      workflowVersion?.status === "approved" &&
+      ["approved", "valid"].includes(document.status) &&
+      workflowAvailable
   );
   const canArchiveCurrentVersion = Boolean(authorization.can_publish && currentVersion?.status === "valid");
   const ownerLabel = documentOwnerLabel(
@@ -948,7 +956,7 @@ export function DocumentDetail({
             : "Changes, completeness, compliance and conflicts.",
         icon: ClipboardCheck,
         state:
-          governanceResult || ["approved", "valid"].includes(document.status)
+          governanceResult || ["approved", "valid"].includes(workflowVersion?.status ?? "")
             ? "done"
             : "pending",
       },
@@ -960,7 +968,7 @@ export function DocumentDetail({
             ? "Odpovědnosti, rozhodnutí a platné vydání."
             : "Responsibilities, decision and valid release.",
         icon: ShieldCheck,
-        state: document.status === "valid" ? "done" : "pending",
+        state: workflowVersion?.status === "valid" ? "done" : "pending",
       },
     ],
     [
@@ -975,6 +983,7 @@ export function DocumentDetail({
       processingComplete,
       proposedRuleCount,
       verifiedRuleCount,
+      workflowVersion,
     ],
   );
   const completedGuidedSteps = guidedSteps.filter((step) => step.state === "done").length;
@@ -998,18 +1007,20 @@ export function DocumentDetail({
   }, [searchParams]);
 
   async function submitVersionAction(action: "publish" | "archive") {
-    if (!currentVersion || workflowAction) {
+    const actionVersion = action === "publish" ? workflowVersion : currentVersion;
+    if (!actionVersion || workflowAction) {
       return;
     }
     setWorkflowAction(action);
     setWorkflowFeedback(null);
     try {
       const response = await fetch(
-        withAppBasePath(`/api/documents/${encodeURIComponent(document.document_id)}/versions/${encodeURIComponent(currentVersion.document_version_id)}/${action}`),
+        withAppBasePath(`/api/documents/${encodeURIComponent(document.document_id)}/versions/${encodeURIComponent(actionVersion.document_version_id)}/${action}`),
         { method: "POST" }
       );
       if (!response.ok) {
-        throw new Error(await readDocumentWorkflowError(response));
+        const body = await response.json().catch(() => null) as { error?: { code?: string } } | null;
+        throw new Error(documentReviewError(body?.error?.code, response.status, language));
       }
       setWorkflowFeedback({ tone: "success", message: copy.workflowActionSaved });
       router.refresh();
@@ -1311,6 +1322,9 @@ export function DocumentDetail({
         <ArrowLeft size={16} aria-hidden="true" />
         {documentReturnLabel(returnNavigation.origin, language)}
       </StratosButtonLink>
+      {unavailableSections.length > 0 ? <div className="notice notice--warning" role="status">
+        {language === "cs" ? "Část údajů o zpracování, schvalování nebo auditu nyní není dostupná. Chybějící údaje nejsou potvrzením dokončené kontroly." : "Some processing, review or audit information is unavailable. Missing information does not confirm a completed check."}
+      </div> : null}
 
       <section className="panel">
         <div className="panel__body grid grid--two">
@@ -1812,6 +1826,12 @@ export function DocumentDetail({
 
       {activeTab === "workflow" ? (
         <div className="stack">
+          <DocumentReviewPanel
+            document={document} version={workflowVersion}
+            assignments={assignments.length > 0 ? assignments : document.assignments ?? []}
+            tasks={workflowTasks} authorization={authorization}
+            unavailable={!workflowAvailable}
+          />
           <section>
             <div className="panel">
               <div className="panel__header">
@@ -1835,14 +1855,14 @@ export function DocumentDetail({
                   {
                     label: copy.workflowReview,
                     detail: copy.workflowReviewDetail,
-                    done: ["review", "approved", "valid"].includes(document.status)
+                    done: ["review", "approved", "valid"].includes(workflowVersion?.status ?? "")
                   },
                   {
                     label: copy.workflowApproved,
                     detail: copy.workflowApprovedDetail,
-                    done: ["approved", "valid"].includes(document.status)
+                    done: ["approved", "valid"].includes(workflowVersion?.status ?? "")
                   },
-                  { label: copy.workflowPublish, detail: copy.workflowPublishDetail, done: document.status === "valid" },
+                  { label: copy.workflowPublish, detail: copy.workflowPublishDetail, done: workflowVersion?.status === "valid" },
                   {
                     label: copy.workflowArchive,
                     detail: copy.workflowArchiveDetail,
@@ -2031,7 +2051,9 @@ export function DocumentDetail({
                 <h2>{copy.publishGateTitle}</h2>
                 <p>
                   {authorization.can_publish
-                    ? document.status === "valid"
+                    ? canPublishCurrentVersion
+                      ? copy.publishGateReady
+                      : document.status === "valid"
                       ? copy.publishGatePublished
                       : document.status === "archived"
                       ? copy.publishGateArchived
@@ -2054,7 +2076,7 @@ export function DocumentDetail({
                       void submitVersionAction("publish");
                     }}
                   >
-                    {workflowAction === "publish" ? copy.publishing : copy.publishApproved}
+                    {workflowAction === "publish" ? copy.publishing : `${copy.publishApproved}${workflowVersion ? ` ${workflowVersion.version_label}` : ""}`}
                   </button>
                   <button
                     className="button"

@@ -172,6 +172,19 @@ workflow task. Treat a sustained `listWorkflowTasks` latency above two seconds
 as a Registry performance incident; do not hide it by weakening authorization
 or omitting task visibility.
 
+The personal `/tasks` workspace reads authorization hints, personal documents
+and assigned tasks concurrently. It does not load the full audit or ingestion
+history. An administrator's team view remains permission-filtered. Missing
+pages, changed totals, duplicate rows or authorization-service failures must
+show an unavailable state, never a misleading empty or complete queue.
+
+Review submission and decisions use existing Registry transactions and audit
+events; no new worker, SMTP setting, role grant or database migration is part
+of this increment. The task list is the current notification surface. Future
+outbox-backed e-mail and deadline-digest requirements are documented in
+[the workflow runbook](ui/workflow-inbox.md). Do not enable a mail sender merely
+by treating audit events as a delivery queue.
+
 Production deploys use the immutable exact-SHA workflow in
 `docs/OPERATIONS/immutable-docker-home-release.md`; `/srv/akl/repo` is not a
 release source and must not be pulled, checked out, or switched during deploy.
