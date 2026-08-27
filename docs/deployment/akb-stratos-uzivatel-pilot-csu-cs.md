@@ -26,7 +26,9 @@ Potřebujete schválený osobní účet, přístup z vnitřní sítě a přiděl
 
 ## Přihlášení a přístup
 
-AKB a STRATOS používají společné přihlášení přes Keycloak. Při přechodu mezi aplikacemi uživatel obvykle nevyplňuje heslo znovu, protože aplikace ověří existující centrální SSO relaci. Každá aplikace však samostatně kontroluje aktuální oprávnění; úspěšné přihlášení samo o sobě nedává přístup ke všem dokumentům, financím nebo projektům.
+AKB a STRATOS používají společnou přihlašovací službu schválenou organizací. Může jít o Keycloak nebo volitelnou identity službu STRATOS; uživatel zadává heslo pouze na centrální přihlašovací stránce. Při přechodu mezi aplikacemi ve stejném prohlížeči obvykle nevyplňuje heslo znovu. Každá aplikace samostatně kontroluje aktuální oprávnění; úspěšné přihlášení samo o sobě nedává přístup ke všem dokumentům, financím nebo projektům.
+
+Následující politika relací popisuje cílové společné SSO. Správce pilotu před předáním potvrdí, že ji zvolená vydání aplikací a poskytovatel přihlášení společně ověřily. Neověřené přepnutí poskytovatele není součástí běžného uživatelského přihlášení.
 
 Volbu „Zůstat přihlášen na tomto zařízení“ nastavujete pouze na centrální přihlašovací stránce, nikoliv znovu v AKB. Používejte ji jen na vlastním nebo spravovaném zařízení. Doložená důvěryhodná relace trvá nejvýše 90 dní od začátku centrálního přihlášení a skončí po 30 dnech neaktivity. Přechod mezi aplikacemi tuto dobu neprodlužuje. Bez této doložené volby má relace AKB nejvýše 8 hodin neaktivity a 24 hodin celkové platnosti a prohlížeč dostane pouze dočasnou cookie.
 
@@ -75,6 +77,9 @@ Pokud AKB zdroj nemá, není oprávněný nebo je dočasně nedostupný, neodhad
 - Gestor: připravuje obsah a ověřuje vytěžené informace.
 - Schvalovatel: schvaluje nebo vrací návrhy.
 - Administrátor AKB: spravuje nastavení, workflow a vazby na přístupové politiky; centrální granty a scope spravuje pověřený správce STRATOS.
+- Externí spolupracovník: čte jen konkrétní dokumenty a aplikace přidělené pro jeho práci; zaměstnanecké směrnice nedostává automaticky.
+
+Pro gestora a schvalovatele se při předání ověří pracovní přehled přiřazených dokumentů a úkolů. Gestor má sledovat stav své verze a termín revize, schvalovatel obsah konkrétní verze čekající na rozhodnutí. Přidělení role samo nezpřístupní cizí dokumenty. Na e-mailovou notifikaci se nespoléhejte, dokud správce nepotvrdí, že je v daném prostředí zavedena.
 
 Pokud vidíte chybný obsah, neobcházejte jej vlastní kopií dokumentu. Nahlaste název dokumentu, verzi, stručný problém a případně correlation ID správci AKB nebo vlastníkovi dané oblasti.
 

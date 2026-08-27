@@ -35,12 +35,22 @@ application configuration or production data.
 
 The original import mapping is retained internally in
 `docs/qa/application-documentation-import-state-2026-08-27.json`. The observation
-applies to the original revision 1.0 only. Revision 1.1 has new source hashes and
+applies to the original revision 1.0 only. Revision 1.2 has new source hashes and
 must be introduced as new versions of the same 16 document identities through
 governed intake before approval/publication. Do not duplicate identities or mutate
 existing version objects in place. Do not present a local PDF rebuild as a
 successful application import, approval or reader acceptance test.
 
+Current content includes the optional managed identity and central SSO contracts.
+Keep their implementation, runtime activation and acceptance evidence separate.
+Do not infer an IAM activation or an AKB application deployment from a document
+upload. Each upload must preserve the existing document ID, assignments and
+Information Policy; the changed version needs its own content review.
+
 The customer inventory must not contain the internal mapping, actor names,
 test-instance URL, observations or a link to this procedure. Preserve source
 provenance in internal QA records and Git, outside the handed-over set.
+
+The revision 1.2 validation and the observed upload blockers are recorded in
+`docs/qa/customer-handover-identity-update-2026-08-27.md`. Upload remains incomplete
+until that record is superseded by actual governed-intake evidence.

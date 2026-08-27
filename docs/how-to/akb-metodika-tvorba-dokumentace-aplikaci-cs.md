@@ -12,7 +12,7 @@ source_system: git
 tags: [dokumentace, metodika, autorstvi, akb]
 documentation_profile: akb-application-docs-1
 documentation_kind: metodika
-document_revision: "1.1"
+document_revision: "1.2"
 target_environment: obecne
 applies_to: "Dokumentace aplikací předávaná do AKB"
 reviewed_on: "2026-08-27"
@@ -108,7 +108,10 @@ Každý postup má jasný účel, určení čtenáře, předpoklady, číslovan�
 - Neuvádějte hesla, tokeny, privátní klíče ani reálné osobní údaje v příkladech či snímcích.
 - Fakt, doporučení, návrh a neověřený předpoklad musí být rozlišitelné.
 - Návod popisuje současné chování aplikace. Neobsahuje neaktivní funkce, pracovní poznámky autora ani nesouvisející interní záznamy.
+- Instalační návrh může popsat volitelný režim, ale musí uvést podmínky jeho aktivace a neprovedené testy. Podpora v kódu, nasazení a úspěšná akceptace jsou tři odlišné skutečnosti. Konkrétní prostředí se nesmí označit za ověřené jen podle zdrojového kódu.
 - Do zákaznické sady zahrnujte pouze soubory uvedené v jejím schváleném seznamu. Stejnou kontrolou musí projít PDF, přílohy a distribuční ZIP.
+
+U identity popište zvolený režim, vlastníka přihlášení, nezávislou autoritu oprávnění, délku relace a výpadkové chování. Rozlišujte uživatelské a služební klienty a přístup zaměstnance od externí osoby. Konkrétní issuer, tajné hodnoty, skutečné uživatelské účty a výsledky provozních kontrol patří do chráněného instalačního protokolu, nikoli do obecné šablony pro další zákazníky.
 
 ## Markdown, PDF a přílohy
 

@@ -12,7 +12,7 @@ source_system: git
 tags: [dokumentace, csu-pilot, vedeni, akb, stratos]
 documentation_profile: akb-application-docs-1
 documentation_kind: prehled
-document_revision: "1.1"
+document_revision: "1.2"
 target_environment: csu-test
 applies_to: "Návrh pilotu; konkrétní release se určí při převzetí"
 reviewed_on: "2026-08-27"
@@ -33,7 +33,9 @@ AKB a STRATOS tvoří jednu integrovanou pracovní platformu, nikoli jednu datab
 
 Společné manažerské přehledy STRATOS skládají údaje ze zdrojových aplikací. Nejsou samostatnou evidencí a nenahrazují pracovní data Budgetu, ProjectFlow ani ArchFlow.
 
-Společné přihlášení přes Keycloak dává uživateli jednotný vstup. Oprávnění se však vyhodnocují v každé aplikaci podle aktuální role, rozsahu a Information Policy. Přihlášení proto samo o sobě neznamená přístup ke všem datům.
+Společné přihlášení dává uživateli jednotný vstup. Organizace může zvolit schválenou externí OIDC službu, například Keycloak, nebo volitelnou identity službu STRATOS pro více AD/LDAPS a OIDC zdrojů. Druhá varianta může fungovat bez Keycloaku a vyžaduje samostatnou akceptaci. AKB nepřebírá adresářová hesla. Oprávnění se vyhodnocují v každé aplikaci podle aktuální role, rozsahu a Information Policy; přihlášení samo o sobě neznamená přístup ke všem datům.
+
+V cílovém společném SSO uživatel volí zapamatování zařízení pouze jednou. Důvěryhodné zařízení má nejvýše 90denní relaci s nejvýše 30 dny neaktivity; bez doložené dlouhodobé politiky jde o krátkou dočasnou relaci. Aktivita mezi aplikacemi neobchází kontrolu přístupů ani neprodlužuje absolutní časový strop. Tyto vlastnosti jsou podmínkou převzetí vybraného vydání, nikoli tvrzením o již přepnutém provozu ČSÚ.
 
 ## Přínos pro vedení
 
@@ -49,6 +51,7 @@ Společné přihlášení přes Keycloak dává uživateli jednotný vstup. Opr�
 | --- | --- | --- |
 | Zaměstnanec | přístup k platným podkladům a citovaným odpovědím | „Kde najdu formulář pro zahraniční cestu?“ |
 | Gestor a schvalovatel | řízené vydání dokumentu a ověření pravidel | schválí nové znění směrnice a jeho přílohy |
+| Externí spolupracovník | výslovně schválená dokumentace svěřené aplikace | čte instalační podklady a pokládá otázky nad nimi, bez automatického přístupu k interním směrnicím |
 | Finanční pracovník | dohledatelné finance, plán a smluvní souvislosti | ověří plán a zdroj finanční položky |
 | Projektový tým | pracovní řízení projektu a stavové aktualizace | spravuje milníky, rizika a rozhodnutí |
 | Ředitel IT / vedení | autorizovaný přehled dokumentů, financí a projektů | „Jaký je stav mého portfolia a související rozpočtové riziko?“ |
@@ -85,6 +88,8 @@ Pro řízená pravidla platí:
 AKB nenahrazuje účetní systém, evidenci IT incidentů, správu konfigurací ani provozní monitoring. Projektové řízení zůstává v ProjectFlow. Dokumentové originály a jejich verze spravuje AKB; integrované aplikace na ně odkazují a nemají vytvářet vlastní neřízené kopie.
 
 Chat poskytuje podklady pro rozhodnutí. Neprovádí automaticky schválení smlouvy, změnu rozpočtu ani jiný úkon vyhrazený odpovědné osobě.
+
+Společná sekce správy STRATOS soustřeďuje organizační strukturu, přístupy a povolená systémová nastavení podle role. Nenahrazuje odborné nastavení v jednotlivých aplikacích ani správu dokumentů AKB. Cílové vydání a dostupné části menu se ověří při převzetí, aby uživatelská příručka nepopisovala funkce mimo nasazený rozsah.
 
 ## Metriky pro vedení
 

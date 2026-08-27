@@ -39,7 +39,7 @@ def source_tree(tmp_path: Path):
 def test_current_handover_contains_only_consistent_customer_sources():
     inventory, documents = handover.load_sources(ROOT)
     assert len(documents) == 16
-    assert inventory["revision"] == "1.1"
+    assert inventory["revision"] == "1.2"
     assert inventory["network_scope"] == "csu-internal-only"
     assert all(document.metadata["status"] == "draft" for document in documents)
 
@@ -72,8 +72,8 @@ def test_unlisted_relative_link_cannot_pull_another_document_into_handover(sourc
 
 
 def test_document_revision_must_match_the_package(source_tree):
-    root, _, document = source_tree
-    document.write_text(document.read_text().replace('document_revision: "1.1"', 'document_revision: "1.0"'), encoding="utf-8")
+    root, inventory, document = source_tree
+    document.write_text(document.read_text().replace(f'document_revision: "{inventory["revision"]}"', 'document_revision: "0.0"'), encoding="utf-8")
     with pytest.raises(ValueError, match="CUSTOMER_METADATA_MISMATCH"):
         handover.load_sources(root)
 
@@ -118,7 +118,7 @@ def pdf_pages(monkeypatch):
         pages = []
         for number, body in enumerate(bodies, 1):
             prefix = "AKB a STRATOS | Interní pilot ČSÚ\n" if number > 1 else ""
-            text = prefix + f"Dokumentační sada 1.1 | K posouzení\n{number}\n" + body
+            text = prefix + f"Dokumentační sada 1.2 | K posouzení\n{number}\n" + body
             pages.append(SimpleNamespace(extract_text=lambda value=text: value))
         monkeypatch.setattr(pypdf, "PdfReader", lambda _: SimpleNamespace(pages=pages, metadata=metadata or {}))
 
@@ -193,3 +193,26 @@ def test_failed_pdf_verification_does_not_replace_existing_bundle(generated_bund
         handover.build_bundle(inventory, documents, root)
     assert internal.read_text() == "Internal record"
     assert not (root / "output" / (handover.BUNDLE_NAME + ".zip")).exists()
+
+
+def test_customer_sso_contract_preserves_identity_and_session_boundaries():
+    _, documents = handover.load_sources(ROOT)
+    install = next(document.body for document in documents if document.metadata["external_ref"] == "DOC-AKB-STRATOS-PILOT-INSTALL")
+    for expected in (
+        "stratos_remember_device", "stratos_session_started_at", "auth_time",
+        "30 dnech neaktivity", "90 dnech od centrálního začátku",
+        "8 hodin neaktivity", "24 hodin absolutně", "15 minutách",
+        "token_endpoint_auth_method=none", "stratos-session-policy-mapper",
+        "AKB nedostává adresářová hesla", "Chybějící schválený kontrakt některého workeru",
+        "Podpora funkce v předávaném kódu není potvrzením jejího produkčního zapnutí",
+    ):
+        assert expected in install
+
+
+def test_customer_docs_do_not_make_keycloak_or_employee_access_automatic():
+    _, documents = handover.load_sources(ROOT)
+    by_id = {document.metadata["external_ref"]: document.body for document in documents}
+    assert "může fungovat bez Keycloaku" in by_id["DOC-AKB-STRATOS-PILOT-INFRA"]
+    assert "Externí osoba nezískává automaticky" in by_id["DOC-AKB-STRATOS-SECURITY"]
+    assert "Jednotné přihlášení je zajištěno společným Keycloakem" not in "\n".join(by_id.values())
+    assert "Keycloak je zdrojem identity pro AKB i STRATOS" not in "\n".join(by_id.values())

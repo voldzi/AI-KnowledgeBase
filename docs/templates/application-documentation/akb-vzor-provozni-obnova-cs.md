@@ -12,7 +12,7 @@ source_system: git
 tags: [dokumentace, vzor, autorstvi, provoz, obnova]
 documentation_profile: akb-application-docs-1
 documentation_kind: vzor
-document_revision: "1.1"
+document_revision: "1.2"
 target_environment: obecne
 applies_to: "Vzor pro autory; není oprávněním k zásahu nebo obnově"
 reviewed_on: "2026-08-27"
@@ -22,7 +22,7 @@ reviewed_on: "2026-08-27"
 
 ## Použití vzoru
 
-Toto je osnova, nikoli pohotovostní runbook konkrétní služby. Založte vlastní dokument podle [metodiky](../../how-to/akb-metodika-tvorba-dokumentace-aplikaci-cs.md). Před ostrým použitím musí kompetentní správce vyplnit a ověřit všechny údaje `DOPLNIT`.
+Osnova není provozní runbook. Založte vlastní dokument podle [metodiky](../../how-to/akb-metodika-tvorba-dokumentace-aplikaci-cs.md). Správce musí před použitím vyplnit a ověřit údaje `DOPLNIT`.
 
 ## Služba a odpovědnost
 
@@ -35,6 +35,7 @@ DOPLNIT: Aplikace, prostředí, verze, vlastník, podpora, doba podpory a opráv
 | Dostupnost a readiness | DOPLNIT | DOPLNIT | DOPLNIT |
 | Fronty, latence, disk | DOPLNIT | DOPLNIT | DOPLNIT |
 | Zálohy a test obnovy | DOPLNIT | DOPLNIT | DOPLNIT |
+| OIDC, TLS, relace a přístupová projekce | DOPLNIT | DOPLNIT | DOPLNIT |
 
 ## Rozpoznání incidentu
 
@@ -42,7 +43,7 @@ DOPLNIT: Příznak pro uživatele, bezpečné read-only diagnostické kontroly, 
 
 ## Zálohovaná data
 
-DOPLNIT: Co je autoritativní a co je obnovitelný index; databáze, soubory, konfigurace, identity a samostatně chráněné klíče. Uveďte konzistentní bod obnovy, retenci, šifrování a přístup. Samotná existence souboru zálohy nedokazuje obnovitelnost.
+DOPLNIT: Kanonická data a obnovitelné indexy; databáze, soubory, konfigurace, identity a chráněné klíče. Bod obnovy, retence, šifrování a přístup. Záloha bez testu nedokazuje obnovitelnost.
 
 ## Obnova
 
@@ -51,6 +52,8 @@ DOPLNIT: Co je autoritativní a co je obnovitelný index; databáze, soubory, ko
 3. DOPLNIT: Pořadí obnovy závislostí a dat; bezpečné zpřístupnění klíčů mimo dokument.
 4. DOPLNIT: Kontrola vazeb, autorizace, historie a funkčních testů před otevřením služby.
 5. DOPLNIT: Kritéria rozhodnutí o obnovení provozu a záznam dosaženého RPO/RTO.
+
+DOPLNIT: Obnova zvoleného OIDC, revokací a časových stropů relací; ověření grantů a zneplatnění neobnovitelných relací. Obnova nesmí oživit odebraný přístup.
 
 ## Kdy nepokračovat
 

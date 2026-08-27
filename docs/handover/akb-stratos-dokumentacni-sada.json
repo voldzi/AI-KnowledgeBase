@@ -2,7 +2,7 @@
   "schema": "akb-documentation-handover-inventory-1",
   "purpose": "Seznam zákaznické dokumentace; není příkazem k importu ani udělením přístupu.",
   "package_id": "AKB-STRATOS-CSU-PILOT-DOCS",
-  "revision": "1.1",
+  "revision": "1.2",
   "prepared_on": "2026-08-27",
   "language": "cs",
   "publication_status": "draft",

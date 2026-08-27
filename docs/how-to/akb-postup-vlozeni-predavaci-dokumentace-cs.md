@@ -12,7 +12,7 @@ source_system: git
 tags: [dokumentace, import, predani, akb]
 documentation_profile: akb-application-docs-1
 documentation_kind: provoz
-document_revision: "1.1"
+document_revision: "1.2"
 target_environment: obecne
 applies_to: "Řízené vložení dokumentační sady do AKB"
 reviewed_on: "2026-08-27"
@@ -32,6 +32,7 @@ Dokumenty uvádí [předávací list](../handover/akb-stratos-predani-dokumentac
 2. V Registry vyhledejte stabilní `external_ref` a případný původní název. Existujícímu dokumentu vytvořte novou verzi, nikoli nový záznam.
 3. Odlište provozní návrhy, metodiku a vzory. Tato sada je návrh pro interní pilot, nikoli schválený popis již nasazeného prostředí ČSÚ.
 4. Ověřte, kdo bude text posuzovat za AKB, STRATOS a ČSÚ. Označení týmu v souboru není přidělení oprávnění konkrétní osobě.
+5. Nová verze zachová identitu dokumentu, příjemce a odpovědnosti, pokud vlastník neschválil jejich změnu. Schválení dřívějšího obsahu se nepřenáší na upravený text.
 
 ## 2. Vložte originál bezpečnou cestou
 
@@ -56,12 +57,18 @@ Přílohy, PDF a formuláře musí být spojeny s přesnou verzí. U nové reviz
 
 Po věcné kontrole provede oprávněná osoba odpovídající schválení a publikaci. Běžné manuály nevyžadují krok „Navrhnout pravidla“ v Controlled Rules. Publikace metodiky nepublikuje automaticky dokumenty vytvořené podle ní.
 
+Ověřte, že se konkrétní nová verze objeví v přehledu přiřazeného schvalovatele a ve vlastních dokumentech gestora, pokud tyto pracovní přehledy obsahuje cílové vydání. Pokud se úkol nezobrazí nebo nelze bezpečně zahájit revizi, ponechte verzi jako koncept a předejte její odkaz oprávněnému schvalovateli. Neobcházejte kontrolu přímou změnou stavu v databázi. E-mail není důkazem přiřazení ani schválení.
+
 ## 5. Ověřte skutečné použití
 
 | Test | Očekávaný výsledek |
 | --- | --- |
 | „Jaké prostředí je navrženo pro pilot AKB a STRATOS v ČSÚ?“ | Interní síť; návrhové kapacity označené jako návrh, nikoli měření. |
 | „Je pro pilot potřebný veřejný přístup z internetu?“ | Ne; odkaz na infrastrukturní návrh. |
+| „Je Keycloak povinný? Připojuje se AKB přímo do AD?“ | Keycloak je možnost externího OIDC. Volitelná identity služba STRATOS vyžaduje akceptaci; AKB k LDAP nepřistupuje. |
+| „Jak dlouho budu přihlášen a obnoví se lhůta přechodem do Chatu?“ | Cílové limity 30/90 dní, krátká relace 8/24 hodin; přechod ani refresh neobnovuje absolutní strop. |
+| „Má externí dodavatel automaticky všechny směrnice?“ | Ne; potřebuje výslovný grant a příslušnou Information Policy. |
+| „Je nové SSO v ČSÚ už aktivní?“ | Sada je podklad k instalaci, nikoli provozní protokol; bez dalšího důkazu nesmí tvrdit aktivaci. |
 | „Kde najdu vzor uživatelského návodu?“ | Odkaz na skutečně vložený vzor, nikoli vymyšlený formulář. |
 | „Jak mám pojmenovat dokumentaci aplikace?“ | Metodika a konkrétní jmenná konvence. |
 | „Jaký přesný server a IP už máme v ČSÚ?“ | Bez dalšího schváleného podkladu nesmí převzít placeholder ani návrh jako skutečnost. |

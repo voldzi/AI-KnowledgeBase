@@ -12,7 +12,7 @@ source_system: git
 tags: [dokumentace, csu-pilot, katalog-funkci, akb, stratos]
 documentation_profile: akb-application-docs-1
 documentation_kind: reference
-document_revision: "1.1"
+document_revision: "1.2"
 target_environment: csu-test
 applies_to: "Návrh pilotu; konkrétní release se určí při převzetí"
 reviewed_on: "2026-08-27"
@@ -31,6 +31,7 @@ Katalog popisuje funkce aplikací a určuje, kde se spravují jejich data. Pří
 | AKB | vyhledávání v textu a podle významu, přesné citace | dokumenty a odvozené indexy | oprávnění čtenáři |
 | AKB | náhled a stažení dokumentu | přesná verze originálu | oprávnění čtenáři |
 | AKB | kontrola, schválení, publikace a nahrazení vydání | registr AKB | gestor, schvalovatel |
+| AKB | přehled vlastních dokumentů, stavů a přiřazených schválení | přiřazení gestora a schvalovatele v registru | gestor, schvalovatel; ověřit v cílovém vydání |
 | AKB | ověřená pravidla a limity ze zákonů a směrnic | schválené, účinné balíčky AKB | Chat, Budget |
 | AKB | chat nad dokumenty, návody a souvislostmi | autorizované dokumenty s citacemi | zaměstnanec, vedení |
 | AKB | analytický pracovní prostor a evidenční případy | AKB Intelligence | analytik, auditor |
@@ -42,10 +43,14 @@ Katalog popisuje funkce aplikací a určuje, kde se spravují jejich data. Pří
 | ArchFlow | přehled potřeb v chatu | živé rozhraní ArchFlow | oprávnění uživatelé |
 | STRATOS | společné manažerské přehledy | zdrojové aplikace STRATOS | vedení |
 | STRATOS | správa oprávnění a rozsahu přístupů | STRATOS Access Center | správce přístupů |
-| Společné | jednotné přihlášení a serverové relace | Keycloak a aplikace | všichni uživatelé |
+| STRATOS | společná správa organizační struktury a povolených systémových nastavení | sekce Správa, role a organizační rozsah | určení správci; ověřit rozsah cílového vydání |
+| STRATOS, volitelně | identity služba pro více AD/LDAPS a OIDC zdrojů | schválené zdroje identity, oddělené od AKB | správce identity; aktivace po společné akceptaci |
+| Společné | jednotné přihlášení a serverové relace | schválený externí OIDC nebo identity služba STRATOS; vlastní relace aplikací | všichni oprávnění uživatelé |
 | Společné | audit operací a přístupových rozhodnutí | AKB a STRATOS | auditor, podpora |
 
 Náhled není zárukou totožného vzhledu všech formátů. Office využívá odvozené PDF; u Markdownu současná aplikace zobrazuje obsah a umožňuje stažení zdroje, ale negeneruje PDF celého dokumentu. PDF předávací sady je samostatně vytvořený odvozený výstup.
+
+Katalog rozlišuje funkční rozsah a podmínky zapnutí. Volitelná identity služba, nová politika centrálních relací a pracovní přehledy se musí ověřit proti konkrétnímu vydání obou aplikací. Samotná podpora v kódu není doklad zapnutí na cílových serverech. E-mailová notifikace schvalovateli není součástí garantovaného rozsahu této sady; přiřazení úkolů a jejich viditelnost se ověřují přímo v AKB.
 
 ## Pravidla pro integraci
 

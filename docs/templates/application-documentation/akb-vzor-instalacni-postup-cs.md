@@ -12,7 +12,7 @@ source_system: git
 tags: [dokumentace, vzor, autorstvi, instalace]
 documentation_profile: akb-application-docs-1
 documentation_kind: vzor
-document_revision: "1.1"
+document_revision: "1.2"
 target_environment: obecne
 applies_to: "Vzor pro autory; není instalačním příkazem"
 reviewed_on: "2026-08-27"
@@ -34,7 +34,7 @@ DOPLNIT: Aplikace, přesné vydání, cílové prostředí, vlastník, požadova
 | --- | --- |
 | VM, CPU, RAM, disk | DOPLNIT: doložená kapacita, rezerva a zdroj měření |
 | Databáze a objektové úložiště | DOPLNIT: oddělení dat, kompatibilní verze |
-| Identita, DNS a TLS | DOPLNIT: schválené interní adresy a správci |
+| Identita, DNS a TLS | DOPLNIT: zvolený issuer, režim, registrace klientů, interní adresy, důvěra a správci |
 | Síťová spojení | DOPLNIT: zdroj, cíl, port, směr, účel |
 | Záloha a obnova | DOPLNIT: ověřený bod obnovy a návratový postup |
 | Artefakty a přístupové údaje | DOPLNIT: ověřený zdroj image; pouze odkaz na správu secretů |
@@ -55,6 +55,8 @@ Příkazy doplňte až po ověření v daném prostředí. Uveďte pracovní adr
 ## Akceptace
 
 DOPLNIT: Test přihlášení, minimálních oprávnění, čtení a zápisu, zálohy a hlavní integrace. Ke každému testu uveďte očekávání, skutečný výsledek, datum a vydání. Neprovedené testy označte.
+
+DOPLNIT: U centrálního SSO otestovat přechod mezi aplikacemi, politiku zapamatování, časové stropy, změnu uživatele a odvolání relace. Volitelný režim identity aktivovat pouze po ověření všech browser a service klientů pro daný profil. Neúspěšný nebo neprovedený test není souhlas k přepnutí.
 
 ## Selhání a návrat
 

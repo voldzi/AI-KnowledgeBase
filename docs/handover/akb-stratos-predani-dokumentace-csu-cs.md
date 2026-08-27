@@ -12,7 +12,7 @@ source_system: git
 tags: [dokumentace, csu-pilot, predani, akb, stratos]
 documentation_profile: akb-application-docs-1
 documentation_kind: prehled
-document_revision: "1.1"
+document_revision: "1.2"
 target_environment: csu-test
 applies_to: "Příprava malého interního testovacího nasazení"
 reviewed_on: "2026-08-27"
@@ -22,7 +22,7 @@ reviewed_on: "2026-08-27"
 
 ## Co se předává
 
-Dokumentační sada **1.1** ze dne **27. 8. 2026** popisuje AKB a STRATOS a požadavky na jejich malé testovací nasazení v ČSÚ. Pilot je dostupný **pouze ve vnitřní síti ČSÚ**, nikoli z internetu. Sada je určena vedení, bezpečnostnímu týmu, IT správcům, autorům dokumentace a pilotním uživatelům.
+Dokumentační sada **1.2** ze dne **27. 8. 2026** popisuje AKB a STRATOS a požadavky na jejich malé testovací nasazení v ČSÚ. Pilot je dostupný **pouze ve vnitřní síti ČSÚ**, nikoli z internetu. Sada je určena vedení, bezpečnostnímu týmu, IT správcům, autorům dokumentace a pilotním uživatelům.
 
 Předání obsahuje osm věcných podkladů, tento rozcestník, metodiku, postup vložení a pět autorských vzorů. Markdown je kanonický zdroj; odvozená PDF a kontrolní součty slouží pro pohodlné čtení a kontrolu distribuční sady.
 
@@ -36,6 +36,14 @@ Předání obsahuje osm věcných podkladů, tento rozcestník, metodiku, postup
 - **ArchFlow** spravuje potřeby, jejich posouzení a návaznost na plánování.
 
 STRATOS zajišťuje společné prostředí svých aplikací, správu přístupů a manažerské přehledy. AKB s ním spolupracuje přes zabezpečená rozhraní. Jednotné přihlášení nemění rozdělení odpovědností ani oprávnění k datům.
+
+## Přihlášení a připravenost pilotu
+
+Pro pilot se vybere jeden schválený poskytovatel přihlášení. Výchozí varianta používá externí OIDC službu, například organizací spravovaný Keycloak. Volitelná varianta používá identity službu STRATOS s připojením k více AD/LDAPS nebo OIDC zdrojům; nevyžaduje Keycloak. AKB se nikdy nepřipojuje přímo k LDAP a nepřebírá adresářová hesla.
+
+Připravená podpora centrálního SSO a volitelné identity služby není dokladem jejich aktivace v cílovém prostředí. Před převzetím musí oba vlastníci potvrdit konkrétní vydání, konfiguraci klientů a společnou akceptaci. Bez tohoto potvrzení se nemění schválený issuer ani existující přihlašování.
+
+V cílovém SSO se volba zapamatování zařízení nastavuje jednou na centrální přihlašovací stránce. AKB a samostatný Chat mají vlastní chráněné serverové relace; nesdílejí cookie, šifrovací klíče ani uživatelské tokeny. Podrobné limity a bezpečnostní kontroly stanoví [instalační postup](../deployment/akb-stratos-instalace-prevzeti-pilotu-csu-cs.md).
 
 ## Kudy začít
 
@@ -72,12 +80,15 @@ Revize dokumentace není totéž co release aplikace. Přiložené PDF musí vž
 | --- | --- | --- |
 | Cílové release AKB a STRATOS, image identity | vlastníci aplikací | CI, build a integrační akceptace stejného vydání |
 | Interní DNS, certifikáty a schválené síťové prostupy | IT ČSÚ | pouze vnitřní přístup, datové porty neveřejné |
+| Zvolený OIDC issuer, zdroje identity a centrální politika relací | IAM + vlastníci aplikací | přesní klienti, důvěryhodné TLS, SSO a negativní testy; žádné automatické přepnutí |
 | Sizing, počet uživatelů, souběh, objem dokumentů | IT ČSÚ + vlastníci | potvrzený návrh a měření pilotu |
 | AI/embedding služba a nakládání s daty | bezpečnost + IT ČSÚ | schválené umístění, provoz a dostupnost |
 | Přístupový model a čtenáři včetně externích osob | vlastník dat + přístupový správce | pozitivní a negativní testy; bez plošného zpřístupnění |
 | Zálohy, klíče, RPO/RTO, odpovědná podpora | provoz + bezpečnost | doložená konzistentní obnova |
 | Metodika, skutečné názvy rolí a kontakty | vlastníci dokumentace | věcné potvrzení a publikace |
 | Import této sady do AKB | oprávněný správce dokumentace | ID/verze, scan, citace, stažení a test čtenáře |
+
+U volitelné identity služby se samostatně ověří všechny technické identity potřebné pro zvolený rozsah pilotu, nejen přihlášení uživatele. Neověřená identita workeru nebo integrační služby je důvodem nepřepnout příslušný provozní profil.
 
 Pilot může používat jen dokumentové funkce AKB, nebo také živé dotazy do Budgetu, ProjectFlow a ArchFlow. Obě varianty potřebují ověřenou identitu a centrální správu přístupů. Samostatná instalace bez STRATOS Access Governance není předmětem této sady.
 

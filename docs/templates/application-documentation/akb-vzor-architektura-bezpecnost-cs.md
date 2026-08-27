@@ -12,7 +12,7 @@ source_system: git
 tags: [dokumentace, vzor, autorstvi, architektura, bezpecnost]
 documentation_profile: akb-application-docs-1
 documentation_kind: vzor
-document_revision: "1.1"
+document_revision: "1.2"
 target_environment: obecne
 applies_to: "Vzor pro autory; není bezpečnostním posudkem"
 reviewed_on: "2026-08-27"
@@ -39,6 +39,8 @@ DOPLNIT: Čitelný diagram a jeho textový popis; uživatel, vstupní bod, inter
 ## Identity a klasifikace
 
 DOPLNIT: Autorita identity, relace, udělení a odebrání oprávnění, účty služeb, klasifikace dat a přístupy externích čtenářů. Rozlišit roli od rozsahu dat. Popsat přístupy ke zdroji i odvozeným souborům a indexům.
+
+DOPLNIT: Výchozí a případný volitelný OIDC režim, centrální politika relace, nezávislá přístupová projekce, oddělení uživatelských a služebních klientů a zákaz slučování identity podle e-mailu. Uvést, která služba smí přistupovat do adresáře a která pouze ověřuje OIDC. Odlišit existenci implementace od aktivace a akceptace v daném prostředí.
 
 ## Síť, secrets a monitoring
 

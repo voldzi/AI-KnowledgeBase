@@ -12,7 +12,7 @@ source_system: git
 tags: [dokumentace, vzor, autorstvi, uzivatel]
 documentation_profile: akb-application-docs-1
 documentation_kind: vzor
-document_revision: "1.1"
+document_revision: "1.2"
 target_environment: obecne
 applies_to: "Vzor pro autory; není návodem konkrétní aplikace"
 reviewed_on: "2026-08-27"
@@ -22,7 +22,7 @@ reviewed_on: "2026-08-27"
 
 ## Jak vzor použít
 
-Tento dokument je prázdná osnova, nikoli provozní návod. Zkopírujte ji, přidělte novému návodu vlastní název, `external_ref`, aplikaci, revizi a vlastníka. Všechny hodnoty `DOPLNIT` nahraďte. Před publikací ověřte skutečné názvy ovládacích prvků, oprávnění a výsledek postupu. Řiďte se [metodikou](../../how-to/akb-metodika-tvorba-dokumentace-aplikaci-cs.md).
+Osnova není provozní návod. Novému dokumentu přidělte název, `external_ref`, aplikaci, revizi a vlastníka. Nahraďte `DOPLNIT` a ověřte ovládací prvky, oprávnění i výsledek podle [metodiky](../../how-to/akb-metodika-tvorba-dokumentace-aplikaci-cs.md).
 
 ## Identifikace nového návodu
 
@@ -40,6 +40,8 @@ DOPLNIT: Co uživatel dokončí. Jedna krátká věta, nikoli obecný popis prod
 ## Předpoklady
 
 DOPLNIT: Potřebný přístup, stav záznamu, vstupní údaje a případná schválení. Neukládejte sem heslo ani token.
+
+DOPLNIT: Centrální přihlášení, přechod mezi aplikacemi a bezpečné odhlášení ze sdíleného zařízení podle ověřeného vydání. Přihlášení samo nezvyšuje oprávnění.
 
 ## Postup
 
@@ -61,10 +63,8 @@ DOPLNIT: Konkrétní stav nebo údaj, který potvrzuje úspěch; kdo jej uvidí 
 
 DOPLNIT: Jak zjistit, zda se operace již provedla, než ji uživatel zopakuje. Nesmí vzniknout duplicitní požadavek.
 
-## Související formuláře a návody
+## Odkazy a dohledání odpovědi
 
 DOPLNIT: Odkaz na konkrétní přílohu a její použitelnost, skutečné kontaktní místo podpory a související postup.
-
-## Co má jít podle návodu zjistit
 
 DOPLNIT: Dvě běžně formulované otázky, na které text opravdu obsahuje odpověď. Zkontrolovat nalezení návodu, citaci a přístup cílové role v AKB.

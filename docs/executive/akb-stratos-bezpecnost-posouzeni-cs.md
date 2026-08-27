@@ -12,7 +12,7 @@ source_system: git
 tags: [dokumentace, csu-pilot, bezpecnost, akb, stratos]
 documentation_profile: akb-application-docs-1
 documentation_kind: bezpecnost
-document_revision: "1.1"
+document_revision: "1.2"
 target_environment: csu-test
 applies_to: "Návrh pilotu; konkrétní release se určí při převzetí"
 reviewed_on: "2026-08-27"
@@ -56,7 +56,22 @@ V tomto dokumentu znamená **oprávnění (capability)** povolení konkrétního
 | Finance a zakázky | Budget & Contract | autorizovaná odpověď pro Chat | AKB nesmí finance domýšlet nebo přepisovat |
 | Projekty a portfolio | ProjectFlow | read-only odpověď a Executive read-model | lokální role projektu zůstávají autoritou |
 | Potřeby a posouzení | ArchFlow | autorizovaná odpověď pro Chat | citlivé potřeby nejsou vidět mimo scope |
-| Identity a přístupy | Keycloak a STRATOS Access Center | krátkodobé serverové ověření | statický claim není náhradou aktuálního rozhodnutí |
+| Identity a přístupy | schválený OIDC poskytovatel a STRATOS Access Center | krátkodobé serverové ověření | statický claim není náhradou aktuálního rozhodnutí |
+
+## Společné přihlášení a hranice identity
+
+Výchozí varianta používá schválený externí OIDC issuer, například Keycloak. Volitelná identity služba STRATOS obsluhuje více AD/LDAPS a OIDC zdrojů; její zapnutí je samostatná řízená změna. AKB pouze ověřuje OIDC a aktuální přístupovou projekci. Nemá LDAP konektor, nezná adresářové heslo a s jinými aplikacemi nesdílí databázi relací ani šifrovací klíč.
+
+V cílovém společném SSO se zapamatování zařízení volí pouze centrálně. Trvání relace se odvozuje z ověřeného access tokenu, nikoli z formuláře AKB, neověřené hlavičky nebo nového okamžiku přechodu mezi aplikacemi:
+
+| Politika | Neaktivita nejvýše | Absolutní platnost nejvýše | Cookie |
+| --- | --- | --- | --- |
+| Doložené zapamatování zařízení | 30 dní | 90 dní od neměnného začátku centrální relace | persistentní, nejdéle do stejného stropu |
+| Bez doložené dlouhodobé politiky | 8 hodin | 24 hodin; doložený centrální začátek se zachová | dočasná, bez trvalé expirace v prohlížeči |
+
+Aktivní požadavek vyžaduje serverové ověření identity nejpozději po 15 minutách. To nenahrazuje kontrolu capability, scope a Information Policy při každém relevantním přístupu. Obnova tokenu ani nové ověření hesla neposouvá absolutní konec relace. Neplatný podpis, issuer nebo audience se odmítne; nesmí vyvolat náhradní přihlášení s širšími právy. Tyto vlastnosti musí být doloženy společným testem cílového vydání, ne pouze existencí implementace.
+
+Externí osoba nezískává automaticky dokumenty pro zaměstnance. Shodné přihlašovací jméno nebo e-mail v různých zdrojích identity nejsou důvodem ke sloučení účtů. Služební klient nezískává lidské role ani zaměstnanecký recipient set.
 
 ## Výpadkové chování
 
@@ -65,7 +80,7 @@ V tomto dokumentu znamená **oprávnění (capability)** povolení konkrétního
 - Nedostupný STRATOS zdroj: Chat nevyužije dokumenty jako náhradu živých dat.
 - Neúplné stránkování nebo změna source version: agregace se nevydá jako úplná.
 - Nedostupná access projection nebo policy: není-li možné platně ověřit oprávnění, chráněný požadavek se odmítne; nesmí přejít na statický claim nebo širší scope.
-- Výpadek Keycloaku při odhlášení: lokální relace se ukončí i bez vzdálené revokace.
+- Výpadek poskytovatele přihlášení při odhlášení: lokální relace se ukončí i bez vzdálené revokace. Odhlášení jedné aplikace samo nedokládá okamžité odvolání všech ostatních aplikačních relací.
 
 ## Minimum před převzetím pilotu
 
@@ -75,5 +90,6 @@ V tomto dokumentu znamená **oprávnění (capability)** povolení konkrétního
 4. Doložené negativní autorizační a integrační testy.
 5. Aktivní monitoring, alerty, zálohy a izolovaný restore test.
 6. Záznam o release SHA, image identitě, konfiguraci bez secret hodnot a známých omezeních pilotu.
+7. Ověření obou politik relace, změny uživatele, revokace, chybného callbacku, cizího Origin a přechodů mezi aplikacemi ve stejném profilu prohlížeče.
 
 **Navazující podklady:** [Infrastruktura pilotu](../deployment/akb-stratos-instalace-infrastruktura-pilotu-csu-cs.md), [obnova a kontinuita](../deployment/akb-stratos-bezpecnost-obnova-pilotu-csu-cs.md), [předávací list a podmínky převzetí](../handover/akb-stratos-predani-dokumentace-csu-cs.md).

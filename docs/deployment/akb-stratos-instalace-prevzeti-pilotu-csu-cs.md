@@ -12,7 +12,7 @@ source_system: git
 tags: [dokumentace, csu-pilot, instalace, akceptace, akb, stratos]
 documentation_profile: akb-application-docs-1
 documentation_kind: instalace
-document_revision: "1.1"
+document_revision: "1.2"
 target_environment: csu-test
 applies_to: "Návrh pilotu; konkrétní release se určí při převzetí"
 reviewed_on: "2026-08-27"
@@ -36,12 +36,45 @@ AKB a STRATOS se nasazují z nezávislých repozitářů a vlastníci aplikací 
 2. oddělené VM nebo schválené sdílené služby;
 3. PostgreSQL databáze a účty oddělené pro AKB a STRATOS;
 4. samostatný AKB S3 bucket s minimálními právy;
-5. Keycloak realm, klienty a redirect URI pro obě aplikace;
+5. schválený OIDC issuer, registrace samostatných klientů a přesné redirect/logout URI;
 6. interní ClamAV endpoint pro AKB uploady;
 7. centralizované zálohy a monitoring;
 8. schválený AI a embedding endpoint, pokud se má používat generativní chat.
 
 Před nasazením se ověří, že z uživatelské VLAN jsou dostupné jen interní HTTPS adresy a že databáze, object storage, Redis, indexy, ClamAV a telemetry nejsou z této VLAN ani z internetu dosažitelné.
+
+### Předpoklady centrálního přihlášení
+
+IAM a vlastníci aplikací nejprve zvolí externí OIDC režim, nebo volitelnou identity službu STRATOS. Existující schválený Keycloak issuer se bez společného souhlasu nemění. Režim identity služby STRATOS nevyžaduje Keycloak, ale vyžaduje akceptované zdroje AD/LDAPS či OIDC. AKB nedostává adresářová hesla, LDAP konektor ani přístup do jejich sítě.
+
+1. Ověřte discovery a TLS řetězec explicitně schváleného issueru z prohlížeče i ze serverů. Neodvozujte důvěru z hodnoty dodané v uživatelském tokenu.
+2. Pro AKB a samostatný Chat zaregistrujte samostatné klienty. V režimu identity služby STRATOS použijte Authorization Code + PKCE S256, `token_endpoint_auth_method=none`, scopes `openid profile email` a přesné redirect/logout URI bez wildcardů. Client secret jiného issueru se novému poskytovateli nikdy neposílá.
+3. Pro AKB i Chat připravte oddělený klíč šifrování serverových tokenů. Klíče nepatří do Compose, image, PDF ani Git; každý má vlastní chráněné předání a obnovu. Nesdílejte cookie Domain ani relaci mezi aplikacemi.
+4. Při externím Keycloaku ověřte s IAM mapper `stratos-session-policy-mapper` pro příslušné browser klienty a jeho kompatibilitu s konkrétní nasazovanou verzí. Instalace mapperu je samostatná IAM změna; nepřidává se service klientům a nemění jejich role nebo audience.
+5. Připravte uživatelské i technické identity pro celý zvolený profil. Chybějící schválený kontrakt některého workeru je blokátorem úplného přepnutí, i když browser přihlášení již funguje.
+
+### Přijímané tokeny volitelné identity služby STRATOS
+
+Tato tabulka platí pouze pro explicitně nakonfigurovaný režim identity služby STRATOS. Neprovádí sama migraci klientů stávajícího externího issueru.
+
+| Klient nebo účel | Audience a minimální rozsah | Povinné ověření |
+| --- | --- | --- |
+| AKB / Chat, uživatelský access token | přesně `akl-api` a `stratos-access-api` | schválený issuer a podpis, UUID v `sub`, `stratos_roles`, `identity_source`, `identity_audience` |
+| AKB / Chat, ID token | vlastní browser client ID | samostatná OIDC validace včetně nonce; není náhradou access tokenu |
+| Director Copilot: tři samostatní klienti | vždy jediná audience `budget-api`, `projectflow-api` nebo `archflow-api`; scope `director-copilot:read` | `stratos_service=true`, správný `client_id`, žádné lidské role |
+| Budget čte řízená pravidla AKB | pouze `akl-api`; scope `controlled-rules-read` | `stratos_service_roles=["service_budget_rules_read"]` a samostatný route grant; bez dokumentových a administračních práv |
+
+### Akceptace politiky relací
+
+Volbu zapamatování zařízení uživatel provádí pouze na centrální přihlašovací stránce. AKB nesmí zobrazovat druhou volbu a běžný vstup nesmí vynucovat `prompt=login` ani `max_age=0`. Při chybějící relaci zahájí jeden Authorization Code + PKCE tok, ne nekonečnou přesměrovací smyčku.
+
+- Persistenci určuje pouze platně podepsaný a ověřený access token: boolean `stratos_remember_device` a neměnný `stratos_session_started_at` v Unix sekundách. `auth_time` není nový začátek dlouhodobé relace.
+- Zapamatovaná relace končí nejpozději po 30 dnech neaktivity nebo 90 dnech od centrálního začátku, podle toho, co nastane dříve. Přechod do jiné aplikace ani refresh tento strop neposouvá.
+- Bez doložené dlouhodobé politiky vzniká pouze session cookie bez `Max-Age` a `Expires`, nejvýše 8 hodin neaktivity a 24 hodin absolutně. Je-li doložen centrální začátek, strop se odvozuje od něj. Již expirovaný doložený začátek se nenahradí novým obdobím.
+- Identita se při aktivitě znovu ověří nejpozději po 15 minutách. Každý relevantní přístup navíc potřebuje aktuální projekci a Information Policy; výpadek autorizace není důvodem použít statické claims.
+- Odhlášení odvolá lokální relaci a cookie i při výpadku issueru. Obnova tokenu nesmí oživit odvolanou relaci. Po logoutu aplikace nezahájí automatické opětovné přihlášení.
+
+Otestujte ve stejném prohlížeči a profilu přechody STRATOS -> AKB -> Chat a zpět, obě volby zapamatování, expiraci, revokaci, výpadek issueru, chybný callback a změnu účtu. Samostatná instalovaná PWA může mít oddělený profil a potřebovat vlastní první přihlášení. Do protokolu patří výsledky a correlation ID, nikoli tokeny či cookie.
 
 ## Fáze 1: AKB bez živých doménových integrací
 
@@ -117,10 +150,13 @@ Při ukončení instalace předají vlastníci aplikací společný záznam obsa
 - seznam interních URL a potvrzení, že nejsou zveřejněné do internetu;
 - výsledky health/readiness a integračního preflightu;
 - seznam pilotních rolí a jejich záměrně omezených oprávnění;
+- zvolený issuer, identity profil, ověření TLS a SSO politiky; žádné tajné hodnoty;
 - výsledek dokumentového uploadu, skenu, publikace, citace a historického dotazu;
 - výsledek testu integrace Director Copilot nebo explicitní potvrzení, že v pilotu není zapnut;
 - ověření zálohy, obnovy, monitoringu a alertů;
 - známá omezení, odpovědné osoby a postup eskalace incidentu.
+
+Podpora funkce v předávaném kódu není potvrzením jejího produkčního zapnutí. V protokolu se každá volitelná funkce označí jako zapnutá a ověřená, nezapnutá, nebo blokovaná konkrétní nesplněnou podmínkou. Vydání s neověřeným společným SSO se nepředává jako již akceptované.
 
 ## Navazující postupy
 
