@@ -124,6 +124,25 @@ Its exact dry-run and apply sequence is in
 
 Do not push directly to `main`.
 
+## Local Fast Check
+
+The MacBook can provide fast developer feedback before the trusted Gitea run:
+
+```bash
+scripts/ci/local-fast-check.sh --base origin/main
+```
+
+The helper classifies the exact diff using the same fail-closed impact matrix
+as Gitea CI and runs independent Python and web checks in parallel. Use
+`--full` when the comparison base is uncertain. Use `--skip-install` only when
+the local dependency environments are already current. The helper uses local
+development configuration only; it never reads production env files, sends
+credentials to a remote host, or authorizes a deployment.
+
+This is an early feedback layer, not a release approval. The final candidate
+still runs on the repo-scoped VM125 runner, where the Linux/amd64 toolchain and
+persistent caches match the production build environment.
+
 ## Optimized Release Candidate Workflow
 
 Use this sequence for every production-bound change. It keeps the existing
