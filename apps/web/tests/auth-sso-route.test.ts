@@ -5,7 +5,8 @@ import { NextRequest } from "next/server";
 
 import { GET as beginSilentSso } from "../src/app/api/auth/sso/route";
 import { GET as completeOidcCallback } from "../src/app/api/auth/callback/route";
-import { createState } from "../src/lib/auth/oidc";
+import { createState, parseState } from "../src/lib/auth/oidc";
+import { buildReturnTarget } from "../src/lib/navigation/document-navigation";
 
 const originalEnv = { ...process.env };
 
@@ -46,6 +47,26 @@ describe("automatic STRATOS SSO", () => {
       response.headers.get("location"),
       "https://stratos.example/akb/api/auth/login?return_to=%2Fchat&retry=required",
     );
+  });
+
+  it("preserves the selected document through authorization and a manual retry", async () => {
+    configureOidc();
+    const returnTo = buildReturnTarget("/upload", new URLSearchParams({ document_id: "doc_102" }));
+    const response = await beginSilentSso(
+      new NextRequest(`https://stratos.example/akb/api/auth/sso?return_to=${encodeURIComponent(returnTo)}`),
+    );
+    const state = new URL(response.headers.get("location") ?? "").searchParams.get("state")!;
+    assert.equal(parseState(state).returnTo, "/upload?document_id=doc_102");
+
+    const retry = await completeOidcCallback(
+      new NextRequest(
+        `https://stratos.example/akb/api/auth/callback?error=login_required&state=${encodeURIComponent(state)}`,
+        { headers: { cookie: `akl_oidc_state=${state}; akl_oidc_pkce=verifier` } },
+      ),
+    );
+    const retryLocation = new URL(retry.headers.get("location") ?? "");
+    assert.equal(retryLocation.searchParams.get("return_to"), returnTo);
+    assert.equal(retryLocation.searchParams.get("retry"), "required");
   });
 
   it("rejects an error callback without matching state", async () => {

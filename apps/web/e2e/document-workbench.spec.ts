@@ -244,6 +244,16 @@ test.describe("Document Workbench product paths", () => {
     await expect(page.getByRole("heading", { name: "Nahrání nové verze" }).first()).toBeVisible();
     await expect(page.getByLabel("Vybraný dokument")).toContainText("Metodika vyjimek z bezpecnostnich pravidel");
     await expect(page.getByRole("textbox", { name: "Umístění zdroje" })).toHaveValue(/doc_102/);
+    await page.locator('input[type="file"]').setInputFiles({
+      name: "updated-document.md",
+      mimeType: "text/markdown",
+      buffer: Buffer.from("# Updated documentation\n\nA new controlled version.\n"),
+    });
+    await expect(page.locator(".preflight-card")).toContainText("updated-document.md");
+    await expect(page).toHaveURL(new RegExp(`${appPath("/upload")}\\?document_id=doc_102$`));
+    await page.reload();
+    await expect(page.getByLabel("Vybraný dokument")).toContainText("Metodika vyjimek z bezpecnostnich pravidel");
+    await expect(page.getByRole("textbox", { name: "Umístění zdroje" })).toHaveValue(/doc_102/);
   });
 
   test("DW-06A guided detail stays usable on desktop and mobile", async ({ page }, testInfo) => {
@@ -418,16 +428,22 @@ test.describe("Document Workbench product paths", () => {
     await expect(page.getByLabel("Lokace v PDF podle metadat").getByText("Strana 1")).toBeVisible();
   });
 
-  test("DW-08 workflow inbox records an approval decision in mock mode", async ({ page }) => {
+  test("DW-08 approval is available only to the assigned reviewer in mock mode", async ({ page }) => {
     await page.goto(appPath("/tasks"));
 
-    await expect(page.getByRole("heading", { name: "Workflow úkoly" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Moje práce" })).toBeVisible();
+    const assignedReviewer = process.env.AKL_WEB_DEV_SUBJECT === "user_301";
+    await page.getByRole("tab", { name: assignedReviewer ? "Ke schválení" : "Týmové úkoly" }).click();
     await page.getByRole("button", { name: /Dokument čeká na věcnou kontrolu/ }).click();
     await expect(page.getByRole("heading", { name: "Detail úkolu" })).toBeVisible();
-
-    await page.getByLabel("Komentář").fill("E2E approval check");
-    await page.getByRole("button", { name: "Schválit" }).click();
-    await expect(page.getByRole("status")).toContainText("Rozhodnutí bylo zapsané.");
+    if (assignedReviewer) {
+      await expect(page.getByRole("tab", { name: "Ke schválení" })).toHaveAttribute("aria-selected", "true");
+      await page.getByLabel("Komentář").fill("E2E approval check");
+      await page.getByRole("button", { name: "Schválit", exact: true }).click();
+      await expect(page.getByRole("status")).toContainText("Rozhodnutí bylo zapsané.");
+    } else {
+      await expect(page.getByRole("button", { name: "Schválit", exact: true })).toHaveCount(0);
+    }
   });
 
   test("DW-14 knowledge chat opens cited source context", async ({ page }) => {

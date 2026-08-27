@@ -1,4 +1,5 @@
 import type { ApiRequestContext, AuthorizationHint } from "@/lib/types";
+import type { WebProfile } from "@/lib/api/config";
 
 export type AklSurface = "employee_chat" | "knowledge_workspace" | "admin";
 
@@ -239,6 +240,20 @@ export function canAccessWorkspaceRoute(
     return hasAnyRole(roles, MANAGEMENT_ROLES);
   }
   return false;
+}
+
+export function canAccessAppShellRoute(
+  roles: readonly string[] | undefined,
+  href: string,
+  capabilities: readonly string[] | undefined,
+  profile: WebProfile,
+): boolean {
+  const route = normalizeRoute(href);
+  if (profile === "chat") {
+    return (route === "/" || route === "/chat")
+      && canAccessWorkspaceRoute(roles, "/chat", capabilities);
+  }
+  return canAccessWorkspaceRoute(roles, route, capabilities);
 }
 
 export function canAccessWorkspaceRouteForContext(

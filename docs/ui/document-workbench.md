@@ -31,6 +31,7 @@ Implementovano ve web aplikaci:
 - kazde vytezene pravidlo ukazuje lidsky typ zdroje, stav overeni a odkaz `Otevrit citovane misto`, ktery otevre autorizovany viewer na presnem chunku,
 - detail dokumentu pouziva bezpecny kontextovy navrat: z registru, rizene dokumentace, ukolu, Intelligence nebo souvisejiciho dokumentu vede zpet na puvodni pracovni plochu a zachovava jeji podstatne filtry, datum nebo sekci; primy hluboky odkaz bez kontextu ma fallback do registru,
 - `return_to` prijima pouze povolene relativni AKB cesty svazane s pevnym typem puvodu; externi, nesouhlasne nebo poskozene cile se fail-closed nahradi registrem a stejny parametr se zachovava pres OIDC prihlaseni,
+- kontextova cesta `/upload?document_id=...` zachovava identitu dokumentu pres SSO, hydrataci i obnoveni stranky; pristup se overuje podle opravneni k ceste, nikoli podle pritomnosti cesty v hlavnim menu,
 - neznamy upstream text se do uzivatelske hlasky nepropaguje; UI pouzije cesky bezpecny postup a stabilni API chybovy kod zustava zachovan pro integrace a audit,
 - pomocne `proposed` insighty ze zdrojoveho textu aktualni verze zustavaji dostupne pouze v sekundarni rozbalovaci sekci a nejsou vydavany za zavazna pravidla,
 - viewer zalozka detailu dokumentu nabizi auditovane source-context signaly a po otevreni chunku zobrazuje citovatelny text, zdroj, verzi, stranu a sekci,
@@ -44,7 +45,7 @@ Implementovano ve web aplikaci:
 - verze zalozka detailu dokumentu obsahuje navodny panel s aktualnim stavem verze, doporucenym dalsim krokem a vysvetlenim, ze nova verze ma vznikat pres originalni soubor a rizene volby zmeny, ne jako volna poznamka,
 - upload preflight s nazvem souboru, velikosti, MIME typem a SHA-256 hashem,
 - podepsana upload session na `/api/controlled-document/upload/preflight` a PUT do `/api/controlled-document/upload/sessions/{sessionId}/content`,
-- ulozeni zdrojoveho souboru do sdileneho object-storage volume, ze ktereho Ingestion Service cte `s3://akl-documents/...`,
+- ulozeni zdrojoveho souboru pres nakonfigurovany object-storage backend; produkcni S3 se cte nativnim API a lokalni backend zustava pro vyvoj a rizeny rollback,
 - upload formular sklada `change_summary` z rizene volby typu zmeny, dopadu zmeny a doporuceneho dalsiho kroku; uzivatel nepise souhrn zmeny do volneho textu,
 - aplikacni napoveda na `/help`,
 - dokumentace ciloveho workflow a dalsich kroku.

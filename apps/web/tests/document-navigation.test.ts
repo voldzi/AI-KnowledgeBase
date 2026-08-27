@@ -10,6 +10,18 @@ import {
 } from "../src/lib/navigation/document-navigation";
 
 describe("document return navigation", () => {
+  it("resolves the upload document before requesting its SSO context", () => {
+    const page = readFileSync(new URL("../src/app/upload/page.tsx", import.meta.url), "utf8");
+    assert.match(page, /getServerRequestContextForPath\(returnTo\)/);
+    assert.ok(page.indexOf("const requestedDocumentId") < page.indexOf("getServerRequestContextForPath(returnTo)"));
+    const target = buildReturnTarget("/upload", new URLSearchParams({ document_id: "doc_102&return_to=//foreign.invalid" }));
+    const url = new URL(target, "https://akb.invalid");
+    assert.equal(url.origin, "https://akb.invalid");
+    assert.equal(url.pathname, "/upload");
+    assert.equal(url.searchParams.get("return_to"), null);
+    assert.equal(url.searchParams.get("document_id"), "doc_102&return_to=//foreign.invalid");
+  });
+
   it("wires registry, controlled documentation, tasks and Intelligence entry points", () => {
     const sources = [
       "../src/features/documents/document-registry.tsx",

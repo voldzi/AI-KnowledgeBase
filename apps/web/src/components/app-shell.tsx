@@ -43,6 +43,7 @@ import {
 } from "@voldzi/stratos-ui";
 
 import {
+  canAccessAppShellRoute,
   canAccessWorkspaceRoute,
   isEmployeeChatOnly,
 } from "@/lib/auth/authorization";
@@ -739,13 +740,11 @@ function AppShellContent({
     if (accessibleNavigation.length === 0) {
       return;
     }
-    const normalizedPathname = pathname === "/"
-      ? webProfile === "chat" ? "/chat" : "/dashboard"
-      : pathname;
-    const currentRouteAllowed = accessibleNavigation.some(
-      (item) =>
-        normalizedPathname === item.href ||
-        (item.href !== "/" && normalizedPathname.startsWith(`${item.href}/`)),
+    const currentRouteAllowed = canAccessAppShellRoute(
+      userProfile.roles,
+      pathname,
+      userProfile.capabilities,
+      webProfile,
     );
     if (currentRouteAllowed) {
       return;
@@ -754,7 +753,7 @@ function AppShellContent({
       .map((href) => accessibleNavigation.find((item) => item.href === href))
       .find((item) => item !== undefined) ?? accessibleNavigation[0]!;
     router.replace(fallback.href);
-  }, [accessibleNavigation, pathname, router, webProfile]);
+  }, [accessibleNavigation, pathname, router, userProfile.capabilities, userProfile.roles, webProfile]);
   const railDefinitions: Array<{
     id: ShellModuleId;
     label: string;
