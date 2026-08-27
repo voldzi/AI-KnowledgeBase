@@ -24,6 +24,7 @@ The roles mirror `docs/CONTRACTS/06_SECURITY_AUTHZ_MODEL.md`:
 - `reviewer`
 - `reader`
 - `auditor`
+- `service_aiip`
 - `service_ingestion`
 - `service_rag`
 - `service_llm_gateway`
@@ -82,17 +83,40 @@ AKL_WEB_SESSION_SECRET=<long random value>
 
 `akl-web` and `stratos-akl-adapter` include an `akl-api` audience mapper because Registry API validates bearer tokens with `AKL_OIDC_AUDIENCE=akl-api`.
 
-The production RAG service additionally needs a separate short-lived-token
-identity for Registry calls: `akb-rag-service`, role `service_rag`, audience
-`akl-api`. Store its generated secret outside Git and mount the mode-`0600`
-secret file read-only only into the RAG container.
+Provision the confidential `aiip-service` client, its single application role,
+and the `akb-api` audience with:
 
-Provision an independent `svc-ingestion` identity with role
-`service_ingestion` and audience `akl-api` for ingestion-to-Registry calls.
+```bash
+./scripts/ensure_aiip_service_client.sh
+```
+
+The script writes the generated secret to
+`/srv/akl/env/aiip-service.client-secret` with mode `0600` and never prints the
+secret. The file is handed to AIIP through the production secret-management
+process; it is not consumed by AKB containers and must not be committed.
+
+The production RAG service additionally needs a separate short-lived-token
+identity for Registry calls. Provision it with the same helper using
+`AIIP_CLIENT_ID=akb-rag-service`, `AIIP_ROLE=service_rag`,
+`AIIP_AUDIENCE=akl-api`, and
+`AIIP_SECRET_FILE=/srv/akl/env/akb-rag-service.client-secret`. This secret is
+mounted read-only only into the RAG container.
+
+Provision the independent ingestion-to-Registry identity with the same helper:
+
+```bash
+AIIP_CLIENT_ID=svc-ingestion \
+AIIP_ROLE=service_ingestion \
+AIIP_AUDIENCE=akl-api \
+AIIP_SECRET_FILE=/srv/akl/env/svc-ingestion.client-secret \
+SERVICE_CLIENT_NAME="AKB Ingestion Registry Client" \
+./scripts/ensure_aiip_service_client.sh
+```
 
 Mount that file read-only only into `ingestion-service`. Configure Registry
 with trusted client `svc-ingestion` and exact grants
-`authz|audit|documents-read|ingestion-status`.
+`authz|audit|documents-read|ingestion-status`; never add those grants to
+`aiip-service`.
 
 Provision the separate `svc-akb-web-ingestion` web-to-ingestion transport
 identity with role `service_akb_web_ingestion` and audience `akl-api`.
