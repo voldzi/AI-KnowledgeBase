@@ -85,14 +85,15 @@ def test_production_ignores_retired_aiip_route_without_granting_it():
         AKL_SERVICE_CLIENT_ROUTE_GRANTS=(
             "akb-rag-service=authz|audit|idempotency,"
             "stratos-akb-service=stratos-budget-upload,"
-            "svc-budget-controlled-rules=controlled-rules-read,"
-            "svc-ingestion=authz|audit|documents-read|ingestion-status,"
-            "service_aiip=aiip-upload"
-        ),
-        AKL_TRUSTED_SERVICE_CLIENT_IDS=(
-            "akb-rag-service,stratos-akb-service,svc-budget-controlled-rules,"
-            "svc-ingestion,service_aiip"
-        ),
+                "svc-budget-controlled-rules=controlled-rules-read,"
+                "svc-ingestion=authz|audit|documents-read|ingestion-status,"
+                "svc-akb-director-copilot=audit,"
+                "service_aiip=aiip-upload"
+            ),
+            AKL_TRUSTED_SERVICE_CLIENT_IDS=(
+                "akb-rag-service,stratos-akb-service,svc-budget-controlled-rules,"
+                "svc-ingestion,svc-akb-director-copilot,service_aiip"
+            ),
     )
 
     assert settings.service_route_grants["service_aiip"] == frozenset()
