@@ -1,6 +1,6 @@
 import "server-only";
 
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import type { ApiRequestContext } from "@/lib/types";
@@ -21,6 +21,7 @@ import {
   type ResolvedServerSession,
 } from "../auth/server-session";
 import { contextFromStratosAccessProjection } from "../auth/access-projection";
+import { isSameAppRscNavigation } from "../auth/login-navigation";
 
 export {
   getStratosActorRequestContext,
@@ -78,6 +79,10 @@ async function requireCurrentCentralSso(returnTo: string): Promise<void> {
 
   const cookieStore = await cookies();
   const selector = cookieStore.get(SERVER_SESSION_COOKIE)?.value;
+  // Internal RSC refreshes cannot complete a browser OIDC redirect. This only
+  // skips entry synchronization; the session and access projection below still
+  // have to authorize every request, including a forged RSC transport hint.
+  if (selector && isSameAppRscNavigation(config, await headers())) return;
   if (
     selector &&
     await hasCurrentCentralSsoSyncMarker(

@@ -68,6 +68,14 @@ human bearer or a Director token to work around this boundary.
 Existing BFF page entry retains its short signed central-identity sync marker
 for detecting an account switch. A changed central subject replaces and
 revokes the prior browser session; it does not merge accounts by login/email.
+Same-app RSC navigation and `router.refresh()` do not start that additional
+top-level OIDC synchronization. They still resolve the opaque server session
+and current access projection, including expiry, revocation and required
+identity revalidation. The RSC flag, same-origin Fetch Metadata and in-app
+referrer classify transport only; none of them grants access. A full document
+navigation, sibling-application entry or missing/foreign navigation metadata
+keeps the central synchronization guard. This prevents a successful mutation
+from being followed by an OIDC redirect inside a background refresh.
 Local logout does not prove immediate revocation of every other application's
 session. Test the actual propagation with IAM.
 

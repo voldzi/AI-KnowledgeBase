@@ -3,10 +3,12 @@ import { afterEach, describe, it } from "node:test";
 import { NextRequest } from "next/server";
 import { centralSessionPolicy } from "../src/lib/auth/session-policy";
 import { verifiedSessionFromTokens } from "../src/lib/auth/oidc";
-import { serverSessionCookieOptions, SSO_ATTEMPT_COOKIE, SSO_SIGNED_OUT_COOKIE } from "../src/lib/auth/server-session";
+import { createServerSession, resolveServerSession, serverSessionCookieOptions, SERVER_SESSION_COOKIE, SSO_ATTEMPT_COOKIE, SSO_SIGNED_OUT_COOKIE } from "../src/lib/auth/server-session";
+import { contextFromStratosAccessProjection } from "../src/lib/auth/access-projection";
 import { GET as login } from "../src/app/api/auth/login/route";
 import { GET as sso } from "../src/app/api/auth/sso/route";
-import { identityFixture, managedConfig, managedEnv } from "./helpers/managed-identity";
+import { isSameAppRscNavigation } from "../src/lib/auth/login-navigation";
+import { identityFixture, managedConfig, managedEnv, SUBJECT } from "./helpers/managed-identity";
 
 const DAY = 86_400_000;
 const now = Date.UTC(2026, 7, 27, 10);
@@ -84,6 +86,108 @@ describe("central SSO policy", () => {
 });
 
 describe("central SSO redirect guard", () => {
+  const rscHeaders = () => new Headers({
+    rsc: "1",
+    "sec-fetch-site": "same-origin",
+    "sec-fetch-mode": "cors",
+    "sec-fetch-dest": "empty",
+    referer: "https://akb.example/akb/documents/doc_test",
+  });
+
+  it("distinguishes an internal RSC refresh from a new application entry", () => {
+    const config = managedConfig();
+    assert.equal(isSameAppRscNavigation(config, rscHeaders()), true);
+    const fullNavigation = rscHeaders();
+    fullNavigation.set("sec-fetch-dest", "document");
+    fullNavigation.set("sec-fetch-mode", "navigate");
+    assert.equal(isSameAppRscNavigation(config, fullNavigation), false);
+    for (const header of ["rsc", "sec-fetch-site", "sec-fetch-mode", "sec-fetch-dest", "referer"]) {
+      const missing = rscHeaders();
+      missing.delete(header);
+      assert.equal(isSameAppRscNavigation(config, missing), false, header);
+    }
+  });
+
+  it("does not treat sibling applications, foreign origins or opaque referrers as internal navigation", () => {
+    const config = managedConfig();
+    for (const referer of [
+      "https://akb.example/project/",
+      "https://akb.example/akb-other/",
+      "https://akb.example/",
+      "https://foreign.example/akb/chat",
+      "https://akb.example.evil.invalid/akb/chat",
+      "https://user@akb.example/akb/chat",
+      "http://akb.example/akb/chat",
+      "/akb/chat",
+      "null",
+    ]) {
+      const headers = rscHeaders();
+      headers.set("referer", referer);
+      assert.equal(isSameAppRscNavigation(config, headers), false, referer);
+    }
+    for (const [name, value] of [["rsc", "0"], ["sec-fetch-site", "same-site"], ["sec-fetch-site", "cross-site"], ["sec-fetch-mode", "no-cors"], ["origin", "null"], ["origin", "https://foreign.example"]]) {
+      const headers = rscHeaders();
+      headers.set(name, value);
+      assert.equal(isSameAppRscNavigation(config, headers), false, `${name}=${value}`);
+    }
+  });
+
+  it("supports the standalone Chat root without widening its origin", () => {
+    const config = managedConfig();
+    config.oidc!.redirectUri = "https://chat.example/api/auth/callback";
+    const headers = rscHeaders();
+    headers.set("referer", "https://chat.example/chat?thread=conv_test");
+    headers.set("sec-fetch-mode", "same-origin");
+    assert.equal(isSameAppRscNavigation(config, headers), true);
+    headers.set("referer", "https://akb.example/akb/chat");
+    assert.equal(isSameAppRscNavigation(config, headers), false);
+  });
+
+  it("never uses RSC metadata instead of a live session and current access projection", async () => {
+    process.env = { ...managedEnv() };
+    const config = managedConfig();
+    const identity = await identityFixture();
+    const state = { record: null as Record<string, unknown> | null, granted: true, unavailable: false };
+    identity.state.handle = (url, init) => {
+      if (url.includes("/internal/web-sessions")) {
+        if (init?.method === "POST") {
+          state.record = { ...JSON.parse(String(init.body)), session_id: "sess_rsc", revoked_at: null, created_at: new Date(identity.nowMs).toISOString(), updated_at: new Date(identity.nowMs).toISOString() };
+          return Response.json(state.record, { status: 201 });
+        }
+        return state.record ? Response.json(state.record) : new Response(null, { status: 404 });
+      }
+      if (url.endsWith("/auth/me")) {
+        if (state.unavailable) return new Response(null, { status: 503 });
+        return Response.json({ id: SUBJECT, identitySubject: SUBJECT, tenantId: "org_stratos", applicationAccess: state.granted ? [{ application: "akb", capabilities: ["akb:access", "akb:read_document"], effectiveScopes: [] }] : [] });
+      }
+    };
+    globalThis.fetch = identity.fetcher;
+    const session = await verifiedSessionFromTokens(config, await identity.tokens(), "test-nonce", identity.nowMs, identity.fetcher);
+    const selector = await createServerSession(config, session, false, identity.nowMs);
+    const request = (withSession = true) => {
+      const headers = rscHeaders();
+      if (withSession) headers.set("cookie", `${SERVER_SESSION_COOKIE}=${selector}`);
+      assert.equal(isSameAppRscNavigation(config, headers), true);
+      return new NextRequest("https://akb.example/akb/documents/doc_test", { headers });
+    };
+    const context = async (request: NextRequest) => {
+      const selector = request.cookies.get(SERVER_SESSION_COOKIE)?.value;
+      if (!selector) return null;
+      const resolved = await resolveServerSession(config, selector);
+      return resolved?.oidc.accessToken ? contextFromStratosAccessProjection(resolved.oidc.accessToken, config) : null;
+    };
+    assert.equal(await context(request(false)), null);
+    assert.equal((await context(request()))?.applicationAccessActive, true);
+    state.granted = false;
+    assert.equal((await context(request()))?.applicationAccessActive, false);
+    state.unavailable = true;
+    await assert.rejects(context(request()), /projection/i);
+    state.record!.revoked_at = new Date().toISOString();
+    assert.equal(await context(request()), null);
+    state.record = null;
+    assert.equal(await context(request()), null);
+  });
+
   it("starts only once, does not force credentials, and preserves a signed-out visit", async () => {
     process.env = { ...managedEnv(), AKL_IDENTITY_MODE: "external_oidc" };
     const first = await login(new NextRequest("https://akb.example/akb/api/auth/login?return_to=/chat"));

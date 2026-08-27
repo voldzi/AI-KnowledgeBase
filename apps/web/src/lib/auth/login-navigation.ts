@@ -7,6 +7,33 @@ export function automaticSsoBlocked(request: NextRequest): boolean {
   return request.nextUrl.searchParams.get("retry") === "required" || request.cookies.has(SSO_ATTEMPT_COOKIE) || request.cookies.has(SSO_SIGNED_OUT_COOKIE);
 }
 
+export function isSameAppRscNavigation(
+  config: AklConfig,
+  headers: Pick<Headers, "get">,
+): boolean {
+  if (
+    headers.get("rsc") !== "1" ||
+    headers.get("sec-fetch-site") !== "same-origin" ||
+    headers.get("sec-fetch-dest") !== "empty" ||
+    !["cors", "same-origin"].includes(headers.get("sec-fetch-mode") ?? "")
+  ) return false;
+
+  try {
+    const app = new URL(buildPublicAppUrl(config, "/"));
+    const referer = new URL(headers.get("referer") ?? "");
+    const basePath = app.pathname.replace(/\/+$/, "");
+    const origin = headers.get("origin");
+    return (
+      referer.origin === app.origin &&
+      !referer.username && !referer.password &&
+      (!origin || origin === app.origin) &&
+      (!basePath || referer.pathname === basePath || referer.pathname.startsWith(`${basePath}/`))
+    );
+  } catch {
+    return false;
+  }
+}
+
 export async function beginOidcNavigation(config: AklConfig, returnTo: string, mode: OidcAuthorizationMode = "interactive"): Promise<NextResponse> {
   const state = createState(returnTo, false, mode);
   const verifier = createPkceVerifier();
