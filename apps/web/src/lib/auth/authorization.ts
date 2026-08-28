@@ -129,6 +129,12 @@ export function canUseAdminSurface(
   return hasAnyRole(context?.roles, ADMIN_ROLES);
 }
 
+export function canReadTeamTasks(context: ApiRequestContext): boolean {
+  if (!hasActiveAccess(context)) return false;
+  if (usesCapabilityModel(context)) return Boolean(context.capabilities?.includes("akb:manage_document"));
+  return hasAnyRole(context.roles, DOCUMENT_CREATOR_ROLES) || hasAnyRole(context.roles, AUDIT_ROLES);
+}
+
 export function canUseIntelligence(
   context: Pick<
     ApiRequestContext,
@@ -193,7 +199,7 @@ export function canAccessWorkspaceRoute(
       return effectiveCapabilities.includes("akb:manage_document");
     }
     if (routeMatches(route, "/tasks")) {
-      return hasAnyCapability(effectiveCapabilities, ["akb:manage_document", "akb:read_audit"]);
+      return hasAnyCapability(effectiveCapabilities, ["akb:read_document", "akb:manage_document"]);
     }
     if (routeMatches(route, "/documents")) {
       return hasAnyCapability(effectiveCapabilities, ["akb:read_document", "akb:manage_document", "akb:upload"]);

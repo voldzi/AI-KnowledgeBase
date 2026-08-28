@@ -19,7 +19,7 @@ export function WorkspacePageLoading({
   return (
     <>
       <PageHeader title={title} description={description} />
-      <main className="dashboard-loading" aria-busy="true" aria-live="polite">
+      <div className="dashboard-loading" role="status" aria-busy="true" aria-live="polite">
         <section className="panel dashboard-loading__status">
           <div className="dashboard-loading__indicator" aria-hidden="true" />
           <div>
@@ -32,7 +32,7 @@ export function WorkspacePageLoading({
           <div className="dashboard-loading__placeholder" />
           <div className="dashboard-loading__placeholder dashboard-loading__placeholder--wide" />
         </div>
-      </main>
+      </div>
     </>
   );
 }

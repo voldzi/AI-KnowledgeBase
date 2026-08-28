@@ -60,6 +60,7 @@ interface WorkflowInboxProps {
   nowIso: string;
   compact?: boolean;
   title?: string;
+  serverFiltered?: boolean;
 }
 
 type FilterValue<T extends string> = "all" | T;
@@ -271,6 +272,7 @@ export function WorkflowInbox({
   nowIso,
   compact = false,
   title,
+  serverFiltered = false,
 }: WorkflowInboxProps) {
   const { language } = useLanguage();
   const searchParams = useSearchParams();
@@ -283,8 +285,9 @@ export function WorkflowInbox({
         auditEvents,
         registryTasks,
         nowIso,
+        preserveRegistryOrder: serverFiltered,
       }),
-    [documents, jobs, auditEvents, registryTasks, nowIso],
+    [documents, jobs, auditEvents, registryTasks, nowIso, serverFiltered],
   );
   const [query, setQuery] = useState(() => searchParams.get("q") ?? "");
   const [priority, setPriority] =
@@ -299,7 +302,7 @@ export function WorkflowInbox({
     searchParams.get("task") ?? tasks[0]?.id ?? null,
   );
 
-  const filteredTasks = tasks.filter((task) => {
+  const filteredTasks = serverFiltered ? tasks : tasks.filter((task) => {
     const normalizedQuery = query.trim().toLowerCase();
     const presentation = workflowTaskPresentation(task, language);
     const matchesQuery =
@@ -334,6 +337,7 @@ export function WorkflowInbox({
   const tasksReturnTo = useMemo(() => {
     const params = new URLSearchParams();
     if (searchParams.get("view")) params.set("view", searchParams.get("view")!);
+    if (searchParams.get("page")) params.set("page", searchParams.get("page")!);
     if (query.trim()) params.set("q", query.trim());
     if (priority !== "all") params.set("priority", priority);
     if (status !== "all") params.set("status", status);
@@ -390,7 +394,7 @@ export function WorkflowInbox({
           />
         </div>
         <div className="panel__body stack">
-          <div className="task-toolbar">
+          {!serverFiltered ? <div className="task-toolbar">
             <StratosSearchBox
               id="workflow-inbox-search"
               label={copy.searchPlaceholder}
@@ -444,7 +448,7 @@ export function WorkflowInbox({
               <FilterX size={16} aria-hidden="true" />
               {copy.clear}
             </StratosButton>
-          </div>
+          </div> : null}
         </div>
       </section>
 

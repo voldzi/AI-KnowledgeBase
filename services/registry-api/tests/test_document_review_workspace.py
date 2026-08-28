@@ -203,17 +203,19 @@ def test_personal_documents_use_assignments_not_admin_or_owner_label(client, adm
     assert other not in {row["document_id"] for row in result.json()["items"]}
 
 
-def test_personal_pagination_filters_policy_before_offset(client, admin_headers, monkeypatch):
+def test_personal_pagination_filters_policy_before_offset(client, admin_headers, monkeypatch, db_session):
     hidden, _ = source(client, admin_headers, title="A hidden manual")
     visible, _ = source(client, admin_headers, title="B visible manual")
-    original = api.require_document_action
+    db_session.get(Document, hidden).policy_hash = "denied-policy"
+    db_session.commit()
+    original = api.evaluate_runtime_document_access
 
-    def authorize(principal, action, document, db):
+    def authorize(principal, action, document, local_decision):
         if document.document_id == hidden:
-            raise problem(403, "forbidden", "Denied")
-        return original(principal, action, document, db)
+            return replace(local_decision, allowed=False)
+        return original(principal, action, document, local_decision)
 
-    monkeypatch.setattr(api, "require_document_action", authorize)
+    monkeypatch.setattr(api, "evaluate_runtime_document_access", authorize)
     result = client.get("/api/v1/workflow/documents?limit=1", headers=REVIEWER)
     assert result.status_code == 200
     assert result.json()["total"] == 1
@@ -227,9 +229,55 @@ def test_personal_queue_fails_closed_when_policy_is_unavailable(client, admin_he
     def unavailable(*args, **kwargs):
         raise problem(503, "policy_unavailable", "Unavailable")
 
-    monkeypatch.setattr(api, "require_document_action", unavailable)
+    monkeypatch.setattr(api, "evaluate_runtime_document_access", unavailable)
     for path in ("documents", "tasks?assigned_to_me=true"):
         assert client.get(f"/api/v1/workflow/{path}", headers=REVIEWER).status_code == 503
+
+
+def test_personal_page_checks_exact_versions_only_for_visible_documents(client, admin_headers, monkeypatch):
+    ids = [source(client, admin_headers, title=f"Manual {index}") for index in range(4)]
+    original = api.require_global_action
+    monkeypatch.setattr(api, "require_global_action", lambda *args, **kwargs: replace(
+        original(*args, **kwargs), access_v2=True, capabilities=frozenset({"akb:read_document"}),
+    ))
+    checked = []
+    monkeypatch.setattr(api, "require_document_version_action", lambda _p, _a, _d, version, _db: checked.append(version.document_version_id))
+    response = client.get("/api/v1/workflow/documents?limit=1&offset=2", headers=REVIEWER)
+    assert response.status_code == 200, response.text
+    assert response.json()["total"] == 4
+    assert response.json()["items"][0]["document_id"] == ids[2][0]
+    assert checked == [ids[2][1]]
+
+
+def test_personal_filters_apply_before_paging(client, admin_headers):
+    source(client, admin_headers, title="A unrelated manual")
+    expected, _ = source(client, admin_headers, title="B selected manual", metadata={})
+    response = client.get("/api/v1/workflow/documents?q=selected&assignment=approver&version_status=draft&deadline=missing&limit=1", headers=REVIEWER)
+    assert response.status_code == 200, response.text
+    assert response.json()["total"] == 1
+    assert response.json()["items"][0]["document_id"] == expected
+    assert client.get("/api/v1/workflow/documents?assignment=managed", headers=REVIEWER).json()["total"] == 0
+    assert client.get("/api/v1/workflow/documents?deadline=unexpected", headers=REVIEWER).status_code == 422
+
+
+def test_reader_cannot_expand_personal_queue_or_approve(client, admin_headers, monkeypatch):
+    own, own_version = source(client, admin_headers)
+    mine = submit(client, admin_headers, own, own_version).json()["task_id"]
+    other, other_version = source(client, admin_headers, title="Other person's manual", assignments=[
+        {"role": "approver", "subject_type": "user", "subject_id": "other_reviewer", "is_primary": True},
+    ])
+    submit(client, admin_headers, other, other_version)
+    original = api.require_global_action
+    monkeypatch.setattr(api, "require_global_action", lambda *args, **kwargs: replace(
+        original(*args, **kwargs), access_v2=True, capabilities=frozenset({"akb:read_document"}),
+    ))
+    monkeypatch.setattr(api, "require_document_version_action", lambda *args, **kwargs: None)
+    for suffix in ("", "?assigned_to_me=false", "?limit=1&q=Application"):
+        response = client.get(f"/api/v1/workflow/tasks{suffix}", headers=REVIEWER)
+        assert response.status_code == 200, response.text
+        assert response.json()["total"] == 1
+        assert response.json()["items"][0]["task_id"] == mine
+        assert response.json()["items"][0]["allowed_actions"] == []
 
 
 def test_group_assignment_and_overdue_review_keep_original_approver(client, admin_headers, db_session):

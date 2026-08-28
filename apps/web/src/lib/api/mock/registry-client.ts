@@ -36,6 +36,8 @@ import type {
   DocumentVersion,
   DocumentReviewRequest,
   WorkflowDocument,
+  WorkflowDocumentListOptions,
+  WorkflowPage,
   IntelligenceScopeAuthorizationRequest,
   IntelligenceScopeAuthorizationResponse,
   ProfileSettingsBundle,
@@ -60,9 +62,11 @@ import type {
 } from "@/lib/types";
 import {
   canUseAdminSurface,
+  canReadTeamTasks,
   constrainAuthorizationHintsToContext,
 } from "@/lib/auth/authorization";
 import { ApiClientError } from "@/lib/types";
+import { approvesDocument, documentDeadlines, managesDocument, urgentDeadline, workflowToday } from "@/features/tasks/document-deadlines";
 
 import {
   cloneMock,
@@ -1049,10 +1053,36 @@ export class MockRegistryClient implements RegistryApiClient {
           : authorization.can_update ? ["assign", "resolve", ...(task.kind === "draft" ? ["request_changes" as const] : [])] : []
         : [],
       };
-    }).filter((task) => workflowTaskMatchesOptions(task, options) && (!options.assignedToMe || task.assigned_to_me));
+    }).filter((task) => workflowTaskMatchesOptions(task, options)
+      && (!(options.assignedToMe || !canReadTeamTasks(context)) || task.assigned_to_me));
     return cloneMock(
       visible.slice(options.offset ?? 0, options.limit === undefined ? undefined : (options.offset ?? 0) + options.limit),
     );
+  }
+
+  async listWorkflowTaskPage(context: ApiRequestContext, options: WorkflowTaskListOptions = {}): Promise<WorkflowPage<RegistryWorkflowTask>> {
+    const items = await this.listWorkflowTasks(context, { ...options, limit: undefined, offset: undefined });
+    const limit = options.limit ?? 25;
+    const offset = options.offset ?? 0;
+    return { items: items.slice(offset, offset + limit), total: items.length, limit, offset };
+  }
+
+  async listWorkflowDocumentPage(context: ApiRequestContext, options: WorkflowDocumentListOptions = {}): Promise<WorkflowPage<WorkflowDocument>> {
+    const today = workflowToday(new Date().toISOString());
+    const query = options.query?.trim().toLowerCase();
+    const items = (await this.listWorkflowDocuments(context)).filter((document) => {
+      const dates = documentDeadlines(document, today);
+      return (!query || `${document.title} ${document.document_id}`.toLowerCase().includes(query))
+        && (!options.assignment || (options.assignment === "managed" ? managesDocument(document) : approvesDocument(document)))
+        && (!options.versionStatus || document.version_status === options.versionStatus)
+        && (!options.deadline || (options.deadline === "attention" ? urgentDeadline(dates)
+          : options.deadline === "expired" ? dates.includes("expired")
+            : options.deadline === "review" ? dates.some((value) => ["review_overdue", "review_soon", "review_invalid"].includes(value))
+              : dates.some((value) => ["review_missing", "review_invalid"].includes(value))));
+    }).sort((left, right) => left.title.localeCompare(right.title) || left.document_id.localeCompare(right.document_id));
+    const limit = options.limit ?? 25;
+    const offset = options.offset ?? 0;
+    return { items: items.slice(offset, offset + limit), total: items.length, limit, offset };
   }
 
   async listWorkflowDocuments(context: ApiRequestContext): Promise<WorkflowDocument[]> {
@@ -1914,6 +1944,8 @@ function workflowTaskMatchesOptions(
   task: RegistryWorkflowTask,
   options: WorkflowTaskListOptions,
 ): boolean {
+  if (options.query && ![task.title, task.document_title, task.description, task.owner_label]
+    .join(" ").toLowerCase().includes(options.query.trim().toLowerCase())) return false;
   if (
     !options.includeResolved &&
     !["open", "waiting", "blocked"].includes(task.status)

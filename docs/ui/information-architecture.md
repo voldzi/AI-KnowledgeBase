@@ -55,7 +55,7 @@ Purpose:
 
 Purpose:
 
-- provide personal approval, task and assigned-document views; show the team queue only to AKB administrators
+- provide personal approval, task and assigned-document views under My workspace; show the team queue only with document-management authority
 - show priority, owner/gestor responsibility, due date and source signal
 - route users to the authoritative source screen for the task
 - read persistent Registry tasks and personal document deadlines; keep full ingestion/audit diagnostics on their dedicated surfaces
@@ -243,9 +243,10 @@ Navigation visibility reduces cognitive load and prevents dead-end affordances.
 It is not an authorization boundary. Page routes, web bridge routes and backend
 services continue to enforce their own access checks.
 
-For the central capability model, `akb:read_document` exposes only authorized
-document reading and controlled-document views. Operational dashboard, workflow
-tasks, ingestion and Intelligence require `akb:manage_document` or
+For the central capability model, `akb:read_document` exposes authorized
+document reading, controlled-document views and personal work at `/tasks`.
+Personal work never grants approval or access to the team queue. The latter
+requires `akb:manage_document`. Operational dashboard, ingestion and Intelligence require `akb:manage_document` or
 `akb:read_audit` as appropriate. The same route matrix is enforced both by the
 shell and by server-rendered page guards.
 

@@ -2,6 +2,7 @@ import "server-only";
 
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { cache } from "react";
 
 import type { ApiRequestContext } from "@/lib/types";
 
@@ -40,6 +41,10 @@ type CookieReader = {
 };
 
 const requestOidcSessions = new WeakMap<object, Promise<ResolvedServerSession | null>>();
+const requestContexts = new WeakMap<object, Promise<ApiRequestContext | null>>();
+// React cache is scoped to the current server render, not a cross-request TTL.
+const renderSession = cache(() => resolveOptionalServerOidcSession());
+const renderContext = cache(() => resolveOptionalServerRequestContext());
 
 export function getServerApiClients() {
   return createApiClients();
@@ -124,6 +129,15 @@ export async function getServerRequestContextForRequest(
 export async function getOptionalServerRequestContext(
   request?: RequestLike,
 ): Promise<ApiRequestContext | null> {
+  if (!request) return renderContext();
+  const pending = requestContexts.get(request);
+  if (pending) return pending;
+  const resolved = resolveOptionalServerRequestContext(request);
+  requestContexts.set(request, resolved);
+  return resolved;
+}
+
+async function resolveOptionalServerRequestContext(request?: RequestLike): Promise<ApiRequestContext | null> {
   const bearerToken = bearerTokenFromRequest(request);
   if (bearerToken) {
     return contextFromStratosAccessProjection(bearerToken, getAklConfig());
@@ -181,7 +195,7 @@ export async function getOptionalResolvedServerSession(request?: RequestLike): P
     requestOidcSessions.set(request, resolved);
     return resolved;
   }
-  return resolveOptionalServerOidcSession();
+  return renderSession();
 }
 
 async function resolveOptionalServerOidcSession(

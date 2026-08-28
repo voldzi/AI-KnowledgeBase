@@ -420,6 +420,11 @@ the caller's authorized document set. The private web bridge
 `GET /akb/api/documents` accepts the corresponding user-facing query parameters
 and never caches a response.
 
+The employee-directive projection applies consistently to lists, metadata
+summaries and detail reads. It adds only policy-approved exact sources of
+effective employee packages, not general organization access. Counts represent
+the caller's authorized documents, not stored objects or versions.
+
 `/documents/readiness-report` is the pilot-readiness aggregate for the controlled
 document corpus. It uses the same permission-scoped filters and returns counts
 for ready, review-required, and blocked documents plus issue buckets for missing
@@ -434,13 +439,23 @@ Ingestion/RAG services.
 `GET /api/v1/workflow/documents` returns documents owned by the current subject
 or actively assigned to that person/group. It includes the latest authorized
 version, published-version expiry, `review_due_on`, role and status. It accepts
-only bounded `limit`/`offset`, not an arbitrary subject. Authorization precedes
-pagination and `total` counts only authorized results.
+bounded `limit`/`offset`, `q` (at most 200 characters),
+`assignment=managed|approver`, `version_status`, and
+`deadline=attention|expired|review|missing`, not an arbitrary subject.
+Authorization precedes pagination and `total` counts only authorized results.
+Ordinary document pages authorize exact versions only for their displayed rows;
+version-dependent filters authorize candidate versions before filtering/counting.
 
 `GET /api/v1/workflow/tasks?assigned_to_me=true` returns the current subject's
-personal queue, including verified group assignments. The response adds `total`;
+personal queue, including verified group assignments. Read-only users cannot
+opt out of personal filtering using `assigned_to_me=false`; the team view needs
+document-management authority. `q` searches task/document metadata (at most
+200 characters), alongside existing status, kind and priority filters.
+The response includes `total`, `limit` and `offset`;
 each task includes `assigned_to_me` and server-derived `allowed_actions`. These
 are UI hints, never a substitute for authorization of a subsequent action.
+GET does not synchronize or mutate tasks. Derived-task maintenance and SLA
+escalation run in a separate Registry background cycle.
 
 `POST /api/v1/documents/{document_id}/versions/{version_id}/submit-review`
 accepts only an optional `comment` (at most 1,000 characters). It submits the

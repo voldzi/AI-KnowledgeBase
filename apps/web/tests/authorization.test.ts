@@ -136,16 +136,17 @@ describe("AKB web authorization", () => {
     );
   });
 
-  it("keeps read-only employees on document and chat surfaces", () => {
+  it("lets read-only employees see their work without granting management access", () => {
     const roles = ["stratos_user"];
     const capabilities = ["akb:access", "akb:chat", "akb:read_document"];
 
-    for (const route of ["/chat", "/help", "/documents", "/controlled-documentation"]) {
+    for (const route of ["/chat", "/help", "/documents", "/controlled-documentation", "/tasks"]) {
       assert.equal(canAccessWorkspaceRoute(roles, route, capabilities), true, route);
     }
-    for (const route of ["/dashboard", "/tasks", "/ingestion", "/intelligence", "/audit", "/admin"]) {
+    for (const route of ["/dashboard", "/ingestion", "/intelligence", "/audit", "/admin"]) {
       assert.equal(canAccessWorkspaceRoute(roles, route, capabilities), false, route);
     }
+    assert.equal(canAccessWorkspaceRoute(roles, "/tasks", ["akb:read_audit"]), false);
   });
 
   it("authorizes contextual upload routes independently of top-level navigation", () => {

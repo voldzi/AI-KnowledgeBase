@@ -1037,6 +1037,13 @@ def test_controlled_document_package_and_approved_rule_are_consumable(
         headers=chat_headers,
     )
     assert employee_directive_detail.status_code == 200, employee_directive_detail.text
+    def employee_registry_ids(query=""):
+        response = client.get("/api/v1/documents", headers=chat_headers, params={"q": query})
+        assert response.status_code == 200, response.text
+        return {item["document_id"] for item in response.json()["items"]}
+
+    assert directive["document_id"] in employee_registry_ids(directive["title"])
+    assert attachment["document_id"] in employee_registry_ids(attachment["title"])
     employee_directive_versions = client.get(
         f"/api/v1/documents/{directive['document_id']}/versions",
         headers=chat_headers,
@@ -1091,6 +1098,7 @@ def test_controlled_document_package_and_approved_rule_are_consumable(
         headers=chat_headers,
     )
     assert unrelated_detail.status_code == 403
+    assert unrelated["document_id"] not in employee_registry_ids()
     unrelated_rag_filter = client.post(
         "/api/v1/authz/filter-documents",
         headers=chat_headers,
@@ -1126,6 +1134,7 @@ def test_controlled_document_package_and_approved_rule_are_consumable(
         headers=chat_headers,
     )
     assert restricted_detail.status_code == 403
+    assert directive["document_id"] not in employee_registry_ids()
     stored_directive.classification = "internal"
     db_session.commit()
 
@@ -1141,6 +1150,8 @@ def test_controlled_document_package_and_approved_rule_are_consumable(
     )
     assert opted_out_rules.status_code == 200
     assert opted_out_rules.json()["rules"] == []
+    assert directive["document_id"] not in employee_registry_ids()
+    assert attachment["document_id"] not in employee_registry_ids()
     stored_package.package_metadata = {
         key: value
         for key, value in stored_package.package_metadata.items()
@@ -1155,6 +1166,7 @@ def test_controlled_document_package_and_approved_rule_are_consumable(
         headers=chat_headers,
     )
     assert expired_source_detail.status_code == 403
+    assert directive["document_id"] not in employee_registry_ids()
     stored_package.effective_to = None
     db_session.commit()
 

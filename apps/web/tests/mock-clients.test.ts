@@ -382,7 +382,7 @@ describe("mock API clients", () => {
 
   it("keeps workflow task actions stateful in mock mode", async () => {
     const clients = createApiClients({ env });
-    const context = createMockContext({ subjectId: "admin_1" });
+    const context = createMockContext({ subjectId: "admin_1", roles: ["admin"] });
     const tasks = await clients.registry.listWorkflowTasks(context);
     const task = tasks[0];
 
@@ -409,7 +409,7 @@ describe("mock API clients", () => {
 
   it("keeps document assignments stateful in mock mode", async () => {
     const clients = createApiClients({ env });
-    const context = createMockContext({ subjectId: "admin_1" });
+    const context = createMockContext({ subjectId: "admin_1", roles: ["admin"] });
 
     const initialAssignments = await clients.registry.listDocumentAssignments("doc_102", context);
     const assignments = await clients.registry.replaceDocumentAssignments(
@@ -518,7 +518,7 @@ describe("mock API clients", () => {
 
   it("enforces the publish gate in mock mode", async () => {
     const clients = createApiClients({ env });
-    const context = createMockContext({ subjectId: "admin_1" });
+    const context = createMockContext({ subjectId: "admin_1", roles: ["admin"] });
 
     await assert.rejects(
       clients.registry.publishDocumentVersion("doc_103", "ver_103_1", context),
