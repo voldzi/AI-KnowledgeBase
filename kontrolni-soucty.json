@@ -1,0 +1,98 @@
+{
+  "schema": "akb-documentation-checksums-1",
+  "package_id": "AKB-STRATOS-PILOT-DOCS",
+  "revision": "1.3",
+  "algorithm": "sha256",
+  "files": [
+    {
+      "path": "akb-stratos-predavaci-dokumentace-cs.pdf",
+      "bytes": 211896,
+      "sha256": "9fa5652bd30f636a94165c5184130b0a11e4c4e84f5f9af170ebca8d311fb83e"
+    },
+    {
+      "path": "docs/deployment/akb-stratos-bezpecnost-obnova-pilotu-cs.md",
+      "bytes": 5916,
+      "sha256": "650588358b9ddd622a9fb7052f4cd2f6a0b193ac8ed408034c5605c079707064"
+    },
+    {
+      "path": "docs/deployment/akb-stratos-instalace-infrastruktura-pilotu-cs.md",
+      "bytes": 14701,
+      "sha256": "66b0ffa6293dc904e242b0f2d1a15cf4f13e0951fc724b2639d925012f738cb8"
+    },
+    {
+      "path": "docs/deployment/akb-stratos-instalace-prevzeti-pilotu-cs.md",
+      "bytes": 12960,
+      "sha256": "1f8a227bca4fd9bd030671674a8cc2f50844e23e8c5c1f1c8d57eb39b7973119"
+    },
+    {
+      "path": "docs/deployment/akb-stratos-provoz-pilot-cs.md",
+      "bytes": 9807,
+      "sha256": "b2f26ca94bc929de8e8996c05de312beffdcb5239753529884945ce8192bcfef"
+    },
+    {
+      "path": "docs/deployment/akb-stratos-uzivatel-pilot-cs.md",
+      "bytes": 7190,
+      "sha256": "e2243a368bc20bb4ec79f5c043a5edd28a6b805160d2911f91b0117ba235e87e"
+    },
+    {
+      "path": "docs/executive/akb-stratos-bezpecnost-posouzeni-cs.md",
+      "bytes": 7855,
+      "sha256": "82f2ad66330b4483029ac0f130da1c164b6a84b385a3632bb98e96bf515f1a9d"
+    },
+    {
+      "path": "docs/executive/akb-stratos-prehled-pro-vedeni-cs.md",
+      "bytes": 8413,
+      "sha256": "0c6e430ebebf8d35e6c5dfbd834edeb0d5c8d6eb03c1cf121c4207be6359f1d9"
+    },
+    {
+      "path": "docs/executive/akb-stratos-reference-katalog-funkci-cs.md",
+      "bytes": 5175,
+      "sha256": "5f304188a297f45da41332aaf602399b87686821ee4ed5aa846500b6ffe2db97"
+    },
+    {
+      "path": "docs/handover/akb-stratos-dokumentacni-sada.json",
+      "bytes": 4115,
+      "sha256": "623d72aa65e96397d27de47cda00bffd14860a8cb86176266850b579e6083caa"
+    },
+    {
+      "path": "docs/handover/akb-stratos-predani-dokumentace-cs.md",
+      "bytes": 8854,
+      "sha256": "a9d9b485dbc095223171ca28551afffa76c1c1655583e8905a2666a51d44e554"
+    },
+    {
+      "path": "docs/how-to/akb-metodika-tvorba-dokumentace-aplikaci-cs.md",
+      "bytes": 12486,
+      "sha256": "95712ccb0c35f10f0a67ab96b7276929c7d7e9d44a5808e26b1734411ec7d484"
+    },
+    {
+      "path": "docs/how-to/akb-postup-vlozeni-predavaci-dokumentace-cs.md",
+      "bytes": 7117,
+      "sha256": "24db32c3f92f6c656936616ec5a9d2490831de585a6e66324daedfe5949e1655"
+    },
+    {
+      "path": "docs/templates/application-documentation/akb-vzor-architektura-bezpecnost-cs.md",
+      "bytes": 3090,
+      "sha256": "25a91aca5eb19371207595ba37cd260ce8ca86b8b5a9e2a023fe65db9d80121a"
+    },
+    {
+      "path": "docs/templates/application-documentation/akb-vzor-instalacni-postup-cs.md",
+      "bytes": 3303,
+      "sha256": "4a113e1f781baf67bf925dcbe958788155726664cf7fcad8d3bbea805a3fc1fd"
+    },
+    {
+      "path": "docs/templates/application-documentation/akb-vzor-provozni-obnova-cs.md",
+      "bytes": 2900,
+      "sha256": "96339a580fa6b91c0431e498b970c1127841942bb94131764be62cb1269a935c"
+    },
+    {
+      "path": "docs/templates/application-documentation/akb-vzor-technicka-reference-cs.md",
+      "bytes": 2686,
+      "sha256": "be2801f351b5889723051d56703b33b622c9d0b019516b822e58f63a51dfdcb7"
+    },
+    {
+      "path": "docs/templates/application-documentation/akb-vzor-uzivatelsky-postup-cs.md",
+      "bytes": 2554,
+      "sha256": "1c7d0ebef312db256537369190b44194b9dd8a251f2503e191ba4b2811e60a34"
+    }
+  ]
+}
