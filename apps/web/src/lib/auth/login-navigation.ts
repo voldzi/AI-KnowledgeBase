@@ -11,8 +11,9 @@ export function isSameAppRscNavigation(
   config: AklConfig,
   headers: Pick<Headers, "get">,
 ): boolean {
+  // Next.js removes Flight headers, including rsc, before headers() reaches
+  // server components. Fetch Metadata survives that normalization.
   if (
-    headers.get("rsc") !== "1" ||
     headers.get("sec-fetch-site") !== "same-origin" ||
     headers.get("sec-fetch-dest") !== "empty" ||
     !["cors", "same-origin"].includes(headers.get("sec-fetch-mode") ?? "")

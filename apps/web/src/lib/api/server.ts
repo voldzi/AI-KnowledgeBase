@@ -81,7 +81,7 @@ async function requireCurrentCentralSso(returnTo: string): Promise<void> {
   const selector = cookieStore.get(SERVER_SESSION_COOKIE)?.value;
   // Internal RSC refreshes cannot complete a browser OIDC redirect. This only
   // skips entry synchronization; the session and access projection below still
-  // have to authorize every request, including a forged RSC transport hint.
+  // have to authorize every request, including forged transport metadata.
   if (selector && isSameAppRscNavigation(config, await headers())) return;
   if (
     selector &&

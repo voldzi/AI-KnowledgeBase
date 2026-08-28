@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { NextRequest } from "next/server";
+import { createRequestStoreForRender } from "next/dist/server/async-storage/request-store";
 import { centralSessionPolicy } from "../src/lib/auth/session-policy";
 import { verifiedSessionFromTokens } from "../src/lib/auth/oidc";
 import { createServerSession, resolveServerSession, serverSessionCookieOptions, SERVER_SESSION_COOKIE, SSO_ATTEMPT_COOKIE, SSO_SIGNED_OUT_COOKIE } from "../src/lib/auth/server-session";
@@ -93,6 +94,23 @@ describe("central SSO redirect guard", () => {
     "sec-fetch-mode": "cors",
     "sec-fetch-dest": "empty",
   });
+  const renderHeaders = (headers: Headers) => {
+    const url = new URL("https://akb.example/akb/documents/doc_test");
+    const store = createRequestStoreForRender(
+      new NextRequest(url, { headers }), undefined, url, {},
+      { tags: [], expirationsByCacheKind: new Map() }, undefined, undefined,
+      false, undefined, null, null,
+    );
+    return new Headers(store.headers);
+  };
+
+  it("recognizes a refresh after Next.js removes its internal Flight headers", () => {
+    const headers = renderHeaders(rscHeaders());
+    assert.equal(headers.get("rsc"), null);
+    assert.equal(headers.get("referer"), null);
+    assert.equal(headers.get("sec-fetch-site"), "same-origin");
+    assert.equal(isSameAppRscNavigation(managedConfig(), headers), true);
+  });
 
   it("supports the configured no-referrer policy without weakening fetch metadata", async () => {
     const configuredHeaders = await nextConfig.headers!();
@@ -112,7 +130,7 @@ describe("central SSO redirect guard", () => {
     fullNavigation.set("sec-fetch-dest", "document");
     fullNavigation.set("sec-fetch-mode", "navigate");
     assert.equal(isSameAppRscNavigation(config, fullNavigation), false);
-    for (const header of ["rsc", "sec-fetch-site", "sec-fetch-mode", "sec-fetch-dest"]) {
+    for (const header of ["sec-fetch-site", "sec-fetch-mode", "sec-fetch-dest"]) {
       const missing = rscHeaders();
       missing.delete(header);
       assert.equal(isSameAppRscNavigation(config, missing), false, header);
@@ -137,7 +155,7 @@ describe("central SSO redirect guard", () => {
       headers.set("referer", referer);
       assert.equal(isSameAppRscNavigation(config, headers), false, referer);
     }
-    for (const [name, value] of [["rsc", "0"], ["sec-fetch-site", "same-site"], ["sec-fetch-site", "cross-site"], ["sec-fetch-mode", "no-cors"], ["origin", "null"], ["origin", ""], ["origin", "https://foreign.example"]]) {
+    for (const [name, value] of [["sec-fetch-site", "same-site"], ["sec-fetch-site", "cross-site"], ["sec-fetch-mode", "no-cors"], ["origin", "null"], ["origin", ""], ["origin", "https://foreign.example"]]) {
       const headers = rscHeaders();
       headers.set(name, value);
       assert.equal(isSameAppRscNavigation(config, headers), false, `${name}=${value}`);
@@ -178,7 +196,7 @@ describe("central SSO redirect guard", () => {
     const session = await verifiedSessionFromTokens(config, await identity.tokens(), "test-nonce", identity.nowMs, identity.fetcher);
     const selector = await createServerSession(config, session, false, identity.nowMs);
     const request = (withSession = true) => {
-      const headers = rscHeaders();
+      const headers = renderHeaders(rscHeaders());
       if (withSession) headers.set("cookie", `${SERVER_SESSION_COOKIE}=${selector}`);
       assert.equal(isSameAppRscNavigation(config, headers), true);
       return new NextRequest("https://akb.example/akb/documents/doc_test", { headers });

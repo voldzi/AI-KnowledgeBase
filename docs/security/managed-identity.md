@@ -71,8 +71,11 @@ revokes the prior browser session; it does not merge accounts by login/email.
 Same-app RSC navigation and `router.refresh()` do not start that additional
 top-level OIDC synchronization. They still resolve the opaque server session
 and current access projection, including expiry, revocation and required
-identity revalidation. The RSC flag and same-origin Fetch Metadata classify
-transport only; none of them grants access. AKB retains `Referrer-Policy:
+identity revalidation. Next.js removes internal Flight headers (including
+`rsc`) before exposing `headers()` to server components; the guard therefore
+uses the preserved same-origin Fetch Metadata, not the removed RSC flag.
+These headers classify transport only and never grant access. The regression
+test passes through Next.js's actual render request store. AKB retains `Referrer-Policy:
 no-referrer`, so an absent `Referer` is expected for these background requests.
 When present, `Referer` must point inside this application and `Origin` must
 match its public origin. Full document navigation, including sibling-application
