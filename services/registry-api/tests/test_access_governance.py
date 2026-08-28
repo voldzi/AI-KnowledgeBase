@@ -11,7 +11,7 @@ from starlette.requests import Request
 import app.auth as auth_module
 import app.api as api_module
 import app.permissions as permissions_module
-from app.access_governance import AccessProjection, GovernanceUnavailable, StratosGovernanceClient
+from app.access_governance import AccessProjection, GovernanceUnavailable, StratosGovernanceClient, policy_decision_scope
 from app.api import (
     _audit_service_decision_coordinates,
     _is_official_public_source_create,
@@ -211,6 +211,59 @@ def test_governance_client_coalesces_only_concurrent_identical_decisions(monkeyp
 
     assert [result["decision"] for result in results] == ["ALLOW", "ALLOW"]
     assert request_count == 1
+
+
+@pytest.mark.parametrize("changed", [
+    {"credential_token": "other-user-token"},
+    {"scope": {"type": "organization", "id": "other-organization"}},
+    {"policy_hash": "changed-policy"},
+    {"policy_binding": {"bindingId": "other-policy"}},
+    {"capability_id": "akb:manage_document"},
+    {"operation": "write"},
+])
+def test_request_decision_reuse_preserves_identity_scope_and_policy(monkeypatch, changed):
+    client = StratosGovernanceClient(_settings(
+        AKL_STRATOS_POLICY_DECISIONS_URL="https://stratos.example/api/v1/policy/decisions",
+    ))
+    requests = []
+
+    def request(*args):
+        requests.append(args)
+        return {"decision": "ALLOW" if len(requests) == 1 else "DENY"}
+
+    monkeypatch.setattr(client, "_request", request)
+    params = dict(capability_id="akb:read_document", operation="read",
+                  scope={"type": "organization", "id": "org_stratos"},
+                  policy_binding=None, policy_hash=None, credential_token="user-token")
+    with policy_decision_scope():
+        assert client.decide(**params)["decision"] == "ALLOW"
+        assert client.decide(**params)["decision"] == "ALLOW"
+        assert len(requests) == 1
+        assert client.decide(**(params | changed))["decision"] == "DENY"
+        assert len(requests) == 2
+    with policy_decision_scope():
+        assert client.decide(**params)["decision"] == "DENY"
+    assert len(requests) == 3
+
+
+def test_request_decision_reuse_never_caches_transport_failure(monkeypatch):
+    client = StratosGovernanceClient(_settings(
+        AKL_STRATOS_POLICY_DECISIONS_URL="https://stratos.example/api/v1/policy/decisions",
+    ))
+    requests = []
+
+    def request(*args):
+        requests.append(args)
+        raise GovernanceUnavailable("offline")
+
+    monkeypatch.setattr(client, "_request", request)
+    with policy_decision_scope():
+        for _ in range(2):
+            with pytest.raises(GovernanceUnavailable):
+                client.decide(capability_id="akb:read_document", operation="read",
+                              scope={"type": "organization", "id": "org_stratos"},
+                              policy_binding=None, policy_hash=None, credential_token="user-token")
+    assert len(requests) == 2
 
 
 def test_user_projection_never_falls_back_to_raw_scope_grants(monkeypatch) -> None:

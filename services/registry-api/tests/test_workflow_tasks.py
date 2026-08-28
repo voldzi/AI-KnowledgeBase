@@ -1,3 +1,11 @@
+from app.workflow_maintenance import maintain_workflow_tasks
+
+
+def _maintain(db_session):
+    assert maintain_workflow_tasks(db_session) is True
+    db_session.commit()
+
+
 def _create_document(client, headers, **overrides):
     payload = {
         "title": "Workflow source",
@@ -13,7 +21,7 @@ def _create_document(client, headers, **overrides):
     return response.json()
 
 
-def test_workflow_tasks_are_derived_from_document_state(client, admin_headers):
+def test_workflow_tasks_are_derived_from_document_state(client, admin_headers, db_session):
     document = _create_document(client, admin_headers, classification="restricted")
     patched = client.patch(
         f"/api/v1/documents/{document['document_id']}",
@@ -21,6 +29,7 @@ def test_workflow_tasks_are_derived_from_document_state(client, admin_headers):
         json={"status": "review"},
     )
     assert patched.status_code == 200, patched.text
+    _maintain(db_session)
 
     response = client.get("/api/v1/workflow/tasks", headers=admin_headers)
     assert response.status_code == 200, response.text
@@ -51,7 +60,7 @@ def test_document_creation_seeds_owner_and_gestor_assignments(client, admin_head
     assert {item["role"] for item in listed.json()["items"]} == {"owner", "gestor"}
 
 
-def test_document_assignments_drive_review_task_owner_sla_and_escalation(client, admin_headers):
+def test_document_assignments_drive_review_task_owner_sla_and_escalation(client, admin_headers, db_session):
     document = _create_document(client, admin_headers, classification="restricted")
     replaced = client.put(
         f"/api/v1/documents/{document['document_id']}/assignments",
@@ -97,6 +106,7 @@ def test_document_assignments_drive_review_task_owner_sla_and_escalation(client,
         json={"status": "review"},
     )
     assert submitted.status_code == 200, submitted.text
+    _maintain(db_session)
 
     listed = client.get("/api/v1/workflow/tasks?kind=review", headers=admin_headers)
     assert listed.status_code == 200, listed.text
@@ -110,7 +120,7 @@ def test_document_assignments_drive_review_task_owner_sla_and_escalation(client,
     assert task["metadata"]["escalation_subject_id"] == "Compliance"
 
 
-def test_workflow_tasks_include_warning_audit_events(client, admin_headers):
+def test_workflow_tasks_include_warning_audit_events(client, admin_headers, db_session):
     created = client.post(
         "/api/v1/audit/events",
         headers=admin_headers,
@@ -124,6 +134,7 @@ def test_workflow_tasks_include_warning_audit_events(client, admin_headers):
         },
     )
     assert created.status_code == 201, created.text
+    _maintain(db_session)
 
     response = client.get("/api/v1/workflow/tasks?kind=audit", headers=admin_headers)
     assert response.status_code == 200, response.text
@@ -138,6 +149,7 @@ def test_workflow_task_sync_skips_audit_events_that_already_have_tasks(
     client,
     admin_headers,
     monkeypatch,
+    db_session,
 ):
     from app import api as registry_api
 
@@ -154,6 +166,7 @@ def test_workflow_task_sync_skips_audit_events_that_already_have_tasks(
         },
     )
     assert created.status_code == 201, created.text
+    _maintain(db_session)
 
     first_listing = client.get("/api/v1/workflow/tasks?kind=audit", headers=admin_headers)
     assert first_listing.status_code == 200, first_listing.text
@@ -167,6 +180,7 @@ def test_workflow_task_sync_skips_audit_events_that_already_have_tasks(
         return original_upsert(*args, source_key=source_key, **kwargs)
 
     monkeypatch.setattr(registry_api, "_upsert_derived_task", record_upsert)
+    _maintain(db_session)
 
     second_listing = client.get("/api/v1/workflow/tasks?kind=audit", headers=admin_headers)
     assert second_listing.status_code == 200, second_listing.text
@@ -174,8 +188,9 @@ def test_workflow_task_sync_skips_audit_events_that_already_have_tasks(
     assert not any(source_key.startswith("audit:") for source_key in upserted_source_keys)
 
 
-def test_workflow_task_action_resolves_task_and_writes_audit(client, admin_headers):
+def test_workflow_task_action_resolves_task_and_writes_audit(client, admin_headers, db_session):
     document = _create_document(client, admin_headers)
+    _maintain(db_session)
     listed = client.get("/api/v1/workflow/tasks?kind=draft", headers=admin_headers)
     assert listed.status_code == 200, listed.text
     task = next(item for item in listed.json()["items"] if item["document_id"] == document["document_id"])
@@ -188,6 +203,7 @@ def test_workflow_task_action_resolves_task_and_writes_audit(client, admin_heade
     assert resolved.status_code == 200, resolved.text
     assert resolved.json()["status"] == "resolved"
     assert resolved.json()["resolved_at"]
+    _maintain(db_session)
 
     active_listing = client.get("/api/v1/workflow/tasks?kind=draft", headers=admin_headers)
     assert active_listing.status_code == 200
@@ -198,8 +214,9 @@ def test_workflow_task_action_resolves_task_and_writes_audit(client, admin_heade
     assert audit.json()["items"][0]["resource_id"] == task["task_id"]
 
 
-def test_workflow_task_request_changes_survives_derived_sync(client, admin_headers):
+def test_workflow_task_request_changes_survives_derived_sync(client, admin_headers, db_session):
     document = _create_document(client, admin_headers)
+    _maintain(db_session)
     listed = client.get("/api/v1/workflow/tasks?kind=draft", headers=admin_headers)
     assert listed.status_code == 200, listed.text
     task = next(item for item in listed.json()["items"] if item["document_id"] == document["document_id"])
@@ -212,6 +229,7 @@ def test_workflow_task_request_changes_survives_derived_sync(client, admin_heade
     assert changed.status_code == 200, changed.text
     assert changed.json()["status"] == "open"
     assert changed.json()["metadata"]["last_action"] == "request_changes"
+    _maintain(db_session)
 
     active_listing = client.get("/api/v1/workflow/tasks?kind=draft", headers=admin_headers)
     assert active_listing.status_code == 200
@@ -221,7 +239,7 @@ def test_workflow_task_request_changes_survives_derived_sync(client, admin_heade
     assert refreshed["metadata"]["document_status"] == "draft"
 
 
-def test_review_workflow_approval_enables_publish_gate(client, admin_headers):
+def test_review_workflow_approval_enables_publish_gate(client, admin_headers, db_session):
     document = _create_document(client, admin_headers)
     created_version = client.post(
         f"/api/v1/documents/{document['document_id']}/versions",
@@ -242,6 +260,7 @@ def test_review_workflow_approval_enables_publish_gate(client, admin_headers):
         json={"status": "review"},
     )
     assert submitted.status_code == 200, submitted.text
+    _maintain(db_session)
 
     listed = client.get("/api/v1/workflow/tasks?kind=review", headers=admin_headers)
     assert listed.status_code == 200, listed.text
@@ -267,7 +286,7 @@ def test_review_workflow_approval_enables_publish_gate(client, admin_headers):
     assert published.json()["status"] == "valid"
 
 
-def test_workflow_action_audit_keeps_assignment_context(client, admin_headers):
+def test_workflow_action_audit_keeps_assignment_context(client, admin_headers, db_session):
     document = _create_document(client, admin_headers)
     replaced = client.put(
         f"/api/v1/documents/{document['document_id']}/assignments",
@@ -301,6 +320,7 @@ def test_workflow_action_audit_keeps_assignment_context(client, admin_headers):
         json={"status": "review"},
     )
     assert submitted.status_code == 200, submitted.text
+    _maintain(db_session)
 
     listed = client.get("/api/v1/workflow/tasks?kind=review", headers=admin_headers)
     assert listed.status_code == 200, listed.text
@@ -349,6 +369,7 @@ def test_overdue_task_is_escalated_with_priority_bump_and_audit(client, admin_he
         )
     )
     db_session.commit()
+    _maintain(db_session)
 
     response = client.get("/api/v1/workflow/tasks", headers=admin_headers)
     assert response.status_code == 200, response.text
@@ -368,7 +389,8 @@ def test_overdue_task_is_escalated_with_priority_bump_and_audit(client, admin_he
     assert len(events) == 1
     assert events[0].event_metadata["escalated_to"] == "user_boss"
 
-    # second listing must not escalate again
+    # A later maintenance cycle and read must not escalate again.
+    _maintain(db_session)
     client.get("/api/v1/workflow/tasks", headers=admin_headers)
     events_after = list(
         db_session.execute(

@@ -43,6 +43,7 @@ export function buildWorkflowTasks(params: {
   auditEvents: AuditEvent[];
   registryTasks?: RegistryWorkflowTask[];
   nowIso?: string;
+  preserveRegistryOrder?: boolean;
 }): WorkflowTask[] {
   const { documents, jobs, auditEvents, registryTasks } = params;
   const nowIso = params.nowIso ?? new Date().toISOString();
@@ -52,7 +53,7 @@ export function buildWorkflowTasks(params: {
   if (registryTasks) {
     tasks.push(...registryTasks.filter(isActiveRegistryTask).map(taskFromRegistry));
     tasks.push(...buildIngestionTasks(jobs, documentById));
-    return tasks.sort((left, right) => compareTasks(left, right, nowIso));
+    return params.preserveRegistryOrder ? tasks : tasks.sort((left, right) => compareTasks(left, right, nowIso));
   }
 
   for (const document of documents) {

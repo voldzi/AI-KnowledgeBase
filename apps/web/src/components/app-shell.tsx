@@ -8,6 +8,7 @@ import {
   useMemo,
   useState,
   useSyncExternalStore,
+  useTransition,
 } from "react";
 import {
   Bot,
@@ -63,7 +64,7 @@ import type { WebProfile } from "@/lib/api/config";
 const navigation = {
   cs: [
     { href: "/dashboard", label: "Přehled", icon: LayoutDashboard },
-    { href: "/tasks", label: "Úkoly", icon: ListChecks },
+    { href: "/tasks", label: "Moje práce", icon: ListChecks },
     { href: "/documents", label: "Dokumenty", icon: Database },
     { href: "/controlled-documentation", label: "Řízené předpisy", icon: BookOpen },
     { href: "/ingestion", label: "Zpracování", icon: FileClock },
@@ -77,7 +78,7 @@ const navigation = {
   ],
   en: [
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/tasks", label: "Tasks", icon: ListChecks },
+    { href: "/tasks", label: "My workspace", icon: ListChecks },
     { href: "/documents", label: "Documents", icon: Database },
     { href: "/controlled-documentation", label: "Controlled documents", icon: BookOpen },
     { href: "/ingestion", label: "Ingestion", icon: FileClock },
@@ -385,6 +386,10 @@ function AppShellContent({
     overlayMediaQuery: sidebarOverlayMediaQuery,
   });
   const [commandCenterOpen, setCommandCenterOpen] = useState(false);
+  const [navigationPending, startNavigation] = useTransition();
+  const navigate = useCallback((href: string) => {
+    startNavigation(() => router.push(href));
+  }, [router]);
   const [commandCenterQuery, setCommandCenterQuery] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [applicationAccess, setApplicationAccess] = useState(initialUser?.applicationAccess);
@@ -828,7 +833,7 @@ function AppShellContent({
   }, [accessibleNavigation, activeModule, activeModuleRoutes, activeSubmenuItem?.href, copy]);
   const commandCenterItems = useMemo<CommandCenterItem[]>(() => {
     const openRoute = (href: string) => {
-      router.push(href);
+      navigate(href);
       setCommandCenterOpen(false);
     };
     const navigationItems: CommandCenterItem[] = accessibleNavigation.map(
@@ -908,7 +913,7 @@ function AppShellContent({
       });
     }
     return [...navigationItems, ...quickActions];
-  }, [accessibleNavigation, copy, language, router, userProfile.capabilities, userProfile.roles]);
+  }, [accessibleNavigation, copy, language, navigate, userProfile.capabilities, userProfile.roles]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1116,7 +1121,7 @@ function AppShellContent({
               !railSidebar.isOverlayViewport() && item.id !== activeModule;
             railSidebar.selectRailItem(item.id);
             if (shouldNavigate) {
-              router.push(item.href);
+              navigate(item.href);
             }
           }}
           onMobileItemSelect={(itemId) => {
@@ -1158,6 +1163,10 @@ function AppShellContent({
                 href={href}
                 className={className}
                 onClick={onClick}
+                onNavigate={(event) => {
+                  event.preventDefault();
+                  navigate(href);
+                }}
                 aria-current={ariaCurrent}
                 title={title}
                 target={target}
@@ -1226,6 +1235,10 @@ function AppShellContent({
         </>
       }
     >
+      {navigationPending ? <div className="workspace-navigation-status" role="status" aria-live="polite">
+        <span className="dashboard-loading__indicator" aria-hidden="true" />
+        {language === "cs" ? "Načítám stránku..." : "Loading page..."}
+      </div> : null}
       {children}
     </StratosUiAppShell>
   );

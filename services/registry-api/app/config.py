@@ -121,6 +121,12 @@ class Settings(BaseSettings):
         default=False,
         alias="AKL_ASSISTANT_PURGE_ENABLED",
     )
+    workflow_maintenance_enabled: bool = Field(
+        default=True, alias="AKL_WORKFLOW_MAINTENANCE_ENABLED",
+    )
+    workflow_maintenance_interval_seconds: int = Field(
+        default=60, ge=15, le=3600, alias="AKL_WORKFLOW_MAINTENANCE_INTERVAL_SECONDS",
+    )
     assistant_purge_interval_seconds: int = Field(
         default=3600,
         ge=60,

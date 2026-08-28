@@ -4791,6 +4791,55 @@ button {
   align-items: end;
 }
 
+.workflow-filter-fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+.workspace-navigation-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  color: var(--color-text-primary, #18272d);
+  background: var(--color-surface-secondary, #eef5f6);
+  border-inline-start: 3px solid var(--color-primary, #11788a);
+}
+
+.workspace-navigation-status .dashboard-loading__indicator {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+}
+
+.workspace-error {
+  display: grid;
+  gap: 20px;
+  width: min(100%, 720px);
+  margin: 32px auto;
+  padding: 24px;
+  overflow-wrap: anywhere;
+}
+.workspace-error h1 { margin: 0; font-size: 28px; letter-spacing: 0; }
+.workspace-error p { margin: 0; }
+.workspace-error .inline-actions { flex-wrap: wrap; }
+
+.workflow-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  min-height: 44px;
+}
+
+.workflow-pagination .icon-button { width: 44px; height: 44px; flex: 0 0 44px; }
+.workflow-workspace .notice .dashboard-loading__indicator { flex: 0 0 20px; width: 20px; height: 20px; }
+
 .workflow-workspace .panel {
   box-shadow: none;
   border-radius: 0;

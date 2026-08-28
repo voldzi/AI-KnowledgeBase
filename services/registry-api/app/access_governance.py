@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from concurrent.futures import Future, TimeoutError as FutureTimeoutError
+from contextlib import contextmanager
+from contextvars import ContextVar
 from hashlib import sha256
 import json
 import threading
@@ -20,6 +22,19 @@ from app.information_policy import (
     canonical_policy_hash,
     canonical_policy_payload,
 )
+
+
+_request_decisions: ContextVar[dict[str, dict[str, Any]] | None] = ContextVar("akb_request_decisions", default=None)
+
+
+@contextmanager
+def policy_decision_scope():
+    """Reuse identical PDP inputs only within one read request, never across users/requests."""
+    token = _request_decisions.set({})
+    try:
+        yield
+    finally:
+        _request_decisions.reset(token)
 
 
 @dataclass(frozen=True)
@@ -256,6 +271,9 @@ class StratosGovernanceClient:
                 default=str,
             ).encode("utf-8")
         ).hexdigest()
+        decisions = _request_decisions.get()
+        if decisions is not None and decision_key in decisions:
+            return decisions[decision_key]
         with self._lock:
             flight = self._decision_flights.get(decision_key)
             owns_flight = flight is None
@@ -273,6 +291,8 @@ class StratosGovernanceClient:
 
         try:
             response = self._request("POST", url, token, body)
+            if decisions is not None and len(decisions) < 4096:
+                decisions[decision_key] = response
             flight.set_result(response)
             return response
         except BaseException as exc:

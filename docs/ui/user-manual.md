@@ -122,17 +122,17 @@ AKB does not invent an answer when evidence or authorization is missing.
 
 ## Complete a document task
 
-Users with workflow responsibility open **Tasks** and follow the link to the
+Users with document-read access open **My workspace (Moje prace)** and follow the link to the
 authoritative document/version. Review the source, metadata, attachments,
 effective dates and any extraction/compliance warnings before choosing an
 action. Do not approve solely because a generated proposal looks plausible.
 
-**Tasks > Awaiting approval (Ke schvaleni)** contains reviews assigned to you
+**My workspace > Awaiting approval (Ke schvaleni)** contains reviews assigned to you
 or your approval group. Open the exact version, then approve or request changes.
 Approval does not publish it. The submitter cannot decide their own submission;
 an assignment alone does not grant approval permission.
 
-**Tasks > My documents (Moje dokumenty)** lists documents you own, manage or
+**My workspace > My documents (Moje dokumenty)** lists documents you own, manage or
 approve. Filter by your responsibility, version state, expiry or review due
 date. The upcoming-deadline window is 30 days in the Prague calendar. A pending
 replacement does not hide the expiry of the published version. An overdue
@@ -143,7 +143,15 @@ document detail. Returned comments appear in their personal task. After changes,
 submit a new review. A changed source, policy or assignment invalidates the
 old approval. Publication remains a separate authorized action.
 
+Each tab loads its own page. Filters and the page are retained when returning
+from a document. The displayed count covers only documents or tasks you may
+access, not every stored file or version. The team view is restricted to
+document-management users; personal access alone does not allow approval.
+
 The lists refresh on opening, after decisions, or with the refresh control.
+Derived tasks and SLA warnings can take up to the configured maintenance
+interval (normally one minute) to appear. A loading or unavailable state is not
+an empty queue; use retry when a request fails.
 Automatic e-mail delivery is not enabled. See [workflow details and planned
 notifications](workflow-inbox.md).
 

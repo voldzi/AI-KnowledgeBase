@@ -3,11 +3,13 @@ import secrets
 import unicodedata
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from datetime import date, datetime, timedelta, timezone
 from hashlib import sha256
 import json
 from threading import Lock
-from typing import Annotated
+from typing import Annotated, Literal
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.security import APIKeyHeader
@@ -33,6 +35,7 @@ from app.access_governance import (
     GovernanceInvalidResponse,
     GovernanceUnavailable,
     governance_client,
+    policy_decision_scope,
     validate_public_decision_response,
 )
 from app.auth import (
@@ -134,6 +137,7 @@ from app.permissions import (
     context_for_principal,
     context_for_subject,
     document_governance_scope,
+    employee_directive_packages,
     evaluate_document_access,
     evaluate_employee_directive_projection,
     evaluate_global_action,
@@ -6955,12 +6959,13 @@ def _authorized_document_metadata_rows(
         stmt = stmt.where(Document.document_type == document_type.value)
     if owner_id:
         stmt = stmt.where(Document.owner_id == owner_id)
-    if document_ids:
+    if document_ids is not None:
         stmt = stmt.where(Document.document_id.in_(document_ids))
     if candidate_limit is not None:
         stmt = stmt.limit(candidate_limit)
 
     context = context_for_principal(principal, db)
+    employee_packages = [] if principal.service_identity else employee_directive_packages(db, context)
     runtime_candidates: list[tuple[Document, str]] = []
     runtime_evaluations: dict[str, tuple[Document, Decision]] = {}
     for document in db.execute(stmt).scalars():
@@ -6969,6 +6974,11 @@ def _authorized_document_metadata_rows(
         if context_tags and not all(_document_matches_context_tag(document, candidate) for candidate in context_tags):
             continue
         local_decision = evaluate_document_access(context, authorization_action.value, document)
+        if not local_decision.allowed and employee_packages:
+            local_decision = evaluate_employee_directive_projection(
+                db=db, context=context, action=authorization_action.value,
+                document=document, packages=employee_packages,
+            ) or local_decision
         if not local_decision.allowed:
             continue
         runtime_key = json.dumps(
@@ -6978,6 +6988,7 @@ def _authorized_document_metadata_rows(
                 "policy_hash": document.policy_hash,
                 "policy_summary": document.policy_summary,
                 "official_public_source": _is_official_public_source_document(document),
+                "employee_projection": local_decision.constraints.get("controlled_package_id"),
             },
             sort_keys=True,
             separators=(",", ":"),
@@ -7009,7 +7020,11 @@ def _authorized_document_metadata_rows(
         # PDP authoritative while preventing document-list latency from growing
         # linearly with the number of governed scopes.
         with ThreadPoolExecutor(max_workers=min(8, len(evaluation_items))) as executor:
-            runtime_access = dict(executor.map(evaluate_runtime_candidate, evaluation_items))
+            futures = [
+                executor.submit(copy_context().run, evaluate_runtime_candidate, item)
+                for item in evaluation_items
+            ]
+            runtime_access = dict(future.result() for future in futures)
 
     return [
         document
@@ -8956,10 +8971,36 @@ def submit_document_review(
 def list_personal_workflow_documents(
     limit: Limit = 100,
     offset: Offset = 0,
+    search_query: str | None = Query(default=None, alias="q", max_length=200),
+    assignment: Literal["managed", "approver"] | None = None,
+    version_status: DocumentStatus | None = None,
+    deadline: Literal["attention", "expired", "review", "missing"] | None = None,
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> WorkflowDocumentListResponse:
     context = require_global_action(principal, Action.workflow_task_read, db)
+    with policy_decision_scope():
+        return _personal_workflow_document_page(
+            db, principal, context, limit=limit, offset=offset,
+            search_query=search_query, assignment=assignment,
+            version_status=version_status, deadline=deadline,
+        )
+
+
+def _workflow_documents(db: Session, principal: Principal, document_ids: list[str]) -> list[Document]:
+    return _authorized_document_metadata_rows(
+        db=db, principal=principal, document_ids=document_ids,
+        status_filter=None, classification=None, document_type=None, owner_id=None,
+        tag=None, tenant_id=None, external_system=None, entity_type=None,
+        entity_id=None, external_ref=None, context_tags=[], include_version_details=True,
+    )
+
+
+def _personal_workflow_document_page(
+    db: Session, principal: Principal, context: SubjectContext, *, limit: int, offset: int,
+    search_query: str | None, assignment: str | None,
+    version_status: DocumentStatus | None, deadline: str | None,
+) -> WorkflowDocumentListResponse:
     assigned_ids = select(DocumentAssignment.document_id).where(
         DocumentAssignment.active.is_(True),
         (
@@ -8968,47 +9009,84 @@ def list_personal_workflow_documents(
             (DocumentAssignment.subject_type == "group") & DocumentAssignment.subject_id.in_(context.groups)
         ),
     )
-    documents = db.scalars(select(Document).where(
+    candidate_ids = list(db.scalars(select(Document.document_id).where(
         (Document.owner_id == context.subject_id) | Document.document_id.in_(assigned_ids),
-    ).options(
-        selectinload(Document.assignments), selectinload(Document.versions),
-        selectinload(Document.access_policies), selectinload(Document.publications),
-    ).order_by(Document.title, Document.document_id))
-    items = []
-    for document in documents:
-        try:
-            require_document_action(principal, Action.document_read, document, db)
-        except HTTPException as exc:
-            if exc.status_code == 403:
-                continue
-            raise
-        versions = []
-        for version in document.versions:
-            if context.access_v2:
-                try:
-                    require_document_version_action(principal, Action.document_read, document, version, db)
-                except HTTPException as exc:
-                    if exc.status_code in {403, 409}:
-                        continue
-                    raise
-            versions.append(version)
-        versions.sort(key=lambda item: (item.created_at, item.document_version_id), reverse=True)
-        latest = versions[0] if versions else None
-        published = next((item for item in versions if item.status == DocumentStatus.valid.value), None)
-        review_date, invalid_review_date = review_due_date(document)
-        items.append(WorkflowDocumentResponse(
-            document_id=document.document_id, title=document.title, document_type=document.document_type,
-            status=document.status, assignment_roles=personal_roles(document, context),
-            document_version_id=latest.document_version_id if latest else None,
-            version_label=latest.version_label if latest else None,
-            version_status=latest.status if latest else None,
-            valid_from=latest.valid_from if latest else None, valid_to=latest.valid_to if latest else None,
-            published_version_label=published.version_label if published else None,
-            published_valid_to=published.valid_to if published else None,
-            review_due_on=review_date, review_date_invalid=invalid_review_date,
-            updated_at=document.updated_at,
+    )))
+    documents = _workflow_documents(db, principal, candidate_ids)
+    query = (search_query or "").strip().casefold()
+    documents = [document for document in documents if (
+        (not query or query in f"{document.title} {document.document_id}".casefold())
+        and (not assignment or set(personal_roles(document, context)) & (
+            {"owner", "gestor", "steward"} if assignment == "managed" else {"approver", "reviewer"}
         ))
-    return WorkflowDocumentListResponse(items=items[offset:offset + limit], total=len(items), limit=limit, offset=offset)
+    )]
+    documents.sort(key=lambda item: (item.title, item.document_id))
+    total = len(documents)
+    # Ordinary pages inspect exact versions only for their visible documents.
+    # Version-dependent filters still authorize every candidate before counting.
+    filtered = bool(version_status or deadline)
+    if not filtered:
+        documents = documents[offset:offset + limit]
+    items: list[WorkflowDocumentResponse] = []
+    for document in documents:
+        item = _personal_workflow_document(db, principal, context, document)
+        if version_status and item.version_status != version_status.value:
+            continue
+        if deadline and not _workflow_deadline_matches(item, deadline):
+            continue
+        items.append(item)
+    if filtered:
+        total = len(items)
+        items = items[offset:offset + limit]
+    return WorkflowDocumentListResponse(items=items, total=total, limit=limit, offset=offset)
+
+
+def _personal_workflow_document(
+    db: Session, principal: Principal, context: SubjectContext, document: Document,
+) -> WorkflowDocumentResponse:
+    versions = []
+    for version in document.versions:
+        if context.access_v2:
+            try:
+                require_document_version_action(principal, Action.document_read, document, version, db)
+            except HTTPException as exc:
+                if exc.status_code in {403, 409}:
+                    continue
+                raise
+        versions.append(version)
+    versions.sort(key=lambda item: (item.created_at, item.document_version_id), reverse=True)
+    latest = versions[0] if versions else None
+    published = next((item for item in versions if item.status == DocumentStatus.valid.value), None)
+    review_date, invalid_review_date = review_due_date(document)
+    return WorkflowDocumentResponse(
+        document_id=document.document_id, title=document.title, document_type=document.document_type,
+        status=document.status, assignment_roles=personal_roles(document, context),
+        document_version_id=latest.document_version_id if latest else None,
+        version_label=latest.version_label if latest else None,
+        version_status=latest.status if latest else None,
+        valid_from=latest.valid_from if latest else None, valid_to=latest.valid_to if latest else None,
+        published_version_label=published.version_label if published else None,
+        published_valid_to=published.valid_to if published else None,
+        review_due_on=review_date, review_date_invalid=invalid_review_date,
+        updated_at=document.updated_at,
+    )
+
+
+def _workflow_deadline_matches(item: WorkflowDocumentResponse, deadline: str) -> bool:
+    if item.status in {"archived", "cancelled", "superseded"}:
+        return False
+    today = datetime.now(ZoneInfo("Europe/Prague")).date()
+    horizon = today + timedelta(days=30)
+    valid_to = item.published_valid_to if item.published_version_label else item.valid_to
+    expires = valid_to is not None and valid_to <= horizon
+    review = item.review_date_invalid or (item.review_due_on is not None and item.review_due_on <= horizon)
+    if deadline == "attention":
+        return expires or review
+    if deadline == "expired":
+        return valid_to is not None and valid_to < today
+    if deadline == "review":
+        return review
+    return item.review_due_on is None or item.review_date_invalid
 
 
 @router.get("/workflow/tasks", response_model=WorkflowTaskListResponse)
@@ -9022,13 +9100,16 @@ def list_workflow_tasks(
     owner_id: str | None = None,
     assigned_to_me: bool = False,
     include_resolved: bool = False,
+    search_query: str | None = Query(default=None, alias="q", max_length=200),
     limit: Limit = 100,
     offset: Offset = 0,
 ) -> WorkflowTaskListResponse:
     context = require_global_action(principal, Action.workflow_task_read, db)
-    _sync_derived_workflow_tasks(db)
-    _escalate_overdue_tasks(db)
-    _commit_or_conflict(db)
+    can_read_team = principal.service_identity or (
+        "akb:manage_document" in context.capabilities if context.access_v2
+        else bool(context.roles & {"admin", "document_manager", "auditor", "service_governance"})
+    )
+    assigned_to_me = assigned_to_me or not can_read_team
 
     stmt = select(WorkflowTask).order_by(WorkflowTask.due_at, WorkflowTask.created_at, WorkflowTask.task_id)
     if status_filter:
@@ -9047,46 +9128,55 @@ def list_workflow_tasks(
         stmt = stmt.where(WorkflowTask.owner_id.in_({context.subject_id, *context.groups}))
 
     tasks = list(db.execute(stmt).scalars())
-    document_ids = {task.document_id for task in tasks if task.document_id}
-    documents_by_id = {
-        document.document_id: document
-        for document in db.execute(
-            select(Document)
-            .where(Document.document_id.in_(document_ids))
-            .options(
-                selectinload(Document.access_policies),
-                selectinload(Document.versions),
-                selectinload(Document.publications),
-                selectinload(Document.assignments),
-            )
-        ).scalars()
-    }
-    elevated_task_roles = {"admin", "document_manager", "auditor", "service_governance"}
-    visible_tasks = []
+    query = (search_query or "").strip().casefold()
+    if query:
+        tasks = [task for task in tasks if query in " ".join(
+            str(value or "") for value in (task.title, task.document_title, task.description, task.owner_label)
+        ).casefold()]
+    with policy_decision_scope():
+        return _workflow_task_page(db, principal, context, tasks, assigned_to_me, can_read_team, limit, offset)
+
+
+def _workflow_task_page(
+    db: Session, principal: Principal, context: SubjectContext, tasks: list[WorkflowTask],
+    assigned_to_me: bool, can_read_team: bool, limit: int, offset: int,
+) -> WorkflowTaskListResponse:
+    documents_by_id = {document.document_id: document for document in _workflow_documents(
+        db, principal, list({task.document_id for task in tasks if task.document_id}),
+    )}
+    version_access: dict[str, bool] = {}
+    visible_tasks: list[tuple[WorkflowTask, Document | None]] = []
     for task in tasks:
         if assigned_to_me and not task_is_mine(task, context):
             continue
         if task.document_id is None:
-            if context.roles & elevated_task_roles:
-                visible_tasks.append(_workflow_task_response(task, context))
+            if can_read_team and (not context.access_v2 or "akb:read_audit" in context.capabilities):
+                visible_tasks.append((task, None))
             continue
         document = documents_by_id.get(task.document_id)
         if document is None:
             continue
         try:
-            require_document_action(principal, Action.document_read, document, db)
             if context.access_v2 and task.document_version_id:
                 version = next((item for item in document.versions if item.document_version_id == task.document_version_id), None)
                 if version is None:
                     continue
-                require_document_version_action(principal, Action.document_read, document, version, db)
+                if task.document_version_id not in version_access:
+                    version_access[task.document_version_id] = False
+                    require_document_version_action(principal, Action.document_read, document, version, db)
+                    version_access[task.document_version_id] = True
+                if not version_access[task.document_version_id]:
+                    continue
         except HTTPException as exc:
             if exc.status_code in {403, 409}:
                 continue
             raise
-        visible_tasks.append(_workflow_task_response(task, context, document))
+        visible_tasks.append((task, document))
 
-    return WorkflowTaskListResponse(items=visible_tasks[offset:offset + limit], total=len(visible_tasks), limit=limit, offset=offset)
+    return WorkflowTaskListResponse(
+        items=[_workflow_task_response(task, context, document) for task, document in visible_tasks[offset:offset + limit]],
+        total=len(visible_tasks), limit=limit, offset=offset,
+    )
 
 
 @router.post("/workflow/tasks/{task_id}/actions", response_model=WorkflowTaskResponse)

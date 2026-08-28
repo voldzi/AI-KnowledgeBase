@@ -41,6 +41,8 @@ import type {
   DocumentVersion,
   DocumentReviewRequest,
   WorkflowDocument,
+  WorkflowDocumentListOptions,
+  WorkflowPage,
   IngestionAuthorizationRequest,
   IngestionAuthorizationResponse,
   RegistryIngestionAttempt,
@@ -528,7 +530,29 @@ export class ProductionRegistryClient implements RegistryApiClient {
     context: ApiRequestContext,
     options: WorkflowTaskListOptions = {}
   ): Promise<RegistryWorkflowTask[]> {
+    const params = this.workflowTaskParams(options);
+    if (options.limit !== undefined || options.offset !== undefined) {
+      return (await this.listWorkflowTaskPage(context, options)).items;
+    }
+    return this.workflowPages<RegistryWorkflowTask>("/workflow/tasks", params, "listWorkflowTasks", context);
+  }
+
+  listWorkflowTaskPage(context: ApiRequestContext, options: WorkflowTaskListOptions = {}): Promise<WorkflowPage<RegistryWorkflowTask>> {
+    return this.workflowPage("/workflow/tasks", this.workflowTaskParams(options), "listWorkflowTasks", context, options);
+  }
+
+  listWorkflowDocumentPage(context: ApiRequestContext, options: WorkflowDocumentListOptions = {}): Promise<WorkflowPage<WorkflowDocument>> {
     const params = new URLSearchParams();
+    if (options.query) params.set("q", options.query);
+    if (options.assignment) params.set("assignment", options.assignment);
+    if (options.versionStatus) params.set("version_status", options.versionStatus);
+    if (options.deadline) params.set("deadline", options.deadline);
+    return this.workflowPage("/workflow/documents", params, "listWorkflowDocuments", context, options);
+  }
+
+  private workflowTaskParams(options: WorkflowTaskListOptions): URLSearchParams {
+    const params = new URLSearchParams();
+    if (options.query) params.set("q", options.query);
     if (options.status) {
       params.set("status", options.status);
     }
@@ -550,18 +574,27 @@ export class ProductionRegistryClient implements RegistryApiClient {
     if (options.includeResolved !== undefined) {
       params.set("include_resolved", String(options.includeResolved));
     }
-    if (options.limit !== undefined) {
-      params.set("limit", String(options.limit));
-    }
-    if (options.offset !== undefined) {
-      params.set("offset", String(options.offset));
-    }
-    if (options.limit !== undefined || options.offset !== undefined) {
-      return (await this.get<ListEnvelope<RegistryWorkflowTask>>(
-        `/workflow/tasks?${params}`, "listWorkflowTasks", context,
-      )).items;
-    }
-    return this.workflowPages<RegistryWorkflowTask>("/workflow/tasks", params, "listWorkflowTasks", context);
+    return params;
+  }
+
+  private async workflowPage<T>(path: string, params: URLSearchParams, operation: string, context: ApiRequestContext, options: { limit?: number; offset?: number }): Promise<WorkflowPage<T>> {
+    const limit = options.limit ?? 25;
+    const offset = options.offset ?? 0;
+    params.set("limit", String(limit));
+    params.set("offset", String(offset));
+    const result = await this.get<WorkflowPage<T>>(`${path}?${params}`, operation, context);
+    const ids = new Set<string>();
+    if (!Array.isArray(result?.items) || !Number.isSafeInteger(result.total) || result.total < 0
+      || result.limit !== limit || result.offset !== offset
+      || result.items.length !== Math.min(limit, Math.max(0, result.total - offset))
+      || result.items.some((item) => {
+        const row = item as Record<string, unknown> | null;
+        const id = row?.task_id ?? row?.document_id;
+        if (typeof id !== "string" || !id || ids.has(id)) return true;
+        ids.add(id);
+        return false;
+      })) throw new ApiClientError("Workflow page is incomplete", 503, "WORKFLOW_INCOMPLETE", context.correlationId ?? "");
+    return result;
   }
 
   listWorkflowDocuments(context: ApiRequestContext): Promise<WorkflowDocument[]> {
@@ -891,7 +924,8 @@ export class ProductionRegistryClient implements RegistryApiClient {
       baseUrl: this.baseUrl,
       path,
       context,
-      fetcher: this.fetcher
+      fetcher: this.fetcher,
+      timeoutMs: operation.startsWith("listWorkflow") ? 15_000 : undefined,
     });
   }
 

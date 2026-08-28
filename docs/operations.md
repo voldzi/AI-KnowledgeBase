@@ -181,22 +181,34 @@ Do not manipulate VPN, VLAN, firewall, or network segmentation from this repo.
 
 The operational dashboard renders an immediate loading state while its
 permission-scoped server data is fetched. Independent Registry, audit and
-authorization reads start concurrently. The workflow-task projection may
-materialize tasks for current document states and newly observed warning audit
-events, but it must not rescan or upsert audit events that already have a
-workflow task. Treat a sustained `listWorkflowTasks` latency above two seconds
+authorization reads start concurrently. Workflow GETs do not materialize tasks
+or escalate SLA priorities. Treat a sustained `listWorkflowTasks` latency above two seconds
 as a Registry performance incident; do not hide it by weakening authorization
 or omitting task visibility.
 
-The personal `/tasks` workspace reads authorization hints, personal documents
-and assigned tasks concurrently. It does not load the full audit or ingestion
-history. An administrator's team view remains permission-filtered. Missing
-pages, changed totals, duplicate rows or authorization-service failures must
-show an unavailable state, never a misleading empty or complete queue.
+The personal `/tasks` workspace reads one page of the active tab (25 rows),
+not every tab or the complete audit/ingestion history. Capability-based display
+hints reuse the fresh access projection; task actions remain server-authorized.
+Workflow reads have a 15-second web-to-Registry deadline. Invalid page envelopes,
+duplicate rows or authorization-service failures must show an unavailable state,
+never a misleading empty or complete queue. Registry filter requests have a
+20-second browser deadline and ignore stale responses after another filter change.
+
+Registry's `AKL_WORKFLOW_MAINTENANCE_ENABLED` defaults to `true`.
+`AKL_WORKFLOW_MAINTENANCE_INTERVAL_SECONDS` defaults to 60 (range 15-3600).
+The loop materializes derived document/governance/audit tasks and escalates
+overdue work outside GET requests. A PostgreSQL transaction-level advisory lock
+serializes cycles across replicas; a busy replica skips that cycle. Failed
+cycles roll back and emit only `workflow_maintenance_failed`, without database
+parameters. Successful cycles emit `workflow_maintenance_completed`. Monitor
+these events and overdue queues; HTTP readiness alone is not proof that a cycle
+succeeded. Disabling this loop pauses derived-task freshness and SLA escalation,
+not explicit review submission or decisions.
 
 Review submission and decisions use existing Registry transactions and audit
-events; no new worker, SMTP setting, role grant or database migration is part
-of this increment. The task list is the current notification surface. Future
+events. No SMTP setting, role grant or database migration is required. The
+Registry loop above does not publish documents or grant rights. The task list
+is the current notification surface. Future
 outbox-backed e-mail and deadline-digest requirements are documented in
 [the workflow runbook](ui/workflow-inbox.md). Do not enable a mail sender merely
 by treating audit events as a delivery queue.

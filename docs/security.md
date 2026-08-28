@@ -156,6 +156,16 @@ chat rule resolution requires `akb:chat` and reauthorizes every package source.
 The derived projection is evaluated from the fresh STRATOS access projection
 and exact package membership. It is never inferred from a role, prompt, tag, or
 client-supplied scope header in production.
+Registry list/search and metadata counts use the same employee projection as
+detail reads. Service identities do not receive this human employee exception.
+An unrelated document sharing a policy does not inherit a package member's
+access decision.
+
+Within a workflow request only, repeated identical policy checks may reuse a
+successful response keyed by the policy endpoint, credential hash, operation,
+capability, scope and full binding/hash. This memo is discarded when the
+request ends, never reused by another request, and never caches transport or
+validation errors. A new request always obtains a fresh policy decision.
 
 Director Copilot semantic resolution uses an immutable local SSP snapshot.
 Only code-reviewed bindings can map an imported concept to a known STRATOS
@@ -457,7 +467,11 @@ version policy are rechecked when deciding and publishing; publication cannot
 be bypassed through generic task closure or document status patching.
 
 Personal task/document lists filter by verified subject/group membership and
-fresh document authorization before counting or pagination. Review comments
+fresh document authorization before counting or pagination. `akb:read_document`
+opens personal work only; `akb:manage_document` is needed for the team view.
+Neither navigation visibility nor an assignment grants decision authority.
+Exact-version fields and task actions retain their own policy checks.
+Review comments
 are authorized workflow data, not audit metadata. Audit events retain only
 technical review/document/version/assignment coordinates and decision types;
 they do not include comments, document content, session values or credentials.

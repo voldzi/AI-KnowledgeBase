@@ -9,6 +9,7 @@ from sqlalchemy.pool import StaticPool
 
 os.environ.setdefault("AKL_ENV", "test")
 os.environ.setdefault("AKL_AUTH_MODE", "mock")
+os.environ.setdefault("AKL_WORKFLOW_MAINTENANCE_ENABLED", "false")
 os.environ.setdefault("AKL_MOCK_ROLES", '["admin"]')
 os.environ.setdefault(
     "AKL_WEB_SESSION_STORE_SECRET",

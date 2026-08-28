@@ -6,6 +6,7 @@ export type RegistryWorkflowTaskStatus = "open" | "waiting" | "blocked" | "resol
 export type RegistryWorkflowTaskAction = "assign" | "request_changes" | "approve" | "publish" | "archive" | "resolve";
 
 export interface WorkflowTaskListOptions {
+  query?: string;
   status?: RegistryWorkflowTaskStatus;
   kind?: RegistryWorkflowTaskKind;
   priority?: RegistryWorkflowTaskPriority;
@@ -13,6 +14,22 @@ export interface WorkflowTaskListOptions {
   ownerId?: string;
   assignedToMe?: boolean;
   includeResolved?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+export interface WorkflowPage<T> {
+  items: T[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface WorkflowDocumentListOptions {
+  query?: string;
+  assignment?: "managed" | "approver";
+  versionStatus?: DocumentStatus;
+  deadline?: "attention" | "expired" | "review" | "missing";
   limit?: number;
   offset?: number;
 }
