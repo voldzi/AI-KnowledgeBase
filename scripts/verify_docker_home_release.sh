@@ -223,7 +223,7 @@ verify_all_runtime_identities() {
 verify_all_runtime_identities
 
 verify_ingestion_readiness() {
-  local container_ps_output container_id
+  local attempt container_ps_output container_id
   local -a container_ids=()
   akl_assert_expected_env_snapshot "$ENV_FILE"
   container_ps_output="$("${COMPOSE[@]}" ps -q ingestion-service)" \
@@ -234,8 +234,22 @@ verify_ingestion_readiness() {
   [[ ${#container_ids[@]} -eq 1 && -n "${container_ids[0]}" ]] \
     || akl_fail "Authenticated ingestion readiness requires exactly one container"
   container_id="${container_ids[0]}"
+  # The probe obtains a short-lived service token and verifies Registry plus
+  # ingestion dependencies. Those verified dependencies can finish warming
+  # immediately after the container health check; use the existing bounded
+  # release verification window before treating that state as unavailable.
+  for ((attempt = 1; attempt <= RETRY_ATTEMPTS; attempt += 1)); do
+    if docker exec "$container_id" python -m app.readiness_probe >/dev/null 2>&1; then
+      return 0
+    fi
+    if (( attempt < RETRY_ATTEMPTS )); then
+      sleep "$RETRY_DELAY"
+    fi
+  done
+  # Run once more without suppressing diagnostics. The probe never prints the
+  # service credential, while the operator retains a useful failure signal.
   docker exec "$container_id" python -m app.readiness_probe \
-    || akl_fail "Ingestion authenticated readiness probe failed"
+    || akl_fail "Ingestion authenticated readiness probe failed after ${RETRY_ATTEMPTS} attempts"
 }
 
 verify_llm_gateway_readiness() {
