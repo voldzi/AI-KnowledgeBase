@@ -9,20 +9,20 @@ classification: internal
 status: draft
 language: cs
 source_system: git
-tags: [dokumentace, csu-pilot, bezpecnost, akb, stratos]
+tags: [dokumentace, interni-pilot, bezpecnost, akb, stratos]
 documentation_profile: akb-application-docs-1
 documentation_kind: bezpecnost
-document_revision: "1.2"
-target_environment: csu-test
+document_revision: "1.3"
+target_environment: customer-test
 applies_to: "Návrh pilotu; konkrétní release se určí při převzetí"
-reviewed_on: "2026-08-27"
+reviewed_on: "2026-08-28"
 ---
 
 # AKB a STRATOS: podklad pro bezpečnostní posouzení
 
 ## Rozhodnutí, která tento přehled podporuje
 
-Dokument umožňuje vedení a bezpečnostní komunitě posoudit podmínky pilotu ve vnitřní síti. Je návrhem kontrol, nikoli bezpečnostní certifikací, protokolem penetračního testu ani potvrzením již zavedených opatření v ČSÚ. Uvedené důkazy musí dodat a vyhodnotit vlastníci při převzetí.
+Dokument umožňuje vedení a bezpečnostní komunitě posoudit podmínky pilotu ve vnitřní síti. Je návrhem kontrol, nikoli bezpečnostní certifikací, protokolem penetračního testu ani potvrzením již zavedených opatření u zákazníka. Uvedené důkazy musí dodat a vyhodnotit vlastníci při převzetí.
 
 ## Bezpečnostní principy
 
@@ -92,4 +92,4 @@ Externí osoba nezískává automaticky dokumenty pro zaměstnance. Shodné při
 6. Záznam o release SHA, image identitě, konfiguraci bez secret hodnot a známých omezeních pilotu.
 7. Ověření obou politik relace, změny uživatele, revokace, chybného callbacku, cizího Origin a přechodů mezi aplikacemi ve stejném profilu prohlížeče.
 
-**Navazující podklady:** [Infrastruktura pilotu](../deployment/akb-stratos-instalace-infrastruktura-pilotu-csu-cs.md), [obnova a kontinuita](../deployment/akb-stratos-bezpecnost-obnova-pilotu-csu-cs.md), [předávací list a podmínky převzetí](../handover/akb-stratos-predani-dokumentace-csu-cs.md).
+**Navazující podklady:** [Infrastruktura pilotu](../deployment/akb-stratos-instalace-infrastruktura-pilotu-cs.md), [obnova a kontinuita](../deployment/akb-stratos-bezpecnost-obnova-pilotu-cs.md), [předávací list a podmínky převzetí](../handover/akb-stratos-predani-dokumentace-cs.md).

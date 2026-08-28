@@ -59,12 +59,12 @@ from the flat standard documents.
    - `OPERATIONS/immutable-docker-home-release.md`
    - `OPERATIONS/external-environment-runbook.md`
    - `OPERATIONS/disaster-recovery.md`
-   - `handover/akb-stratos-predani-dokumentace-csu-cs.md`
-   - `deployment/akb-stratos-instalace-infrastruktura-pilotu-csu-cs.md`
-   - `deployment/akb-stratos-instalace-prevzeti-pilotu-csu-cs.md`
-   - `deployment/akb-stratos-provoz-pilot-csu-cs.md`
-   - `deployment/akb-stratos-uzivatel-pilot-csu-cs.md`
-   - `deployment/akb-stratos-bezpecnost-obnova-pilotu-csu-cs.md`
+   - `handover/akb-stratos-predani-dokumentace-cs.md`
+   - `deployment/akb-stratos-instalace-infrastruktura-pilotu-cs.md`
+   - `deployment/akb-stratos-instalace-prevzeti-pilotu-cs.md`
+   - `deployment/akb-stratos-provoz-pilot-cs.md`
+   - `deployment/akb-stratos-uzivatel-pilot-cs.md`
+   - `deployment/akb-stratos-bezpecnost-obnova-pilotu-cs.md`
 5. STRATOS shared integration:
    - `29_STRATOS_SHARED_LIBRARIES.md`
    - `ui/stratos-ui-adapter.md`

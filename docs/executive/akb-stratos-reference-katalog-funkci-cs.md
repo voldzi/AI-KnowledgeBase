@@ -9,20 +9,20 @@ classification: internal
 status: draft
 language: cs
 source_system: git
-tags: [dokumentace, csu-pilot, katalog-funkci, akb, stratos]
+tags: [dokumentace, interni-pilot, katalog-funkci, akb, stratos]
 documentation_profile: akb-application-docs-1
 documentation_kind: reference
-document_revision: "1.2"
-target_environment: csu-test
+document_revision: "1.3"
+target_environment: customer-test
 applies_to: "Návrh pilotu; konkrétní release se určí při převzetí"
-reviewed_on: "2026-08-27"
+reviewed_on: "2026-08-28"
 ---
 
 # AKB a STRATOS: katalog funkcí a datových autorit
 
 ## Jak katalog číst
 
-Katalog popisuje funkce aplikací a určuje, kde se spravují jejich data. Přístup uživatele závisí na jeho roli a povoleném rozsahu. Živé dotazy v chatu navíc vyžadují zapojené integrační rozhraní. Dostupnost vybraných scénářů v ČSÚ se ověří při převzetí pilotu.
+Katalog popisuje funkce aplikací a určuje, kde se spravují jejich data. Přístup uživatele závisí na jeho roli a povoleném rozsahu. Živé dotazy v chatu navíc vyžadují zapojené integrační rozhraní. Dostupnost vybraných scénářů u zákazníka se ověří při převzetí pilotu.
 
 | Oblast | Funkce | Zdroj dat | Uživatelé |
 | --- | --- | --- | --- |
@@ -62,4 +62,4 @@ Katalog rozlišuje funkční rozsah a podmínky zapnutí. Volitelná identity sl
 
 ## Vlastnictví katalogu
 
-Za dokumentové funkce a chat odpovídá vlastník AKB. Za Budget, ProjectFlow, ArchFlow a společné funkce STRATOS odpovídá vlastník STRATOS. Rozsah a výsledky převzetí se zaznamenají pro konkrétní vydání a role podle [předávacího listu](../handover/akb-stratos-predani-dokumentace-csu-cs.md).
+Za dokumentové funkce a chat odpovídá vlastník AKB. Za Budget, ProjectFlow, ArchFlow a společné funkce STRATOS odpovídá vlastník STRATOS. Rozsah a výsledky převzetí se zaznamenají pro konkrétní vydání a role podle [předávacího listu](../handover/akb-stratos-predani-dokumentace-cs.md).

@@ -12,10 +12,10 @@ source_system: git
 tags: [dokumentace, vzor, autorstvi, api, integrace]
 documentation_profile: akb-application-docs-1
 documentation_kind: vzor
-document_revision: "1.2"
+document_revision: "1.3"
 target_environment: obecne
 applies_to: "Vzor pro autory; nepopisuje existující API"
-reviewed_on: "2026-08-27"
+reviewed_on: "2026-08-28"
 ---
 
 # Vzor: technická reference a integrace aplikace

@@ -12,10 +12,10 @@ source_system: git
 tags: [dokumentace, vzor, autorstvi, instalace]
 documentation_profile: akb-application-docs-1
 documentation_kind: vzor
-document_revision: "1.2"
+document_revision: "1.3"
 target_environment: obecne
 applies_to: "Vzor pro autory; není instalačním příkazem"
-reviewed_on: "2026-08-27"
+reviewed_on: "2026-08-28"
 ---
 
 # Vzor: instalační postup aplikace

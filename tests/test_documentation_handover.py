@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import sys
 from types import SimpleNamespace
+import unicodedata
 import zipfile
 
 import pytest
@@ -39,8 +40,10 @@ def source_tree(tmp_path: Path):
 def test_current_handover_contains_only_consistent_customer_sources():
     inventory, documents = handover.load_sources(ROOT)
     assert len(documents) == 16
-    assert inventory["revision"] == "1.2"
-    assert inventory["network_scope"] == "csu-internal-only"
+    assert inventory["revision"] == "1.3"
+    assert inventory["network_scope"] == "customer-internal-only"
+    assert inventory["package_id"] == "AKB-STRATOS-PILOT-DOCS"
+    assert all(document.metadata["target_environment"] in {"customer-test", "obecne"} for document in documents)
     assert all(document.metadata["status"] == "draft" for document in documents)
 
 
@@ -48,6 +51,9 @@ def test_current_handover_contains_only_consistent_customer_sources():
     "AIIP", "AI Innovation Portal", "ProcessForge", "SecurityPreflight",
     "retired", "baseline commit", "/Users/author/private-worktree",
     "docs/qa/internal-report.md", "docker.home.cz", "Bearer " + "x" * 32,
+    "ČSÚ", "CSU", "csu-test", "CZSU", "Český statistický úřad",
+    "Českého statistického úřadu", "Cesky statisticky urad",
+    unicodedata.normalize("NFD", "ČSÚ"),
 ])
 def test_obsolete_or_internal_content_blocks_distribution(source_tree, content):
     root, _, document = source_tree
@@ -61,6 +67,29 @@ def test_internal_inventory_fields_are_not_forwarded(source_tree):
     inventory["operator_note"] = "Not intended for customer"
     (root / handover.INVENTORY_PATH).write_text(json.dumps(inventory), encoding="utf-8")
     with pytest.raises(ValueError, match="CUSTOMER_INVENTORY_FIELDS_INVALID"):
+        handover.load_sources(root)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("package_id", "AKB-STRATOS-CSU-DOCS"),
+    ("network_scope", "csu-internal-only"),
+    ("purpose", "Podklady pro Český statistický úřad"),
+])
+def test_customer_identity_in_inventory_blocks_distribution(source_tree, field, value):
+    root, inventory, _ = source_tree
+    inventory[field] = value
+    (root / handover.INVENTORY_PATH).write_text(json.dumps(inventory), encoding="utf-8")
+    with pytest.raises(ValueError, match="CUSTOMER_CONTENT_EXCLUDED"):
+        handover.load_sources(root)
+
+
+def test_customer_identity_in_source_filename_blocks_distribution(source_tree):
+    root, inventory, document = source_tree
+    destination = document.with_name("akb-csu-guide-cs.md")
+    document.rename(destination)
+    inventory["documents"][0]["path"] = destination.relative_to(root).as_posix()
+    (root / handover.INVENTORY_PATH).write_text(json.dumps(inventory), encoding="utf-8")
+    with pytest.raises(ValueError, match="CUSTOMER_CONTENT_EXCLUDED"):
         handover.load_sources(root)
 
 
@@ -117,8 +146,8 @@ def pdf_pages(monkeypatch):
     def configure(bodies, metadata=None):
         pages = []
         for number, body in enumerate(bodies, 1):
-            prefix = "AKB a STRATOS | Interní pilot ČSÚ\n" if number > 1 else ""
-            text = prefix + f"Dokumentační sada 1.2 | K posouzení\n{number}\n" + body
+            prefix = handover.PDF_HEADER + "\n" if number > 1 else ""
+            text = prefix + f"Dokumentační sada 1.3 | K posouzení\n{number}\n" + body
             pages.append(SimpleNamespace(extract_text=lambda value=text: value))
         monkeypatch.setattr(pypdf, "PdfReader", lambda _: SimpleNamespace(pages=pages, metadata=metadata or {}))
 
@@ -138,9 +167,10 @@ def test_pdf_content_check_rejects_missing_source_text(source_tree, pdf_pages):
         handover.verify_pdf(Path("handover.pdf"), documents)
 
 
-def test_pdf_metadata_is_also_checked_for_excluded_content(source_tree, pdf_pages):
+@pytest.mark.parametrize("value", ["AIIP", "ČSÚ", "Český statistický úřad"])
+def test_pdf_metadata_is_also_checked_for_excluded_content(source_tree, pdf_pages, value):
     _, documents = handover.load_sources(source_tree[0])
-    pdf_pages(["Customer guide\nCurrent AKB functions.\n"], {"/Subject": "AIIP"})
+    pdf_pages(["Customer guide\nCurrent AKB functions.\n"], {"/Subject": value})
     with pytest.raises(ValueError, match="CUSTOMER_CONTENT_EXCLUDED"):
         handover.verify_pdf(Path("handover.pdf"), documents)
 
@@ -193,6 +223,15 @@ def test_failed_pdf_verification_does_not_replace_existing_bundle(generated_bund
         handover.build_bundle(inventory, documents, root)
     assert internal.read_text() == "Internal record"
     assert not (root / "output" / (handover.BUNDLE_NAME + ".zip")).exists()
+
+
+def test_customer_identity_in_archive_name_is_rejected(generated_bundle, monkeypatch):
+    root, _, internal = generated_bundle
+    inventory, documents = handover.load_sources(root)
+    monkeypatch.setattr(handover, "BUNDLE_NAME", "akb-stratos-csu")
+    with pytest.raises(ValueError, match="CUSTOMER_CONTENT_EXCLUDED"):
+        handover.build_bundle(inventory, documents, root)
+    assert internal.exists()
 
 
 def test_customer_sso_contract_preserves_identity_and_session_boundaries():

@@ -1,12 +1,12 @@
 {
   "schema": "akb-documentation-handover-inventory-1",
   "purpose": "Seznam zákaznické dokumentace; není příkazem k importu ani udělením přístupu.",
-  "package_id": "AKB-STRATOS-CSU-PILOT-DOCS",
-  "revision": "1.2",
-  "prepared_on": "2026-08-27",
+  "package_id": "AKB-STRATOS-PILOT-DOCS",
+  "revision": "1.3",
+  "prepared_on": "2026-08-28",
   "language": "cs",
   "publication_status": "draft",
-  "network_scope": "csu-internal-only",
+  "network_scope": "customer-internal-only",
   "documentation_profile": "akb-application-docs-1",
   "okf_base_profile": "stratos-okf-v1",
   "canonical_format": "markdown",
@@ -21,21 +21,101 @@
     "reviewed_on"
   ],
   "documents": [
-    {"path": "docs/handover/akb-stratos-predani-dokumentace-csu-cs.md", "external_ref": "DOC-AKB-STRATOS-HANDOVER", "document_type": "project_documentation", "kind": "prehled"},
-    {"path": "docs/executive/akb-stratos-prehled-pro-vedeni-cs.md", "external_ref": "DOC-AKB-STRATOS-OVERVIEW", "document_type": "project_documentation", "kind": "prehled"},
-    {"path": "docs/executive/akb-stratos-reference-katalog-funkci-cs.md", "external_ref": "DOC-AKB-STRATOS-CAPABILITIES", "document_type": "project_documentation", "kind": "reference"},
-    {"path": "docs/executive/akb-stratos-bezpecnost-posouzeni-cs.md", "external_ref": "DOC-AKB-STRATOS-SECURITY", "document_type": "project_documentation", "kind": "bezpecnost"},
-    {"path": "docs/deployment/akb-stratos-instalace-infrastruktura-pilotu-csu-cs.md", "external_ref": "DOC-AKB-STRATOS-PILOT-INFRA", "document_type": "project_documentation", "kind": "instalace"},
-    {"path": "docs/deployment/akb-stratos-instalace-prevzeti-pilotu-csu-cs.md", "external_ref": "DOC-AKB-STRATOS-PILOT-INSTALL", "document_type": "procedure", "kind": "instalace"},
-    {"path": "docs/deployment/akb-stratos-provoz-pilot-csu-cs.md", "external_ref": "DOC-AKB-STRATOS-PILOT-OPS", "document_type": "procedure", "kind": "provoz"},
-    {"path": "docs/deployment/akb-stratos-bezpecnost-obnova-pilotu-csu-cs.md", "external_ref": "DOC-AKB-STRATOS-PILOT-DR", "document_type": "procedure", "kind": "bezpecnost"},
-    {"path": "docs/deployment/akb-stratos-uzivatel-pilot-csu-cs.md", "external_ref": "DOC-AKB-STRATOS-PILOT-USER", "document_type": "manual", "kind": "uzivatel"},
-    {"path": "docs/how-to/akb-metodika-tvorba-dokumentace-aplikaci-cs.md", "external_ref": "DOC-AKB-AUTHORING-METHOD", "document_type": "methodology", "kind": "metodika"},
-    {"path": "docs/how-to/akb-postup-vlozeni-predavaci-dokumentace-cs.md", "external_ref": "DOC-AKB-HANDOVER-IMPORT", "document_type": "procedure", "kind": "provoz"},
-    {"path": "docs/templates/application-documentation/akb-vzor-uzivatelsky-postup-cs.md", "external_ref": "DOC-AKB-TEMPLATE-USER", "document_type": "attachment", "kind": "vzor"},
-    {"path": "docs/templates/application-documentation/akb-vzor-instalacni-postup-cs.md", "external_ref": "DOC-AKB-TEMPLATE-INSTALL", "document_type": "attachment", "kind": "vzor"},
-    {"path": "docs/templates/application-documentation/akb-vzor-provozni-obnova-cs.md", "external_ref": "DOC-AKB-TEMPLATE-OPERATIONS", "document_type": "attachment", "kind": "vzor"},
-    {"path": "docs/templates/application-documentation/akb-vzor-technicka-reference-cs.md", "external_ref": "DOC-AKB-TEMPLATE-REFERENCE", "document_type": "attachment", "kind": "vzor"},
-    {"path": "docs/templates/application-documentation/akb-vzor-architektura-bezpecnost-cs.md", "external_ref": "DOC-AKB-TEMPLATE-ARCHITECTURE", "document_type": "attachment", "kind": "vzor"}
+    {
+      "path": "docs/handover/akb-stratos-predani-dokumentace-cs.md",
+      "external_ref": "DOC-AKB-STRATOS-HANDOVER",
+      "document_type": "project_documentation",
+      "kind": "prehled"
+    },
+    {
+      "path": "docs/executive/akb-stratos-prehled-pro-vedeni-cs.md",
+      "external_ref": "DOC-AKB-STRATOS-OVERVIEW",
+      "document_type": "project_documentation",
+      "kind": "prehled"
+    },
+    {
+      "path": "docs/executive/akb-stratos-reference-katalog-funkci-cs.md",
+      "external_ref": "DOC-AKB-STRATOS-CAPABILITIES",
+      "document_type": "project_documentation",
+      "kind": "reference"
+    },
+    {
+      "path": "docs/executive/akb-stratos-bezpecnost-posouzeni-cs.md",
+      "external_ref": "DOC-AKB-STRATOS-SECURITY",
+      "document_type": "project_documentation",
+      "kind": "bezpecnost"
+    },
+    {
+      "path": "docs/deployment/akb-stratos-instalace-infrastruktura-pilotu-cs.md",
+      "external_ref": "DOC-AKB-STRATOS-PILOT-INFRA",
+      "document_type": "project_documentation",
+      "kind": "instalace"
+    },
+    {
+      "path": "docs/deployment/akb-stratos-instalace-prevzeti-pilotu-cs.md",
+      "external_ref": "DOC-AKB-STRATOS-PILOT-INSTALL",
+      "document_type": "procedure",
+      "kind": "instalace"
+    },
+    {
+      "path": "docs/deployment/akb-stratos-provoz-pilot-cs.md",
+      "external_ref": "DOC-AKB-STRATOS-PILOT-OPS",
+      "document_type": "procedure",
+      "kind": "provoz"
+    },
+    {
+      "path": "docs/deployment/akb-stratos-bezpecnost-obnova-pilotu-cs.md",
+      "external_ref": "DOC-AKB-STRATOS-PILOT-DR",
+      "document_type": "procedure",
+      "kind": "bezpecnost"
+    },
+    {
+      "path": "docs/deployment/akb-stratos-uzivatel-pilot-cs.md",
+      "external_ref": "DOC-AKB-STRATOS-PILOT-USER",
+      "document_type": "manual",
+      "kind": "uzivatel"
+    },
+    {
+      "path": "docs/how-to/akb-metodika-tvorba-dokumentace-aplikaci-cs.md",
+      "external_ref": "DOC-AKB-AUTHORING-METHOD",
+      "document_type": "methodology",
+      "kind": "metodika"
+    },
+    {
+      "path": "docs/how-to/akb-postup-vlozeni-predavaci-dokumentace-cs.md",
+      "external_ref": "DOC-AKB-HANDOVER-IMPORT",
+      "document_type": "procedure",
+      "kind": "provoz"
+    },
+    {
+      "path": "docs/templates/application-documentation/akb-vzor-uzivatelsky-postup-cs.md",
+      "external_ref": "DOC-AKB-TEMPLATE-USER",
+      "document_type": "attachment",
+      "kind": "vzor"
+    },
+    {
+      "path": "docs/templates/application-documentation/akb-vzor-instalacni-postup-cs.md",
+      "external_ref": "DOC-AKB-TEMPLATE-INSTALL",
+      "document_type": "attachment",
+      "kind": "vzor"
+    },
+    {
+      "path": "docs/templates/application-documentation/akb-vzor-provozni-obnova-cs.md",
+      "external_ref": "DOC-AKB-TEMPLATE-OPERATIONS",
+      "document_type": "attachment",
+      "kind": "vzor"
+    },
+    {
+      "path": "docs/templates/application-documentation/akb-vzor-technicka-reference-cs.md",
+      "external_ref": "DOC-AKB-TEMPLATE-REFERENCE",
+      "document_type": "attachment",
+      "kind": "vzor"
+    },
+    {
+      "path": "docs/templates/application-documentation/akb-vzor-architektura-bezpecnost-cs.md",
+      "external_ref": "DOC-AKB-TEMPLATE-ARCHITECTURE",
+      "document_type": "attachment",
+      "kind": "vzor"
+    }
   ]
 }

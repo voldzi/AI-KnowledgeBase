@@ -1,7 +1,7 @@
 ---
 type: system
 document_type: project_documentation
-title: "AKB a STRATOS: infrastruktura interního pilotu ČSÚ"
+title: "AKB a STRATOS: infrastruktura interního pilotu"
 external_ref: DOC-AKB-STRATOS-PILOT-INFRA
 application_id: akb-stratos
 owner: akb-team
@@ -9,31 +9,31 @@ classification: internal
 status: draft
 language: cs
 source_system: git
-tags: [dokumentace, csu-pilot, infrastruktura, akb, stratos]
+tags: [dokumentace, interni-pilot, infrastruktura, akb, stratos]
 documentation_profile: akb-application-docs-1
 documentation_kind: instalace
-document_revision: "1.2"
-target_environment: csu-test
+document_revision: "1.3"
+target_environment: customer-test
 applies_to: "Návrh pilotu; konkrétní release se určí při převzetí"
-reviewed_on: "2026-08-27"
+reviewed_on: "2026-08-28"
 ---
 
-# AKB a STRATOS: infrastruktura interního pilotu ČSÚ
+# AKB a STRATOS: infrastruktura interního pilotu
 
-> Návrh pro posouzení ČSÚ IT. Uvedené kapacity se potvrdí podle rozsahu pilotu a měřením; nejde o naměřené minimum.
+> Návrh pro posouzení IT zákazníka. Uvedené kapacity se potvrdí podle rozsahu pilotu a měřením; nejde o naměřené minimum.
 
 ## Účel a hranice
 
-Tento dokument stanovuje vstupní požadavky pro malé testovací nasazení AKB a STRATOS ve vnitřní síti ČSÚ. Je určen společně pro ČSÚ IT, správce AKB a správce STRATOS.
+Tento dokument stanovuje vstupní požadavky pro malé testovací nasazení AKB a STRATOS ve vnitřní síti zákazníka. Je určen společně pro IT zákazníka, správce AKB a správce STRATOS.
 
-Pilot není veřejná služba. Uživatelé se připojují pouze z interní sítě ČSÚ přes interní DNS a HTTPS. Internetový příjem dokumentů, veřejné API a veřejné administrátorské rozhraní nejsou součástí první etapy. Případný sběr oficiálních dokumentů z internetu se řeší až samostatným, schváleným odchozím přístupem přes proxy a s allowlistem zdrojů.
+Pilot není veřejná služba. Uživatelé se připojují pouze z interní sítě zákazníka přes interní DNS a HTTPS. Internetový příjem dokumentů, veřejné API a veřejné administrátorské rozhraní nejsou součástí první etapy. Případný sběr oficiálních dokumentů z internetu se řeší až samostatným, schváleným odchozím přístupem přes proxy a s allowlistem zdrojů.
 
 AKB je kanonický systém pro řízené dokumenty, jejich verze, přílohy, citace, pravidla a audit. STRATOS zůstává kanonickým systémem pro finance, projekty a architektonické potřeby. AKB Chat nad nimi pracuje jako jednotné uživatelské rozhraní, ale nesmí nahrazovat živá data STRATOS dokumentovým vyhledáváním.
 
 ## Doporučená výchozí topologie
 
 ```text
-interní uživatelé ČSÚ
+interní uživatelé zákazníka
         |
         | HTTPS (pouze interní DNS)
         v
@@ -74,20 +74,20 @@ Přesný výkon závisí na počtu dokumentů, jejich velikosti a zvoleném mode
 | Vrstva | Výchozí návrh k posouzení | Účel |
 | --- | --- | --- |
 | Aplikační VM | 12 vCPU, 32 GiB RAM, 200 GiB SSD | AKB a STRATOS weby, API a workery; bez lokálního velkého jazykového modelu |
-| Datová a vyhledávací VM | 8 vCPU, 32 GiB RAM, 500 GiB SSD | PostgreSQL, Redis, Qdrant a OpenSearch, pokud je ČSÚ neposkytne jako sdílené služby |
+| Datová a vyhledávací VM | 8 vCPU, 32 GiB RAM, 500 GiB SSD | PostgreSQL, Redis, Qdrant a OpenSearch, pokud je zákazník neposkytne jako sdílené služby |
 | Objektové úložiště | samostatný S3-kompatibilní bucket | originální dokumenty, přílohy a jejich verze |
-| AI výpočet | samostatně posoudit | embedding a LLM služba podle bezpečnostních a kapacitních pravidel ČSÚ |
-| Monitoring a zálohy | sdílená služba ČSÚ nebo samostatná VM | metriky, trasy, redigované logy, alerty a zálohy |
+| AI výpočet | samostatně posoudit | embedding a LLM služba podle bezpečnostních a kapacitních pravidel zákazníka |
+| Monitoring a zálohy | sdílená služba zákazníka nebo samostatná VM | metriky, trasy, redigované logy, alerty a zálohy |
 
-Pokud ČSÚ poskytne PostgreSQL, S3, OIDC, monitoring a schválený AI endpoint jako centrální služby, mohou být aplikační VM menší. Naopak lokální LLM se nemá přidávat na stejnou VM jako databáze nebo vyhledávací indexy bez samostatného kapacitního testu.
+Pokud zákazník poskytne PostgreSQL, S3, OIDC, monitoring a schválený AI endpoint jako centrální služby, mohou být aplikační VM menší. Naopak lokální LLM se nemá přidávat na stejnou VM jako databáze nebo vyhledávací indexy bez samostatného kapacitního testu.
 
 Před přechodem z pilotu do ostrého provozu je nutné změřit skutečný objem dokumentů, denní přírůstek, souběžné uploady, počet aktivních uživatelů a p95 latenci chatu.
 
-Výchozí tabulka není rozměrováním odvozeným ze zátěžového testu ČSÚ. IT před objednáním kapacity potvrdí počet uživatelů, souběh, objem dokumentů, OCR a umístění modelu. Přijatelnou menší variantu je možné ověřit pilotním měřením; GPU není zahrnuto v uvedené RAM ani vCPU.
+Výchozí tabulka není rozměrováním odvozeným ze zátěžového testu zákazníka. IT před objednáním kapacity potvrdí počet uživatelů, souběh, objem dokumentů, OCR a umístění modelu. Přijatelnou menší variantu je možné ověřit pilotním měřením; GPU není zahrnuto v uvedené RAM ani vCPU.
 
 ## Síťové a DNS požadavky
 
-ČSÚ IT připraví interní DNS jména a certifikáty pro AKB, STRATOS, zvolený OIDC issuer a podle zvoleného řešení pro monitoring a objektové úložiště. Certifikáty musí být důvěryhodné pro spravované prohlížeče a pro serverové klienty. OIDC URL musí být dostupná pro prohlížeč i pro aplikace přes schválené HTTPS; neznamená to zveřejnění do internetu.
+IT zákazníka připraví interní DNS jména a certifikáty pro AKB, STRATOS, zvolený OIDC issuer a podle zvoleného řešení pro monitoring a objektové úložiště. Certifikáty musí být důvěryhodné pro spravované prohlížeče a pro serverové klienty. OIDC URL musí být dostupná pro prohlížeč i pro aplikace přes schválené HTTPS; neznamená to zveřejnění do internetu.
 
 | Směr | Port/protokol | Účel |
 | --- | --- | --- |
@@ -123,7 +123,7 @@ Konkrétní port se otevírá pouze tehdy, pokud příslušná služba není ve 
 - Originální soubory jsou v objektovém úložišti; PostgreSQL obsahuje jejich identitu, verze, platnost a audit. Qdrant a OpenSearch jsou odvozené indexy a lze je obnovit z kanonických zdrojů.
 - Upload vstupuje do karantény. Dokument je zpřístupněn až po výsledku `OK` z interního ClamAV. Výpadek, timeout nebo nález je fail-closed.
 - Každý dokument dostane vlastníka, klasifikaci, publikum, časovou účinnost a zdrojovou verzi. Citace musí ukazovat na konkrétní verzi a úsek dokumentu.
-- Modelová a embedding služba se připojuje jen přes ČSÚ schválený endpoint. Dokumenty, prompty, odpovědi, tokeny a citace se neposílají do telemetrie ani běžných aplikačních logů.
+- Modelová a embedding služba se připojuje jen přes organizací schválený endpoint. Dokumenty, prompty, odpovědi, tokeny a citace se neposílají do telemetrie ani běžných aplikačních logů.
 
 ## Zálohy, obnova a monitoring
 
@@ -137,13 +137,13 @@ Databáze a objekty se obnovují ke společnému konzistentnímu bodu. Samotná 
 | Týdně | kontrola úplnosti a kopie mimo provozní host |
 | Měsíčně | izolovaný test obnovy včetně evidence výsledku |
 
-Uvedené intervaly jsou návrhem provozní politiky, nikoliv tvrzením, že jsou v ČSÚ již zavedeny.
+Uvedené intervaly jsou návrhem provozní politiky, nikoliv tvrzením, že jsou u zákazníka již zavedeny.
 
 Centrální dohled sleduje alespoň health/readiness, p95 latenci chatu a ingestion, chyby autorizace, stav front, volné místo, zálohy, stav indexů a nedostupnost externích závislostí. Logy musí být redigované.
 
 ## Rozdělení odpovědností
 
-| Oblast | ČSÚ IT | AKB tým | STRATOS tým |
+| Oblast | IT zákazníka | AKB tým | STRATOS tým |
 | --- | --- | --- | --- |
 | VM, VLAN, DNS, TLS, firewall, zálohovací úložiště | poskytuje a provozuje | specifikuje požadavky | specifikuje požadavky |
 | AKB runtime, Registry, ingestion, RAG a řízená dokumentace | poskytuje provozní přístup | nasazuje a ověřuje | integruje pouze přes kontrakty |
@@ -175,4 +175,4 @@ Pilot lze převzít, pokud je splněno vše následující:
 - monitoring a redigovaný audit jsou funkční;
 - při výpadku databáze, indexu, modelu, registru nebo STRATOS zdroje systém nevydá domyšlené údaje ani méně důvěryhodnou náhradu.
 
-Podrobný postup instalace, ověření a rollbacku je v [instalačním postupu pilotu](akb-stratos-instalace-prevzeti-pilotu-csu-cs.md).
+Podrobný postup instalace, ověření a rollbacku je v [instalačním postupu pilotu](akb-stratos-instalace-prevzeti-pilotu-cs.md).

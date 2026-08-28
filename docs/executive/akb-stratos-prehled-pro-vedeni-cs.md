@@ -9,20 +9,20 @@ classification: internal
 status: draft
 language: cs
 source_system: git
-tags: [dokumentace, csu-pilot, vedeni, akb, stratos]
+tags: [dokumentace, interni-pilot, vedeni, akb, stratos]
 documentation_profile: akb-application-docs-1
 documentation_kind: prehled
-document_revision: "1.2"
-target_environment: csu-test
+document_revision: "1.3"
+target_environment: customer-test
 applies_to: "Návrh pilotu; konkrétní release se určí při převzetí"
-reviewed_on: "2026-08-27"
+reviewed_on: "2026-08-28"
 ---
 
 # AKB a STRATOS: přehled pro vedení
 
 ## Účel
 
-Přehled vysvětluje přínosy, odpovědnosti a hranice AKB a STRATOS. Slouží k rozhodnutí o interním pilotu v ČSÚ. Konkrétní rozsah nasazení se potvrdí při převzetí; příklady použití vyžadují odpovídající dokumenty, integrace a oprávnění.
+Přehled vysvětluje přínosy, odpovědnosti a hranice AKB a STRATOS. Slouží k rozhodnutí o interním pilotu u zákazníka. Konkrétní rozsah nasazení se potvrdí při převzetí; příklady použití vyžadují odpovídající dokumenty, integrace a oprávnění.
 
 AKB a STRATOS tvoří jednu integrovanou pracovní platformu, nikoli jednu databázi nebo jeden monolit. Každá část má jasně vymezenou odpovědnost:
 
@@ -35,7 +35,7 @@ Společné manažerské přehledy STRATOS skládají údaje ze zdrojových aplik
 
 Společné přihlášení dává uživateli jednotný vstup. Organizace může zvolit schválenou externí OIDC službu, například Keycloak, nebo volitelnou identity službu STRATOS pro více AD/LDAPS a OIDC zdrojů. Druhá varianta může fungovat bez Keycloaku a vyžaduje samostatnou akceptaci. AKB nepřebírá adresářová hesla. Oprávnění se vyhodnocují v každé aplikaci podle aktuální role, rozsahu a Information Policy; přihlášení samo o sobě neznamená přístup ke všem datům.
 
-V cílovém společném SSO uživatel volí zapamatování zařízení pouze jednou. Důvěryhodné zařízení má nejvýše 90denní relaci s nejvýše 30 dny neaktivity; bez doložené dlouhodobé politiky jde o krátkou dočasnou relaci. Aktivita mezi aplikacemi neobchází kontrolu přístupů ani neprodlužuje absolutní časový strop. Tyto vlastnosti jsou podmínkou převzetí vybraného vydání, nikoli tvrzením o již přepnutém provozu ČSÚ.
+V cílovém společném SSO uživatel volí zapamatování zařízení pouze jednou. Důvěryhodné zařízení má nejvýše 90denní relaci s nejvýše 30 dny neaktivity; bez doložené dlouhodobé politiky jde o krátkou dočasnou relaci. Aktivita mezi aplikacemi neobchází kontrolu přístupů ani neprodlužuje absolutní časový strop. Tyto vlastnosti jsou podmínkou převzetí vybraného vydání, nikoli tvrzením o již přepnutém provozu zákazníka.
 
 ## Přínos pro vedení
 
@@ -106,4 +106,4 @@ Technické metriky a obsahovou kvalitu vždy interpretují příslušní vlastn�
 
 ## Stav a další řízení
 
-Rozsah řešení popisuje [katalog funkcí](akb-stratos-reference-katalog-funkci-cs.md), bezpečnostní podmínky [podklad pro bezpečnostní posouzení](akb-stratos-bezpecnost-posouzeni-cs.md). Dokumenty, odpovědnosti a podmínky převzetí jsou shrnuty v [předávacím listu](../handover/akb-stratos-predani-dokumentace-csu-cs.md).
+Rozsah řešení popisuje [katalog funkcí](akb-stratos-reference-katalog-funkci-cs.md), bezpečnostní podmínky [podklad pro bezpečnostní posouzení](akb-stratos-bezpecnost-posouzeni-cs.md). Dokumenty, odpovědnosti a podmínky převzetí jsou shrnuty v [předávacím listu](../handover/akb-stratos-predani-dokumentace-cs.md).

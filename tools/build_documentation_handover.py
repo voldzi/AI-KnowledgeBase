@@ -11,6 +11,7 @@ from pathlib import Path, PurePosixPath
 import re
 import shutil
 import tempfile
+import unicodedata
 from urllib.parse import unquote, urlsplit
 import zipfile
 
@@ -21,8 +22,9 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 INVENTORY_PATH = "docs/handover/akb-stratos-dokumentacni-sada.json"
-BUNDLE_NAME = "akb-stratos-predavaci-dokumentace-csu"
+BUNDLE_NAME = "akb-stratos-predavaci-dokumentace"
 PDF_NAME = BUNDLE_NAME + "-cs.pdf"
+PDF_HEADER = "AKB a STRATOS | Interní pilot"
 INVENTORY_FIELDS = {
     "schema", "purpose", "package_id", "revision", "prepared_on", "language",
     "publication_status", "network_scope", "documentation_profile", "okf_base_profile",
@@ -41,6 +43,10 @@ EXCLUDED_CONTENT = re.compile(
     r"|-----BEGIN [A-Z ]*PRIVATE KEY-----|Bearer\s+[A-Za-z0-9._-]{16,}",
     re.IGNORECASE,
 )
+CUSTOMER_IDENTITY = re.compile(
+    r"(?<![a-z0-9])(?:csu|czsu)(?![a-z0-9])"
+    r"|cesk\w*\s+statistick\w*\s+urad\w*",
+)
 PARSER = MarkdownIt("commonmark", {"html": False}).enable("table")
 
 
@@ -53,7 +59,12 @@ class Document:
 
 
 def assert_customer_content(text: str, path: str) -> None:
-    if EXCLUDED_CONTENT.search(text):
+    value = text + "\n" + path
+    normalized = "".join(
+        character for character in unicodedata.normalize("NFKD", value).casefold()
+        if not unicodedata.combining(character)
+    )
+    if EXCLUDED_CONTENT.search(value) or CUSTOMER_IDENTITY.search(normalized):
         raise ValueError(f"CUSTOMER_CONTENT_EXCLUDED: {path}")
 
 
@@ -84,6 +95,7 @@ def load_sources(root: Path = ROOT) -> tuple[dict, list[Document]]:
     raw = source_path(root, INVENTORY_PATH).read_bytes().decode("utf-8")
     assert_customer_content(raw, INVENTORY_PATH)
     inventory = json.loads(raw)
+    assert_customer_content(json.dumps(inventory, ensure_ascii=False), INVENTORY_PATH)
     if set(inventory) != INVENTORY_FIELDS or inventory["schema"] != "akb-documentation-handover-inventory-1":
         raise ValueError("CUSTOMER_INVENTORY_FIELDS_INVALID")
     if not inventory["documents"] or inventory["canonical_format"] != "markdown" or inventory["pdf_is_derived"] is not True:
@@ -115,6 +127,7 @@ def load_sources(root: Path = ROOT) -> tuple[dict, list[Document]]:
         }
         if not isinstance(metadata, dict) or any(metadata.get(key) != value for key, value in expected.items()):
             raise ValueError(f"CUSTOMER_METADATA_MISMATCH: {relative}")
+        assert_customer_content(yaml.safe_dump(metadata, allow_unicode=True), relative)
         body = text[front.end():].strip()
         if not body.startswith(f"# {metadata['title']}\n"):
             raise ValueError(f"CUSTOMER_TITLE_MISMATCH: {relative}")
@@ -153,7 +166,7 @@ def render_pdf(destination: Path, inventory: dict, documents: list[Document], fo
     pdfmetrics.registerFontFamily("Handover", normal="Handover", bold="Handover-Bold", italic="Handover-Italic", boldItalic="Handover-BoldItalic")
     ink, teal, muted = colors.HexColor("#182A32"), colors.HexColor("#116B78"), colors.HexColor("#52616A")
     styles = getSampleStyleSheet()
-    body = ParagraphStyle("CustomerBody", fontName="Handover", fontSize=10, leading=14, textColor=ink, spaceAfter=6, allowWidows=0)
+    body = ParagraphStyle("CustomerBody", fontName="Handover", fontSize=10, leading=14, textColor=ink, spaceAfter=4, allowWidows=0)
     heading = ParagraphStyle("CustomerHeading", parent=body, fontName="Handover-Bold", fontSize=17, leading=22, spaceAfter=14, keepWithNext=True)
     subheading = ParagraphStyle("CustomerSubheading", parent=body, fontName="Handover-Bold", fontSize=12.5, leading=17, spaceBefore=9, spaceAfter=6, keepWithNext=True)
     minor = ParagraphStyle("CustomerMinor", parent=subheading, fontSize=10.5, leading=15)
@@ -251,7 +264,7 @@ def render_pdf(destination: Path, inventory: dict, documents: list[Document], fo
         if document.page > 1:
             canvas.setFont("Handover", 8)
             canvas.setFillColor(muted)
-            canvas.drawString(19 * mm, A4[1] - 13 * mm, "AKB a STRATOS | Interní pilot ČSÚ")
+            canvas.drawString(19 * mm, A4[1] - 13 * mm, PDF_HEADER)
         canvas.setStrokeColor(colors.HexColor("#CEDBDD"))
         canvas.line(19 * mm, 15 * mm, A4[0] - 19 * mm, 15 * mm)
         canvas.setFont("Handover", 8)
@@ -263,12 +276,12 @@ def render_pdf(destination: Path, inventory: dict, documents: list[Document], fo
     cover = ParagraphStyle("CustomerCover", parent=heading, fontSize=30, leading=37, spaceAfter=20)
     year, month, day = map(int, inventory["prepared_on"].split("-"))
     story = [Spacer(1, 35 * mm), Paragraph("AKB a STRATOS", cover),
-             Paragraph("Dokumentace interního pilotu ČSÚ", heading),
+             Paragraph("Dokumentace interního pilotu", heading),
              Paragraph("Funkce, infrastruktura, bezpečnost, provoz a práce s dokumentací", body),
              Spacer(1, 15 * mm),
              Paragraph(f"Revize {inventory['revision']} | {day}. {month}. {year}", subheading),
              Paragraph("Podklady pro vedení, bezpečnostní tým, IT správce a uživatele.", body),
-             Paragraph("Pilot je určen pouze pro vnitřní síť ČSÚ. Kapacity a provozní cíle jsou návrhem k potvrzení při převzetí.", body),
+             Paragraph("Obecné podklady pro nasazení ve vnitřní síti organizace. Kapacity a provozní cíle jsou návrhem k potvrzení při převzetí.", body),
              Spacer(1, 12 * mm),
              Paragraph(f"Souhrnné PDF odpovídá {len(documents)} zdrojovým dokumentům stejné revize. Metodika a autorské vzory jsou zahrnuty v závěrečné části.", small), PageBreak()]
     story.append(Paragraph('<a name="contents"/>Obsah', heading))
@@ -285,7 +298,7 @@ def render_pdf(destination: Path, inventory: dict, documents: list[Document], fo
         story.extend(blocks(SyntaxTreeNode(PARSER.parse(document.body)).children[1:], document, content_style))
     HandoverDoc(
         str(destination), pagesize=A4, leftMargin=19 * mm, rightMargin=19 * mm,
-        topMargin=23 * mm, bottomMargin=23 * mm, title="AKB a STRATOS: dokumentace interního pilotu ČSÚ",
+        topMargin=23 * mm, bottomMargin=23 * mm, title="AKB a STRATOS: dokumentace interního pilotu",
         author="AKB a STRATOS", subject=f"Dokumentační sada {inventory['revision']}", invariant=True,
     ).multiBuild(story, onFirstPage=furniture, onLaterPages=furniture)
 
@@ -302,7 +315,7 @@ def verify_pdf(path: Path, documents: list[Document]) -> int:
     bodies = []
     # The renderer writes page furniture first; exclude it when joining split paragraphs.
     for number, page_text in enumerate(page_texts, 1):
-        prefix = "AKB a STRATOS | Interní pilot ČSÚ\n" if number > 1 else ""
+        prefix = PDF_HEADER + "\n" if number > 1 else ""
         prefix += f"Dokumentační sada {revision} | K posouzení\n{number}\n"
         if not page_text.startswith(prefix):
             raise ValueError(f"PDF_PAGE_FURNITURE_INVALID: {number}")
@@ -318,6 +331,7 @@ def verify_pdf(path: Path, documents: list[Document]) -> int:
 
 
 def build_bundle(inventory: dict, documents: list[Document], font_dir: Path) -> dict:
+    assert_customer_content(BUNDLE_NAME + "\n" + PDF_NAME, "distribution filenames")
     output = ROOT / "output"
     output.mkdir(exist_ok=True)
     bundle = output / BUNDLE_NAME

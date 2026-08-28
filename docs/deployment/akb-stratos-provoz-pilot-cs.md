@@ -1,7 +1,7 @@
 ---
 type: runbook
 document_type: procedure
-title: "AKB a STRATOS: provoz a správa pilotu ČSÚ"
+title: "AKB a STRATOS: provoz a správa pilotu"
 external_ref: DOC-AKB-STRATOS-PILOT-OPS
 application_id: akb-stratos
 owner: akb-team
@@ -9,24 +9,24 @@ classification: internal
 status: draft
 language: cs
 source_system: git
-tags: [dokumentace, csu-pilot, provoz, sprava, akb, stratos]
+tags: [dokumentace, interni-pilot, provoz, sprava, akb, stratos]
 documentation_profile: akb-application-docs-1
 documentation_kind: provoz
-document_revision: "1.2"
-target_environment: csu-test
+document_revision: "1.3"
+target_environment: customer-test
 applies_to: "Návrh pilotu; konkrétní release se určí při převzetí"
-reviewed_on: "2026-08-27"
+reviewed_on: "2026-08-28"
 ---
 
-# AKB a STRATOS: provoz a správa pilotu ČSÚ
+# AKB a STRATOS: provoz a správa pilotu
 
 > Navržené provozní povinnosti musí před převzetím přijmout konkrétní provozovatelé. Dokument nepotvrzuje, že už jsou zavedené.
 
 ## Provozní model
 
-ČSÚ IT provozuje infrastrukturu a společné platformní služby. AKB tým provozuje AKB a jeho dokumentové workflow. STRATOS tým provozuje STRATOS, Budget, ProjectFlow a ArchFlow. Každý tým odpovídá za vlastní release, databázové migrace a incidenty své aplikace.
+IT zákazníka provozuje infrastrukturu a společné platformní služby. AKB tým provozuje AKB a jeho dokumentové workflow. STRATOS tým provozuje STRATOS, Budget, ProjectFlow a ArchFlow. Každý tým odpovídá za vlastní release, databázové migrace a incidenty své aplikace.
 
-Každé prostředí ČSÚ má vlastní interní DNS, konfiguraci, databáze, objektový bucket, OIDC klienty, účty služeb, označení v monitoringu a zálohovací sadu. Údaje ani přístupové klíče se nesdílejí mezi testovacím a ostrým prostředím.
+Každé prostředí zákazníka má vlastní interní DNS, konfiguraci, databáze, objektový bucket, OIDC klienty, účty služeb, označení v monitoringu a zálohovací sadu. Údaje ani přístupové klíče se nesdílejí mezi testovacím a ostrým prostředím.
 
 ## Denní provozní kontrola
 
@@ -101,10 +101,10 @@ Rychlost nasazení se zlepšuje opětovným využitím ověřených závislostí
 | Příznak | První krok | Vlastník |
 | --- | --- | --- |
 | AKB nebo STRATOS není ready | ověřit závislou službu a correlation ID | příslušný aplikační tým |
-| Upload čeká v karanténě | ověřit ClamAV, limit a frontu; dokument neuvolňovat | AKB tým a ČSÚ IT |
+| Upload čeká v karanténě | ověřit ClamAV, limit a frontu; dokument neuvolňovat | AKB tým a IT zákazníka |
 | Chat nevrací živá data | ověřit manifest, projection, scope a source status | AKB tým; STRATOS tým při doménové příčině |
-| Uživatel vidí nesprávná data | okamžitě omezit dotčený přístup, zachovat audit | vlastník aplikace a bezpečnost ČSÚ |
-| Selhala záloha nebo obnova | eskalovat jako provozní riziko, nečekat na incident | ČSÚ IT a aplikační tým |
+| Uživatel vidí nesprávná data | okamžitě omezit dotčený přístup, zachovat audit | vlastník aplikace a bezpečnost zákazníka |
+| Selhala záloha nebo obnova | eskalovat jako provozní riziko, nečekat na incident | IT zákazníka a aplikační tým |
 
 Při incidentu se nemažou dokumenty, indexy, volumes ani auditní záznamy. Postupuje se podle posledního ověřeného rollbacku nebo obnovy.
 
@@ -112,5 +112,5 @@ Při incidentu se nemažou dokumenty, indexy, volumes ani auditní záznamy. Pos
 
 Úspěšná kontrola má záznam s časem, prostředím, odpovědnou osobou a výsledkem; neobsahuje tajné hodnoty. Při chybě se použije výše uvedená eskalace, nikoliv označení služby za zdravou bez důkazu.
 
-- [Instalace a převzetí](akb-stratos-instalace-prevzeti-pilotu-csu-cs.md)
-- [Bezpečnost a obnova](akb-stratos-bezpecnost-obnova-pilotu-csu-cs.md)
+- [Instalace a převzetí](akb-stratos-instalace-prevzeti-pilotu-cs.md)
+- [Bezpečnost a obnova](akb-stratos-bezpecnost-obnova-pilotu-cs.md)

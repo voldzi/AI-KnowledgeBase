@@ -1,7 +1,7 @@
 ---
 type: runbook
 document_type: procedure
-title: "AKB a STRATOS: bezpečnost a obnova pilotu ČSÚ"
+title: "AKB a STRATOS: bezpečnost a obnova pilotu"
 external_ref: DOC-AKB-STRATOS-PILOT-DR
 application_id: akb-stratos
 owner: akb-team
@@ -9,22 +9,22 @@ classification: internal
 status: draft
 language: cs
 source_system: git
-tags: [dokumentace, csu-pilot, bezpecnost, obnova, akb, stratos]
+tags: [dokumentace, interni-pilot, bezpecnost, obnova, akb, stratos]
 documentation_profile: akb-application-docs-1
 documentation_kind: bezpecnost
-document_revision: "1.2"
-target_environment: csu-test
+document_revision: "1.3"
+target_environment: customer-test
 applies_to: "Návrh pilotu; konkrétní release se určí při převzetí"
-reviewed_on: "2026-08-27"
+reviewed_on: "2026-08-28"
 ---
 
-# AKB a STRATOS: bezpečnost a obnova pilotu ČSÚ
+# AKB a STRATOS: bezpečnost a obnova pilotu
 
 > RTO/RPO jsou navržené cíle, nikoliv ověřené SLA. Tento postup není oprávněním provádět destruktivní obnovu na běžícím prostředí.
 
 ## Bezpečnostní minimum
 
-- Pilot je dostupný pouze v interní síti ČSÚ přes HTTPS a interní DNS.
+- Pilot je dostupný pouze v interní síti zákazníka přes HTTPS a interní DNS.
 - Secrety, service credentials, databázová hesla, OIDC client secrets a šifrovací klíče jsou v chráněném secret mechanismu, ne v Git, Compose, image ani logu.
 - Upload dokumentů je kontrolován přes interní ClamAV a při chybě skeneru selže uzavřeně.
 - Citace, chat, export, dokumentové čtení, upload, schvalování a audit jsou autorizovány odděleně.
@@ -81,4 +81,4 @@ Prostředí ponechte izolované, neotevírejte neúplná data uživatelům a esk
 
 ## Související podklady
 
-[Provoz a správa](akb-stratos-provoz-pilot-csu-cs.md) a [instalace a převzetí](akb-stratos-instalace-prevzeti-pilotu-csu-cs.md).
+[Provoz a správa](akb-stratos-provoz-pilot-cs.md) a [instalace a převzetí](akb-stratos-instalace-prevzeti-pilotu-cs.md).

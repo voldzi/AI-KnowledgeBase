@@ -1,7 +1,7 @@
 ---
 type: knowledge_article
 document_type: manual
-title: "AKB a STRATOS: uživatelská příručka pilotu ČSÚ"
+title: "AKB a STRATOS: uživatelská příručka pilotu"
 external_ref: DOC-AKB-STRATOS-PILOT-USER
 application_id: akb-stratos
 owner: akb-team
@@ -9,16 +9,16 @@ classification: internal
 status: draft
 language: cs
 source_system: git
-tags: [dokumentace, csu-pilot, uzivatel, manual, akb, stratos]
+tags: [dokumentace, interni-pilot, uzivatel, manual, akb, stratos]
 documentation_profile: akb-application-docs-1
 documentation_kind: uzivatel
-document_revision: "1.2"
-target_environment: csu-test
+document_revision: "1.3"
+target_environment: customer-test
 applies_to: "Návrh pilotu; konkrétní release se určí při převzetí"
-reviewed_on: "2026-08-27"
+reviewed_on: "2026-08-28"
 ---
 
-# AKB a STRATOS: uživatelská příručka pilotu ČSÚ
+# AKB a STRATOS: uživatelská příručka pilotu
 
 ## Co potřebujete
 

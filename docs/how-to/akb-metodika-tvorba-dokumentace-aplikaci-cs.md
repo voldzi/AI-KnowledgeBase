@@ -12,10 +12,10 @@ source_system: git
 tags: [dokumentace, metodika, autorstvi, akb]
 documentation_profile: akb-application-docs-1
 documentation_kind: metodika
-document_revision: "1.2"
+document_revision: "1.3"
 target_environment: obecne
 applies_to: "Dokumentace aplikací předávaná do AKB"
-reviewed_on: "2026-08-27"
+reviewed_on: "2026-08-28"
 ---
 
 # AKB: metodika tvorby dokumentace aplikací
@@ -58,7 +58,7 @@ Název souboru má tvar:
 aplikace[-modul]-oblast-tema-jazyk.md
 ```
 
-Používejte malá ASCII písmena, číslice a spojovníky. Modul je volitelný. Jazyk je například `cs` nebo `en`. Revize ani datum nejsou součástí běžného názvu zdroje; u archivního distribučního balíčku být mohou.
+Používejte malá ASCII písmena, číslice a spojovníky. Modul je volitelný. Jazyk je například `cs` nebo `en`. Revize ani datum nejsou součástí běžného názvu zdroje; u archivního distribučního balíčku být mohou. Obecný produktový dokument neobsahuje název zákazníka v názvu, tagu ani identifikátoru. Údaje konkrétní instalace patří do samostatného chráněného protokolu s vlastní identitou a příjemci.
 
 Příklady:
 
@@ -142,6 +142,7 @@ Nové vydání vzniká jako další verze stejného dokumentu. Zachová se histo
 3. Odkazy a přílohy vedou na správný dokument a verzi, ne na lokální cestu autora.
 4. PDF je úplné, čitelné, bez přetékajících tabulek a odpovídá zdroji.
 5. Přístupy a neviditelnost konceptu se ověřily pod cílovým čtenářem.
-6. Vyhledání běžnou otázkou, otevření citace a negativní dotaz bez podkladu dopadly správně.
+6. Obecný balíček neobsahuje název zákazníka, skutečné účty, interní adresy ani zákaznické poznámky; kontrola zahrnuje metadata, PDF, odkazy a názvy souborů.
+7. Vyhledání běžnou otázkou, otevření citace a negativní dotaz bez podkladu dopadly správně.
 
 Praktické vložení této sady popisuje [postup importu a ověření](akb-postup-vlozeni-predavaci-dokumentace-cs.md).

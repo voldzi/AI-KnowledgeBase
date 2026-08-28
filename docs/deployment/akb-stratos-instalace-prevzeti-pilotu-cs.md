@@ -1,7 +1,7 @@
 ---
 type: runbook
 document_type: procedure
-title: "AKB a STRATOS: instalace a převzetí pilotu ČSÚ"
+title: "AKB a STRATOS: instalace a převzetí pilotu"
 external_ref: DOC-AKB-STRATOS-PILOT-INSTALL
 application_id: akb-stratos
 owner: akb-team
@@ -9,28 +9,28 @@ classification: internal
 status: draft
 language: cs
 source_system: git
-tags: [dokumentace, csu-pilot, instalace, akceptace, akb, stratos]
+tags: [dokumentace, interni-pilot, instalace, akceptace, akb, stratos]
 documentation_profile: akb-application-docs-1
 documentation_kind: instalace
-document_revision: "1.2"
-target_environment: csu-test
+document_revision: "1.3"
+target_environment: customer-test
 applies_to: "Návrh pilotu; konkrétní release se určí při převzetí"
-reviewed_on: "2026-08-27"
+reviewed_on: "2026-08-28"
 ---
 
-# AKB a STRATOS: instalace a převzetí pilotu ČSÚ
+# AKB a STRATOS: instalace a převzetí pilotu
 
 > Tento dokument je kontrolní postup, nikoliv záznam provedené instalace. Před skutečným nasazením vlastníci aplikací doplní release, konfiguraci a konkrétní příkazy pro schválené prostředí.
 
 ## Účel
 
-Tento postup navazuje na [infrastrukturní návrh](akb-stratos-instalace-infrastruktura-pilotu-csu-cs.md). Slouží pro řízené nasazení malého interního testovacího prostředí. Neobsahuje přístupové údaje, konkrétní IP adresy ani příkazy závislé na infrastruktuře ČSÚ.
+Tento postup navazuje na [infrastrukturní návrh](akb-stratos-instalace-infrastruktura-pilotu-cs.md). Slouží pro řízené nasazení malého interního testovacího prostředí. Neobsahuje přístupové údaje, konkrétní IP adresy ani příkazy závislé na infrastruktuře zákazníka.
 
 AKB a STRATOS se nasazují z nezávislých repozitářů a vlastníci aplikací za ně odpovídají samostatně. Společné jsou pouze předem schválené infrastrukturní a integrační hranice.
 
 ## Fáze 0: převzetí prostředí
 
-ČSÚ IT předá:
+IT zákazníka předá:
 
 1. interní DNS, TLS a přístup ze správcovské sítě;
 2. oddělené VM nebo schválené sdílené služby;
@@ -142,7 +142,7 @@ Před převzetím pilotu se ověří:
 - Při selhání se aktivuje předchozí ověřený release a obnovuje se pouze podle schváleného restore postupu. Nemažou se dokumenty, indexy ani auditní data jako způsob řešení incidentu.
 - Konfigurace, schema migrace, integrační kontrakty, model, klasifikace nebo Information Policy vyžadují řízenou změnu a opakování relevantní akceptace.
 
-## Výstupy pro převzetí ČSÚ
+## Výstupy pro předání zákazníkovi
 
 Při ukončení instalace předají vlastníci aplikací společný záznam obsahující:
 
@@ -160,6 +160,6 @@ Podpora funkce v předávaném kódu není potvrzením jejího produkčního zap
 
 ## Navazující postupy
 
-- [Provoz a správa pilotu](akb-stratos-provoz-pilot-csu-cs.md).
-- [Bezpečnost a obnova pilotu](akb-stratos-bezpecnost-obnova-pilotu-csu-cs.md).
-- [Předávací list a odpovědnosti](../handover/akb-stratos-predani-dokumentace-csu-cs.md).
+- [Provoz a správa pilotu](akb-stratos-provoz-pilot-cs.md).
+- [Bezpečnost a obnova pilotu](akb-stratos-bezpecnost-obnova-pilotu-cs.md).
+- [Předávací list a odpovědnosti](../handover/akb-stratos-predani-dokumentace-cs.md).

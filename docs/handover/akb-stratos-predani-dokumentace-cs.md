@@ -1,7 +1,7 @@
 ---
 type: knowledge_article
 document_type: project_documentation
-title: "AKB a STRATOS: předání dokumentace pro pilot ČSÚ"
+title: "AKB a STRATOS: předání dokumentace"
 external_ref: DOC-AKB-STRATOS-HANDOVER
 application_id: akb-stratos
 owner: akb-team
@@ -9,24 +9,30 @@ classification: internal
 status: draft
 language: cs
 source_system: git
-tags: [dokumentace, csu-pilot, predani, akb, stratos]
+tags: [dokumentace, interni-pilot, predani, akb, stratos]
 documentation_profile: akb-application-docs-1
 documentation_kind: prehled
-document_revision: "1.2"
-target_environment: csu-test
+document_revision: "1.3"
+target_environment: customer-test
 applies_to: "Příprava malého interního testovacího nasazení"
-reviewed_on: "2026-08-27"
+reviewed_on: "2026-08-28"
 ---
 
-# AKB a STRATOS: předání dokumentace pro pilot ČSÚ
+# AKB a STRATOS: předání dokumentace
 
 ## Co se předává
 
-Dokumentační sada **1.2** ze dne **27. 8. 2026** popisuje AKB a STRATOS a požadavky na jejich malé testovací nasazení v ČSÚ. Pilot je dostupný **pouze ve vnitřní síti ČSÚ**, nikoli z internetu. Sada je určena vedení, bezpečnostnímu týmu, IT správcům, autorům dokumentace a pilotním uživatelům.
+Dokumentační sada **1.3** ze dne **28. 8. 2026** popisuje AKB a STRATOS a požadavky na jejich malé testovací nasazení u zákazníka. Pilot je dostupný **pouze ve vnitřní síti zákazníka**, nikoli z internetu. Sada je určena vedení, bezpečnostnímu týmu, IT správcům, autorům dokumentace a pilotním uživatelům.
 
 Předání obsahuje osm věcných podkladů, tento rozcestník, metodiku, postup vložení a pět autorských vzorů. Markdown je kanonický zdroj; odvozená PDF a kontrolní součty slouží pro pohodlné čtení a kontrolu distribuční sady.
 
-**Určení:** posouzení a příprava pilotu. Kapacity jsou návrhem k potvrzení IT ČSÚ. Konkrétní vydání aplikací, přístupy, provozní odpovědnosti a výsledky ověření se zaznamenají při převzetí instalace. Dokumenty se v AKB zpřístupní až po obsahovém schválení a nastavení příjemců.
+**Určení:** posouzení a příprava pilotu. Kapacity jsou návrhem k potvrzení IT zákazníka. Konkrétní vydání aplikací, přístupy, provozní odpovědnosti a výsledky ověření se zaznamenají při převzetí instalace. Dokumenty se v AKB zpřístupní až po obsahovém schválení a nastavení příjemců.
+
+## Použití u různých zákazníků
+
+Tato sada je společný produktový podklad. Popisuje interní pilotní profil, nikoli konkrétní již instalované prostředí. Název zákazníka, skutečné adresy, účty a kontakty se do obecného textu, názvů souborů, tagů ani identifikátorů nepřidávají.
+
+Pro každé nasazení vznikne samostatný chráněný instalační a akceptační protokol. Obsahuje zvolené vydání, topologii, vlastníky služeb, přístupový model a výsledky ověření. Není součástí obecné distribuční sady; jeho příjemce a klasifikaci určuje provozovatel. Přístup mimo vnitřní síť vyžaduje samostatný schválený návrh.
 
 ## Rozsah řešení
 
@@ -43,7 +49,7 @@ Pro pilot se vybere jeden schválený poskytovatel přihlášení. Výchozí var
 
 Připravená podpora centrálního SSO a volitelné identity služby není dokladem jejich aktivace v cílovém prostředí. Před převzetím musí oba vlastníci potvrdit konkrétní vydání, konfiguraci klientů a společnou akceptaci. Bez tohoto potvrzení se nemění schválený issuer ani existující přihlašování.
 
-V cílovém SSO se volba zapamatování zařízení nastavuje jednou na centrální přihlašovací stránce. AKB a samostatný Chat mají vlastní chráněné serverové relace; nesdílejí cookie, šifrovací klíče ani uživatelské tokeny. Podrobné limity a bezpečnostní kontroly stanoví [instalační postup](../deployment/akb-stratos-instalace-prevzeti-pilotu-csu-cs.md).
+V cílovém SSO se volba zapamatování zařízení nastavuje jednou na centrální přihlašovací stránce. AKB a samostatný Chat mají vlastní chráněné serverové relace; nesdílejí cookie, šifrovací klíče ani uživatelské tokeny. Podrobné limity a bezpečnostní kontroly stanoví [instalační postup](../deployment/akb-stratos-instalace-prevzeti-pilotu-cs.md).
 
 ## Kudy začít
 
@@ -52,11 +58,11 @@ V cílovém SSO se volba zapamatování zařízení nastavuje jednou na centrál
 | Vedení organizace | [Přehled pro vedení](../executive/akb-stratos-prehled-pro-vedeni-cs.md) |
 | Vlastník aplikace a vedení | [Katalog funkcí a datových autorit](../executive/akb-stratos-reference-katalog-funkci-cs.md) |
 | Bezpečnostní komunita | [Podklad pro bezpečnostní posouzení](../executive/akb-stratos-bezpecnost-posouzeni-cs.md) |
-| IT infrastruktura | [Infrastruktura interního pilotu](../deployment/akb-stratos-instalace-infrastruktura-pilotu-csu-cs.md) |
-| Instalační tým | [Instalace a převzetí pilotu](../deployment/akb-stratos-instalace-prevzeti-pilotu-csu-cs.md) |
-| Správce a podpora | [Provoz pilotu](../deployment/akb-stratos-provoz-pilot-csu-cs.md) |
-| Správce obnovy a bezpečnost | [Obnova a kontinuita](../deployment/akb-stratos-bezpecnost-obnova-pilotu-csu-cs.md) |
-| Pilotní uživatel | [Uživatelský průvodce](../deployment/akb-stratos-uzivatel-pilot-csu-cs.md) |
+| IT infrastruktura | [Infrastruktura interního pilotu](../deployment/akb-stratos-instalace-infrastruktura-pilotu-cs.md) |
+| Instalační tým | [Instalace a převzetí pilotu](../deployment/akb-stratos-instalace-prevzeti-pilotu-cs.md) |
+| Správce a podpora | [Provoz pilotu](../deployment/akb-stratos-provoz-pilot-cs.md) |
+| Správce obnovy a bezpečnost | [Obnova a kontinuita](../deployment/akb-stratos-bezpecnost-obnova-pilotu-cs.md) |
+| Pilotní uživatel | [Uživatelský průvodce](../deployment/akb-stratos-uzivatel-pilot-cs.md) |
 | Autor a dodavatel dokumentace | [Metodika a jmenná konvence](../how-to/akb-metodika-tvorba-dokumentace-aplikaci-cs.md) |
 | Správce dokumentace AKB | [Vložení a ověření sady](../how-to/akb-postup-vlozeni-predavaci-dokumentace-cs.md) |
 
@@ -79,10 +85,10 @@ Revize dokumentace není totéž co release aplikace. Přiložené PDF musí vž
 | Otevřený údaj | Odpovědný vlastník | Podmínka převzetí |
 | --- | --- | --- |
 | Cílové release AKB a STRATOS, image identity | vlastníci aplikací | CI, build a integrační akceptace stejného vydání |
-| Interní DNS, certifikáty a schválené síťové prostupy | IT ČSÚ | pouze vnitřní přístup, datové porty neveřejné |
+| Interní DNS, certifikáty a schválené síťové prostupy | IT zákazníka | pouze vnitřní přístup, datové porty neveřejné |
 | Zvolený OIDC issuer, zdroje identity a centrální politika relací | IAM + vlastníci aplikací | přesní klienti, důvěryhodné TLS, SSO a negativní testy; žádné automatické přepnutí |
-| Sizing, počet uživatelů, souběh, objem dokumentů | IT ČSÚ + vlastníci | potvrzený návrh a měření pilotu |
-| AI/embedding služba a nakládání s daty | bezpečnost + IT ČSÚ | schválené umístění, provoz a dostupnost |
+| Sizing, počet uživatelů, souběh, objem dokumentů | IT zákazníka + vlastníci | potvrzený návrh a měření pilotu |
+| AI/embedding služba a nakládání s daty | bezpečnost + IT zákazníka | schválené umístění, provoz a dostupnost |
 | Přístupový model a čtenáři včetně externích osob | vlastník dat + přístupový správce | pozitivní a negativní testy; bez plošného zpřístupnění |
 | Zálohy, klíče, RPO/RTO, odpovědná podpora | provoz + bezpečnost | doložená konzistentní obnova |
 | Metodika, skutečné názvy rolí a kontakty | vlastníci dokumentace | věcné potvrzení a publikace |

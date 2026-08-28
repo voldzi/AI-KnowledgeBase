@@ -54,7 +54,7 @@ def test_structured_article_and_paragraph_citations_survive_markdown_parsing() -
 
 
 def test_real_handover_infrastructure_document_retains_tables_and_caveats() -> None:
-    path = Path(__file__).resolve().parents[3] / "docs/deployment/akb-stratos-instalace-infrastruktura-pilotu-csu-cs.md"
+    path = Path(__file__).resolve().parents[3] / "docs/deployment/akb-stratos-instalace-infrastruktura-pilotu-cs.md"
     result = _parse(path.read_text(encoding="utf-8"))
     assert result.tables_detected >= 1
     assert all(not block.text.startswith("document_id:") for block in result.blocks)
