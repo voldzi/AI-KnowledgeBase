@@ -423,15 +423,18 @@ jobs:
         with:
           ref: ${{ github.sha }}
       - name: Create closed same-SHA attestation
+        env:
+          AKB_GITEA_RUN_ATTEMPT: ${{ gitea.run_attempt }}
         run: |
           set -euo pipefail
           rm -rf same-sha-ci-evidence
+          run_attempt="${AKB_GITEA_RUN_ATTEMPT:-1}"
           python3 scripts/ci/write_same_sha_ci_evidence.py \
             --commit "${{ github.sha }}" \
             --ref "${{ github.ref }}" \
             --event "${{ github.event_name }}" \
             --run-id "${{ github.run_id }}" \
-            --run-attempt "${{ github.run_attempt }}" \
+            --run-attempt "$run_attempt" \
             --output same-sha-ci-evidence/akb-gitea-ci-evidence.json
           test "$(find same-sha-ci-evidence -maxdepth 1 -type f | wc -l | tr -d ' ')" = "1"
       - name: Publish single-file same-SHA attestation

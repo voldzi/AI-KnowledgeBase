@@ -28,6 +28,10 @@ class SameShaAttestationTests(unittest.TestCase):
         self.assertIn("name: akb-gitea-ci-evidence-${{ github.sha }}", block)
         self.assertIn("same-sha-ci-evidence/akb-gitea-ci-evidence.json", block)
         self.assertNotIn("same-sha-ci-evidence/*.json", block)
+        self.assertIn("AKB_GITEA_RUN_ATTEMPT: ${{ gitea.run_attempt }}", block)
+        self.assertIn('run_attempt="${AKB_GITEA_RUN_ATTEMPT:-1}"', block)
+        self.assertIn('--run-attempt "$run_attempt"', block)
+        self.assertNotIn("${{ github.run_attempt }}", block)
 
     def test_evidence_is_closed_and_exact_for_main_push(self) -> None:
         commit = "a" * 40
@@ -47,6 +51,7 @@ class SameShaAttestationTests(unittest.TestCase):
             ({"ref": "main"}, "exact branch ref"),
             ({"event": "pull_request"}, "approved trusted CI event"),
             ({"run_id": "0"}, "must be positive"),
+            ({"run_attempt": "0"}, "must be positive"),
         ]
         for overrides, message in cases:
             with self.subTest(overrides=overrides):
