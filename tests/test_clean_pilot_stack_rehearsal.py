@@ -2,12 +2,13 @@ import json
 from pathlib import Path
 import pytest
 
-from tools.clean_pilot_stack_rehearsal import MARKER, REQUIRED_IMAGES, REQUIRED_SURFACES, image_bundle_digest, preflight, prepare_marker, validate_bundle, validate_environment, validate_source_commit, verify_stale_denials
+from tools.clean_pilot_stack_rehearsal import MARKER, REQUIRED_IMAGES, REQUIRED_SURFACES, STORE_CLASSES, compose_environment, image_bundle_digest, preflight, prepare_marker, tree_digest, validate_bundle, validate_environment, validate_source_commit, verify_stale_denials
 
 
-def valid_bundle() -> dict[str, object]:
+def valid_bundle(root: Path | None = None) -> dict[str, object]:
     images = {name: f"akb/{name}@sha256:{'4' * 64}" for name in sorted(REQUIRED_IMAGES)}
-    return {"schemaVersion": "akb-clean-pilot-stack-bundle-1", "repository": "AKB/ai-knowledgebase", "sourceCommit": "1" * 40, "migrationBundleSha256": "2" * 64, "imageBundleSha256": image_bundle_digest(images), "images": images, "surfaces": sorted(REQUIRED_SURFACES), "networkPolicy": "internal-no-egress", "credentialPolicy": "generated-ephemeral-only", "productionConnectivity": False, "composePath": "infra/clean-pilot/docker-compose.rehearsal.yml"}
+    migration = "2" * 64 if root is None else tree_digest(root, ["services/registry-api/alembic", "infra/postgres/init"])
+    return {"schemaVersion": "akb-clean-pilot-stack-bundle-1", "repository": "AKB/ai-knowledgebase", "sourceCommit": "1" * 40, "migrationBundleSha256": migration, "imageBundleSha256": image_bundle_digest(images), "images": images, "surfaces": sorted(REQUIRED_SURFACES), "networkPolicy": "internal-no-egress", "credentialPolicy": "generated-ephemeral-only", "productionConnectivity": False, "composePath": "infra/clean-pilot/docker-compose.rehearsal.yml"}
 
 
 def test_exact_immutable_bundle_passes() -> None:
@@ -25,7 +26,8 @@ def test_source_or_image_bundle_digest_drift_stops() -> None:
 
 
 def test_preflight_stops_until_real_no_egress_compose_exists(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    bundle = valid_bundle()
+    repository_root = Path(__file__).resolve().parents[1]
+    bundle = valid_bundle(repository_root)
     manifest = tmp_path / "bundle.json"
     manifest.write_text(json.dumps(bundle))
     monkeypatch.chdir(tmp_path)
@@ -58,6 +60,27 @@ def test_unpinned_or_incomplete_image_set_stops() -> None:
     bundle["images"].pop("qdrant")
     with pytest.raises(RuntimeError, match="IMAGE_SET_INCOMPLETE"):
         validate_bundle(bundle)
+
+
+def test_local_content_addressed_image_is_accepted() -> None:
+    bundle = valid_bundle()
+    bundle["images"]["web"] = "sha256:" + "a" * 64
+    bundle["imageBundleSha256"] = image_bundle_digest(bundle["images"])
+    validate_bundle(bundle)
+
+
+def test_compose_environment_contains_only_ephemeral_and_exact_images() -> None:
+    bundle = valid_bundle()
+    env = compose_environment(bundle, "rehearsal-a1")
+    assert env["AKB_REHEARSAL_PROJECT"] == "akb-cpe1-rehearsal-a1"
+    assert env["AKB_IMAGE_WEB"] == bundle["images"]["web"]
+    assert not set(env).intersection({"DATABASE_URL", "AKL_DATABASE_URL", "DOCKER_HOST"})
+    assert len(env["AKB_REHEARSAL_SESSION_SECRET"]) >= 40
+
+
+def test_store_class_contract_is_closed() -> None:
+    assert len(STORE_CLASSES) == 10
+    assert "cache-session-authorization" in STORE_CLASSES
 
 
 def test_remote_or_preconfigured_endpoint_environment_stops() -> None:
