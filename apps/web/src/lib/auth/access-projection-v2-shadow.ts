@@ -7,6 +7,16 @@ export const SHADOW_PROJECTION_CONTRACT = {
   organizationId: "org_stratos",
 } as const;
 
+export const ACTIVE_PROJECTION_CONTRACT = {
+  schemaVersion: "stratos-access-projection-2",
+  revision: "2.1.0",
+  status: "active",
+  digest: "sha256:16509ccbdc3e49e7a9918a29c833a8ae1aa7c78777b0a8693a2477acc2f0dafa",
+  catalogVersion: "capabilities-1.12.0",
+  organizationId: "org_stratos",
+  consumerCutover: true,
+} as const;
+
 export const AKB_SHADOW_SURFACES = [
   "registry", "search", "retrieval", "chat", "preview", "download",
   "citation", "source-open", "export", "publication",
@@ -51,14 +61,33 @@ export function evaluateShadowProjectionV2(
   resource: ShadowResourceDecisionInput,
   nowMs = Date.now(),
 ): ShadowDecision {
+  return evaluateProjectionV2(payload, resource, SHADOW_PROJECTION_CONTRACT, nowMs);
+}
+
+export function evaluateActiveProjectionV2(
+  payload: unknown,
+  resource: ShadowResourceDecisionInput,
+  nowMs = Date.now(),
+): ShadowDecision {
+  return evaluateProjectionV2(payload, resource, ACTIVE_PROJECTION_CONTRACT, nowMs);
+}
+
+type ProjectionContract = Pick<typeof SHADOW_PROJECTION_CONTRACT, "schemaVersion" | "revision" | "status" | "digest" | "catalogVersion" | "organizationId">;
+
+function evaluateProjectionV2(
+  payload: unknown,
+  resource: ShadowResourceDecisionInput,
+  contract: ProjectionContract,
+  nowMs: number,
+): ShadowDecision {
   try {
     const root = exactRecord(payload, ROOT_KEYS, "projection");
-    requireLiteral(root.schemaVersion, SHADOW_PROJECTION_CONTRACT.schemaVersion, "schema");
-    requireLiteral(root.contractRevision, SHADOW_PROJECTION_CONTRACT.revision, "revision");
-    requireLiteral(root.contractStatus, SHADOW_PROJECTION_CONTRACT.status, "status");
-    requireLiteral(root.contractDigest, SHADOW_PROJECTION_CONTRACT.digest, "digest");
-    requireLiteral(root.catalogVersion, SHADOW_PROJECTION_CONTRACT.catalogVersion, "catalog");
-    requireLiteral(root.organizationId, SHADOW_PROJECTION_CONTRACT.organizationId, "organization");
+    requireLiteral(root.schemaVersion, contract.schemaVersion, "schema");
+    requireLiteral(root.contractRevision, contract.revision, "revision");
+    requireLiteral(root.contractStatus, contract.status, "status");
+    requireLiteral(root.contractDigest, contract.digest, "digest");
+    requireLiteral(root.catalogVersion, contract.catalogVersion, "catalog");
+    requireLiteral(root.organizationId, contract.organizationId, "organization");
     const generatedAt = parseDate(root.generatedAt, "generatedAt");
     const expiresAt = parseDate(root.expiresAt, "expiresAt");
     if (generatedAt > nowMs || expiresAt <= nowMs || expiresAt - generatedAt > 15 * 60_000) deny("projection-window");

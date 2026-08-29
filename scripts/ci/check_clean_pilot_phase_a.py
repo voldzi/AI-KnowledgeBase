@@ -83,10 +83,23 @@ def main() -> None:
         fail("C1 inventory count drift")
     c2 = docs["c2-consumer-conformance.json"]
     expected_surfaces = {"registry", "search", "retrieval", "chat", "preview", "download", "citation", "source-open", "export", "publication"}
-    if set(c2.get("surfaces", [])) != expected_surfaces or c2.get("authority") != "shadow-only":
+    if set(c2.get("surfaces", [])) != expected_surfaces or c2.get("authority") != "source-only-active-candidate":
         fail("C2 surface or authority closure failed")
-    if c2.get("contract", {}).get("canonicalSchemaSha256") != "sha256:3b11860c9b79bfb82f7792b93815f49d786667a7dd4b74f5a8ad0cb5dd6620b7":
-        fail("C2 schema digest drift")
+    contracts = c2.get("contracts")
+    expected_contracts = [
+        ("2.0.0", "shadow", False, "sha256:3b11860c9b79bfb82f7792b93815f49d786667a7dd4b74f5a8ad0cb5dd6620b7"),
+        ("2.1.0", "active", True, "sha256:16509ccbdc3e49e7a9918a29c833a8ae1aa7c78777b0a8693a2477acc2f0dafa"),
+    ]
+    if not isinstance(contracts, list) or len(contracts) != 2:
+        fail("C2 must contain exactly shadow and active contracts")
+    actual_contracts = [
+        (item.get("revision"), item.get("status"), item.get("consumerCutover"), item.get("canonicalSchemaSha256"))
+        for item in contracts
+    ]
+    if actual_contracts != expected_contracts or any(item.get("catalogVersion") != "capabilities-1.12.0" for item in contracts):
+        fail("C2 contract revision, status, cutover, catalog or schema digest drift")
+    if c2.get("consumerCutover") is not True or c2.get("productionAuthority") != "unchanged-until-coordinated-cutover":
+        fail("C2 active candidate metadata is incomplete")
     c3 = docs["c3-akb-test-manifest.json"]
     if set(c3.get("zeroState", {})) != {"documents", "documentVersions", "blobs", "ingestJobs", "indexedChunks", "vectors", "citations", "chatRagHistory", "evaluationBusinessData", "scopePublicationSessionBindings"}:
         fail("C3 zero-state closure failed")

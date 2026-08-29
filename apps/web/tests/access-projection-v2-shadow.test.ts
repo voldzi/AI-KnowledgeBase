@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { AKB_SHADOW_SURFACES, evaluateShadowProjectionV2, type ShadowResourceDecisionInput } from "../src/lib/auth/access-projection-v2-shadow";
+import { ACTIVE_PROJECTION_CONTRACT, AKB_SHADOW_SURFACES, evaluateActiveProjectionV2, evaluateShadowProjectionV2, type ShadowResourceDecisionInput } from "../src/lib/auth/access-projection-v2-shadow";
 
 const NOW = Date.parse("2026-08-29T10:05:00Z");
 
@@ -54,6 +54,45 @@ describe("STRATOS access projection V2 shadow consumer", () => {
   });
 });
 
+describe("STRATOS access projection V2 active cutover candidate", () => {
+  it("pins the final active contract and release metadata", () => {
+    assert.deepEqual(ACTIVE_PROJECTION_CONTRACT, {
+      schemaVersion: "stratos-access-projection-2",
+      revision: "2.1.0",
+      status: "active",
+      digest: "sha256:16509ccbdc3e49e7a9918a29c833a8ae1aa7c78777b0a8693a2477acc2f0dafa",
+      catalogVersion: "capabilities-1.12.0",
+      organizationId: "org_stratos",
+      consumerCutover: true,
+    });
+  });
+
+  for (const surface of AKB_SHADOW_SURFACES) {
+    it(`uses one capability-bound entitlement for ${surface}`, () => {
+      assert.equal(evaluateActiveProjectionV2(activeProjection(), resource(surface), NOW).allowed, true);
+    });
+  }
+
+  it("fails closed for revision, status, schema, digest and catalog drift", () => {
+    const mutations: Array<(body: ReturnType<typeof activeProjection>) => void> = [
+      (body) => { body.contractRevision = "2.0.0"; },
+      (body) => { body.contractStatus = "shadow"; },
+      (body) => { body.schemaVersion = "stratos-access-projection-1"; },
+      (body) => { body.contractDigest = "sha256:" + "0".repeat(64); },
+      (body) => { body.catalogVersion = "capabilities-1.12.1"; },
+    ];
+    for (const mutate of mutations) {
+      const body = activeProjection(); mutate(body);
+      assert.equal(evaluateActiveProjectionV2(body, resource("registry"), NOW).allowed, false);
+    }
+  });
+
+  it("does not allow active and shadow contracts to authorize each other", () => {
+    assert.equal(evaluateActiveProjectionV2(projection(), resource("chat"), NOW).allowed, false);
+    assert.equal(evaluateShadowProjectionV2(activeProjection(), resource("chat"), NOW).allowed, false);
+  });
+});
+
 function resource(surface: typeof AKB_SHADOW_SURFACES[number]): ShadowResourceDecisionInput {
   return { surface, capability: "akb:read_document", effectiveScope: { type: "document", id: "doc-1" }, organizationId: "org_stratos", published: true, draft: false, audienceAllowed: true, explicitlyDenied: false, classification: "internal", tlp: "GREEN", pap: "GREEN", informationPolicyAllowed: true };
 }
@@ -65,5 +104,14 @@ function projection() {
     catalogVersion: "capabilities-1.12.0", generatedAt: "2026-08-29T10:00:00Z", expiresAt: "2026-08-29T10:10:00Z", organizationId: "org_stratos",
     identity: { subjectId: "subject-1", kind: "person", active: true, employeeEligible: true }, membership: { active: true, validUntil: null },
     applicationAccess: [{ applicationId: "akb", entitlements: [{ entitlementId: "ent_read", definitionVersion: "1", profileId: null, source: "MANUAL", sourceRef: null, virtual: false, capabilities: ["akb:access", "akb:read_document"], scopes: [{ type: "document", id: "doc-1" }], effectiveScopes: [{ type: "document", id: "doc-1" }], validFrom: null, validUntil: null }] }],
+  };
+}
+
+function activeProjection(): ReturnType<typeof projection> {
+  return {
+    ...projection(),
+    contractRevision: "2.1.0",
+    contractStatus: "active",
+    contractDigest: "sha256:16509ccbdc3e49e7a9918a29c833a8ae1aa7c78777b0a8693a2477acc2f0dafa",
   };
 }
