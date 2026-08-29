@@ -83,6 +83,17 @@ def test_store_class_contract_is_closed() -> None:
     assert "cache-session-authorization" in STORE_CLASSES
 
 
+def test_rehearsal_compose_is_internal_without_host_ports() -> None:
+    source = (Path(__file__).resolve().parents[1] / "infra/clean-pilot/docker-compose.rehearsal.yml").read_text()
+    assert "internal: true" in source
+    assert not any(line.lstrip().startswith("ports:") for line in source.splitlines())
+    assert "network_mode: host" not in source
+    assert "docker.home" not in source
+    assert "zeleznalady" not in source
+    for service in ("postgresql", "s3-object-storage", "opensearch", "qdrant", "registry-api", "ingestion-service", "rag-retrieval-service", "evaluation-service", "web"):
+        assert f"  {service}:" in source
+
+
 def test_remote_or_preconfigured_endpoint_environment_stops() -> None:
     with pytest.raises(RuntimeError, match="REMOTE_DOCKER_HOST_FORBIDDEN"):
         validate_environment({"DOCKER_HOST": "tcp://remote.invalid:2376"})

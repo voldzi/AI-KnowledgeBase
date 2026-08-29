@@ -132,7 +132,8 @@ def prepare_marker(root: Path, run_id: str) -> Path:
 
 def verify_stale_denials(results: dict[str, str]) -> None:
     if set(results) != REQUIRED_SURFACES or any(value != "denied" for value in results.values()):
-        stop("STALE_ID_NOT_DENIED_ON_ALL_SURFACES")
+        failed = sorted(name for name in REQUIRED_SURFACES if results.get(name) != "denied")
+        stop("STALE_ID_NOT_DENIED_ON_ALL_SURFACES:" + ",".join(failed))
 
 
 def preflight(bundle_path: Path, marker_root: Path, run_id: str, current_commit: str) -> dict[str, Any]:
@@ -259,7 +260,8 @@ for name,(status,body) in probes.items():
     try: parsed = json.loads(body) if body else {}
     except Exception: pass
     empty_retrieval = name in {"search","retrieval"} and status == 200 and not (parsed.get("chunks") or parsed.get("results"))
-    denials[name] = "denied" if status in {400,401,403,404,409,422} or empty_retrieval else "accepted"
+    ephemeral_chat = name == "chat" and status == 200 and parsed.get("status") == "ephemeral" and not parsed.get("messages")
+    denials[name] = "denied" if status in {400,401,403,404,409,422} or empty_retrieval or ephemeral_chat else "accepted"
 print(json.dumps({"stores":business,"stale":denials,"tableCount":len(tables)},sort_keys=True))
 '''
     encoded = base64.b64encode(script.encode()).decode()

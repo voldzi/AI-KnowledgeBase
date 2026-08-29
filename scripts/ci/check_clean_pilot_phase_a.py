@@ -92,15 +92,19 @@ def main() -> None:
         fail("C3 zero-state closure failed")
     if any(c3["zeroState"].values()) or c3.get("secondBootstrap") != "no-op" or c3.get("productionConnectivity") is not False:
         fail("C3 is not empty, idempotent and isolated")
-    rehearsals = c3.get("rehearsalProposals")
+    rehearsals = c3.get("rehearsals")
     if not isinstance(rehearsals, list) or len(rehearsals) != 2 or len({item.get("rehearsalId") for item in rehearsals}) != 2:
-        fail("C3 must define exactly two isolated disposable rehearsal proposals")
+        fail("C3 must contain exactly two isolated disposable rehearsals")
     if any(item.get("productionConnectivity") is not False or item.get("productionCredentials") is not False for item in rehearsals):
-        fail("C3 rehearsal proposal reaches production")
-    if c3.get("jointRehearsalsExecuted") != 0 or c3.get("actualStoreTechnologyEvidence") != "not-executed" or c3.get("result") != "STOP_TECHNICAL_BLOCKER":
-        fail("C3 must not claim actual-stack rehearsal execution")
-    if c3.get("harness") != "tools/clean_pilot_stack_rehearsal.py" or len(c3.get("technicalBlockers", [])) != 2:
-        fail("C3 actual-stack blocker evidence is incomplete")
+        fail("C3 rehearsal reaches production")
+    if any(item.get("result") != "pass" or item.get("cleanup") != "pass" or item.get("staleIdResult") != "denied-on-all-surfaces" for item in rehearsals):
+        fail("C3 rehearsal result, stale denial or cleanup failed")
+    if c3.get("jointRehearsalsExecuted") != 2 or not isinstance(c3.get("actualStoreTechnologyEvidence"), dict) or c3.get("result") != "PASS":
+        fail("C3 must prove exactly two actual-stack rehearsal executions")
+    if not re.fullmatch(r"[a-f0-9]{40}", str(c3.get("sourceCommit"))) or not re.fullmatch(r"[a-f0-9]{64}", str(c3.get("imageBundleSha256"))) or not re.fullmatch(r"[a-f0-9]{64}", str(c3.get("migrationBundleSha256"))):
+        fail("C3 source or bundle digest binding is invalid")
+    if c3.get("harness") != "tools/clean_pilot_stack_rehearsal.py" or c3.get("compose") != "infra/clean-pilot/docker-compose.rehearsal.yml":
+        fail("C3 actual-stack implementation binding is incomplete")
     for name in FILES:
         raw = (EVIDENCE / name).read_bytes()
         canonical = json.dumps(json.loads(raw), ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
