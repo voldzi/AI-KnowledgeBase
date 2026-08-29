@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "akb-clean-pilot-stack-bundle-1",
+  "repository": "AKB/ai-knowledgebase",
+  "sourceCommit": "180d5185eaefd8447ef92c8beb1ef43b088bb79c",
+  "migrationBundleSha256": "b7cb103d0f775b242b18e611b8d748ecd1f3a20f647646f72bd0009c30dd212c",
+  "imageBundleSha256": "ddf7baf768240e3257e8f1283d4109ed6163b6cb30a37b4e0a30be02da9fecfc",
+  "images": {
+    "postgresql": "sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685",
+    "s3-object-storage": "sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e",
+    "opensearch": "sha256:8690b204fe914c60ca76d451ac73bc0481e034d32d3779944c8caca56a2b003f",
+    "qdrant": "sha256:75eab8c4ba42096724fdcfde8b4de0b5713d529dde32f285a1f86fdcb2c9e50c",
+    "registry-api": "sha256:d77c579938be434357622035e8a5a0202820e0b593196113105aca5186ff474f",
+    "ingestion-service": "sha256:b1663702291956c9ae78d686232a47a2d697ead8635e5d5b15100a7d7b4104c2",
+    "rag-retrieval-service": "sha256:4ecb4089bfc0d1dfae189899f8aeec5049ccaf61b25a7799ff902e9fe2397328",
+    "evaluation-service": "sha256:c0bb0083ca6a042fded543bf4bf8c24c0f7ae5479bb9e8a3c5388b2e89e0e168",
+    "web": "sha256:b01770b6217696a7def4e90620da7640791009867408436713656df12f148400"
+  },
+  "surfaces": [
+    "registry",
+    "search",
+    "retrieval",
+    "chat",
+    "preview",
+    "download",
+    "citation",
+    "source-open",
+    "export",
+    "publication"
+  ],
+  "networkPolicy": "internal-no-egress",
+  "credentialPolicy": "generated-ephemeral-only",
+  "productionConnectivity": false,
+  "composePath": "infra/clean-pilot/docker-compose.rehearsal.yml"
+}

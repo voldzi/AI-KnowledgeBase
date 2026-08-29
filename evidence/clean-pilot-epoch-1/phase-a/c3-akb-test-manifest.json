@@ -2,7 +2,7 @@
   "schemaVersion":"akb-clean-pilot-c3-test-manifest-1",
   "repository":"AKB/ai-knowledgebase",
   "epoch":"clean-pilot-epoch-1",
-  "environment":"local-disposable-preflight-only",
+  "environment":"local-disposable-actual-stack",
   "productionConnectivity":false,
   "productionCredentials":false,
   "ownerResetScope":"new marked disposable store only",
@@ -10,13 +10,16 @@
   "secondBootstrap":"no-op",
   "staleIdSurfaces":["registry","search","retrieval","chat","preview","download","citation","source-open","export","publication"],
   "staleIdResult":"denied",
-  "rehearsalProposals":[
-    {"rehearsalId":"akb-disposable-rehearsal-1","storeSet":"new-isolated-disposable-a","productionConnectivity":false,"productionCredentials":false,"expectedBootstrap":"empty-then-idempotent-no-op"},
-    {"rehearsalId":"akb-disposable-rehearsal-2","storeSet":"new-isolated-disposable-b","productionConnectivity":false,"productionCredentials":false,"expectedBootstrap":"empty-then-idempotent-no-op"}
+  "rehearsals":[
+    {"rehearsalId":"d25d78c61d40d3518e912a0e9d61016a0c329367643b852303f45df51d875141","storeSet":"new-isolated-disposable-a","productionConnectivity":false,"productionCredentials":false,"bootstrap":"empty-then-idempotent-no-op","staleIdResult":"denied-on-all-surfaces","cleanup":"pass","result":"pass"},
+    {"rehearsalId":"836e4e5436a86915b7f22e15357b9fee26b8e3087aee5b2f2e162f8a7d041466","storeSet":"new-isolated-disposable-b","productionConnectivity":false,"productionCredentials":false,"bootstrap":"empty-then-idempotent-no-op","staleIdResult":"denied-on-all-surfaces","cleanup":"pass","result":"pass"}
   ],
-  "jointRehearsalsExecuted":0,
-  "actualStoreTechnologyEvidence":"not-executed",
+  "jointRehearsalsExecuted":2,
+  "actualStoreTechnologyEvidence":{"postgresql":"16","s3CompatibleObjectStorage":"minio-release-2025-09-07","opensearch":"2","qdrant":"1.18.2","durableJobEvaluationVolumes":"docker-local"},
+  "sourceCommit":"180d5185eaefd8447ef92c8beb1ef43b088bb79c",
+  "imageBundleSha256":"ddf7baf768240e3257e8f1283d4109ed6163b6cb30a37b4e0a30be02da9fecfc",
+  "migrationBundleSha256":"b7cb103d0f775b242b18e611b8d748ecd1f3a20f647646f72bd0009c30dd212c",
   "harness":"tools/clean_pilot_stack_rehearsal.py",
-  "technicalBlockers":["immutable image and migration bundle for the complete disposable AKB stack is not committed","internal-no-egress rehearsal Compose topology for all actual API surfaces is not committed"],
-  "result":"STOP_TECHNICAL_BLOCKER"
+  "compose":"infra/clean-pilot/docker-compose.rehearsal.yml",
+  "result":"PASS"
 }
