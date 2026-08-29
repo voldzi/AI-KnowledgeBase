@@ -49,10 +49,13 @@ reader
 auditor
 service_ingestion
 service_rag
-service_llm_gateway
 service_evaluation
-service_governance
 ```
+
+Governance and LLM Gateway use isolated server-side trust namespaces, not
+Registry or web realm roles. Human authorization comes from the current
+STRATOS access projection and capabilities. STRATOS document integration uses
+the dedicated, route-bound `stratos-akb-service` identity.
 
 `document_gestor` is the low-friction role for an officer responsible for one or a
 small number of controlled documents or directives. It can create a document,

@@ -59,7 +59,8 @@ def main() -> None:
     expected_writer_ids = {
         "registry-governed-api", "registry-session-api", "web-controlled-upload",
         "ingestion-worker", "evaluation-service", "stratos-budget-document-bridge",
-        "quality-dataset-bootstrap", "docs-folder-import", "original-pdf-import",
+        "quality-dataset-bootstrap", "keycloak-identity-bootstrap",
+        "docs-folder-import", "original-pdf-import",
         "legacy-epoch-reset", "phase-01-smoke", "phase-02-controlled-document-smoke",
         "phase-03-docs-import-smoke", "document-workbench-e2e",
         "qdrant-maintenance-backfills", "opensearch-maintenance-backfills",

@@ -447,7 +447,7 @@ akl-api
 budget-api
 projectflow-api
 archflow-api
-stratos-akl-adapter
+stratos-akb-service
 ```
 
 Redirect URI kontrakt:

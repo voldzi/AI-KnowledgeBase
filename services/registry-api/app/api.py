@@ -9122,7 +9122,7 @@ def list_workflow_tasks(
     context = require_global_action(principal, Action.workflow_task_read, db)
     can_read_team = principal.service_identity or (
         "akb:manage_document" in context.capabilities if context.access_v2
-        else bool(context.roles & {"admin", "document_manager", "auditor", "service_governance"})
+        else bool(context.roles & {"admin", "document_manager", "auditor"})
     )
     assigned_to_me = assigned_to_me or not can_read_team
 

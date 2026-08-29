@@ -102,19 +102,9 @@ ROLE_ACTIONS: dict[str, set[str]] = {
         Action.rag_check_compliance.value,
         Action.audit_write.value,
     },
-    "service_llm_gateway": {
-        Action.audit_write.value,
-    },
     "service_evaluation": {
         Action.document_read.value,
         Action.rag_query.value,
-        Action.audit_write.value,
-    },
-    "service_governance": {
-        Action.document_read.value,
-        Action.rag_check_compliance.value,
-        Action.workflow_task_read.value,
-        Action.workflow_task_write.value,
         Action.audit_write.value,
     },
     "stratos_service": {
@@ -139,9 +129,7 @@ ROLE_MAX_CLASSIFICATION = {
     "auditor": Classification.confidential.value,
     "service_ingestion": Classification.confidential.value,
     "service_rag": Classification.confidential.value,
-    "service_llm_gateway": Classification.public.value,
     "service_evaluation": Classification.restricted.value,
-    "service_governance": Classification.confidential.value,
     "stratos_service": Classification.confidential.value,
 }
 

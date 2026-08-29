@@ -214,7 +214,7 @@ Cílový realm:
 - clients:
   - `akl-web`, `budget-web`, `projectflow-web`, `archflow-web`, `stratos-shell` public OIDC clients,
   - `akl-api`, `budget-api`, `projectflow-api`, `archflow-api` confidential service clients,
-  - `stratos-akl-adapter` confidential service client pro STRATOS adapter.
+  - `stratos-akb-service` confidential service client for the bounded STRATOS document integration route.
 - sdílené realm role:
   - `stratos_admin`
   - `stratos_user`
@@ -231,7 +231,7 @@ Cílový realm:
 - AKL zároveň v tokenu zachovává kanonické role `admin`, `document_manager`,
   `document_owner`, `document_gestor`, `reader`, `auditor` a servisní role bez
   prefixu, protože aktuální Registry API autorizuje přes tento kontrakt.
-- `akl-web` a `stratos-akl-adapter` mají audience mapper na `akl-api`; Registry API v produkci validuje `AKL_OIDC_AUDIENCE=akl-api`.
+- `akl-web` has the approved browser audiences; `stratos-akb-service` has only its route-specific `akl-api` service audience. Registry API validates `AKL_OIDC_AUDIENCE=akl-api` and an exact service route grant.
 - Pokud AKB/Keycloak provozní skript zapisuje service client hodnoty pro STRATOS
   aplikace, na `docker.home.cz` musí cílit na `/srv/STRATOS/deploy/.env`.
   STRATOS compose čte `deploy/.env`, ne root `.env`; zápis jinam se nepropíše
@@ -273,7 +273,7 @@ Bootstrap postup:
 3. Nastavit redirect URI pro produkční AKL doménu a interní testovací URL na `docker.home.cz`.
 4. Ověřit login přes AKL frontend.
 5. Ověřit browser login pro `akl-web`.
-6. Ověřit service token pro `stratos-akl-adapter`.
+6. Verify the route-bound service token for `stratos-akb-service`; unknown and retired clients must be rejected.
 
 ## 5. Docker Compose Profil
 

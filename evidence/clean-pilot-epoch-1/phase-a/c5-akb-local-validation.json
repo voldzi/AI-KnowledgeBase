@@ -6,11 +6,17 @@
   "authority": "SOURCE_ONLY",
   "environment": "local-development",
   "suite": "services/registry-api/tests",
-  "result": {
+  "preCleanupResult": {
     "passed": 337,
     "skipped": 1,
     "failed": 0,
     "durationSeconds": 25.81
+  },
+  "result": {
+    "passed": 340,
+    "skipped": 1,
+    "failed": 0,
+    "durationSeconds": 28.56
   },
   "nonFailureDiagnostics": [
     "cache-warning",

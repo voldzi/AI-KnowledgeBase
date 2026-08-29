@@ -49,16 +49,8 @@
         "description": "Service role for RAG retrieval."
       },
       {
-        "name": "service_llm_gateway",
-        "description": "Service role for the LLM Gateway."
-      },
-      {
         "name": "service_evaluation",
         "description": "Service role for evaluation workers."
-      },
-      {
-        "name": "service_governance",
-        "description": "Service role for governance workers."
       }
     ]
   },

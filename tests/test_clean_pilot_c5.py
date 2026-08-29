@@ -46,9 +46,19 @@ class CleanPilotC5Tests(unittest.TestCase):
     def test_local_registry_result_remains_non_authoritative(self) -> None:
         c5.validate_local_result()
         result = json.loads(c5.LOCAL_RESULT.read_text())
-        self.assertEqual(result["result"], {"passed": 337, "skipped": 1, "failed": 0, "durationSeconds": 25.81})
+        self.assertEqual(result["preCleanupResult"], {"passed": 337, "skipped": 1, "failed": 0, "durationSeconds": 25.81})
+        self.assertEqual(result["result"], {"passed": 340, "skipped": 1, "failed": 0, "durationSeconds": 28.56})
         self.assertIs(result["trustedCiEvidence"], False)
         self.assertIs(result["productionMutationAuthorized"], False)
+
+    def test_retired_identity_cleanup_is_closed(self) -> None:
+        c5.validate_retired_cleanup()
+        cleanup = json.loads(c5.RETIRED_CLEANUP.read_text())
+        self.assertEqual(
+            [item["id"] for item in cleanup["decisions"]],
+            ["stratos-akl-adapter", "service_governance", "service_llm_gateway"],
+        )
+        self.assertTrue(all(item["decision"] == "RETIRE" for item in cleanup["decisions"]))
 
 
 if __name__ == "__main__":

@@ -22,20 +22,12 @@
         "description": "AKB canonical evaluation service role consumed by AKB Registry API."
       },
       {
-        "name": "service_governance",
-        "description": "AKB canonical governance service role consumed by AKB Registry API."
-      },
-      {
         "name": "service_ingestion",
         "description": "AKB canonical ingestion service role consumed by AKB Registry API."
       },
       {
         "name": "service_akb_web_ingestion",
         "description": "Dedicated AKB web-to-ingestion transport role; no Registry grants."
-      },
-      {
-        "name": "service_llm_gateway",
-        "description": "AKB canonical LLM Gateway service role consumed by AKB Registry API."
       },
       {
         "name": "service_rag",
@@ -292,29 +284,6 @@
           "consentRequired": false,
           "config": {
             "included.custom.audience": "akl-api",
-            "id.token.claim": "false",
-            "access.token.claim": "true"
-          }
-        }
-      ]
-    },
-    {
-      "clientId": "stratos-akl-adapter",
-      "name": "STRATOS AKL Adapter",
-      "enabled": true,
-      "protocol": "openid-connect",
-      "publicClient": false,
-      "standardFlowEnabled": false,
-      "directAccessGrantsEnabled": false,
-      "serviceAccountsEnabled": true,
-      "protocolMappers": [
-        {
-          "name": "akl-api audience",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-audience-mapper",
-          "consentRequired": false,
-          "config": {
-            "included.client.audience": "akl-api",
             "id.token.claim": "false",
             "access.token.claim": "true"
           }
