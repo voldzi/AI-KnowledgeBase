@@ -28,6 +28,9 @@ class SameShaAttestationTests(unittest.TestCase):
             "NODE_EXTRA_CA_CERTS: /etc/ssl/certs/ca-certificates.crt",
             text,
         )
+        self.assertIn("NODE_OPTIONS: --use-openssl-ca", text)
+        self.assertIn("SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt", text)
+        self.assertNotIn("NODE_TLS_REJECT_UNAUTHORIZED", text)
         block = text.split("\n  persist-same-sha-ci-evidence:\n", 1)[1]
         self.assertIn("    name: Persist same-SHA CI evidence\n", block)
         self.assertIn(f"    needs: [{', '.join(REQUIRED_NEEDS)}]\n", block)
