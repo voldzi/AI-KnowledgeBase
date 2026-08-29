@@ -176,7 +176,7 @@ jobs:
           . .phase-a-venv/bin/activate
           python -m pip install --upgrade pip
           python -m pip install pytest
-          python -m pytest -q tests/test_clean_pilot_disposable_store.py
+          python -m pytest -q tests/test_clean_pilot_disposable_store.py tests/test_clean_pilot_stack_rehearsal.py
           python tests/test_clean_pilot_c5.py
           python -m pytest -q tests/test_standalone_chat_keycloak.py tests/test_managed_identity_preflight.py
           pnpm --dir apps/web install --frozen-lockfile --store-dir "$PNPM_STORE_DIR"

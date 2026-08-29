@@ -2,7 +2,7 @@
   "schemaVersion":"akb-clean-pilot-c3-test-manifest-1",
   "repository":"AKB/ai-knowledgebase",
   "epoch":"clean-pilot-epoch-1",
-  "environment":"local-disposable",
+  "environment":"local-disposable-preflight-only",
   "productionConnectivity":false,
   "productionCredentials":false,
   "ownerResetScope":"new marked disposable store only",
@@ -15,5 +15,8 @@
     {"rehearsalId":"akb-disposable-rehearsal-2","storeSet":"new-isolated-disposable-b","productionConnectivity":false,"productionCredentials":false,"expectedBootstrap":"empty-then-idempotent-no-op"}
   ],
   "jointRehearsalsExecuted":0,
-  "result":"PASS"
+  "actualStoreTechnologyEvidence":"not-executed",
+  "harness":"tools/clean_pilot_stack_rehearsal.py",
+  "technicalBlockers":["immutable image and migration bundle for the complete disposable AKB stack is not committed","internal-no-egress rehearsal Compose topology for all actual API surfaces is not committed"],
+  "result":"STOP_TECHNICAL_BLOCKER"
 }

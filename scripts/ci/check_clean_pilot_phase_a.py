@@ -97,6 +97,10 @@ def main() -> None:
         fail("C3 must define exactly two isolated disposable rehearsal proposals")
     if any(item.get("productionConnectivity") is not False or item.get("productionCredentials") is not False for item in rehearsals):
         fail("C3 rehearsal proposal reaches production")
+    if c3.get("jointRehearsalsExecuted") != 0 or c3.get("actualStoreTechnologyEvidence") != "not-executed" or c3.get("result") != "STOP_TECHNICAL_BLOCKER":
+        fail("C3 must not claim actual-stack rehearsal execution")
+    if c3.get("harness") != "tools/clean_pilot_stack_rehearsal.py" or len(c3.get("technicalBlockers", [])) != 2:
+        fail("C3 actual-stack blocker evidence is incomplete")
     for name in FILES:
         raw = (EVIDENCE / name).read_bytes()
         canonical = json.dumps(json.loads(raw), ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
