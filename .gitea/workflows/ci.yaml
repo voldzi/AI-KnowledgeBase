@@ -20,12 +20,9 @@ permissions:
 env:
   AKB_CI_CACHE_ROOT: /cache/akb-ci
   DOCKER_CONFIG: /tmp/akb-docker-config
-  NODE_EXTRA_CA_CERTS: /etc/ssl/certs/ca-certificates.crt
-  NODE_OPTIONS: --use-openssl-ca
   PIP_CACHE_DIR: /cache/akb-ci/pip
   PLAYWRIGHT_BROWSERS_PATH: /cache/akb-ci/playwright
   PNPM_STORE_DIR: /cache/akb-ci/pnpm-store
-  SSL_CERT_FILE: /etc/ssl/certs/ca-certificates.crt
 
 jobs:
   trusted-candidate:
