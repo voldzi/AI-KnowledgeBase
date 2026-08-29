@@ -43,6 +43,13 @@ class CleanPilotC5Tests(unittest.TestCase):
         self.assert_invalid(lambda value: value.__setitem__("clientSecret", "not-a-real-secret"), "unknown top-level")
         self.assert_invalid(lambda value: value.__setitem__("productionMutationAuthorized", True), "contract header drift|authorize production")
 
+    def test_local_registry_result_remains_non_authoritative(self) -> None:
+        c5.validate_local_result()
+        result = json.loads(c5.LOCAL_RESULT.read_text())
+        self.assertEqual(result["result"], {"passed": 337, "skipped": 1, "failed": 0, "durationSeconds": 25.81})
+        self.assertIs(result["trustedCiEvidence"], False)
+        self.assertIs(result["productionMutationAuthorized"], False)
+
 
 if __name__ == "__main__":
     unittest.main()

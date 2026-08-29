@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "akb-clean-pilot-c5-local-validation-1",
+  "repository": "AKB/ai-knowledgebase",
+  "epoch": "clean-pilot-epoch-1",
+  "gate": "C5",
+  "authority": "SOURCE_ONLY",
+  "environment": "local-development",
+  "suite": "services/registry-api/tests",
+  "result": {
+    "passed": 337,
+    "skipped": 1,
+    "failed": 0,
+    "durationSeconds": 25.81
+  },
+  "nonFailureDiagnostics": [
+    "cache-warning",
+    "deprecation-warning"
+  ],
+  "trustedCiEvidence": false,
+  "productionMutationAuthorized": false
+}

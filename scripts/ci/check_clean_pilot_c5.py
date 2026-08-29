@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CONTRACT = ROOT / "contracts/identity-cleanup/v1"
 EVIDENCE = ROOT / "evidence/clean-pilot-epoch-1/phase-a/c5-akb-identity-owner-confirmation.json"
 CLAIM = ROOT / "evidence/clean-pilot-epoch-1/phase-a/c5-akb-identity-owner-confirmation.source-claim.json"
+LOCAL_RESULT = ROOT / "evidence/clean-pilot-epoch-1/phase-a/c5-akb-local-validation.json"
 MUTABLE_HEADER = {"submissionStatus", "reasonCode"}
 MUTABLE_ENTRY = {"ownerDecision", "rationaleCode"}
 DECISIONS = {
@@ -82,12 +83,26 @@ def validate_source_claim() -> None:
         fail("source evidence claim digest mismatch")
 
 
+def validate_local_result() -> None:
+    result = json.loads(LOCAL_RESULT.read_text())
+    expected_keys = {"schemaVersion", "repository", "epoch", "gate", "authority", "environment", "suite", "result", "nonFailureDiagnostics", "trustedCiEvidence", "productionMutationAuthorized"}
+    if set(result) != expected_keys or set(result["result"]) != {"passed", "skipped", "failed", "durationSeconds"}:
+        fail("local validation evidence is not closed")
+    if result["schemaVersion"] != "akb-clean-pilot-c5-local-validation-1" or result["repository"] != "AKB/ai-knowledgebase" or result["authority"] != "SOURCE_ONLY":
+        fail("local validation evidence binding mismatch")
+    if result["suite"] != "services/registry-api/tests" or result["result"] != {"passed": 337, "skipped": 1, "failed": 0, "durationSeconds": 25.81}:
+        fail("local registry validation result drift")
+    if result["trustedCiEvidence"] is not False or result["productionMutationAuthorized"] is not False:
+        fail("local validation attempts to claim CI or production authority")
+
+
 def main() -> None:
     validate_metadata()
     artifact = json.loads(EVIDENCE.read_text())
     draft = json.loads((CONTRACT / "akb-identity-owner-confirmation.draft.json").read_text())
     validate(artifact, draft)
     validate_source_claim()
+    validate_local_result()
     raw, canonical_sha = digest(EVIDENCE)
     print(f"C5 PASS entries=20 routes=7 raw={raw} canonical={canonical_sha}")
 
