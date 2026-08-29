@@ -155,9 +155,7 @@ ensure_akb_chat_client() {
     -s 'attributes."post.logout.redirect.uris"=https://chat.zeleznalady.cz/*' \
     -s 'attributes."pkce.code.challenge.method"=S256' >/dev/null
 
-  ensure_audience_mapper "$id" "akl-api audience" "akl-api"
-  ensure_audience_mapper "$id" "budget-web audience" "budget-web"
-  ensure_audience_mapper "$id" "stratos-access-api audience" "stratos-access-api"
+  reconcile_akb_browser_audiences "akb-chat-web" "remove-budget-web"
   echo "reconciled akb-chat-web"
 }
 
@@ -211,11 +209,87 @@ MAPPERS
   esac
 }
 
+remove_legacy_budget_web_mapper() {
+  client_uuid="$1"
+  while IFS=, read -r raw_id raw_name; do
+    mapper_id=$(strip_quotes "$raw_id")
+    mapper_name=$(strip_quotes "$raw_name")
+    [ "$mapper_name" = "budget-web audience" ] || continue
+    mapper_config=$(
+      /opt/keycloak/bin/kcadm.sh get \
+        "clients/$client_uuid/protocol-mappers/models/$mapper_id" -r "$REALM" \
+        --format json | tr -d '[:space:]'
+    )
+    case "$mapper_config" in
+      *'"protocolMapper":"oidc-audience-mapper"'*'"included.client.audience":"budget-web"'*)
+        /opt/keycloak/bin/kcadm.sh delete \
+          "clients/$client_uuid/protocol-mappers/models/$mapper_id" -r "$REALM" >/dev/null
+        ;;
+      *)
+        echo "ERROR: legacy budget-web mapper does not match the approved removal signature" >&2
+        exit 1
+        ;;
+    esac
+  done <<MAPPERS
+$(/opt/keycloak/bin/kcadm.sh get "clients/$client_uuid/protocol-mappers/models" -r "$REALM" --fields id,name --format csv)
+MAPPERS
+}
+
+assert_exact_akb_browser_audiences() {
+  client_uuid="$1"
+  akl_count=0
+  access_count=0
+  while IFS=, read -r raw_id raw_name; do
+    mapper_id=$(strip_quotes "$raw_id")
+    mapper_name=$(strip_quotes "$raw_name")
+    mapper_config=$(
+      /opt/keycloak/bin/kcadm.sh get \
+        "clients/$client_uuid/protocol-mappers/models/$mapper_id" -r "$REALM" \
+        --format json | tr -d '[:space:]'
+    )
+    case "$mapper_config" in
+      *'"protocolMapper":"oidc-audience-mapper"'*)
+        case "$mapper_config" in
+          *'"included.client.audience":"akl-api"'*) akl_count=$((akl_count + 1)) ;;
+          *'"included.client.audience":"stratos-access-api"'*) access_count=$((access_count + 1)) ;;
+          *)
+            echo "ERROR: unknown audience mapper on AKB browser client: $mapper_name" >&2
+            exit 1
+            ;;
+        esac
+        ;;
+    esac
+  done <<MAPPERS
+$(/opt/keycloak/bin/kcadm.sh get "clients/$client_uuid/protocol-mappers/models" -r "$REALM" --fields id,name --format csv)
+MAPPERS
+  [ "$akl_count" -eq 1 ] && [ "$access_count" -eq 1 ] || {
+    echo "ERROR: AKB browser client must have exactly akl-api and stratos-access-api audiences" >&2
+    exit 1
+  }
+}
+
+reconcile_akb_browser_audiences() {
+  client_id="$1"
+  migration="${2:-none}"
+  client_uuid=$(find_client_id "$client_id")
+  [ -n "$client_uuid" ] || {
+    echo "ERROR: client not found: $client_id" >&2
+    exit 1
+  }
+  if [ "$migration" = "remove-budget-web" ]; then
+    remove_legacy_budget_web_mapper "$client_uuid"
+  fi
+  ensure_audience_mapper "$client_uuid" "akl-api audience" "akl-api"
+  ensure_audience_mapper "$client_uuid" "stratos-access-api audience" "stratos-access-api"
+  assert_exact_akb_browser_audiences "$client_uuid"
+}
+
 ensure_akb_chat_client
 
 update_client "akl-web" \
   '["https://stratos.zeleznalady.cz/akb/*","https://akl.zeleznalady.cz/*","https://docker.home.cz/*","http://localhost:3000/*","http://localhost:3002/*","http://localhost:3003/*"]' \
   '["https://stratos.zeleznalady.cz","https://akl.zeleznalady.cz","https://docker.home.cz","+"]'
+reconcile_akb_browser_audiences "akl-web"
 
 update_client "budget-web" \
   '["https://stratos.zeleznalady.cz/*","https://budget.zeleznalady.cz/*","https://contracts.zeleznalady.cz/*","https://docker.home.cz/*","http://localhost:3004/*"]' \

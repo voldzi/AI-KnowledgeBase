@@ -29,7 +29,6 @@ const ROLE_OPTIONS = [
   "document_manager",
   "reviewer",
   "auditor",
-  "service_governance",
   "admin",
 ];
 

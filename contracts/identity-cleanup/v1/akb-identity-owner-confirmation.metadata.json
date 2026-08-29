@@ -1,0 +1,39 @@
+{
+  "schemaVersion": "stratos-clean-pilot-akb-owner-confirmation-metadata-1",
+  "revision": "1.0.0",
+  "status": "SOURCE_ONLY_STOP",
+  "digestAlgorithm": "sha256-byte-and-canonical-json",
+  "identityManifestSha256": "6646dec58428547ddb669ba25f0c98f52d28c8f8b6fd17e8963d1bd720004886",
+  "artifacts": [
+    {
+      "kind": "owner_schema",
+      "path": "contracts/identity-cleanup/v1/akb-identity-owner-confirmation.schema.json",
+      "byteSha256": "f6a1538b45db23605d770ce11ca396ee194b9e9f05c7a08ac25dd9678997a6ed",
+      "canonicalSha256": "9778c46a1ea23acaf3a2f9ac1880ea45ee91bf9ae205b3f887ca6216319c7635"
+    },
+    {
+      "kind": "owner_template",
+      "path": "contracts/identity-cleanup/v1/akb-identity-owner-confirmation.template.json",
+      "byteSha256": "cb754774fc8e6051e7a3ca846b8a6f72af3dea1245abc6425f4d249651fab37e",
+      "canonicalSha256": "10de90b8fe74cf314e8ad0794e4d606d7bad89caed8aa0fe9694b8536ff7b857"
+    },
+    {
+      "kind": "owner_draft",
+      "path": "contracts/identity-cleanup/v1/akb-identity-owner-confirmation.draft.json",
+      "byteSha256": "0ea3741ffdd290577927eab072bfd5bc33c9b0e6c5ae838c62624243d3626287",
+      "canonicalSha256": "34786d93803b18f7cb6d04d215dcc5f0d231b7c0641c72dc008450b4de1dee7d"
+    },
+    {
+      "kind": "route_schema",
+      "path": "contracts/identity-cleanup/v1/akb-route-binding-contract.schema.json",
+      "byteSha256": "eb612984d816d3a86d67f08b861f27ab27ce8bfa2e0f38e3208848e7ff2b4c39",
+      "canonicalSha256": "10b4e125e624a8925996e70c36b74ca3b0126a138ff3eecde59f8a78965c3a23"
+    },
+    {
+      "kind": "route_contract",
+      "path": "contracts/identity-cleanup/v1/akb-route-binding-contract.json",
+      "byteSha256": "be638737c5467cc63d1961cff470e1c45b8f9fa4b4d7762208ce475f97045c52",
+      "canonicalSha256": "598b5bdf69025988445d97e8ee3f45afcc68787ab9c9fb2bf74c20116b88ea0d"
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "schemaVersion": "stratos-clean-pilot-akb-route-binding-1",
+  "revision": "1.0.0",
+  "epochId": "clean-pilot-epoch-1",
+  "unknownRouteBindingDecision": "STOP",
+  "bindings": [
+    {
+      "mode": "externalOidc",
+      "clientId": "svc-akb-director-copilot",
+      "requestScope": "director-copilot-akl-api",
+      "targetAudience": "akl-api",
+      "tokenAudienceCardinality": "EXACTLY_ONE",
+      "onMismatch": "STOP"
+    },
+    {
+      "mode": "externalOidc",
+      "clientId": "svc-akb-director-copilot",
+      "requestScope": "director-copilot-budget-api",
+      "targetAudience": "budget-api",
+      "tokenAudienceCardinality": "EXACTLY_ONE",
+      "onMismatch": "STOP"
+    },
+    {
+      "mode": "externalOidc",
+      "clientId": "svc-akb-director-copilot",
+      "requestScope": "director-copilot-projectflow-api",
+      "targetAudience": "projectflow-api",
+      "tokenAudienceCardinality": "EXACTLY_ONE",
+      "onMismatch": "STOP"
+    },
+    {
+      "mode": "externalOidc",
+      "clientId": "svc-akb-director-copilot",
+      "requestScope": "director-copilot-archflow-api",
+      "targetAudience": "archflow-api",
+      "tokenAudienceCardinality": "EXACTLY_ONE",
+      "onMismatch": "STOP"
+    },
+    {
+      "mode": "managedOidc",
+      "clientId": "svc-akb-director-copilot-budget",
+      "requestScope": "director-copilot:read",
+      "targetAudience": "budget-api",
+      "tokenAudienceCardinality": "EXACTLY_ONE",
+      "onMismatch": "STOP"
+    },
+    {
+      "mode": "managedOidc",
+      "clientId": "svc-akb-director-copilot-projectflow",
+      "requestScope": "director-copilot:read",
+      "targetAudience": "projectflow-api",
+      "tokenAudienceCardinality": "EXACTLY_ONE",
+      "onMismatch": "STOP"
+    },
+    {
+      "mode": "managedOidc",
+      "clientId": "svc-akb-director-copilot-archflow",
+      "requestScope": "director-copilot:read",
+      "targetAudience": "archflow-api",
+      "tokenAudienceCardinality": "EXACTLY_ONE",
+      "onMismatch": "STOP"
+    }
+  ]
+}

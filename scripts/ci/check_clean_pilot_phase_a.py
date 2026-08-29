@@ -1,0 +1,128 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import hashlib
+import json
+from pathlib import Path
+import re
+
+ROOT = Path(__file__).resolve().parents[2]
+EVIDENCE = ROOT / "evidence/clean-pilot-epoch-1/phase-a"
+FILES = (
+    "c0-akb-owner.json", "c1-writer-inventory.json", "c1-akb.json",
+    "c2-consumer-conformance.json", "c3-akb-test-manifest.json",
+)
+REPOSITORY = "AKB/ai-knowledgebase"
+FORBIDDEN_KEYS = {"commitSha", "reviewId", "ciRunId", "jobId", "artifactId", "releaseBom"}
+FORBIDDEN_VALUE = re.compile(r"(?:bearer\s+|token=|password=|secret=|postgres(?:ql)?://|https?://)", re.I)
+
+
+def fail(message: str) -> None:
+    raise SystemExit(f"clean pilot Phase A failed: {message}")
+
+
+def walk(value: object, path: str = "$") -> None:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if key in FORBIDDEN_KEYS:
+                fail(f"forbidden resolver-owned key {path}.{key}")
+            walk(child, f"{path}.{key}")
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            walk(child, f"{path}[{index}]")
+    elif isinstance(value, str) and FORBIDDEN_VALUE.search(value):
+        fail(f"secret or connection URL shaped value at {path}")
+
+
+def load(name: str) -> dict:
+    path = EVIDENCE / name
+    if not path.is_file():
+        fail(f"missing {name}")
+    body = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(body, dict) or body.get("repository") != REPOSITORY:
+        fail(f"invalid repository binding in {name}")
+    walk(body)
+    return body
+
+
+def main() -> None:
+    docs = {name: load(name) for name in FILES}
+    stores = docs["c0-akb-owner.json"].get("stores")
+    if not isinstance(stores, list) or len(stores) != 10 or len({item.get("storeId") for item in stores}) != 10:
+        fail("C0 must contain exactly ten uniquely owned stores")
+    boundary = docs["c0-akb-owner.json"].get("runtimeBoundary", {})
+    if boundary.get("repository") != REPOSITORY or set(boundary) != {"repository", "runtime", "secrets", "migrations", "rollback", "sharedReleaseCoordination"}:
+        fail("C0 independent repository/runtime boundary is incomplete")
+    writers = docs["c1-writer-inventory.json"].get("writers")
+    if not isinstance(writers, list) or not writers or any(not all(item.get(key) is not None for key in ("writerId", "owner", "environments", "productionPermission", "guard")) for item in writers):
+        fail("C1 writer inventory is incomplete")
+    expected_writer_ids = {
+        "registry-governed-api", "registry-session-api", "web-controlled-upload",
+        "ingestion-worker", "evaluation-service", "stratos-budget-document-bridge",
+        "quality-dataset-bootstrap", "keycloak-identity-bootstrap",
+        "docs-folder-import", "original-pdf-import",
+        "legacy-epoch-reset", "phase-01-smoke", "phase-02-controlled-document-smoke",
+        "phase-03-docs-import-smoke", "document-workbench-e2e",
+        "qdrant-maintenance-backfills", "opensearch-maintenance-backfills",
+        "official-source-imports", "clean-pilot-disposable-bootstrap",
+    }
+    if {item["writerId"] for item in writers} != expected_writer_ids:
+        fail("C1 closed writer set drift")
+    for item in writers:
+        for relative in item["paths"]:
+            if not (ROOT / relative).exists():
+                fail(f"declared writer path does not exist: {relative}")
+        if item["productionPermission"] == "none" and "retired" in item["owner"]:
+            for relative in item["paths"]:
+                if "retire_legacy_mutation" not in (ROOT / relative).read_text(encoding="utf-8"):
+                    fail(f"retired writer lacks an unconditional guard: {relative}")
+    disposable_source = (ROOT / "tools/clean_pilot_disposable_store.py").read_text(encoding="utf-8")
+    if "AIIP" in disposable_source or "SecurityPreflight" in disposable_source:
+        fail("active disposable bootstrap contains a retired artifact family")
+    if docs["c1-akb.json"].get("inventoryCount") != len(writers):
+        fail("C1 inventory count drift")
+    c2 = docs["c2-consumer-conformance.json"]
+    expected_surfaces = {"registry", "search", "retrieval", "chat", "preview", "download", "citation", "source-open", "export", "publication"}
+    if set(c2.get("surfaces", [])) != expected_surfaces or c2.get("authority") != "source-only-active-candidate":
+        fail("C2 surface or authority closure failed")
+    contracts = c2.get("contracts")
+    expected_contracts = [
+        ("2.0.0", "shadow", False, "sha256:3b11860c9b79bfb82f7792b93815f49d786667a7dd4b74f5a8ad0cb5dd6620b7"),
+        ("2.1.0", "active", True, "sha256:16509ccbdc3e49e7a9918a29c833a8ae1aa7c78777b0a8693a2477acc2f0dafa"),
+    ]
+    if not isinstance(contracts, list) or len(contracts) != 2:
+        fail("C2 must contain exactly shadow and active contracts")
+    actual_contracts = [
+        (item.get("revision"), item.get("status"), item.get("consumerCutover"), item.get("canonicalSchemaSha256"))
+        for item in contracts
+    ]
+    if actual_contracts != expected_contracts or any(item.get("catalogVersion") != "capabilities-1.12.0" for item in contracts):
+        fail("C2 contract revision, status, cutover, catalog or schema digest drift")
+    if c2.get("consumerCutover") is not True or c2.get("productionAuthority") != "unchanged-until-coordinated-cutover":
+        fail("C2 active candidate metadata is incomplete")
+    c3 = docs["c3-akb-test-manifest.json"]
+    if set(c3.get("zeroState", {})) != {"documents", "documentVersions", "blobs", "ingestJobs", "indexedChunks", "vectors", "citations", "chatRagHistory", "evaluationBusinessData", "scopePublicationSessionBindings"}:
+        fail("C3 zero-state closure failed")
+    if any(c3["zeroState"].values()) or c3.get("secondBootstrap") != "no-op" or c3.get("productionConnectivity") is not False:
+        fail("C3 is not empty, idempotent and isolated")
+    rehearsals = c3.get("rehearsals")
+    if not isinstance(rehearsals, list) or len(rehearsals) != 2 or len({item.get("rehearsalId") for item in rehearsals}) != 2:
+        fail("C3 must contain exactly two isolated disposable rehearsals")
+    if any(item.get("productionConnectivity") is not False or item.get("productionCredentials") is not False for item in rehearsals):
+        fail("C3 rehearsal reaches production")
+    if any(item.get("result") != "pass" or item.get("cleanup") != "pass" or item.get("staleIdResult") != "denied-on-all-surfaces" for item in rehearsals):
+        fail("C3 rehearsal result, stale denial or cleanup failed")
+    if c3.get("jointRehearsalsExecuted") != 2 or not isinstance(c3.get("actualStoreTechnologyEvidence"), dict) or c3.get("result") != "PASS":
+        fail("C3 must prove exactly two actual-stack rehearsal executions")
+    if not re.fullmatch(r"[a-f0-9]{40}", str(c3.get("sourceCommit"))) or not re.fullmatch(r"[a-f0-9]{64}", str(c3.get("imageBundleSha256"))) or not re.fullmatch(r"[a-f0-9]{64}", str(c3.get("migrationBundleSha256"))):
+        fail("C3 source or bundle digest binding is invalid")
+    if c3.get("harness") != "tools/clean_pilot_stack_rehearsal.py" or c3.get("compose") != "infra/clean-pilot/docker-compose.rehearsal.yml":
+        fail("C3 actual-stack implementation binding is incomplete")
+    for name in FILES:
+        raw = (EVIDENCE / name).read_bytes()
+        canonical = json.dumps(json.loads(raw), ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
+        print(f"{name} raw={hashlib.sha256(raw).hexdigest()} canonical={hashlib.sha256(canonical).hexdigest()}")
+
+
+if __name__ == "__main__":
+    main()

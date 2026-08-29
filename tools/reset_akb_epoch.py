@@ -13,10 +13,15 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from tools.legacy_mutation_guard import retire_legacy_mutation  # noqa: E402
+
 CONFIRMATION = "RESET-AKB-EPOCH"
 
 
 def main(argv: list[str] | None = None) -> int:
+    retire_legacy_mutation("tools/reset_akb_epoch.py")
     options = parse_args(argv)
     before = inventory(options)
     report: dict[str, Any] = {

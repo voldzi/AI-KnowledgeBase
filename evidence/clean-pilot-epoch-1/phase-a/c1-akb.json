@@ -1,0 +1,11 @@
+{
+  "schemaVersion":"akb-clean-pilot-c1-result-1",
+  "repository":"AKB/ai-knowledgebase",
+  "epoch":"clean-pilot-epoch-1",
+  "inventoryCount":19,
+  "activeBootstrapCreatesDemoData":false,
+  "retiredArtifactCreation":"blocked",
+  "allItemsHaveOwnerEnvironmentProductionPermissionAndGuard":true,
+  "unknownOrIncompleteEvidence":"STOP",
+  "result":"PASS"
+}

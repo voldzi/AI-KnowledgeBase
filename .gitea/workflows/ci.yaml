@@ -124,6 +124,8 @@ jobs:
           python3 tests/test_gitea_ci_operations.py
           python3 tests/test_gitea_production_deploy.py
           python3 tests/test_ci_affected_components.py
+          python3 tests/test_clean_pilot_ci_attestation.py
+          python3 tests/test_clean_pilot_c5.py
           npx --yes @redocly/cli lint openapi/openapi.json
       - name: Scan committed history for secrets
         run: |
@@ -147,6 +149,51 @@ jobs:
           # Verbose findings retain the rule, file, and commit while `--redact`
           # prevents the matched value from entering the CI log.
           "${binary}" git . --config gitleaks.toml --redact --no-banner --verbose
+
+  clean-pilot-phase-a:
+    name: Clean Pilot Phase A evidence
+    runs-on: akb-gitea-ci
+    needs: trusted-candidate
+    timeout-minutes: 15
+    steps:
+      - name: Check out exact reviewed SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - name: Verify closed evidence and disposable bootstrap
+        env:
+          EXPECTED_REPOSITORY: AKB/ai-knowledgebase
+          ACTUAL_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          [[ "${ACTUAL_REPOSITORY}" == "${EXPECTED_REPOSITORY}" ]] || {
+            printf 'Phase A repository drift: expected %s, got %s\n' "${EXPECTED_REPOSITORY}" "${ACTUAL_REPOSITORY}" >&2
+            exit 1
+          }
+          python3 scripts/ci/check_clean_pilot_phase_a.py | tee phase-a-digests.txt
+          python3 scripts/ci/check_clean_pilot_c5.py | tee -a phase-a-digests.txt
+          python3 -m venv .phase-a-venv
+          . .phase-a-venv/bin/activate
+          python -m pip install --upgrade pip
+          python -m pip install pytest
+          python -m pytest -q tests/test_clean_pilot_disposable_store.py tests/test_clean_pilot_stack_rehearsal.py
+          python tests/test_clean_pilot_c5.py
+          python -m pytest -q tests/test_standalone_chat_keycloak.py tests/test_managed_identity_preflight.py
+          pnpm --dir apps/web install --frozen-lockfile --store-dir "$PNPM_STORE_DIR"
+          pnpm --dir apps/web exec tsx --test tests/access-projection-v2-shadow.test.ts
+          printf '%s\n' "${{ github.sha }}" > exact-reviewed-sha.txt
+      - name: Publish resolver input
+        # Gitea act_runner 0.2.11 does not implement the GitHub artifact v4
+        # protocol. Keep artifact transport pinned to the supported v3 action.
+        uses: actions/upload-artifact@v3
+        with:
+          name: akb-clean-pilot-phase-a-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            evidence/clean-pilot-epoch-1/phase-a/*.json
+            phase-a-digests.txt
+            exact-reviewed-sha.txt
 
   immutable-release:
     name: Immutable release contract
@@ -368,3 +415,40 @@ jobs:
             -f infra/docker-compose/docker-compose.local-prod.yml config >/tmp/akb-compose-local-prod.yml
           AKB_POLICY_SERVICE_TOKEN=dummy-akb-policy-service-token \
           bash scripts/check_docker_home_compose_render.sh
+
+  persist-same-sha-ci-evidence:
+    name: Persist same-SHA CI evidence
+    runs-on: akb-gitea-ci
+    needs: [trusted-candidate, impact, standards, clean-pilot-phase-a, immutable-release, web, registry-api, ingestion-service, rag-retrieval-service, llm-gateway-service, evaluation-service, governance-service, compose]
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Check out exact verified SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - name: Create closed same-SHA attestation
+        env:
+          AKB_GITEA_RUN_ATTEMPT: ${{ gitea.run_attempt }}
+        run: |
+          set -euo pipefail
+          rm -rf same-sha-ci-evidence
+          run_attempt="${AKB_GITEA_RUN_ATTEMPT:-1}"
+          python3 scripts/ci/write_same_sha_ci_evidence.py \
+            --commit "${{ github.sha }}" \
+            --ref "${{ github.ref }}" \
+            --event "${{ github.event_name }}" \
+            --run-id "${{ github.run_id }}" \
+            --run-attempt "$run_attempt" \
+            --output same-sha-ci-evidence/akb-gitea-ci-evidence.json
+          test "$(find same-sha-ci-evidence -maxdepth 1 -type f | wc -l | tr -d ' ')" = "1"
+      - name: Publish single-file same-SHA attestation
+        # Gitea act_runner 0.2.11 does not implement the GitHub artifact v4
+        # protocol. Keep artifact transport pinned to the supported v3 action.
+        uses: actions/upload-artifact@v3
+        with:
+          name: akb-gitea-ci-evidence-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 30
+          path: same-sha-ci-evidence/akb-gitea-ci-evidence.json

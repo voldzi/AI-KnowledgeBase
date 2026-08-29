@@ -6,7 +6,6 @@
 
 - public web OIDC clients for STRATOS applications,
 - confidential service clients for application APIs,
-- confidential `stratos-akl-adapter` service client,
 - shared STRATOS roles (`stratos_admin`, `stratos_user`, `stratos_auditor`),
 - AKL-prefixed roles for STRATOS identity administration,
 - AKL canonical roles consumed by the current Registry API authorization model,
@@ -27,9 +26,7 @@ The roles mirror `docs/CONTRACTS/06_SECURITY_AUTHZ_MODEL.md`:
 - `service_ingestion`
 - `service_aiip`
 - `service_rag`
-- `service_llm_gateway`
 - `service_evaluation`
-- `service_governance`
 
 ## Local OIDC profile
 
@@ -81,7 +78,14 @@ AKL_WEB_PUBLIC_BASE_URL=https://stratos.zeleznalady.cz/akb
 AKL_WEB_SESSION_SECRET=<long random value>
 ```
 
-`akl-web` and `stratos-akl-adapter` include an `akl-api` audience mapper because Registry API validates bearer tokens with `AKL_OIDC_AUDIENCE=akl-api`.
+Both AKB browser clients, `akl-web` and `akb-chat-web`, issue user access
+tokens with exactly the `akl-api` and `stratos-access-api` audiences. Domain
+audiences such as `budget-web` are prohibited on AKB browser clients.
+STRATOS-to-AKB document integration uses the dedicated
+`stratos-akb-service` identity with an exact route grant and only its
+route-specific `akl-api` audience. Governance and LLM Gateway use isolated
+server-side service-token boundaries and do not grant Registry access through
+realm roles.
 
 Provision the confidential `aiip-service` client, its single application role,
 and the `akb-api` audience with:

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "akb-gitea-ci-evidence-1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "commit", "ref", "event", "workflow", "run_id", "run_attempt", "phase_a_evidence"],
+  "properties": {
+    "schema": {"const": "akb-gitea-ci-evidence-1"},
+    "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "ref": {"type": "string", "minLength": 1},
+    "event": {"enum": ["push", "workflow_dispatch"]},
+    "workflow": {"const": ".gitea/workflows/ci.yaml"},
+    "run_id": {"type": "integer", "minimum": 1},
+    "run_attempt": {"type": "integer", "minimum": 1},
+    "phase_a_evidence": {"const": "success"}
+  }
+}

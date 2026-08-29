@@ -893,6 +893,51 @@ def test_budget_upload_service_is_limited_to_dedicated_route() -> None:
     assert exc_info.value.detail["error"]["code"] == "service_route_forbidden"
 
 
+def test_retired_adapter_bearer_is_fail_closed() -> None:
+    settings = _settings(
+        AKL_TRUSTED_SERVICE_CLIENT_IDS="stratos-akb-service",
+        AKL_SERVICE_CLIENT_ROUTE_GRANTS=(
+            "stratos-akb-service=stratos-budget-upload"
+        ),
+    )
+    retired = Principal(
+        subject_id="service-account-stratos-akl-adapter",
+        roles={"service_ingestion"},
+        groups=set(),
+        service_identity=True,
+        service_client_id="stratos-akl-adapter",
+        application_access_active=False,
+    )
+    request = Request(
+        {
+            "type": "http",
+            "http_version": "1.1",
+            "method": "POST",
+            "scheme": "https",
+            "path": (
+                "/api/v1/integrations/stratos-budget-upload/"
+                "external-documents/upsert"
+            ),
+            "raw_path": b"",
+            "query_string": b"",
+            "headers": [],
+            "client": ("testclient", 50000),
+            "server": ("testserver", 443),
+        }
+    )
+    with pytest.raises(HTTPException) as exc_info:
+        _enforce_service_route(retired, request, settings)
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail["error"]["code"] == "service_route_forbidden"
+
+
+@pytest.mark.parametrize("role", ["service_governance", "service_llm_gateway"])
+def test_retired_realm_roles_grant_no_registry_action(role: str) -> None:
+    for action in api_module.Action:
+        assert not permissions_module.roles_grant_action({role}, action.value)
+    assert permissions_module.max_classification_for_roles({role}) == "public"
+
+
 def _policy(scope_id: str = "it") -> InformationPolicyBinding:
     return InformationPolicyBinding.model_validate({
         "schemaVersion": "stratos-information-policy-2",

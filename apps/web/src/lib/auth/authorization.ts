@@ -19,8 +19,6 @@ const MANAGEMENT_ROLES = new Set([
   "akl_reviewer",
   "auditor",
   "akl_auditor",
-  "service_governance",
-  "akl_service_governance",
   "analyst",
   "akl_analyst"
 ]);
@@ -55,8 +53,6 @@ const WORKFLOW_ROLES = new Set([
   "akl_reviewer",
   "auditor",
   "akl_auditor",
-  "service_governance",
-  "akl_service_governance"
 ]);
 
 const INTELLIGENCE_ROLES = new Set([
@@ -65,16 +61,12 @@ const INTELLIGENCE_ROLES = new Set([
   "akl_analyst",
   "auditor",
   "akl_auditor",
-  "service_governance",
-  "akl_service_governance"
 ]);
 
 const AUDIT_ROLES = new Set([
   ...ADMIN_ROLES,
   "auditor",
   "akl_auditor",
-  "service_governance",
-  "akl_service_governance"
 ]);
 
 export function hasAnyRole(roles: readonly string[] | undefined, allowed: ReadonlySet<string>): boolean {
