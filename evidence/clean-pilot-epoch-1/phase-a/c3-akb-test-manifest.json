@@ -1,6 +1,6 @@
 {
   "schemaVersion":"akb-clean-pilot-c3-test-manifest-1",
-  "repository":"STRATOS/AKB",
+  "repository":"AKB/ai-knowledgebase",
   "epoch":"clean-pilot-epoch-1",
   "environment":"local-disposable",
   "productionConnectivity":false,

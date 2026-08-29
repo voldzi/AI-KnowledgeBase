@@ -1,6 +1,6 @@
 {
   "schemaVersion":"akb-clean-pilot-c1-writer-inventory-1",
-  "repository":"STRATOS/AKB",
+  "repository":"AKB/ai-knowledgebase",
   "epoch":"clean-pilot-epoch-1",
   "closed":true,
   "unknownWriterPolicy":"STOP",

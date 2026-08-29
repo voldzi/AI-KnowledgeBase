@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 import sys
 
@@ -6,6 +7,12 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from tools.clean_pilot_disposable_store import SURFACES, ZERO_STORES, bootstrap, owner_reset, technical_pass
+
+
+def test_phase_a_evidence_is_bound_to_authoritative_gitea_repository() -> None:
+    evidence = Path(__file__).resolve().parents[1] / "evidence/clean-pilot-epoch-1/phase-a"
+    for path in sorted(evidence.glob("*.json")):
+        assert json.loads(path.read_text(encoding="utf-8"))["repository"] == "AKB/ai-knowledgebase"
 
 
 def test_disposable_bootstrap_is_empty_idempotent_and_denies_stale_ids(tmp_path: Path) -> None:

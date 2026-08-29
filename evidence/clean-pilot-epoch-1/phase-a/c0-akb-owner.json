@@ -1,6 +1,6 @@
 {
   "schemaVersion": "akb-clean-pilot-c0-owner-1",
-  "repository": "STRATOS/AKB",
+  "repository": "AKB/ai-knowledgebase",
   "epoch": "clean-pilot-epoch-1",
   "phase": "A",
   "acknowledgement": "OWNER_ACKNOWLEDGED_NO_PRODUCTION_MUTATION",

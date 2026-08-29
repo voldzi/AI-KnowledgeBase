@@ -12,6 +12,7 @@ FILES = (
     "c0-akb-owner.json", "c1-writer-inventory.json", "c1-akb.json",
     "c2-consumer-conformance.json", "c3-akb-test-manifest.json",
 )
+REPOSITORY = "AKB/ai-knowledgebase"
 FORBIDDEN_KEYS = {"commitSha", "reviewId", "ciRunId", "jobId", "artifactId", "releaseBom"}
 FORBIDDEN_VALUE = re.compile(r"(?:bearer\s+|token=|password=|secret=|postgres(?:ql)?://|https?://)", re.I)
 
@@ -38,7 +39,7 @@ def load(name: str) -> dict:
     if not path.is_file():
         fail(f"missing {name}")
     body = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(body, dict) or body.get("repository") != "STRATOS/AKB":
+    if not isinstance(body, dict) or body.get("repository") != REPOSITORY:
         fail(f"invalid repository binding in {name}")
     walk(body)
     return body

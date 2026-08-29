@@ -159,8 +159,15 @@ jobs:
         with:
           ref: ${{ github.sha }}
       - name: Verify closed evidence and disposable bootstrap
+        env:
+          EXPECTED_REPOSITORY: AKB/ai-knowledgebase
+          ACTUAL_REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
+          [[ "${ACTUAL_REPOSITORY}" == "${EXPECTED_REPOSITORY}" ]] || {
+            printf 'Phase A repository drift: expected %s, got %s\n' "${EXPECTED_REPOSITORY}" "${ACTUAL_REPOSITORY}" >&2
+            exit 1
+          }
           python3 scripts/ci/check_clean_pilot_phase_a.py | tee phase-a-digests.txt
           python3 -m venv .phase-a-venv
           . .phase-a-venv/bin/activate

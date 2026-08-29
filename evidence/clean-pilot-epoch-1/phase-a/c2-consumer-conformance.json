@@ -1,6 +1,6 @@
 {
   "schemaVersion":"akb-clean-pilot-c2-consumer-conformance-1",
-  "repository":"STRATOS/AKB",
+  "repository":"AKB/ai-knowledgebase",
   "epoch":"clean-pilot-epoch-1",
   "authority":"shadow-only",
   "consumerCutover":false,
