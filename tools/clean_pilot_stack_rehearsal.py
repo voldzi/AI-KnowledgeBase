@@ -307,8 +307,10 @@ def execute_rehearsal(bundle_path: Path, marker_root: Path, run_id: str, current
     verify_isolated_compose(repository_root, project, env)
     started = False
     try:
-        _compose(repository_root, project, env, "up", "-d", "--wait")
+        # Once compose is invoked it may create only part of the project before
+        # returning an error. Cleanup must therefore run for partial starts too.
         started = True
+        _compose(repository_root, project, env, "up", "-d", "--wait")
         first = _probe(repository_root, project, env)
         _compose(repository_root, project, env, "up", "-d", "--wait")
         second = _probe(repository_root, project, env)
