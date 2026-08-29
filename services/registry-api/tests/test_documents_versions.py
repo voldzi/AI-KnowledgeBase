@@ -25,6 +25,30 @@ def _create_document(client, headers, **overrides):
     return response.json()
 
 
+def test_controlled_rules_reader_cannot_request_unverified_proposals(client, reader_headers):
+    response = client.get(
+        "/api/v1/controlled-documentation/rules?domain=public_procurement&approved_only=false",
+        headers=reader_headers,
+    )
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "controlled_rule_review_forbidden"
+
+    verified_view = client.get(
+        "/api/v1/controlled-documentation/rules?domain=public_procurement",
+        headers=reader_headers,
+    )
+    assert verified_view.status_code == 200
+    assert verified_view.json()["rules"] == []
+
+
+def test_controlled_rules_reviewer_can_request_proposals(client, admin_headers):
+    response = client.get(
+        "/api/v1/controlled-documentation/rules?domain=public_procurement&approved_only=false",
+        headers=admin_headers,
+    )
+    assert response.status_code == 200
+
+
 def test_document_crud_and_audit(client, admin_headers):
     document = _create_document(client, admin_headers)
 

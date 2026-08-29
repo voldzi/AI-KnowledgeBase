@@ -1,7 +1,8 @@
 "use client";
 
-import { forwardRef, useEffect, useState } from "react";
-import { Copy, ExternalLink, FileText, Maximize2, PanelRightOpen, ShieldAlert, Square, X } from "lucide-react";
+import { forwardRef, useState } from "react";
+import { Dialog } from "@voldzi/stratos-ui";
+import { Copy, ExternalLink, FileText, Maximize2, PanelRightOpen, ShieldAlert, Square } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -82,89 +83,68 @@ export function CitationModal({
   const showCitationList = !sourceContext;
   const showContextPane = Boolean(sourceContext || sourceError);
 
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [open, onClose]);
-
-  if (!open) return null;
-
   return (
-    <div
-      className={`citation-backdrop citation-backdrop--${mode}`}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      role="dialog"
-      aria-modal="true"
-      aria-label={title}
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={title}
+      className={`citation-modal citation-modal--${mode}`}
     >
-      <div className={`citation-modal citation-modal--${mode}`}>
-        <div className="citation-modal__header">
-          <span className="citation-modal__title">{title}</span>
-          <div className="citation-modal__modes">
-            <button
-              type="button"
-              className={`citation-mode-btn ${mode === "modal" ? "is-active" : ""}`}
-              title="Okno"
-              onClick={() => setMode("modal")}
-            >
-              <Square size={14} aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              className={`citation-mode-btn ${mode === "sidebar" ? "is-active" : ""}`}
-              title="Panel"
-              onClick={() => setMode("sidebar")}
-            >
-              <PanelRightOpen size={14} aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              className={`citation-mode-btn ${mode === "fullscreen" ? "is-active" : ""}`}
-              title="Celá obrazovka"
-              onClick={() => setMode("fullscreen")}
-            >
-              <Maximize2 size={14} aria-hidden="true" />
-            </button>
-          </div>
-          <button
-            type="button"
-            className="citation-modal__close"
-            onClick={onClose}
-            aria-label="Zavřít"
-          >
-            <X size={16} aria-hidden="true" />
-          </button>
-        </div>
-        <div className={`citation-modal__body ${sourceContext ? "citation-modal__body--detail" : ""}`.trim()}>
-          {showCitationList ? (
-            <div className="citation-modal__list-pane">
-              <CitationList
-                citations={citations}
-                activeChunkId={activeChunkId}
-                openingChunkId={openingChunkId}
-                emptyLabel={emptyLabel}
-                labels={labels}
-                onOpenCitation={onOpenCitation}
-              />
-            </div>
-          ) : null}
-          {showContextPane ? (
-            <div className="citation-modal__context-pane">
-              {sourceError ? <div className="notice">{sourceError}</div> : null}
-              {sourceContext ? (
-                <SourceContextCard labels={labels} sourceContext={sourceContext} showStatus={false} />
-              ) : null}
-            </div>
-          ) : null}
-        </div>
+      <div className="citation-modal__modes" role="group" aria-label="Zobrazení citace">
+        <button
+          type="button"
+          className={`citation-mode-btn ${mode === "modal" ? "is-active" : ""}`}
+          title="Okno"
+          aria-label="Okno"
+          aria-pressed={mode === "modal"}
+          onClick={() => setMode("modal")}
+        >
+          <Square size={14} aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          className={`citation-mode-btn ${mode === "sidebar" ? "is-active" : ""}`}
+          title="Panel"
+          aria-label="Panel"
+          aria-pressed={mode === "sidebar"}
+          onClick={() => setMode("sidebar")}
+        >
+          <PanelRightOpen size={14} aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          className={`citation-mode-btn ${mode === "fullscreen" ? "is-active" : ""}`}
+          title="Celá obrazovka"
+          aria-label="Celá obrazovka"
+          aria-pressed={mode === "fullscreen"}
+          onClick={() => setMode("fullscreen")}
+        >
+          <Maximize2 size={14} aria-hidden="true" />
+        </button>
       </div>
-    </div>
+      <div className={`citation-modal__body ${sourceContext ? "citation-modal__body--detail" : ""}`.trim()}>
+        {showCitationList ? (
+          <div className="citation-modal__list-pane">
+            <CitationList
+              citations={citations}
+              activeChunkId={activeChunkId}
+              openingChunkId={openingChunkId}
+              emptyLabel={emptyLabel}
+              labels={labels}
+              onOpenCitation={onOpenCitation}
+            />
+          </div>
+        ) : null}
+        {showContextPane ? (
+          <div className="citation-modal__context-pane">
+            {sourceError ? <div className="notice">{sourceError}</div> : null}
+            {sourceContext ? (
+              <SourceContextCard labels={labels} sourceContext={sourceContext} showStatus={false} />
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </Dialog>
   );
 }
 
@@ -192,8 +172,10 @@ export function CitationList({
           <button
             className="button citation-open-button"
             type="button"
-            onClick={() => onOpenCitation(citation)}
-            disabled={openingChunkId === citation.chunk_id}
+            onClick={() => {
+              if (openingChunkId !== citation.chunk_id) onOpenCitation(citation);
+            }}
+            aria-disabled={openingChunkId === citation.chunk_id}
           >
             <ExternalLink size={15} aria-hidden="true" />
             {openingChunkId === citation.chunk_id ? labels.opening : labels.openCitation}

@@ -15,7 +15,7 @@ const toneByStatus: Record<string, string> = {
   completed: "success",
   high: "success",
   online: "success",
-  info: "success",
+  info: "neutral",
   review: "attention",
   approved: "success",
   queued: "attention",

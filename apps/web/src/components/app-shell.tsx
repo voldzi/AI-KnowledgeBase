@@ -6,6 +6,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
   useTransition,
@@ -393,6 +394,8 @@ function AppShellContent({
   const [commandCenterQuery, setCommandCenterQuery] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [applicationAccess, setApplicationAccess] = useState(initialUser?.applicationAccess);
+  const [identityLoaded, setIdentityLoaded] = useState(Boolean(initialUser) || authMode === "mock");
+  const authenticatedSubject = useRef(initialUser?.subjectId ?? "");
   const [settingsMode, setSettingsMode] =
     useState<SettingsSurfaceMode>("modal");
   const [settingsDirty, setSettingsDirty] = useState(false);
@@ -421,12 +424,12 @@ function AppShellContent({
   }));
   const [userProfile, setUserProfile] = useState<AklUserProfile>(() => ({
     name:
-      authMode === "mock" ? "AKB Dev User" : (initialUser?.subjectId ?? "AKB"),
+      authMode === "mock" ? "AKB Dev User" : "AKB",
     email: authMode === "mock" ? "dev@akl.local" : undefined,
     initials:
       authMode === "mock"
         ? "AD"
-        : initialsFromName(initialUser?.subjectId ?? "AKB"),
+        : "AKB",
     roles: initialUser?.roles ?? [],
     capabilities: initialUser?.capabilities ?? [],
   }));
@@ -490,6 +493,8 @@ function AppShellContent({
             )
           : [];
         setApplicationAccess(nextApplicationAccess);
+        authenticatedSubject.current = String(payload.user.subjectId ?? "");
+        setIdentityLoaded(true);
         setUserProfile({
           name,
           email,
@@ -522,10 +527,8 @@ function AppShellContent({
   const applyProfileSettings = useCallback(
     (payload: ProfileSettingsPayload) => {
       const identity = payload.identity ?? {};
-      const roles = arrayOfStrings(identity.roles);
-      const groups = arrayOfStrings(identity.groups);
-      const permissions = arrayOfStrings(identity.permissions);
-      const capabilities = arrayOfStrings(identity.capabilities);
+      const profileSubject = identity.subject_id ?? payload.subject_id;
+      if (!authenticatedSubject.current || profileSubject !== authenticatedSubject.current) return;
       const fallbackName =
         typeof identity.display_name === "string" && identity.display_name
           ? identity.display_name
@@ -536,8 +539,8 @@ function AppShellContent({
         name: fallbackName,
         email: typeof identity.email === "string" ? identity.email : undefined,
         initials: initialsFromName(fallbackName),
-        roles: roles.length ? roles : (initialUser?.roles ?? []),
-        capabilities: capabilities.length ? capabilities : (initialUser?.capabilities ?? []),
+        roles: initialUser?.roles ?? [],
+        capabilities: initialUser?.capabilities ?? [],
       };
       const nextValues = createSettingsValues({
         authModeLabel,
@@ -581,26 +584,16 @@ function AppShellContent({
       setSettingsValues(mergedValues);
       setSettingsDirty(false);
       setSettingsSaveError(null);
-      setUserProfile({
+      // Preferences can change presentation, never the verified access projection.
+      setUserProfile((current) => ({
+        ...current,
         name: nextName,
         email: nextEmail,
         initials: initialsFromName(nextName),
-        roles: fallbackUser.roles,
-        capabilities: fallbackUser.capabilities,
         avatarColor,
         avatarId,
         avatarImageUrl,
-      });
-      setAccessInfo({
-        subjectId:
-          typeof identity.subject_id === "string"
-            ? identity.subject_id
-            : (payload.subject_id ?? initialUser?.subjectId ?? ""),
-        roles: fallbackUser.roles,
-        capabilities: fallbackUser.capabilities,
-        groups,
-        permissions,
-      });
+      }));
       setLanguage(nextLanguage);
       const appMode = mergedProfileSettings.settingsMode;
       if (isSettingsSurfaceMode(appMode)) {
@@ -626,6 +619,7 @@ function AppShellContent({
     },
     [
       authModeLabel,
+      initialUser?.capabilities,
       initialUser?.roles,
       initialUser?.subjectId,
       language,
@@ -670,6 +664,7 @@ function AppShellContent({
   );
 
   useEffect(() => {
+    if (!identityLoaded) return;
     let active = true;
     profileSettingsClient
       .get()
@@ -683,7 +678,7 @@ function AppShellContent({
     return () => {
       active = false;
     };
-  }, [applyProfileSettings, profileSettingsClient]);
+  }, [applyProfileSettings, identityLoaded, profileSettingsClient]);
 
   useEffect(() => {
     const refreshProfile = () => {
@@ -742,7 +737,7 @@ function AppShellContent({
     [language, userProfile.capabilities, userProfile.roles, webProfile],
   );
   useEffect(() => {
-    if (accessibleNavigation.length === 0) {
+    if (!identityLoaded || accessibleNavigation.length === 0) {
       return;
     }
     const currentRouteAllowed = canAccessAppShellRoute(
@@ -758,7 +753,7 @@ function AppShellContent({
       .map((href) => accessibleNavigation.find((item) => item.href === href))
       .find((item) => item !== undefined) ?? accessibleNavigation[0]!;
     router.replace(fallback.href);
-  }, [accessibleNavigation, pathname, router, userProfile.capabilities, userProfile.roles, webProfile]);
+  }, [accessibleNavigation, identityLoaded, pathname, router, userProfile.capabilities, userProfile.roles, webProfile]);
   const railDefinitions: Array<{
     id: ShellModuleId;
     label: string;
@@ -1398,12 +1393,6 @@ function stringSetting(value: unknown, fallback: string): string {
 
 function booleanSetting(value: unknown, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
-}
-
-function arrayOfStrings(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === "string")
-    : [];
 }
 
 function isSettingsSurfaceMode(value: unknown): value is SettingsSurfaceMode {

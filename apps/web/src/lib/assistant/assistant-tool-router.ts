@@ -23,9 +23,11 @@ import {
   resolveDocumentKnowledgeIntent,
   type DocumentKnowledgeIntentResolution,
 } from "./document-knowledge-intent";
+import { personalWorkflowIntent, type PersonalWorkflowIntent } from "./personal-workflow-intent";
 
-export type AssistantToolName = "controlled_rule_answer" | "registry_document_report" | "rag_document_answer";
+export type AssistantToolName = "controlled_rule_answer" | "registry_document_report" | "rag_document_answer" | "workflow_workspace";
 export type AssistantToolRouteReason =
+  | "personal_workflow_intent"
   | "controlled_rule_intent"
   | "registry_metadata_intent"
   | "rag_structured_output"
@@ -43,6 +45,7 @@ export interface AssistantToolRoute {
   queryPlan: AssistantQueryPlan;
   reportRequest: AssistantReportRequest | null;
   controlledRuleIntent: ControlledRuleIntent | null;
+  personalWorkflow: PersonalWorkflowIntent | null;
   documentKnowledge: DocumentKnowledgeIntentResolution;
   answerMode: AnswerMode;
 }
@@ -87,6 +90,15 @@ export function routeAssistantMessage(
   const structuredOutput = Boolean(reportRequest)
     || (documentKnowledge.intent !== "resource" && STRUCTURED_OUTPUT_RE.test(message));
   const obligationOutput = reportRequest?.template === "obligation_table" || OBLIGATION_OUTPUT_RE.test(message);
+  const personalWorkflow = personalWorkflowIntent(message);
+  if (personalWorkflow && !reportRequest) {
+    return withQueryPlan(message, language, {
+      tool: "workflow_workspace", reason: "personal_workflow_intent",
+      structuredOutput: false, obligationOutput: false, registryReportKind: null,
+      registryTopics: [], answerFormatInstruction: null, reportRequest: null,
+      controlledRuleIntent: null, personalWorkflow, documentKnowledge, answerMode: "ask",
+    });
+  }
   const controlledRuleIntent = controlledRuleIntentFromMessage(message, context);
   if (controlledRuleIntent) {
     return withQueryPlan(message, language, {
@@ -99,6 +111,7 @@ export function routeAssistantMessage(
       answerFormatInstruction: null,
       reportRequest: null,
       controlledRuleIntent,
+      personalWorkflow: null,
       documentKnowledge,
       answerMode: "normative_with_citations",
     });
@@ -114,6 +127,7 @@ export function routeAssistantMessage(
       answerFormatInstruction: null,
       reportRequest,
       controlledRuleIntent: null,
+      personalWorkflow: null,
       documentKnowledge,
       answerMode: "it_support_answer",
     });
@@ -138,6 +152,7 @@ export function routeAssistantMessage(
     ),
     reportRequest,
     controlledRuleIntent: null,
+    personalWorkflow: null,
     documentKnowledge,
     answerMode: documentKnowledge.answerMode,
   });
@@ -187,6 +202,7 @@ export function routeAssistantMessageForRag(
     }),
     reportRequest: route.reportRequest,
     controlledRuleIntent: null,
+    personalWorkflow: null,
     answerMode: route.documentKnowledge.answerMode,
   };
 }

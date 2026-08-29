@@ -5461,11 +5461,15 @@ def _controlled_rule_consumer_view_for_packages(
 @router.get(
     "/controlled-documentation/rules",
     response_model=ControlledRuleListResponse,
+    responses={403: {"description": "The subject cannot review unverified rules or inactive packages"}},
 )
 def list_controlled_document_rules(
     domain: str = Query(min_length=2, max_length=80),
     valid_on: date | None = Query(default=None),
-    approved_only: bool = Query(default=True),
+    approved_only: bool = Query(
+        default=True,
+        description="False requires document update or version publication permission; ordinary readers receive only verified rules.",
+    ),
     include_inactive: bool = Query(default=False),
     consumer_view: bool = Query(default=False),
     db: Session = Depends(get_db),
@@ -5478,6 +5482,17 @@ def list_controlled_document_rules(
             "controlled_rule_consumer_view_inactive_forbidden",
             "The controlled-rule consumer view can contain only effective packages",
         )
+    if not approved_only:
+        context = context_for_principal(principal, db)
+        if not any(
+            evaluate_global_action(context, action.value).allowed
+            for action in (Action.document_update, Action.document_version_publish)
+        ):
+            raise problem(
+                status.HTTP_403_FORBIDDEN,
+                "controlled_rule_review_forbidden",
+                "Reviewing unverified rules requires document management permission",
+            )
     if include_inactive:
         require_global_action(principal, Action.document_update, db)
         candidates = list(

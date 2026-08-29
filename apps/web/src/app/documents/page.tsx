@@ -2,6 +2,7 @@ import { PageHeader } from "@/components/page-header";
 import { DocumentRegistry } from "@/features/documents/document-registry";
 import { getServerApiClients, getServerRequestContextForPath } from "@/lib/api/server";
 import { requireWorkspaceRouteAccess } from "@/lib/auth/server-route-guard";
+import { buildReturnTarget } from "@/lib/navigation/document-navigation";
 import type { Classification, DocumentStatus, DocumentType } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -28,9 +29,9 @@ const classifications: Classification[] = [
 
 export default async function DocumentsPage({ searchParams }: DocumentsPageProps) {
   const clients = getServerApiClients();
-  const context = await getServerRequestContextForPath("/documents");
-  requireWorkspaceRouteAccess(context, "/documents");
   const resolvedSearchParams = await searchParams;
+  const context = await getServerRequestContextForPath(buildReturnTarget("/documents", resolvedSearchParams));
+  requireWorkspaceRouteAccess(context, "/documents");
   const view = firstValue(resolvedSearchParams?.view);
   const statuses = selectedValues(resolvedSearchParams?.status, documentStatuses);
   const selectedClassifications = selectedValues(

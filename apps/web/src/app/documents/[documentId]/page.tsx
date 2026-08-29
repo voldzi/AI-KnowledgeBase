@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/page-header";
 import { DocumentDetail } from "@/features/documents/document-detail";
 import { getServerApiClients, getServerRequestContextForPath } from "@/lib/api/server";
 import { requireWorkspaceRouteAccess } from "@/lib/auth/server-route-guard";
-import { controlledDocumentationDomain } from "@/lib/controlled-documentation/contract";
+import { canReviewControlledDocumentation, controlledDocumentationDomain } from "@/lib/controlled-documentation/contract";
 import { selectedDocumentVersion } from "@/lib/documents/review-version";
 import {
   ApiClientError,
@@ -30,9 +30,12 @@ export default async function DocumentDetailPage({ params, searchParams }: Docum
   requireWorkspaceRouteAccess(context, "/documents");
 
   try {
-    const document = await clients.registry.getDocument(documentId, context);
+    const [document, authorization] = await Promise.all([
+      clients.registry.getDocument(documentId, context),
+      clients.registry.getAuthorizationHints(context),
+    ]);
     const controlledDomain = controlledDocumentationDomain(document);
-    const [assignments, versions, jobsResult, authorization, workflowResult, auditResult, controlledContext] = await Promise.all([
+    const [assignments, versions, jobsResult, workflowResult, auditResult, controlledContext] = await Promise.all([
       clients.registry.listDocumentAssignments(documentId, context).catch((error) => {
         if (error instanceof ApiClientError && error.status === 404) {
           return [];
@@ -41,13 +44,14 @@ export default async function DocumentDetailPage({ params, searchParams }: Docum
       }),
       clients.registry.listDocumentVersions(documentId, context),
       optionalSection(listVisibleIngestionJobs(clients, [{ document_id: documentId }], context)),
-      clients.registry.getAuthorizationHints(context),
       optionalSection(
         clients.registry.listWorkflowTasks(context, { includeResolved: true, documentId }),
       ),
-      optionalSection(clients.registry.listAuditEvents(context, { limit: 200 })),
+      authorization.can_read_audit
+        ? optionalSection(clients.registry.listAuditEvents(context, { limit: 200 }))
+        : Promise.resolve({ items: [], available: false, failed: false }),
       controlledDomain
-        ? listControlledDocumentContext(clients, context, controlledDomain, documentId)
+        ? listControlledDocumentContext(clients, context, controlledDomain, documentId, authorization)
         : Promise.resolve({
             packages: [] as ControlledDocumentPackage[],
             rules: [] as ControlledRule[],
@@ -134,15 +138,16 @@ async function listControlledDocumentContext(
   context: Awaited<ReturnType<typeof getServerRequestContextForPath>>,
   domain: string,
   documentId: string,
+  authorization: { can_update: boolean; can_publish: boolean },
 ) {
   try {
     const [packages, rules] = await Promise.all([
       clients.registry.listControlledDocumentPackages(context, {
         domain,
-        includeInactive: true,
+        includeInactive: authorization.can_update,
       }),
       clients.registry.listControlledRules(domain, context, {
-        approvedOnly: false,
+        approvedOnly: !canReviewControlledDocumentation(authorization),
       }),
     ]);
     const relatedPackages = packages.items.filter(

@@ -180,6 +180,25 @@ užší audience nebo neaktivní scope vždy končí `DENY`. Produkce nikdy nep�
 tento scope z neověřené hlavičky; pochází výhradně z aktuální STRATOS access
 projection.
 
+### Širší interní čtení
+
+Požadavek na čtení všech interních podkladů není automaticky splněn rolí
+ředitele ani scope `recipient_set:employee-directives`. Správce centrálních
+oprávnění musí vydat aktuální AKB grant s odpovídajícími effectiveScopes pro
+danou organizaci a schválená publika. Organizační scope nepokrývá automaticky
+zdroj vedený v užším document/budget/recipient scope. Registry nadále vyžaduje
+současně capability, scope, přesnou verzi a ALLOW Information Policy.
+
+Takové čtení samo nepřiděluje upload, změny, schválení, publikaci ani audit.
+`restricted`, `confidential`, jiný tenant a explicitně užší příjemci zůstávají
+zamítnutí, dokud nejsou samostatně oprávněni. AKB nesmí chybějící centrální grant
+nahradit lokální administrátorskou rolí, statickým claimem nebo rozšířeným RAGem.
+
+Čtenářský seznam pravidel obsahuje pouze ověřené návrhy. Přímé vyžádání
+neověřených návrhů přes `approved_only=false` vyžaduje oprávnění ke změně
+dokumentu nebo publikaci verze; jinak končí 403. Neaktivní balíčky nadále
+vyžadují samostatně právo změny dokumentu.
+
 ### Audit a idempotency service boundaries
 
 U externě zapsaného auditu je `actor_id` vždy skutečný ověřený caller subject.

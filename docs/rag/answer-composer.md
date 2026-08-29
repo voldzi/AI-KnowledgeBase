@@ -65,7 +65,9 @@ The LLM response is not trusted as the source of citation metadata.
 Only chunks with `score >= AKL_RAG_NO_ANSWER_MIN_SCORE` are sent to the LLM.
 Context is capped by `AKL_RAG_MAX_CONTEXT_CHARS`, and the generated answer is
 capped by `AKL_RAG_ANSWER_MAX_TOKENS` (`20000` authorized evidence characters
-and `768` generated tokens in the standard profile).
+and `1536` generated tokens in the standard profile). An explicit environment
+override remains authoritative; a release must check the running value rather
+than assume that an existing deployment inherited the new default.
 Ordinary employee questions use six chunks. Explicit multi-facet questions use
 up to ten chunks, and an exact-document question may use all selected chunks
 from that document. Authorization, score thresholds and the configured context
@@ -95,3 +97,39 @@ It never supplies missing facts. It records missing coverage in
 ## No-Answer
 
 If the LLM Gateway returns an empty answer, the service returns `confidence=insufficient_source` with warning `LLM_EMPTY_ANSWER`.
+
+An answer is complete only when the gateway explicitly returns
+`finish_reason=stop`. A stream must also end with `[DONE]`. Token-limit stops,
+filter/tool stops, malformed stream frames and missing termination produce
+`LLM_ANSWER_INCOMPLETE`. The composer replaces unfinished prose with a localized
+retry/narrow-question message, no citations or used chunks, and
+`confidence=insufficient_source`. Employee chat preserves this distinction from
+missing documents. It never certifies or persists an unfinished answer as a
+supported answer; a final streaming result replaces any provisional deltas.
+
+## Topic Boundaries
+
+Director Copilot keeps the year, financial metric and authorized organizational
+context for a same-topic follow-up. A ranked plan-item question selects
+procurement actions, not the single organizational summary; an explicitly
+requested budget chapter/item remains a budget item. Switching to another live
+domain starts fresh temporal/entity context unless the question explicitly
+refers back. An explicit current-period question also clears a previous year.
+These routing decisions do not grant access or relax the live evidence gate.
+
+Explicit current personal-workspace questions are handled before live-domain
+and document routing by the read-only Registry workflow tool. They never use an
+LLM, invent citations or inherit stale financial/document context. Personal
+queue results are ephemeral; only a neutral refresh receipt enters shared chat
+history. See `docs/ui/workflow-inbox.md`.
+
+## User-visible Result State
+
+Chat presents the response's actual state before any confidence estimate:
+restricted access, conflict, clarification, unavailable source, missing data,
+incomplete evidence or partial coverage. A `no_data` result cannot display a
+high-confidence success badge and is not a zero. Partial organizational results
+and missing approved plans retain visible explanations. Overdue source review
+is separate from a conflict or a transport failure. Safe, localized warnings
+are deduplicated; unknown technical codes are not reflected into user-facing
+text. These presentation rules do not weaken backend evidence checks.

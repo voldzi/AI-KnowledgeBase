@@ -53,8 +53,10 @@ import {
 import { withAppBasePath } from "@/lib/app-url";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import {
+  documentCitationHref,
   documentDetailHref,
   documentReturnLabel,
+  requestedDocumentPage,
   resolveDocumentReturnNavigation,
 } from "@/lib/navigation/document-navigation";
 import type {
@@ -303,7 +305,7 @@ const detailCopy = {
     sourceContextPlaceholder: "Vyberte citovaný úsek v panelu Zdroj a AKB otevře přesný kontext.",
     openSourceContext: "Otevřít citaci",
     openingSourceContext: "Otevírám",
-    sourceContextError: "Citaci se nepodařilo otevřít.",
+    sourceContextError: "Citovaný úsek se nepodařilo načíst. Ověřte zdroj v náhledu příslušné verze dokumentu.",
     chunk: "Úsek",
     page: "Strana",
     section: "Sekce",
@@ -575,7 +577,7 @@ const detailCopy = {
     sourceContextPlaceholder: "Select a cited segment in the Source panel and AKB opens the exact context.",
     openSourceContext: "Open citation",
     openingSourceContext: "Opening",
-    sourceContextError: "Citation could not be opened.",
+    sourceContextError: "The cited passage could not be loaded. Check the source in the preview of the referenced document version.",
     chunk: "Segment",
     page: "Page",
     section: "Section",
@@ -855,6 +857,7 @@ export function DocumentDetail({
   const [sourceContext, setSourceContext] = useState<SourceContext | null>(null);
   const [sourceContextFeedback, setSourceContextFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [openingSourceChunkId, setOpeningSourceChunkId] = useState<string | null>(null);
+  const sourceContextRequest = useRef<AbortController | null>(null);
   const [sourceOpen, setSourceOpen] = useState<DocumentSourceOpenDecision | null>(null);
   const [sourceOpenAction, setSourceOpenAction] = useState(false);
   const [sourceOpenFeedback, setSourceOpenFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
@@ -863,6 +866,13 @@ export function DocumentDetail({
   const [insightsFeedback, setInsightsFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [controlledBusy, setControlledBusy] = useState<string | null>(null);
   const [controlledFeedback, setControlledFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
+  useEffect(() => {
+    setSourceContext(null);
+    setSourceContextFeedback(null);
+    setOpeningSourceChunkId(null);
+    loadedRequestedChunkRef.current = null;
+    return () => sourceContextRequest.current?.abort();
+  }, [document.document_id, currentVersion?.document_version_id]);
   const priorityActions = useMemo(
     () => priorityActionsFor(document, currentVersion, relatedJobs, copy),
     [copy, currentVersion, document, relatedJobs]
@@ -1153,27 +1163,35 @@ export function DocumentDetail({
   }
 
   async function openDocumentChunkContext(chunkId: string) {
-    if (openingSourceChunkId) {
-      return;
-    }
-
+    sourceContextRequest.current?.abort();
+    const controller = new AbortController();
+    sourceContextRequest.current = controller;
     setOpeningSourceChunkId(chunkId);
+    setSourceContext(null);
     setSourceContextFeedback(null);
     try {
       const response = await fetch(
         withAppBasePath(`/api/documents/${encodeURIComponent(document.document_id)}/source-context?chunk_id=${encodeURIComponent(chunkId)}`),
-        { method: "GET" }
+        { method: "GET", cache: "no-store", signal: controller.signal }
       );
       if (!response.ok) {
         throw new Error(await readDocumentWorkflowError(response));
       }
       const payload = (await response.json()) as { source_context: SourceContext };
+      if (controller.signal.aborted) return;
+      if (payload.source_context.document_id !== document.document_id
+        || payload.source_context.document_version_id !== currentVersion?.document_version_id
+        || payload.source_context.chunk_id !== chunkId) {
+        throw new Error("Citation version mismatch");
+      }
       setSourceContext(payload.source_context);
-    } catch (error) {
-      const suffix = error instanceof Error && error.message ? ` ${error.message}` : "";
-      setSourceContextFeedback({ tone: "error", message: `${copy.sourceContextError}${suffix}` });
+    } catch {
+      if (controller.signal.aborted) return;
+      setSourceContextFeedback({ tone: "error", message: copy.sourceContextError });
     } finally {
-      setOpeningSourceChunkId(null);
+      if (sourceContextRequest.current === controller) {
+        setOpeningSourceChunkId(null);
+      }
     }
   }
 
@@ -1613,7 +1631,7 @@ export function DocumentDetail({
                   {sourceContextFeedback.message}
                 </p>
               ) : null}
-              <DocumentNativePreview copy={copy} sourceContext={sourceContext} sourceOpen={sourceOpen} />
+              <DocumentNativePreview copy={copy} sourceContext={sourceContext} sourceOpen={sourceOpen} requestedPage={requestedDocumentPage(searchParams.get("page"))} />
             </div>
           </div>
           <aside className="panel">
@@ -2581,12 +2599,7 @@ function ControlledRuleCard({
   ]
     .filter(Boolean)
     .join(" · ");
-  const citationHref = documentDetailHref({
-    documentId: citation.document_id,
-    params: {
-      tab: "viewer",
-      chunk_id: citation.chunk_id,
-    },
+  const citationHref = documentCitationHref(citation, {
     returnTo,
     origin: "document",
   });
@@ -3135,11 +3148,13 @@ function GovernanceList({ title, items }: { title: string; items: string[] }) {
 function DocumentNativePreview({
   copy,
   sourceContext,
-  sourceOpen
+  sourceOpen,
+  requestedPage,
 }: {
   copy: Record<string, string>;
   sourceContext: SourceContext | null;
   sourceOpen: DocumentSourceOpenDecision | null;
+  requestedPage?: number;
 }) {
   const [preview, setPreview] = useState<{ status: "idle" | "loading" | "ready" | "error"; text: string; truncated: boolean }>({
     status: "idle",
@@ -3269,7 +3284,7 @@ function DocumentNativePreview({
               textHighlight: copy.nativePreviewPdfTextHighlight,
               bbox: copy.nativePreviewPdfBbox
             }}
-            pageNumber={sourceContext?.location.page_number ?? 1}
+            pageNumber={sourceContext?.location.page_number ?? requestedPage ?? 1}
             sourceUrl={withAppBasePath(previewUrl)}
           />
           <PdfCitationLocator copy={copy} sourceContext={sourceContext} />
@@ -3287,7 +3302,7 @@ function DocumentNativePreview({
             textHighlight: copy.nativePreviewPdfTextHighlight,
             bbox: copy.nativePreviewPdfBbox
           }}
-          pageNumber={sourceContext?.location.page_number ?? 1}
+          pageNumber={sourceContext?.location.page_number ?? requestedPage ?? 1}
           sourceUrl={withAppBasePath(sourceRenditionUrl)}
         />
       ) : null}
@@ -4262,9 +4277,7 @@ function governanceChangeTone(impact: string): GovernanceIssueTone {
 }
 
 function governanceCitationHref(citation: GovernanceCitation, returnTo: string): string {
-  return documentDetailHref({
-    documentId: citation.document_id,
-    params: { tab: "viewer", chunk_id: citation.chunk_id },
+  return documentCitationHref(citation, {
     returnTo,
     origin: "document",
   });

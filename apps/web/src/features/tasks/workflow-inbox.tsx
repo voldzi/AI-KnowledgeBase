@@ -701,13 +701,13 @@ function TaskDetail({
           </details>
         ) : null}
         <div className="task-actions">
-          <StratosButtonLink
+          {task.kind !== "audit" || authorization.can_read_audit ? <StratosButtonLink
             tone="primary"
             href={withDocumentReturnContext(task.href, returnTo, "tasks")}
           >
             {presentation.actionLabel}
             <ArrowUpRight size={15} aria-hidden="true" />
-          </StratosButtonLink>
+          </StratosButtonLink> : null}
           {task.secondary_href ? (
             <StratosButtonLink
               href={withDocumentReturnContext(task.secondary_href, returnTo, "tasks")}

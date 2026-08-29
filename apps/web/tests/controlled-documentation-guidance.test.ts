@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
+import { canReviewControlledDocumentation } from "../src/lib/controlled-documentation/contract";
 
 const workbench = readFileSync(
   new URL(
@@ -45,10 +46,23 @@ describe("controlled documentation guidance", () => {
 
   it("links every extracted rule to its cited source", () => {
     assert.match(workbench, /Otevřít citované místo/);
-    assert.match(workbench, /tab: "viewer"/);
-    assert.match(workbench, /chunk_id: rule\.proposal\.citation\.chunk_id/);
+    assert.match(workbench, /documentCitationHref\(rule\.proposal\.citation/);
     assert.match(workbench, /origin: "controlled_documentation"/);
     assert.match(workbench, /returnTo/);
+  });
+
+  it("does not expose unverified proposals as ordinary reader data", () => {
+    assert.equal(canReviewControlledDocumentation({ can_update: false, can_publish: false }), false);
+    assert.equal(canReviewControlledDocumentation({ can_update: true, can_publish: false }), true);
+    assert.equal(canReviewControlledDocumentation({ can_update: false, can_publish: true }), true);
+    assert.match(page, /approvedOnly: !canReview/);
+    assert.match(page, /includeInactive: authorization\.can_update/);
+    const route = readFileSync(new URL("../src/app/api/controlled-documentation/rules/route.ts", import.meta.url), "utf8");
+    assert.match(route, /registry\.getAuthorizationHints\(context\)/);
+    assert.match(route, /!canReview \|\| request\.nextUrl\.searchParams\.get\("approved_only"\)/);
+    assert.match(route, /authorization\.can_update && request\.nextUrl\.searchParams\.get\("include_inactive"\)/);
+    assert.match(workbench, /Ověřená pravidla a limity/);
+    assert.match(workbench, /odmítnuto gestorem/);
   });
 
   it("provides visible help and interaction feedback", () => {

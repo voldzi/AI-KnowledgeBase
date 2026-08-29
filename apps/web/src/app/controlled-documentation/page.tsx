@@ -2,6 +2,7 @@ import { PageHeader } from "@/components/page-header";
 import { ControlledDocumentationWorkbench } from "@/features/controlled-documentation/controlled-documentation-workbench";
 import { getServerApiClients, getServerRequestContextForPath } from "@/lib/api/server";
 import { requireWorkspaceRouteAccess } from "@/lib/auth/server-route-guard";
+import { canReviewControlledDocumentation } from "@/lib/controlled-documentation/contract";
 import type { ControlledDocumentPackageList, Document } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,7 @@ export default async function ControlledDocumentationPage({ searchParams }: Cont
     await getServerRequestContextForPath(controlledRequestPath(domain, validOn));
   requireWorkspaceRouteAccess(context, "/controlled-documentation");
   const authorization = await clients.registry.getAuthorizationHints(context);
+  const canReview = canReviewControlledDocumentation(authorization);
   const [packages, rules] = await Promise.all([
     clients.registry.listControlledDocumentPackages(context, {
       domain,
@@ -27,7 +29,7 @@ export default async function ControlledDocumentationPage({ searchParams }: Cont
     }),
     clients.registry.listControlledRules(domain, context, {
       validOn,
-      approvedOnly: false,
+      approvedOnly: !canReview,
       includeInactive: authorization.can_update,
     }),
   ]);

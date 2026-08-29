@@ -4,12 +4,55 @@ import { describe, it } from "node:test";
 
 import {
   buildReturnTarget,
+  documentCitationHref,
   documentDetailHref,
+  requestedDocumentPage,
   resolveDocumentReturnNavigation,
   withDocumentReturnContext,
 } from "../src/lib/navigation/document-navigation";
 
 describe("document return navigation", () => {
+  it("pins a citation to the exact document version, chunk and page", () => {
+    const href = documentCitationHref({
+      document_id: "doc_law",
+      document_version_id: "ver_2023",
+      chunk_id: "chunk_section_27",
+      page_number: 4,
+    }, { returnTo: "/controlled-documentation?valid_on=2023-07-31", origin: "controlled_documentation" });
+    const url = new URL(href, "https://akb.invalid");
+    assert.equal(url.pathname, "/documents/doc_law");
+    assert.equal(url.searchParams.get("version"), "ver_2023");
+    assert.equal(url.searchParams.get("chunk_id"), "chunk_section_27");
+    assert.equal(url.searchParams.get("page"), "4");
+    assert.equal(url.searchParams.get("tab"), "viewer");
+    assert.equal(url.searchParams.get("return_to"), "/controlled-documentation?valid_on=2023-07-31");
+  });
+
+  it("accepts only bounded positive page numbers", () => {
+    assert.equal(requestedDocumentPage("24"), 24);
+    for (const value of [null, "", "0", "-1", "1.5", "Infinity", "1e5", "1000000", "4&version=other"]) {
+      assert.equal(requestedDocumentPage(value), undefined, String(value));
+    }
+  });
+
+  it("preserves registry and task filters through a fresh SSO request", () => {
+    assert.equal(buildReturnTarget("/documents", {
+      q: "AKB & STRATOS", status: ["published", "approved"], unused: undefined,
+    }), "/documents?q=AKB+%26+STRATOS&status=published&status=approved");
+    for (const route of ["documents", "tasks"]) {
+      const page = readFileSync(new URL(`../src/app/${route}/page.tsx`, import.meta.url), "utf8");
+      assert.match(page, /getServerRequestContextForPath\(buildReturnTarget\(/);
+    }
+  });
+
+  it("lets the Next router add the base path exactly once for task navigation", () => {
+    const workspace = readFileSync(new URL("../src/features/tasks/workflow-workspace.tsx", import.meta.url), "utf8");
+    assert.match(workspace, /router\.replace\(`\/tasks\?\$\{target\}`/);
+    assert.doesNotMatch(workspace, /router\.(replace|push)\(withAppBasePath/);
+    const layout = readFileSync(new URL("../src/app/layout.tsx", import.meta.url), "utf8");
+    assert.match(layout, /export const dynamic = "force-dynamic"/);
+  });
+
   it("resolves the upload document before requesting its SSO context", () => {
     const page = readFileSync(new URL("../src/app/upload/page.tsx", import.meta.url), "utf8");
     assert.match(page, /getServerRequestContextForPath\(returnTo\)/);

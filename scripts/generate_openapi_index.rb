@@ -352,6 +352,12 @@ def web_operation(method, path)
       "$ref" => "#/components/schemas/WebEvaluationRunRequest"
     }
   end
+  if method == "POST" && path == "/api/assistant/chat"
+    operation["description"] = "Routes governed rules, Registry metadata, live STRATOS queries and cited document answers. " \
+      "Explicit personal AKB workflow questions use the current subject's authorized tasks or managed documents, with a bounded preview and a Registry-provided total. " \
+      "The personal workflow is read-only, reauthorizes access before returning records and never falls back to RAG on denial or outage. " \
+      "Personal task/document previews are not persisted or shared: conversation history stores only a neutral refresh receipt."
+  end
   operation
 end
 

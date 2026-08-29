@@ -3,6 +3,7 @@ import { workflowQuery } from "@/features/tasks/workflow-query";
 import { getServerApiClients, getServerRequestContextForPath } from "@/lib/api/server";
 import { canReadTeamTasks, constrainAuthorizationHintsToContext } from "@/lib/auth/authorization";
 import { requireWorkspaceRouteAccess } from "@/lib/auth/server-route-guard";
+import { buildReturnTarget } from "@/lib/navigation/document-navigation";
 import { ApiClientError, type AuthorizationHint } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +15,8 @@ const noActions: AuthorizationHint = {
 
 export default async function TasksPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const clients = getServerApiClients();
-  const context = await getServerRequestContextForPath("/tasks");
+  const search = await searchParams;
+  const context = await getServerRequestContextForPath(buildReturnTarget("/tasks", search));
   requireWorkspaceRouteAccess(context, "/tasks");
   const capabilityMode = Boolean(context.capabilities?.length || context.roles?.some((role) => role === "stratos_user" || role === "stratos_admin"));
   // These are display hints from the freshly verified projection, not action grants.
@@ -26,7 +28,6 @@ export default async function TasksPage({ searchParams }: { searchParams: Promis
     }), available: true }
     : await available(clients.registry.getAuthorizationHints(context), noActions);
   const canReadTeam = canReadTeamTasks(context);
-  const search = await searchParams;
   const query = workflowQuery(search, canReadTeam);
   const empty = { items: [], total: 0, limit: query.tasks.limit!, offset: query.tasks.offset! };
   const documents = query.view === "documents"

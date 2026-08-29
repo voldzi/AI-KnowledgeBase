@@ -20,7 +20,7 @@ describe("assistant query planner", () => {
     const second = buildAssistantQueryPlan(input);
 
     assert.equal(first.plan_id, second.plan_id);
-    assert.equal(first.version, "2026-08-26");
+    assert.equal(first.version, "2026-08-28");
     assert.equal(first.goal, "lookup");
     assert.equal(first.intent, "obligation_table");
     assert.equal(first.output.kind, "table");

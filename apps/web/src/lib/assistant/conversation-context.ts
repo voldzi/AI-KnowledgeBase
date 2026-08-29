@@ -16,6 +16,7 @@ const BULKY_CONTEXT_KEYS = new Set([
   "report_artifacts",
 ]);
 const CONTINUITY_KEYS = new Set([
+  "workflow_workspace",
   "stratos_query_state",
   "controlled_rule_domain",
   "controlled_rule_valid_on",

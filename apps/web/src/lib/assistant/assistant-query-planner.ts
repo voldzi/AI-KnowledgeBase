@@ -13,10 +13,11 @@ import type { DocumentKnowledgeIntent } from "./document-knowledge-intent";
 
 import type { AssistantToolName, AssistantToolRouteReason } from "./assistant-tool-router";
 
-export const ASSISTANT_QUERY_PLAN_VERSION = "2026-08-26";
+export const ASSISTANT_QUERY_PLAN_VERSION = "2026-08-28";
 export const ASSISTANT_REPORT_ARTIFACT_CONTRACT_VERSION = "report.v2";
 
 export type AssistantQueryIntent =
+  | "personal_workflow"
   | "document_metadata_report"
   | "document_list"
   | "controlled_rule_answer"
@@ -116,11 +117,11 @@ export function buildAssistantQueryPlan(input: {
       preferred_export_formats: assistantReportExportFormats(input.reportRequest ?? null)
     },
     quality_gates: {
-      citations_required: input.tool !== "registry_document_report",
+      citations_required: input.tool !== "registry_document_report" && input.tool !== "workflow_workspace",
       row_citations_required: input.tool === "rag_document_answer" && input.structuredOutput,
       min_columns: input.structuredOutput || input.tool === "registry_document_report" ? Math.min(Math.max(requiredColumns.length, 2), 8) : null,
       min_informative_cells_per_row: input.structuredOutput ? 2 : null,
-      registry_metadata_without_chunk_citations_allowed: input.tool === "registry_document_report"
+      registry_metadata_without_chunk_citations_allowed: input.tool === "registry_document_report" || input.tool === "workflow_workspace"
     },
     retrieval: {
       registry_report_kind: input.registryReportKind,
@@ -138,6 +139,7 @@ function queryIntentFor(input: {
   documentKnowledgeIntent?: DocumentKnowledgeIntent;
   reportRequest?: AssistantReportRequest | null;
 }, goal: AssistantUserGoal): AssistantQueryIntent {
+  if (input.tool === "workflow_workspace") return "personal_workflow";
   if (input.tool === "registry_document_report") {
     return input.registryReportKind === "document_list" ? "document_list" : "document_metadata_report";
   }

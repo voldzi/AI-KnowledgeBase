@@ -114,6 +114,34 @@ export function documentDetailHref(input: {
   return `/documents/${encodeURIComponent(input.documentId)}${query ? `?${query}` : ""}${hash}`;
 }
 
+export function documentCitationHref(
+  citation: {
+    document_id: string;
+    document_version_id: string;
+    chunk_id: string;
+    page_number?: number | null;
+  },
+  navigation: { returnTo: string; origin: DocumentReturnOrigin },
+): string {
+  return documentDetailHref({
+    documentId: citation.document_id,
+    ...navigation,
+    params: {
+      tab: "viewer",
+      version: citation.document_version_id,
+      chunk_id: citation.chunk_id,
+      page: citation.page_number && Number.isSafeInteger(citation.page_number) && citation.page_number > 0
+        ? String(citation.page_number)
+        : undefined,
+    },
+  });
+}
+
+export function requestedDocumentPage(value: string | null): number | undefined {
+  if (!value || !/^[1-9]\d{0,5}$/.test(value)) return undefined;
+  return Number(value);
+}
+
 export function withDocumentReturnContext(
   href: string,
   returnTo: string,
@@ -132,10 +160,17 @@ export function withDocumentReturnContext(
 
 export function buildReturnTarget(
   pathname: string,
-  params?: URLSearchParams,
+  params?: URLSearchParams | Record<string, string | string[] | undefined>,
   hash?: string | null,
 ): string {
-  const query = params?.toString() ?? "";
+  const search = params instanceof URLSearchParams ? params : new URLSearchParams();
+  if (params && !(params instanceof URLSearchParams)) {
+    for (const [key, value] of Object.entries(params)) {
+      if (Array.isArray(value)) value.forEach((item) => search.append(key, item));
+      else if (value !== undefined) search.set(key, value);
+    }
+  }
+  const query = search.toString();
   const normalizedHash = hash ? `#${hash.replace(/^#/, "")}` : "";
   return `${pathname}${query ? `?${query}` : ""}${normalizedHash}`;
 }
