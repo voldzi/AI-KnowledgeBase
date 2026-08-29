@@ -22,6 +22,8 @@ REQUIRED_NEEDS = [
 class SameShaAttestationTests(unittest.TestCase):
     def test_final_job_has_exact_name_all_dependencies_and_artifact_pattern(self) -> None:
         text = WORKFLOW.read_text(encoding="utf-8")
+        self.assertEqual(text.count("uses: actions/upload-artifact@v3"), 2)
+        self.assertNotIn("uses: actions/upload-artifact@v4", text)
         block = text.split("\n  persist-same-sha-ci-evidence:\n", 1)[1]
         self.assertIn("    name: Persist same-SHA CI evidence\n", block)
         self.assertIn(f"    needs: [{', '.join(REQUIRED_NEEDS)}]\n", block)

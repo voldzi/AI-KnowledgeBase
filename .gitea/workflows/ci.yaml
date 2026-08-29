@@ -183,7 +183,9 @@ jobs:
           pnpm --dir apps/web exec tsx --test tests/access-projection-v2-shadow.test.ts
           printf '%s\n' "${{ github.sha }}" > exact-reviewed-sha.txt
       - name: Publish resolver input
-        uses: actions/upload-artifact@v4
+        # Gitea act_runner 0.2.11 does not implement the GitHub artifact v4
+        # protocol. Keep artifact transport pinned to the supported v3 action.
+        uses: actions/upload-artifact@v3
         with:
           name: akb-clean-pilot-phase-a-${{ github.sha }}
           if-no-files-found: error
@@ -442,7 +444,9 @@ jobs:
             --output same-sha-ci-evidence/akb-gitea-ci-evidence.json
           test "$(find same-sha-ci-evidence -maxdepth 1 -type f | wc -l | tr -d ' ')" = "1"
       - name: Publish single-file same-SHA attestation
-        uses: actions/upload-artifact@v4
+        # Gitea act_runner 0.2.11 does not implement the GitHub artifact v4
+        # protocol. Keep artifact transport pinned to the supported v3 action.
+        uses: actions/upload-artifact@v3
         with:
           name: akb-gitea-ci-evidence-${{ github.sha }}
           if-no-files-found: error
