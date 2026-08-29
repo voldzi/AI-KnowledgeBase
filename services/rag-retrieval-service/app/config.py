@@ -281,7 +281,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         )
         max_context_chars = int(_get(source, "AKL_RAG_MAX_CONTEXT_CHARS", "20000"))
         source_context_window = int(_get(source, "AKL_RAG_SOURCE_CONTEXT_WINDOW", "1"))
-        answer_max_tokens = int(_get(source, "AKL_RAG_ANSWER_MAX_TOKENS", "768"))
+        answer_max_tokens = int(_get(source, "AKL_RAG_ANSWER_MAX_TOKENS", "1536"))
         assistant_history_max_user_messages = int(
             _get(source, "AKL_ASSISTANT_HISTORY_MAX_USER_MESSAGES", "12")
         )

@@ -43,6 +43,7 @@ export function normalizeAssistantChatResponse({
 }
 
 function answerSourceForRoute(route: AssistantToolRoute): string {
+  if (route.tool === "workflow_workspace") return "akb_workflow";
   if (route.tool === "registry_document_report") return "registry_metadata";
   if (route.tool === "controlled_rule_answer") return "controlled_rules";
   return "rag_retrieval";

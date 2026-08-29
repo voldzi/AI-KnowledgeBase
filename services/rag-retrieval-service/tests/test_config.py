@@ -13,7 +13,7 @@ def test_load_settings_defaults_to_mock_clients_for_development() -> None:
     assert settings.retriever_mode == "mock"
     assert settings.llm_client_mode == "mock"
     assert settings.max_context_chars == 20000
-    assert settings.answer_max_tokens == 768
+    assert settings.answer_max_tokens == 1536
     assert settings.source_context_window == 1
     assert settings.assistant_history_max_user_messages == 12
     assert settings.assistant_history_max_message_chars == 800

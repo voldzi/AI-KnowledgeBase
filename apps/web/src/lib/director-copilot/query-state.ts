@@ -127,7 +127,10 @@ const ITEM_TERMS = [
 ] as const;
 const PROCUREMENT_ACTION_TERMS = [
   "akce", "planovana akce", "nakup", "porizeni", "zakazka",
+  "polozka planu", "radek planu",
 ] as const;
+const PREVIOUS_ENTITY_REFERENCE = /\b(z nich|z toho|z tech|u nich|jejich|tento projekt|tohoto projektu|tato akce|teto akce|stejn\w* (projekt|akce|potreb|obdobi|rok))\b/;
+const CURRENT_PERIOD_SIGNAL = /\b(aktualn\w*|nyni|dnes|ted|soucasny stav)\b/;
 const DELAYED_TERMS = ["zpozdeni", "prodleni", "po terminu", "skluz"] as const;
 const AT_RISK_TERMS = ["ohrozeny", "rizikovy", "at risk"] as const;
 const ON_TRACK_TERMS = ["podle planu", "v terminu", "on track"] as const;
@@ -247,23 +250,29 @@ export function resolveConversationQuery(input: {
     : inherited
       ? previous.sources
       : [];
+  // A new domain starts a new topic unless the user explicitly refers back.
+  const topicContext = previous && (
+    inherited
+    || sources.some((source) => previous.sources.includes(source))
+    || PREVIOUS_ENTITY_REFERENCE.test(normalized)
+  ) ? previous : null;
   const metrics = explicitMetrics.length
     ? explicitMetrics
     : inherited
       ? previous.metrics
       : [];
-  const period = resolvePeriod(normalized, previous?.period ?? null, now);
+  const period = resolvePeriod(normalized, topicContext?.period ?? null, now);
   const explicitGranularity = explicitGranularityForText(normalized);
   const granularity = explicitGranularity
-    ?? previous?.granularity
+    ?? topicContext?.granularity
     ?? "authorized_scope";
-  const scopeLabel = resolveScopeLabel(normalized, granularity, previous?.scope_label ?? null);
+  const scopeLabel = resolveScopeLabel(normalized, granularity, topicContext?.scope_label ?? null);
   const entityFilters = explicitGranularity === "organization"
     || explicitGranularity === "organization_unit"
     || explicitGranularity === "portfolio"
     || explicitGranularity === "item"
     ? emptyEntityFilters()
-    : previous?.entity_filters ?? emptyEntityFilters();
+    : topicContext?.entity_filters ?? emptyEntityFilters();
   const scheduleStatus = DELAYED_SIGNAL.test(normalized)
     || matchesSemanticConcept(normalized, DELAYED_TERMS)
     ? "delayed" as const
@@ -302,7 +311,15 @@ export function resolveConversationQuery(input: {
   const explicitGrouping = explicitGroupingForText(normalized);
   const procurementActionGrouping = granularity === "item"
     && sources.includes("budget")
-    && isProcurementActionQuestion(normalized);
+    && (
+      isProcurementActionQuestion(normalized)
+      || (
+        metrics.includes("budget.plan_amount")
+        && operation === "rank"
+        && /\bpolozk\w*\b/.test(normalized)
+        && !/\b(rozpoctov\w* polozk\w*|kapitol\w*|paragraf\w*)\b/.test(normalized)
+      )
+    );
   const groupBy: QueryGrouping[] = explicitGrouping.length
     ? explicitGrouping
     : procurementActionGrouping
@@ -536,7 +553,7 @@ function resolvePeriod(
       interval: null,
     };
   }
-  if (previous) {
+  if (previous && !CURRENT_PERIOD_SIGNAL.test(normalized)) {
     return previous.type === "current"
       ? {
           type: "current",
@@ -619,7 +636,6 @@ function resolveScopeLabel(
   previous: string | null,
 ): string | null {
   if (granularity === "organization") return null;
-  if (granularity !== "organization_unit") return previous;
   if (/\b(odbor informatiky|informatika|it|ict)\b/.test(normalized)) return "IT";
   const match = normalized.match(/\b(?:utvar\w*|odbor\w*|oddeleni|sekce)\s+([a-z0-9._/-]{2,80})\b/);
   return match?.[1] ?? previous;

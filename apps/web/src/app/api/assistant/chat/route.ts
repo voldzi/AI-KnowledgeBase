@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 
 import { getOptionalServerRequestContext, getServerApiClients } from "@/lib/api/server";
 import { getAklConfig, getDirectorCopilotConfig } from "@/lib/api/config";
+import { withAppBasePath } from "@/lib/app-url";
 import { contextFromStratosAccessProjection } from "@/lib/auth/access-projection";
 import { normalizeAssistantChatResponse } from "@/lib/assistant/assistant-response-normalizer";
 import {
@@ -22,6 +23,7 @@ import {
   currentControlledRuleDate,
 } from "@/lib/assistant/controlled-rule-answer";
 import { composeMixedEvidenceAssistantResponse } from "@/lib/assistant/mixed-evidence-answer";
+import { answerPersonalWorkflow, persistPersonalWorkflowTurn } from "@/lib/assistant/personal-workflow";
 import {
   isAnalyticalAssistantGoal,
   queryStateForAssistantGoal,
@@ -106,6 +108,23 @@ async function handlePost(request: NextRequest) {
     const config = getAklConfig();
     const directorConfig = getDirectorCopilotConfig(config);
     const assistantRoute = routeAssistantMessage(message, responseLanguage, requestContext);
+    if (assistantRoute.personalWorkflow) {
+      const intent = assistantRoute.personalWorkflow;
+      const params = new URLSearchParams({ view: intent.view });
+      if (intent.view === "documents") params.set("assignment", "managed");
+      if (intent.deadline) params.set("deadline", intent.deadline);
+      const personalResponse = await answerPersonalWorkflow({
+        intent, context, registry: clients.registry, language: responseLanguage, conversationId,
+        workspaceHref: config.webProfile === "chat" ? undefined : withAppBasePath(`/tasks?${params}`),
+        refreshContext: context.accessToken
+          ? () => contextFromStratosAccessProjection(context.accessToken!, config, fetch, Date.now(), true)
+          : undefined,
+      });
+      return NextResponse.json(await persistPersonalWorkflowTurn({
+        message, title: titleFromMessage(message), response: personalResponse,
+        language: responseLanguage, context, registry: clients.registry,
+      }), { headers: { "Cache-Control": "no-store" } });
+    }
     const documentationRequest = assistantRoute.documentKnowledge.applicationDocumentation;
     const assistantGoal = assistantRoute.queryPlan.goal;
     const directorQuery = resolveConversationQuery({

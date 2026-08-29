@@ -510,20 +510,24 @@ button {
 
 .akb-chat-app {
   --akb-chat-source-resizer-track: 14px;
-  --akb-chat-source-track: var(--akb-chat-source-width, 340px);
+  --akb-chat-source-track: min(var(--akb-chat-source-width, 340px), 32%);
   --akb-chat-thread-resizer-track: 14px;
-  --akb-chat-thread-track: var(--akb-chat-thread-width, 268px);
+  --akb-chat-thread-track: min(var(--akb-chat-thread-width, 268px), 28%);
   display: grid;
   grid-template-columns:
     var(--akb-chat-thread-track)
     var(--akb-chat-thread-resizer-track)
-    minmax(420px, 1fr)
+    minmax(0, 1fr)
     var(--akb-chat-source-resizer-track)
     var(--akb-chat-source-track);
   grid-template-rows: minmax(0, 1fr);
   min-height: calc(100vh - 104px);
   overflow: hidden;
   row-gap: 14px;
+}
+
+.akb-chat-message .status-badge {
+  text-transform: none;
 }
 
 .akb-chat-app.is-threads-closed {
@@ -2176,6 +2180,7 @@ button {
 @media (max-width: 1320px) {
   .akb-chat-app {
     --akb-chat-source-resizer-track: 0px;
+    --akb-chat-thread-track: min(var(--akb-chat-thread-width, 268px), 45%);
     grid-template-columns:
       var(--akb-chat-thread-track)
       var(--akb-chat-thread-resizer-track)
@@ -2508,7 +2513,7 @@ button {
 
   .akb-chat-composer textarea {
     font-size: 16px;
-    max-height: 44px;
+    max-height: 120px;
     min-height: 40px;
     overflow-y: auto;
     padding: 9px 4px 6px;
@@ -5985,30 +5990,23 @@ button {
 
 /* ─── Citation modal ──────────────────────────────────────────────────────── */
 
-.citation-backdrop {
-  background: rgba(17, 24, 39, 0.55);
-  display: grid;
-  inset: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
+.stratos-dialog-layer:has(> .citation-modal) {
   padding: 20px;
   place-items: center;
-  position: fixed;
-  z-index: 150;
+  /* The AKB mobile shell uses modal + 7 for its top bar. */
+  z-index: calc(var(--stratos-z-modal, 1000) + 20);
 }
 
-.citation-backdrop--sidebar {
-  background: rgba(17, 24, 39, 0.32);
+.stratos-dialog-layer:has(> .citation-modal--sidebar) {
   padding: 0;
   place-items: stretch end;
 }
 
-.citation-backdrop--fullscreen {
-  background: var(--surface);
+.stratos-dialog-layer:has(> .citation-modal--fullscreen) {
   padding: 0;
 }
 
-.citation-modal {
+.stratos-dialog.citation-modal {
   animation: citation-modal-in 170ms cubic-bezier(0.2, 0, 0, 1);
   background: var(--surface);
   border: 1px solid var(--border);
@@ -6016,23 +6014,26 @@ button {
   box-shadow: var(--stratos-shadow-modal);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  height: min(860px, calc(100vh - 40px));
+  height: min(860px, calc(100dvh - 40px));
+  max-height: calc(100dvh - 40px);
   overflow: hidden;
   width: min(1320px, calc(100vw - 40px));
 }
 
-.citation-modal--sidebar {
+.stratos-dialog.citation-modal--sidebar {
   animation: citation-slide-in 180ms cubic-bezier(0.2, 0, 0, 1);
   border-radius: 0;
-  height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
   width: min(660px, calc(100vw - 48px));
 }
 
-.citation-modal--fullscreen {
+.stratos-dialog.citation-modal--fullscreen {
   animation: none;
   border: 0;
   border-radius: 0;
-  height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
   width: 100vw;
 }
 
@@ -6058,30 +6059,29 @@ button {
   }
 }
 
-.citation-modal__header {
-  align-items: center;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  gap: 10px;
-  min-height: 52px;
-  padding: 0 16px;
+.citation-modal > .stratos-dialog-header {
+  padding-top: max(8px, env(safe-area-inset-top));
 }
 
-.citation-modal__title {
-  flex: 1;
-  font-size: 14px;
-  font-weight: 700;
+.citation-modal > .stratos-dialog-header > button {
+  height: 44px;
+  width: 44px;
+}
+
+.citation-modal > .stratos-dialog-body {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  padding: 0;
 }
 
 .citation-modal__modes {
   align-items: center;
   display: flex;
   gap: 2px;
+  padding: 4px 14px;
+  border-bottom: 1px solid var(--border);
 }
 
 .citation-mode-btn {
@@ -6092,14 +6092,14 @@ button {
   color: var(--muted);
   cursor: pointer;
   display: inline-flex;
-  height: 28px;
+  height: 44px;
   justify-content: center;
   padding: 0;
   transition:
     background var(--stratos-duration-fast) var(--stratos-ease),
     border-color var(--stratos-duration-fast) var(--stratos-ease),
     color var(--stratos-duration-fast) var(--stratos-ease);
-  width: 28px;
+  width: 44px;
 }
 
 .citation-mode-btn:hover {
@@ -6111,29 +6111,6 @@ button {
   background: #e7f7f4;
   border-color: #a8dcd4;
   color: var(--accent);
-}
-
-.citation-modal__close {
-  align-items: center;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  color: var(--muted);
-  cursor: pointer;
-  display: inline-flex;
-  height: 28px;
-  justify-content: center;
-  margin-left: 4px;
-  padding: 0;
-  transition:
-    background var(--stratos-duration-fast) var(--stratos-ease),
-    color var(--stratos-duration-fast) var(--stratos-ease);
-  width: 28px;
-}
-
-.citation-modal__close:hover {
-  background: var(--surface-2);
-  color: var(--ink);
 }
 
 .citation-modal__body {
@@ -6173,7 +6150,18 @@ button {
 .citation-modal__context-pane {
   min-height: 0;
   overflow-y: auto;
-  padding: 14px 18px;
+  padding: 14px 18px max(14px, env(safe-area-inset-bottom));
+}
+
+.citation-open-button[aria-disabled="true"] {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stratos-dialog.citation-modal {
+    animation: none;
+  }
 }
 
 /* Trigger badge in the answer header */
@@ -6225,7 +6213,7 @@ button {
 
 .controlled-docs__metrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
 }
 

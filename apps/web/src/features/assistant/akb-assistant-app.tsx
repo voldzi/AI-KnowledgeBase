@@ -67,6 +67,7 @@ import {
   type AssistantReportTemplate
 } from "@/lib/assistant/assistant-report-request";
 import { recoverPersistedAssistantTurn } from "@/lib/assistant/late-response-recovery";
+import { assistantResponseStatus, assistantVisibleWarnings } from "@/lib/assistant/response-presentation";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import {
   directoryUserDisplayName,
@@ -173,8 +174,9 @@ function assistantMarkdownComponents(openLinkLabel: string): Components {
   return {
     a({ children, href }) {
       const hasLabel = hasMarkdownCellContent(children);
+      const localNavigation = href?.startsWith("/") && !href.startsWith("//") && !href.includes("\\");
       return (
-        <a href={href} target="_blank" rel="noreferrer">
+        <a href={href} target={localNavigation ? undefined : "_blank"} rel={localNavigation ? undefined : "noreferrer"}>
           {hasLabel ? children : openLinkLabel}
         </a>
       );
@@ -272,7 +274,7 @@ const assistantAppCopy = {
     beforeContext: "Před citací",
     afterContext: "Po citaci",
     composerLabel: "Zeptejte se na informace v AKB a aplikacích STRATOS",
-    composerPlaceholder: "Např. Jaký je stav projektů nebo co stanoví směrnice?",
+    composerPlaceholder: "Napište dotaz",
     ask: "Odeslat",
     asking: "Odesílám",
     answerStillPreparing: "Odpověď se stále připravuje. Čekám na její bezpečné uložení…",
@@ -320,11 +322,6 @@ const assistantAppCopy = {
     exportReportFailed: "Sestavu se nepodařilo exportovat.",
     reportRows: "řádků",
     reportSources: "citovaných zdrojů",
-    warningRowsTruncated: "Zobrazená sestava je zkrácená na bezpečný počet řádků.",
-    warningRegistryScanLimit: "Výsledek může být neúplný, protože prohledávání narazilo na provozní limit.",
-    warningConversationNotPersisted: "Odpověď je dostupná, ale vlákno se teď nepodařilo uložit.",
-    warningReportAdjusted: "Sestava byla upravena do bezpečného exportovatelného formátu.",
-    warningGeneric: "Odpověď obsahuje provozní upozornění.",
     feedbackHelpful: "Pomohlo",
     feedbackNotHelpful: "Nepomohlo",
     feedbackPrompt: "Co bylo potřeba zlepšit?",
@@ -429,7 +426,7 @@ const assistantAppCopy = {
     beforeContext: "Before citation",
     afterContext: "After citation",
     composerLabel: "Ask about information in AKB and STRATOS applications",
-    composerPlaceholder: "For example: What is the project status or what does the directive require?",
+    composerPlaceholder: "Ask a question",
     ask: "Send",
     asking: "Sending",
     answerStillPreparing: "The answer is still being prepared. Waiting for it to be stored safely…",
@@ -477,11 +474,6 @@ const assistantAppCopy = {
     exportReportFailed: "The report could not be exported.",
     reportRows: "rows",
     reportSources: "cited sources",
-    warningRowsTruncated: "The report is truncated to a safe row limit.",
-    warningRegistryScanLimit: "The result may be incomplete because the scan reached an operational limit.",
-    warningConversationNotPersisted: "The answer is available, but the thread could not be saved right now.",
-    warningReportAdjusted: "The report was adjusted into a safe exportable format.",
-    warningGeneric: "The answer contains an operational notice.",
     feedbackHelpful: "Helpful",
     feedbackNotHelpful: "Not helpful",
     feedbackPrompt: "What should be improved?",
@@ -597,6 +589,7 @@ export function AkbAssistantApp({
   const previousTranscriptThreadId = useRef<string | null>(null);
   const previousLastMessageId = useRef<string | null>(null);
   const autoFollowTranscript = useRef(true);
+  const sourceRequest = useRef<AbortController | null>(null);
   const [newMessagesBelow, setNewMessagesBelow] = useState(false);
   const [personalizedSuggestions, setPersonalizedSuggestions] = useState(
     suggestions,
@@ -614,6 +607,10 @@ export function AkbAssistantApp({
     language,
   );
   const sourcePanelVisible = compactSourcePanel ? mobileSourcesOpen : desktopSourcesOpen;
+  useEffect(() => () => {
+    sourceRequest.current?.abort();
+    sourceRequest.current = null;
+  }, [activeThreadId]);
   const visibleThreads = useMemo(() => {
     const query = threadSearch.trim().toLowerCase();
     const byView = threads.filter((thread) => {
@@ -1518,16 +1515,23 @@ export function AkbAssistantApp({
   }
 
   async function openSource(citation: Citation) {
+    sourceRequest.current?.abort();
+    const controller = new AbortController();
+    sourceRequest.current = controller;
     setOpeningSourceId(citation.chunk_id);
     setStatusMessage(null);
+    setSourceContext(null);
     setSourceError(null);
     setCitationModalOpen(true);
     try {
       const httpResponse = await fetch(withAppBasePath(`/api/assistant/citations/${encodeURIComponent(citation.chunk_id)}/open`), {
         method: "GET",
         credentials: "same-origin",
+        cache: "no-store",
+        signal: controller.signal,
         headers: { Accept: "application/json" }
       });
+      if (controller.signal.aborted) return;
       if (!httpResponse.ok) {
         if (httpResponse.status === 401) {
           setSourceError(copy.sessionExpired);
@@ -1538,12 +1542,31 @@ export function AkbAssistantApp({
         return;
       }
       const payload = (await httpResponse.json()) as { source_context: SourceContext };
+      if (controller.signal.aborted) return;
+      if (
+        payload.source_context.document_id !== citation.document_id ||
+        payload.source_context.document_version_id !== citation.document_version_id ||
+        payload.source_context.chunk_id !== citation.chunk_id
+      ) {
+        setSourceError(copy.sourceOpenFailed);
+        return;
+      }
       setSourceContext(payload.source_context);
-    } catch (error) {
-      setSourceError(copy.sourceOpenFailed);
+    } catch {
+      if (!controller.signal.aborted) setSourceError(copy.sourceOpenFailed);
     } finally {
-      setOpeningSourceId(null);
+      if (sourceRequest.current === controller) {
+        sourceRequest.current = null;
+        setOpeningSourceId(null);
+      }
     }
+  }
+
+  function closeCitation() {
+    sourceRequest.current?.abort();
+    sourceRequest.current = null;
+    setOpeningSourceId(null);
+    setCitationModalOpen(false);
   }
 
   function addShare() {
@@ -2504,7 +2527,7 @@ export function AkbAssistantApp({
 
       <CitationModal
         open={citationModalOpen}
-        onClose={() => setCitationModalOpen(false)}
+        onClose={closeCitation}
         title={copy.sourceTitle}
         citations={lastAssistantResponse?.citations ?? []}
         activeChunkId={sourceContext?.chunk_id}
@@ -2905,6 +2928,8 @@ function ChatBubble({
   ) => void;
 }) {
   const response = message.response;
+  const { language } = useLanguage();
+  const responseStatus = response ? assistantResponseStatus(response, language) : null;
   const [feedbackReasonsOpen, setFeedbackReasonsOpen] = useState(false);
   return (
     <article className={`akb-chat-message akb-chat-message--${message.role}`}>
@@ -2925,13 +2950,7 @@ function ChatBubble({
             <Clock3 size={12} aria-hidden="true" />
             {formatThreadTime(message.createdAt)}
           </span>
-          {response?.confidence ? (
-            <StatusBadge
-              value={response.response_type === "no_answer" || response.response_type === "restricted"
-                ? "insufficient_source"
-                : response.confidence}
-            />
-          ) : null}
+          {responseStatus ? <StatusBadge value={responseStatus.value} label={responseStatus.label} /> : null}
         </div>
         <ChatMessageContent
           role={message.role}
@@ -3090,7 +3109,8 @@ function AssistantResponseTools({
   onSubmitClarification: (response: AssistantChatResponse) => void;
   onAskFollowUp: (question: string) => void;
 }) {
-  const visibleWarnings = visibleAssistantWarnings(response.warnings, copy);
+  const { language } = useLanguage();
+  const visibleWarnings = assistantVisibleWarnings(response.warnings, language);
   if (response.response_type === "clarification_needed") {
     return (
       <div className="akb-chat-clarification">
@@ -3115,9 +3135,13 @@ function AssistantResponseTools({
     );
   }
 
-  if (response.response_type === "handoff_recommended" || response.response_type === "no_answer") {
-    return response.recommended_action || response.follow_up_questions.length > 0 ? (
+  if (["handoff_recommended", "no_answer", "restricted"].includes(response.response_type)) {
+    return response.recommended_action || response.follow_up_questions.length > 0 || visibleWarnings.length > 0 ? (
       <div className="akb-chat-answer-tools">
+        {visibleWarnings.length > 0 ? <div className="notice" role="note">
+          <ShieldAlert size={16} aria-hidden="true" />
+          {visibleWarnings.join(" ")}
+        </div> : null}
         {response.recommended_action ? (
           <div className="notice">
             <LifeBuoy size={16} aria-hidden="true" />
@@ -3167,9 +3191,10 @@ function AssistantResponseTools({
 }
 
 function AssistantReportPanel({ report, copy }: { report: AssistantReportArtifact; copy: AssistantAppLabels }) {
+  const { language } = useLanguage();
   const [exporting, setExporting] = useState<"xlsx" | "pdf" | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
-  const visibleWarnings = visibleAssistantWarnings(report.warnings, copy);
+  const visibleWarnings = assistantVisibleWarnings(report.warnings, language);
   const columns: Array<StratosDataTableColumn<AssistantReportRow>> = report.columns.map((column) => ({
     id: column.key,
     label: column.label,
@@ -3688,36 +3713,6 @@ function shortChartLabel(value: string): string {
 
 function isPresent<T>(value: T | null | undefined): value is T {
   return value !== null && value !== undefined;
-}
-
-function visibleAssistantWarnings(warnings: string[], copy: AssistantAppLabels): string[] {
-  return Array.from(new Set(warnings.map((warning) => assistantWarningLabel(warning, copy)).filter(isPresentString)));
-}
-
-function assistantWarningLabel(warning: string, copy: AssistantAppLabels): string | null {
-  switch (warning) {
-    case "REGISTRY_METADATA_REPORT":
-    case "REGISTRY_METADATA_SUMMARY":
-    case "REGISTRY_DOCUMENT_LIST":
-    case "DIRECTOR_COPILOT_PROJECTFLOW_LIVE_DATA":
-    case "DIRECTOR_COPILOT_BUDGET_LIVE_DATA":
-      return null;
-    case "REPORT_ROWS_TRUNCATED":
-      return copy.warningRowsTruncated;
-    case "REGISTRY_SCAN_LIMIT_REACHED":
-      return copy.warningRegistryScanLimit;
-    case "CONVERSATION_HISTORY_NOT_PERSISTED":
-      return copy.warningConversationNotPersisted;
-    case "REPORT_LIMITED_TO_CITED_SOURCES":
-    case "REPORT_MARKDOWN_TABLE_PROMOTED":
-      return copy.warningReportAdjusted;
-    default:
-      return copy.warningGeneric;
-  }
-}
-
-function isPresentString(value: string | null): value is string {
-  return typeof value === "string" && value.length > 0;
 }
 
 function ClarificationField({

@@ -21,8 +21,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { StratosButton } from "@/components/stratos/button";
 import { withAppBasePath } from "@/lib/app-url";
-import { buildReturnTarget, documentDetailHref } from "@/lib/navigation/document-navigation";
+import { buildReturnTarget, documentCitationHref, documentDetailHref } from "@/lib/navigation/document-navigation";
 import {
+  canReviewControlledDocumentation,
   controlledPackageDatesFromVersion,
   controlledPackageMemberRelation,
   nextControlledPackageStatus,
@@ -109,6 +110,7 @@ export function ControlledDocumentationWorkbench({
   const [error, setError] = useState<string | null>(null);
   const [visiblePackageCount, setVisiblePackageCount] = useState(INITIAL_PACKAGE_COUNT);
   const [visibleRuleCount, setVisibleRuleCount] = useState(INITIAL_RULE_COUNT);
+  const canReview = canReviewControlledDocumentation(authorization);
 
   const acceptedCount = rules.rules.filter((rule) =>
     ["accepted", "edited"].includes(rule.verification_status),
@@ -132,7 +134,7 @@ export function ControlledDocumentationWorkbench({
         ),
         fetch(
           withAppBasePath(
-            `/api/controlled-documentation/rules?domain=${encodeURIComponent(selectedDomain)}&valid_on=${encodeURIComponent(selectedDate)}&approved_only=false&include_inactive=${authorization.can_update}`,
+            `/api/controlled-documentation/rules?domain=${encodeURIComponent(selectedDomain)}&valid_on=${encodeURIComponent(selectedDate)}&approved_only=${!canReview}&include_inactive=${authorization.can_update}`,
           ),
         ),
       ]);
@@ -300,13 +302,13 @@ export function ControlledDocumentationWorkbench({
           detail="použitelná aplikacemi"
           help="Pouze pravidla potvrzená nebo opravená gestorem může AKB předat dalším aplikacím."
         />
-        <Metric
+        {canReview ? <Metric
           icon={Sparkles}
           label="K posouzení"
           value={proposedCount}
           detail="citovaných návrhů"
           help="Návrhy připravil automatický rozbor dokumentů. Gestor je musí potvrdit, opravit nebo odmítnout."
-        />
+        /> : null}
         <Metric
           icon={CalendarClock}
           label="Stav k datu"
@@ -517,14 +519,16 @@ export function ControlledDocumentationWorkbench({
           <div>
             <p className="eyebrow">Kontrola gestorem a data pro aplikace</p>
             <div className="controlled-docs__section-title">
-              <h2>Návrhy, pravidla a limity</h2>
+              <h2>{canReview ? "Návrhy, pravidla a limity" : "Ověřená pravidla a limity"}</h2>
               <WorkbenchHelpHint text="Každý návrh obsahuje hodnotu a citaci. Potvrzením gestor ručí za správnost; oprava zachová původní citaci a auditní stopu." />
             </div>
           </div>
         </header>
         <div className="controlled-docs__rule-list">
           {rules.rules.length === 0 ? (
-            <p className="muted">Zatím nejsou připravena žádná pravidla. U schváleného vydání nejprve zvolte „Navrhnout pravidla“.</p>
+            <p className="muted">{canReview
+              ? "Zatím nejsou připravena žádná pravidla. U schváleného vydání nejprve zvolte „Navrhnout pravidla“."
+              : "K vybranému datu nejsou dostupná žádná ověřená pravidla."}</p>
           ) : rules.rules.slice(0, visibleRuleCount).map((rule) => (
             <article
               className="controlled-docs__rule"
@@ -539,12 +543,7 @@ export function ControlledDocumentationWorkbench({
                 <a
                   className="controlled-docs__citation-link"
                   href={withAppBasePath(
-                    documentDetailHref({
-                      documentId: rule.proposal.citation.document_id,
-                      params: {
-                        tab: "viewer",
-                        chunk_id: rule.proposal.citation.chunk_id,
-                      },
+                    documentCitationHref(rule.proposal.citation, {
                       returnTo: controlledDocumentationReturnTarget(
                         domain,
                         validOn,
@@ -557,7 +556,9 @@ export function ControlledDocumentationWorkbench({
                   <ExternalLink aria-hidden="true" /> Otevřít citované místo
                 </a>
                 <p className="muted controlled-docs__rule-summary">
-                  {sourceLabels[rule.source_type]} · jistota návrhu {Math.round(rule.proposal.confidence * 100)} % · {rule.verification_status === "proposed" ? "čeká na ověření gestorem" : "ověřeno gestorem"}
+                  {sourceLabels[rule.source_type]} · {rule.verification_status === "proposed"
+                    ? "čeká na ověření gestorem"
+                    : rule.verification_status === "rejected" ? "odmítnuto gestorem" : "ověřeno gestorem"}
                 </p>
                 <RuleTechnicalDetails rule={rule} />
               </div>

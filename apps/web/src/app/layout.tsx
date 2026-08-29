@@ -8,6 +8,9 @@ import { getOptionalServerRequestContext } from "@/lib/api/server";
 import "@voldzi/stratos-ui/styles.css";
 import "./globals.css";
 
+// The shell also wraps not-found pages; never prerender a build-time identity.
+export const dynamic = "force-dynamic";
+
 export function generateMetadata(): Metadata {
   const chatProfile = getAklConfig().webProfile === "chat";
   return {

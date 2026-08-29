@@ -478,6 +478,17 @@ test.describe("Document Workbench product paths", () => {
       appPath("/api/assistant/citations/chunk_789/document")
     );
     await expect(citationDialog.getByRole("link", { name: "Otevřít dokument" }).first()).toHaveAttribute("target", "_blank");
+
+    await citationDialog.getByRole("button", { name: "Zavřít", exact: true }).click();
+    await expect(citationDialog).toHaveCount(0);
+    const trigger = sourcesPanel.getByRole("button", { name: "Otevřít citaci" }).first();
+    await expect(trigger).toBeFocused();
+    await trigger.click();
+    await expect(citationDialog).toBeVisible();
+    await citationDialog.getByRole("button", { name: "Celá obrazovka", exact: true }).click();
+    await page.keyboard.press("Escape");
+    await expect(citationDialog).toHaveCount(0);
+    await expect(trigger).toBeFocused();
   });
 
   test("DW-14F knowledge chat renders requested obligation tables as structured output", async ({ page }) => {
@@ -546,11 +557,18 @@ test.describe("Document Workbench product paths", () => {
     await reportSettings.getByRole("button", { name: "Zavřít" }).click();
     await expect(reportSettings).toBeHidden();
 
+    const input = page.getByLabel("Zeptejte se na informace v AKB a aplikacích STRATOS");
+    await input.fill("První část dotazu\nDruhá část dotazu\nTřetí část dotazu");
+    await expect.poll(async () => (await input.boundingBox())?.height ?? 0).toBeGreaterThan(70);
+    expect((await input.boundingBox())?.height ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(120);
+    await expect(input).toBeInViewport();
+
     await page
       .getByLabel("Zeptejte se na informace v AKB a aplikacích STRATOS")
       .fill("Kdo schvaluje výjimku ze směrnice?");
     await page.getByRole("button", { name: "Odeslat" }).click();
     await expect(page.getByText("Výjimku ze směrnice schvaluje gestor dokumentu po posouzení dopadu.")).toBeVisible();
+    await expect.poll(async () => (await input.boundingBox())?.height ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(44);
 
     const actionsTrigger = page.getByRole("button", { name: "Další akce vlákna" });
     await actionsTrigger.click();
@@ -576,6 +594,96 @@ test.describe("Document Workbench product paths", () => {
     await expect(page.getByText("Markdown preview fixture")).toBeVisible();
     await expect(page.getByText("Citation target")).toBeVisible();
   });
+
+  test("DW-14I personal workflow uses Registry totals and opens the workspace in the same tab", async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(appPath("/chat"));
+    await page.getByLabel("Zeptejte se na informace v AKB a aplikacích STRATOS").fill("Jaké mám úkoly v AKB?");
+    const responsePromise = page.waitForResponse((response) =>
+      response.url().endsWith(appPath("/api/assistant/chat")) && response.request().method() === "POST");
+    await page.getByRole("button", { name: "Odeslat" }).click();
+    const result = await responsePromise;
+    expect(result.status()).toBe(200);
+    expect(result.headers()["cache-control"]).toContain("no-store");
+    const body = await result.json();
+    expect(body.response.current_context.answer_source).toBe("akb_workflow");
+    expect(body.response.current_context.workflow_workspace.status).toMatch(/^(complete|no_data)$/);
+    expect(body.response.current_context.workflow_workspace.returned_count).toBeLessThanOrEqual(5);
+    expect(body.response.citations).toEqual([]);
+    expect(body.response.suggested_actions).toEqual([]);
+    expect(body.persistence_status).toBe("persisted");
+
+    const answer = page.locator(".akb-chat-message--assistant").last();
+    await expect(answer).toContainText("Moje otevřené úkoly v AKB");
+    await expect(answer).toContainText(body.response.current_context.workflow_workspace.total
+      ? "Ověřený osobní přehled" : "Bez přiřazených záznamů");
+    const workspace = answer.getByRole("link", { name: "Otevřít Moji práci" });
+    await expect(workspace).toHaveAttribute("href", appPath("/tasks?view=mine"));
+    await expect(workspace).not.toHaveAttribute("target", "_blank");
+    await page.screenshot({ path: testInfo.outputPath("personal-workflow-desktop.png") });
+
+    await workspace.click();
+    await expect(page).toHaveURL(new RegExp(`${appPath("/tasks")}\\?view=mine$`));
+    await expect(page.getByRole("heading", { name: "Moje práce" })).toBeVisible();
+  });
+
+  test("DW-14K resized chat panels remain inside the desktop workspace", async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(appPath("/chat"));
+    for (const name of ["Změnit šířku seznamu vláken", "Změnit šířku panelu zdrojů"]) {
+      const separator = page.getByRole("separator", { name });
+      await separator.focus();
+      await page.keyboard.press("End");
+    }
+    const app = await page.locator(".akb-chat-app").boundingBox();
+    const main = await page.locator(".akb-chat-main").boundingBox();
+    const sources = await page.locator(".akb-chat-context").boundingBox();
+    const close = page.getByRole("button", { name: "Skrýt zdroje", exact: true });
+    const closeBox = await close.boundingBox();
+    expect(app).not.toBeNull();
+    expect(main!.width).toBeGreaterThanOrEqual(360);
+    expect(sources!.x + sources!.width).toBeLessThanOrEqual(app!.x + app!.width + 1);
+    expect(closeBox!.x + closeBox!.width).toBeLessThanOrEqual(app!.x + app!.width + 1);
+    await expect(close).toBeInViewport();
+    await expect(page.getByLabel("Zeptejte se na informace v AKB a aplikacích STRATOS")).toBeInViewport();
+    await page.screenshot({ path: testInfo.outputPath("chat-panels-desktop.png") });
+    await close.click();
+    await expect(page.locator(".akb-chat-context")).toBeHidden();
+  });
+
+  for (const scenario of [
+    { name: "partial", type: "answer", source: "partial", confidence: "high", warning: "BUDGET_APPROVED_PLAN_MISSING", badge: "Částečná odpověď", explanation: "nemá schválený plán" },
+    { name: "empty", type: "no_answer", source: "no_data", confidence: "high", warning: "LIVE_DATA_NO_MATCHING_DATA", badge: "Bez odpovídajících dat", explanation: "Neznamená to nulovou částku" },
+    { name: "conflict", type: "no_answer", source: null, confidence: "conflicting_sources", warning: "CONTROLLED_RULE_CONFLICT", badge: "Rozpor ve zdrojích", explanation: "Musí je posoudit gestor" },
+    { name: "unavailable", type: "no_answer", source: "unavailable", confidence: "high", warning: "DIRECTOR_COPILOT_V2_SOURCE_UNAVAILABLE", badge: "Dočasně nedostupné", explanation: "Zkuste dotaz později" },
+  ]) {
+    test(`DW-14J ${scenario.name} answer has an accurate mobile status and visible explanation`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.route(`**${appPath("/api/assistant/chat")}`, async (route) => {
+        const request = route.request().postDataJSON();
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+          response: {
+            response_type: scenario.type, conversation_id: request.conversation_id,
+            answer: "Výsledek ověřovacího dotazu.", message: null, questions: [], why_needed: null,
+            current_context: scenario.source ? { live_sources: [{ application: "budget", status: scenario.source, item_count: 0 }] } : {},
+            confidence: scenario.confidence, warnings: [scenario.warning], citations: [], report_artifacts: [],
+            follow_up_questions: [], suggested_actions: [], missing_information: null, recommended_action: null,
+          }, persistence_status: "persisted", message_id: `message_${scenario.name}`,
+        }) });
+      });
+      await page.goto(appPath("/chat"));
+      await page.getByLabel("Zeptejte se na informace v AKB a aplikacích STRATOS").fill("Ověřovací dotaz");
+      await page.getByRole("button", { name: "Odeslat" }).click();
+      const answer = page.locator(".akb-chat-message--assistant").last();
+      await expect(answer.getByText(scenario.badge, { exact: true })).toBeVisible();
+      await expect(answer).toContainText(scenario.explanation);
+      await expect(answer).not.toContainText(scenario.warning);
+      await expect(answer.getByText("Vysoká", { exact: true })).toHaveCount(0);
+      await expect(page.getByLabel("Zeptejte se na informace v AKB a aplikacích STRATOS")).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+      await page.screenshot({ path: testInfo.outputPath(`chat-${scenario.name}-mobile.png`) });
+    });
+  }
 
   test("DW-14B assistant citation redirect does not leak internal Docker host", async ({ request }) => {
     const response = await request.get(appPath("/api/assistant/citations/chunk_md_109/document"), {

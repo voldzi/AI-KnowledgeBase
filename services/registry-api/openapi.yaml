@@ -552,8 +552,10 @@ paths:
         required: false
         schema:
           type: boolean
+          description: False requires document update or version publication permission; ordinary readers receive only verified rules.
           default: true
           title: Approved Only
+        description: False requires document update or version publication permission; ordinary readers receive only verified rules.
       - name: include_inactive
         in: query
         required: false
@@ -575,6 +577,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ControlledRuleListResponse'
+        '403':
+          description: The subject cannot review unverified rules or inactive packages
         '422':
           description: Validation Error
           content:

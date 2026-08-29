@@ -1,8 +1,15 @@
 import type {
+  AuthorizationHint,
   ControlledDocumentPackageMember,
   ControlledDocumentPackageStatus,
   Document,
 } from "@/lib/types";
+
+export function canReviewControlledDocumentation(
+  authorization: Pick<AuthorizationHint, "can_update" | "can_publish">,
+): boolean {
+  return authorization.can_update || authorization.can_publish;
+}
 
 export type ControlledPackageMemberRole = "attachment" | "form" | "template";
 

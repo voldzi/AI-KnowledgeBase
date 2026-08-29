@@ -305,6 +305,47 @@ describe("Director Copilot V2 active chat", () => {
     assert.equal((response.answer ?? "").includes("Licence"), false);
   });
 
+  it("keeps year and financial meaning when a budget summary is followed by the most expensive item", async () => {
+    const requests: DirectorCopilotV2Request[] = [];
+    const auditEvents: unknown[] = [];
+    const previous = resolveConversationQuery({
+      message: "Jaký má IT rozpočet na rok 2025?",
+      now: new Date("2026-08-28T10:00:00Z"),
+    }).state;
+    const message = "A jaká byla nejdražší položka?";
+    const queryState = resolveConversationQuery({
+      message,
+      context: { stratos_query_state: previous },
+      now: new Date("2026-08-28T10:00:00Z"),
+    }).state;
+    const response = await runDirectorCopilotV2Chat({
+      message,
+      conversationId: "conversation-v2-budget-follow-up",
+      responseLanguage: "cs",
+      actorContext: context(),
+      clients: {
+        registry: { createAuditEvent: async (event: unknown) => { auditEvents.push(event); return {}; } },
+        rag: { assistantChat: async () => { throw new Error("No document fallback for live finance"); } },
+      } as unknown as ApiClients,
+      config: config(),
+      intent: "budget_portfolio_status",
+      queryState,
+      mode: "active",
+      fetcher: budgetItemFetcher(requests),
+      refreshActorContext: async () => context(),
+    });
+    assert.equal(queryState.period.fiscal_year, 2025);
+    assert.equal(requests.length, 1);
+    assert.deepEqual(requests[0]?.parameters.group_by, ["procurement_action"]);
+    assert.deepEqual(requests[0]?.parameters.scenario, ["plan"]);
+    assert.equal(response.response_type, "answer");
+    assert.match(response.answer ?? "", /Servery/);
+    assert.match(response.answer ?? "", /500[  ]000/);
+    assert.match(response.answer ?? "", /\*\*Stav dat:\*\* úplná/);
+    assert.doesNotMatch(response.answer ?? "", /Licence|Sekce IT/);
+    assert.match(JSON.stringify(auditEvents), /"evidence_status":"passed"/);
+  });
+
   it("counts authorized Budget actions from item-level completeness metadata", async () => {
     const requests: DirectorCopilotV2Request[] = [];
     const message = "Kolik akcí má plán na rok 2025?";

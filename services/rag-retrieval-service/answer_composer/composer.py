@@ -7,6 +7,7 @@ from typing import AsyncIterator
 import unicodedata
 
 from app.config import Settings
+from app.errors import RetrievalError
 from app.llm_client import LLMGatewayClient
 from app.schemas import (
     AnswerMode,
@@ -85,22 +86,27 @@ class AnswerComposer:
                 "content": _build_user_prompt(query=query, chunks=selected, response_language=response_language),
             },
         ]
-        answer = await self._llm_client.chat_completion(
-            messages=messages,
-            metadata={
-                "purpose": "rag_answer_composition",
-                "answer_mode": answer_mode,
-                "response_language": response_language,
-                "query_id": query_id,
-                "chunk_count": len(selected),
-                "used_chunk_ids": [chunk.chunk_id for chunk in selected],
-                "chat_model": selected_chat_model or self._settings.chat_model,
-                "chat_model_tier": "high_quality" if selected_chat_model else "standard",
-                **_policy_metadata(selected),
-            },
-            model=selected_chat_model,
-            auth_context=auth_context,
-        )
+        try:
+            answer = await self._llm_client.chat_completion(
+                messages=messages,
+                metadata={
+                    "purpose": "rag_answer_composition",
+                    "answer_mode": answer_mode,
+                    "response_language": response_language,
+                    "query_id": query_id,
+                    "chunk_count": len(selected),
+                    "used_chunk_ids": [chunk.chunk_id for chunk in selected],
+                    "chat_model": selected_chat_model or self._settings.chat_model,
+                    "chat_model_tier": "high_quality" if selected_chat_model else "standard",
+                    **_policy_metadata(selected),
+                },
+                model=selected_chat_model,
+                auth_context=auth_context,
+            )
+        except RetrievalError as exc:
+            if exc.code != "LLM_ANSWER_INCOMPLETE":
+                raise
+            return _incomplete_answer(query_id, warnings, response_language)
 
         if not answer:
             return RagAnswer(
@@ -238,24 +244,30 @@ class AnswerComposer:
             },
         ]
         parts: list[str] = []
-        async for delta in self._llm_client.stream_chat_completion(
-            messages=messages,
-            metadata={
-                "purpose": "rag_answer_composition",
-                "answer_mode": answer_mode,
-                "response_language": response_language,
-                "query_id": query_id,
-                "chunk_count": len(selected),
-                "used_chunk_ids": [chunk.chunk_id for chunk in selected],
-                "chat_model": selected_chat_model or self._settings.chat_model,
-                "chat_model_tier": "high_quality" if selected_chat_model else "standard",
-                **_policy_metadata(selected),
-            },
-            model=selected_chat_model,
-            auth_context=auth_context,
-        ):
-            parts.append(delta)
-            yield StreamEvent(kind="delta", delta=delta)
+        try:
+            async for delta in self._llm_client.stream_chat_completion(
+                messages=messages,
+                metadata={
+                    "purpose": "rag_answer_composition",
+                    "answer_mode": answer_mode,
+                    "response_language": response_language,
+                    "query_id": query_id,
+                    "chunk_count": len(selected),
+                    "used_chunk_ids": [chunk.chunk_id for chunk in selected],
+                    "chat_model": selected_chat_model or self._settings.chat_model,
+                    "chat_model_tier": "high_quality" if selected_chat_model else "standard",
+                    **_policy_metadata(selected),
+                },
+                model=selected_chat_model,
+                auth_context=auth_context,
+            ):
+                parts.append(delta)
+                yield StreamEvent(kind="delta", delta=delta)
+        except RetrievalError as exc:
+            if exc.code != "LLM_ANSWER_INCOMPLETE":
+                raise
+            yield StreamEvent(kind="done", answer=_incomplete_answer(query_id, warnings, response_language))
+            return
 
         answer_text = "".join(parts).strip()
         if not answer_text:
@@ -343,6 +355,23 @@ class AnswerComposer:
         if len(selected_chunks) >= self._settings.high_quality_min_context_chunks:
             return high_quality_model
         return None
+
+
+def _incomplete_answer(query_id: str, warnings: list[str], language: ResponseLanguage) -> RagAnswer:
+    message = (
+        "Odpověď se nepodařilo dokončit. Zkuste dotaz zúžit nebo opakovat."
+        if language == "cs"
+        else "The answer could not be completed. Try narrowing or repeating the question."
+    )
+    return RagAnswer(
+        query_id=query_id,
+        answer=message,
+        confidence="insufficient_source",
+        citations=[],
+        warnings=_merge_warnings(warnings, ["LLM_ANSWER_INCOMPLETE"]),
+        used_chunks=[],
+        missing_information=message,
+    )
 
 
 def _build_user_prompt(*, query: str, chunks: list[RetrievedChunk], response_language: ResponseLanguage = "cs") -> str:

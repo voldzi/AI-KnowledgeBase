@@ -1472,7 +1472,10 @@ class RagRetrievalService:
         response = AssistantChatResponse(
             response_type="no_answer",
             conversation_id=conversation_id,
-            answer=_assistant_no_source_message(payload.mode, payload.response_language),
+            answer=(
+                rag_answer.answer if "LLM_ANSWER_INCOMPLETE" in rag_answer.warnings
+                else _assistant_no_source_message(payload.mode, payload.response_language)
+            ),
             current_context=_assistant_current_context(query_context),
             citations=[],
             confidence=rag_answer.confidence,

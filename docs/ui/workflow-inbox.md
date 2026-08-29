@@ -32,6 +32,27 @@ Terminy se vyhodnocuji podle kalendarniho dne `Europe/Prague`:
 Prekroceni revize samo nezneplatni dokument ani neschvali novou verzi.
 Seznam se aktualizuje pri otevreni stranky, po rozhodnuti a tlacitkem obnovy.
 
+## Osobni Prehled V Chatu
+
+Chat umi primo odpovedet na jednoznacne osobni dotazy, napriklad "Jake mam
+ukoly v AKB?", "Co mam ke schvaleni?" nebo "Ktere moje dokumenty potrebuji
+revizi?". Pouziva stejny Registry jako Moje prace, nikoli LLM nebo dokumentovy
+RAG. Vraci nejvyse pet polozek a celkovy autorizovany pocet pro dany filtr.
+Rozsirene filtrovani zustava v pracovni plose; historicke, tymove, projektove
+nebo obsahove dotazy se za tento jednoduchy osobni prehled nevydavaji.
+
+Pred ctenim se overi pravo na chat a osobni pracovni plochu. Registry uplatni
+aktualni prirazeni a Information Policy. Po nacteni se znovu overi centralni
+projekce; pri zmene identity nebo prav se vysledek nezpristupni. Neuplna
+stranka, duplicita nebo nedostupna sluzba neni prazdna fronta. Chat zadne
+rozhodnuti neprovadi a nenabizi schvaleni bez otevreni presneho dokumentu.
+
+Osobni seznam neni sdilitelny dukaz. Do historie se z odpovedi uklada pouze
+neutralni vyzva k obnoveni, bez nazvu dokumentu, identifikatoru ukolu nebo poctu.
+Po novem dotazu se zobrazi vlastni aktualni prace prave prihlaseneho cloveka.
+Odpoved ma `Cache-Control: no-store`. Platforma nabizi odkaz do Moji prace ve
+stejne zalozce; samostatny Chat nevytvari odkaz na nedostupnou pracovni plochu.
+
 ## Predani A Rozhodnuti
 
 1. Gestor zkontroluje zdroj, prilohy, metadata, ucinnost a prirazeneho
@@ -88,6 +109,13 @@ pozadovane stranky. Ukoly podporuji `q`, stav, prioritu a typ; dokumenty `q`,
 se nezobrazuje jako prazdna bezproblemova fronta. Pri zmene filtru se predchozi
 vysledek skryje, dokud neni bezpecne nacten novy. Navrat z detailu zachova
 aktivni zalozku, filtry a stranku.
+
+Klientska navigace pouziva cestu `/tasks` bez rucniho pridani `/akb`; base path
+prida router jednou. Stejne filtry se zachovavaji pres overeni relace. Shell
+ceka na overenou identitu pred rozhodnutim o presmerovani a ani jeho chybova
+stranka nepouziva identitu zachycenou pri sestaveni aplikace. Sdilene uzivatelske
+preference meni jen prezentaci stejneho overeneho subjectu, nikdy jeho role,
+capabilities nebo access projection. Odkaz na globalni audit se ctenari nenabizi.
 
 Osobni stranka nenacita vsechny ingestion joby ani celou auditni historii.
 Provozni podrobnosti zustavaji na obrazovkach Ingestion a Audit; Registry

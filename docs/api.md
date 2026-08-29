@@ -28,7 +28,8 @@ contract. AKB sends an independent service bearer and current actor bearer;
 each source reloads the actor's STRATOS access projection and applies its own
 PEP. See `docs/integration/DIRECTOR_COPILOT_V2_IMPLEMENTATION.md`.
 
-The web `POST /api/assistant/chat` bridge resolves a versioned semantic
+The web `POST /api/assistant/chat` bridge first recognizes explicit current
+personal-workspace requests. Other requests resolve a versioned semantic
 `ConversationQueryState` and typed Director Copilot intent before the document
 assistant router. The state carries only bounded query semantics such as
 source, metric, period, operation (`summary`, `list`, `count`, `rank`),
@@ -41,9 +42,12 @@ Need and idea-intake questions use ArchFlow through
 `archflow.need_portfolio_overview.v1`. Each response is limited to
 source-authorized facts, source timestamps and safe deep links.
 
-Budget action, purchase and plan-line questions request `item` granularity with
-`budget_item` grouping. Count answers use the source-provided authorized
-`candidate_count`; ranking is presented only over a complete comparable result.
+Budget planned-action and purchase questions request `item` granularity with
+`procurement_action` grouping; explicitly requested budget lines retain
+`budget_item` grouping. Count answers require complete cursor traversal,
+unique authorized items matching `candidate_count` and verified per-item count
+facts. The candidate count alone is not an answer. Ranking is presented only
+over a complete comparable result.
 An aggregate response to an item request is rejected with
 `LIVE_DATA_ENTITY_TYPE_MISMATCH` and is never relabeled as an action.
 Before rendering, AKB validates source metadata, candidate completeness,
@@ -67,6 +71,19 @@ Every successful browser bridge response also returns
 same Registry conversation. A failed history write leaves the answer visible
 with `CONVERSATION_HISTORY_NOT_PERSISTED`; it is never presented as silently
 saved.
+
+Explicit personal-workspace requests use `answer_source=akb_workflow` and
+`workflow_workspace` context instead of fabricated document citations. The
+bridge reads at most five assigned open tasks, pending reviews or managed
+documents through the existing Registry workflow APIs. It validates the
+requested page, uses its authorized `total` and revalidates the current access
+projection before responding. It does not approve, publish or modify records.
+Unknown filters are not silently dropped into a personal-workspace answer.
+Errors and changed access never become an empty queue or document-RAG fallback.
+The response is `no-store`. History receives only a neutral refresh receipt,
+not personal queue titles, IDs or counts; shared conversation history therefore
+cannot replay another person's private work overview. A new explicit question
+always loads the current viewer's authorized records.
 
 Browser authentication uses an opaque server-side AKB session. The browser
 can inspect and revoke its own trusted-device sessions through:
@@ -215,6 +232,14 @@ verified profile revision 3 rules from the closed normative catalog and never
 widens the caller's document access. The complete hierarchy and historical
 contract are in `docs/ARCHITECTURE/temporal-controlled-documentation.md`; the
 Budget handoff is in `docs/integration/AKB_CONTROLLED_RULES_BUDGET_API.md`.
+
+The ordinary reader view always requests approved rules. Requesting
+`approved_only=false` directly from Registry requires document-update or
+version-publication permission; otherwise Registry returns
+`403 controlled_rule_review_forbidden`. `include_inactive=true` independently
+requires document-update permission. The web bridge derives these options from
+fresh authorization hints and ignores attempts by readers to widen them. This
+does not change the separate closed Budget consumer contract.
 
 Interactive Governance operations use the internal Governance service bearer
 in `Authorization` and the independently current person bearer in

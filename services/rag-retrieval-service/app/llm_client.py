@@ -20,6 +20,7 @@ class ChatCompletionResult:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+    finish_reason: str = "stop"
 
 
 class LLMGatewayClient(Protocol):
@@ -216,12 +217,14 @@ class HttpLLMGatewayClient:
             audience=self._settings.llm_gateway_audience,
         )
         usage = payload.get("usage") if isinstance(payload.get("usage"), dict) else {}
+        _require_complete_answer(payload.get("finish_reason"))
         return ChatCompletionResult(
             content=str(payload.get("content", "")).strip(),
             model=str(payload.get("model") or selected_model),
             prompt_tokens=int(usage.get("prompt_tokens") or 0),
             completion_tokens=int(usage.get("completion_tokens") or 0),
             total_tokens=int(usage.get("total_tokens") or 0),
+            finish_reason="stop",
         )
 
     async def stream_chat_completion(
@@ -234,6 +237,7 @@ class HttpLLMGatewayClient:
     ) -> AsyncIterator[str]:
         selected_model = model or self._settings.chat_model
         timeout = httpx.Timeout(self._settings.request_timeout_seconds, read=None)
+        finish_reason: str | None = None
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 async with client.stream(
@@ -267,14 +271,21 @@ class HttpLLMGatewayClient:
                             continue
                         data = line.removeprefix("data: ").strip()
                         if data == "[DONE]":
+                            _require_complete_answer(finish_reason)
                             return
                         try:
                             chunk = json.loads(data)
-                        except json.JSONDecodeError:
-                            continue
+                        except json.JSONDecodeError as exc:
+                            raise _incomplete_answer_error("invalid_stream") from exc
+                        if not isinstance(chunk, dict) or finish_reason is not None:
+                            raise _incomplete_answer_error("invalid_stream")
                         delta = str(chunk.get("delta") or "")
                         if delta:
                             yield delta
+                        if chunk.get("finish_reason") is not None:
+                            _require_complete_answer(chunk["finish_reason"])
+                            finish_reason = "stop"
+                    raise _incomplete_answer_error("missing_termination")
         except RetrievalError:
             raise
         except (httpx.TimeoutException, httpx.TransportError) as exc:
@@ -302,6 +313,21 @@ def create_llm_client(settings: Settings) -> LLMGatewayClient:
     if settings.llm_client_mode == "mock":
         return MockLLMGatewayClient(settings)
     return HttpLLMGatewayClient(settings)
+
+
+def _require_complete_answer(finish_reason: object) -> None:
+    if finish_reason != "stop":
+        reason = finish_reason if finish_reason in ("length", "content_filter", "tool_calls") else "missing_termination"
+        raise _incomplete_answer_error(reason)
+
+
+def _incomplete_answer_error(reason: str) -> RetrievalError:
+    return RetrievalError(
+        "LLM_ANSWER_INCOMPLETE",
+        "The model did not complete the answer.",
+        status_code=502,
+        details={"dependency": "llm-gateway", "reason": reason},
+    )
 
 
 def _extract_context(messages: list[dict[str, str]]) -> str:

@@ -5,7 +5,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { ChevronLeft, ChevronRight, ClipboardCheck, Files, ListTodo, RefreshCw, Users } from "lucide-react";
 import { StratosButton, StratosButtonLink, StratosDataTable, StratosSearchBox, StratosSelect, StratosViewTabs, type StratosDataTableColumn, type StratosViewTab } from "@/components/stratos";
 import { StatusBadge } from "@/components/status-badge";
-import { withAppBasePath } from "@/lib/app-url";
 import { documentStatusLabel, documentTypeLabel, formatDate } from "@/lib/format";
 import { useLanguage } from "@/lib/i18n";
 import { withDocumentReturnContext } from "@/lib/navigation/document-navigation";
@@ -98,7 +97,8 @@ export function WorkflowWorkspace({ view, canReadTeam, documents, tasks, authori
     const target = params.toString();
     ownNavigations.current.add(target);
     if (ownNavigations.current.size > 16) ownNavigations.current.delete(ownNavigations.current.values().next().value!);
-    startRefresh(() => router.replace(withAppBasePath(`/tasks?${target}`), { scroll: false }));
+    // Next's router adds the configured base path itself.
+    startRefresh(() => router.replace(`/tasks?${target}`, { scroll: false }));
   }, [router]);
   useEffect(() => {
     // Preserve typing/focus on our own responses; restore filters on Back/Forward.
