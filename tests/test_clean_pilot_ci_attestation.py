@@ -25,7 +25,7 @@ class SameShaAttestationTests(unittest.TestCase):
         self.assertEqual(text.count("uses: actions/upload-artifact@v3"), 2)
         self.assertNotIn("uses: actions/upload-artifact@v4", text)
         self.assertIn(
-            "NODE_EXTRA_CA_CERTS: /usr/local/share/ca-certificates/git.home.cz.crt",
+            "NODE_EXTRA_CA_CERTS: /etc/ssl/certs/ca-certificates.crt",
             text,
         )
         block = text.split("\n  persist-same-sha-ci-evidence:\n", 1)[1]

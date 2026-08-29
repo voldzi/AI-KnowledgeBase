@@ -20,7 +20,7 @@ permissions:
 env:
   AKB_CI_CACHE_ROOT: /cache/akb-ci
   DOCKER_CONFIG: /tmp/akb-docker-config
-  NODE_EXTRA_CA_CERTS: /usr/local/share/ca-certificates/git.home.cz.crt
+  NODE_EXTRA_CA_CERTS: /etc/ssl/certs/ca-certificates.crt
   PIP_CACHE_DIR: /cache/akb-ci/pip
   PLAYWRIGHT_BROWSERS_PATH: /cache/akb-ci/playwright
   PNPM_STORE_DIR: /cache/akb-ci/pnpm-store
