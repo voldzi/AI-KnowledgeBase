@@ -4,6 +4,14 @@
   "epoch": "clean-pilot-epoch-1",
   "phase": "A",
   "acknowledgement": "OWNER_ACKNOWLEDGED_NO_PRODUCTION_MUTATION",
+  "runtimeBoundary": {
+    "repository": "AKB/ai-knowledgebase",
+    "runtime": "independently deployable AKB services",
+    "secrets": "AKB-owned and not shared with STRATOS",
+    "migrations": "AKB-owned",
+    "rollback": "AKB-owned",
+    "sharedReleaseCoordination": "versioned contract bundle and immutable release BOM only"
+  },
   "stores": [
     {"storeId":"registry-metadata-versions","owner":"registry-api","technology":"PostgreSQL","contentClasses":["registry metadata","immutable document versions","files","packages","publication records"]},
     {"storeId":"object-storage","owner":"web-upload-and-ingestion","technology":"S3-compatible object storage","contentClasses":["source blobs","renditions","upload quarantine"]},

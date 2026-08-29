@@ -153,7 +153,7 @@ describe("STRATOS access projection", () => {
     const token = jwt({
       sub: "user-123",
       exp: 2_000,
-      aud: ["akl-api", "budget-web"],
+      aud: ["akl-api", "stratos-access-api"],
       azp: "akb-chat-web",
     });
     const originalWarn = console.warn;

@@ -10,6 +10,10 @@
   "secondBootstrap":"no-op",
   "staleIdSurfaces":["registry","search","retrieval","chat","preview","download","citation","source-open","export","publication"],
   "staleIdResult":"denied",
+  "rehearsalProposals":[
+    {"rehearsalId":"akb-disposable-rehearsal-1","storeSet":"new-isolated-disposable-a","productionConnectivity":false,"productionCredentials":false,"expectedBootstrap":"empty-then-idempotent-no-op"},
+    {"rehearsalId":"akb-disposable-rehearsal-2","storeSet":"new-isolated-disposable-b","productionConnectivity":false,"productionCredentials":false,"expectedBootstrap":"empty-then-idempotent-no-op"}
+  ],
   "jointRehearsalsExecuted":0,
   "result":"PASS"
 }

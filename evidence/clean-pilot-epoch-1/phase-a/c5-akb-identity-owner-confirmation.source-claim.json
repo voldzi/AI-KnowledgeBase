@@ -1,0 +1,8 @@
+{
+  "provider": "gitea",
+  "repository": "AKB/ai-knowledgebase",
+  "path": "evidence/clean-pilot-epoch-1/phase-a/c5-akb-identity-owner-confirmation.json",
+  "mediaType": "application/json",
+  "byteSha256": "748e64d817da5bdb1c1f1031d4e1d3a3e765b2a99d9d931536eacb4e819ab640",
+  "canonicalJsonSha256": "9d06894ceabb8d27326e134ff00116fb05afd4482044502d1ad9987a1033bfc4"
+}

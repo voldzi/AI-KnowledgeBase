@@ -50,6 +50,9 @@ def main() -> None:
     stores = docs["c0-akb-owner.json"].get("stores")
     if not isinstance(stores, list) or len(stores) != 10 or len({item.get("storeId") for item in stores}) != 10:
         fail("C0 must contain exactly ten uniquely owned stores")
+    boundary = docs["c0-akb-owner.json"].get("runtimeBoundary", {})
+    if boundary.get("repository") != REPOSITORY or set(boundary) != {"repository", "runtime", "secrets", "migrations", "rollback", "sharedReleaseCoordination"}:
+        fail("C0 independent repository/runtime boundary is incomplete")
     writers = docs["c1-writer-inventory.json"].get("writers")
     if not isinstance(writers, list) or not writers or any(not all(item.get(key) is not None for key in ("writerId", "owner", "environments", "productionPermission", "guard")) for item in writers):
         fail("C1 writer inventory is incomplete")
@@ -88,6 +91,11 @@ def main() -> None:
         fail("C3 zero-state closure failed")
     if any(c3["zeroState"].values()) or c3.get("secondBootstrap") != "no-op" or c3.get("productionConnectivity") is not False:
         fail("C3 is not empty, idempotent and isolated")
+    rehearsals = c3.get("rehearsalProposals")
+    if not isinstance(rehearsals, list) or len(rehearsals) != 2 or len({item.get("rehearsalId") for item in rehearsals}) != 2:
+        fail("C3 must define exactly two isolated disposable rehearsal proposals")
+    if any(item.get("productionConnectivity") is not False or item.get("productionCredentials") is not False for item in rehearsals):
+        fail("C3 rehearsal proposal reaches production")
     for name in FILES:
         raw = (EVIDENCE / name).read_bytes()
         canonical = json.dumps(json.loads(raw), ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()

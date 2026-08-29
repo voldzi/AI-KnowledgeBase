@@ -125,6 +125,7 @@ jobs:
           python3 tests/test_gitea_production_deploy.py
           python3 tests/test_ci_affected_components.py
           python3 tests/test_clean_pilot_ci_attestation.py
+          python3 tests/test_clean_pilot_c5.py
           npx --yes @redocly/cli lint openapi/openapi.json
       - name: Scan committed history for secrets
         run: |
@@ -170,11 +171,14 @@ jobs:
             exit 1
           }
           python3 scripts/ci/check_clean_pilot_phase_a.py | tee phase-a-digests.txt
+          python3 scripts/ci/check_clean_pilot_c5.py | tee -a phase-a-digests.txt
           python3 -m venv .phase-a-venv
           . .phase-a-venv/bin/activate
           python -m pip install --upgrade pip
           python -m pip install pytest
           python -m pytest -q tests/test_clean_pilot_disposable_store.py
+          python tests/test_clean_pilot_c5.py
+          python -m pytest -q tests/test_standalone_chat_keycloak.py tests/test_managed_identity_preflight.py
           pnpm --dir apps/web install --frozen-lockfile --store-dir "$PNPM_STORE_DIR"
           pnpm --dir apps/web exec tsx --test tests/access-projection-v2-shadow.test.ts
           printf '%s\n' "${{ github.sha }}" > exact-reviewed-sha.txt

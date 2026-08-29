@@ -35,7 +35,6 @@ def test_standalone_chat_client_is_exact_public_pkce_client() -> None:
     }
     assert audience_mappers == {
         "akl-api audience": "akl-api",
-        "budget-web audience": "budget-web",
         "stratos-access-api audience": "stratos-access-api",
     }
 
@@ -53,11 +52,13 @@ def test_live_reconciliation_ensures_standalone_chat_client() -> None:
     assert "https://chat.zeleznalady.cz/api/auth/callback" in script
     assert "pkce.code.challenge.method" in script
     assert "akl-api audience" in script
-    assert "budget-web audience" in script
     assert "stratos-access-api audience" in script
-    assert 'ensure_audience_mapper "$id" "budget-web audience" "budget-web"' in script
+    assert 'reconcile_akb_browser_audiences "akb-chat-web" "remove-budget-web"' in script
+    assert "remove_legacy_budget_web_mapper" in script
+    assert "approved removal signature" in script
+    assert "unknown audience mapper on AKB browser client" in script
     assert (
-        'ensure_audience_mapper "$id" "stratos-access-api audience" '
+        'ensure_audience_mapper "$client_uuid" "stratos-access-api audience" '
         '"stratos-access-api"'
     ) in script
     assert '\\"included.client.audience\\":\\"$audience\\"' in script
@@ -68,3 +69,15 @@ def test_live_reconciliation_ensures_standalone_chat_client() -> None:
     assert "did not persist audience" in script
     assert "KEYCLOAK_USE_BOOTSTRAP_ADMIN_SERVICE" in script
     assert "cleanup_bootstrap_client" in script
+
+
+def test_both_akb_browser_clients_have_exact_two_audiences() -> None:
+    realm = json.loads((ROOT / "infra/keycloak/realm-stratos.json").read_text())
+    clients = {client["clientId"]: client for client in realm["clients"]}
+    for client_id in ("akl-web", "akb-chat-web"):
+        audiences = {
+            mapper["config"]["included.client.audience"]
+            for mapper in clients[client_id]["protocolMappers"]
+            if mapper["protocolMapper"] == "oidc-audience-mapper"
+        }
+        assert audiences == {"akl-api", "stratos-access-api"}

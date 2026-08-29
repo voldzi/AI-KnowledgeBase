@@ -81,7 +81,11 @@ AKL_WEB_PUBLIC_BASE_URL=https://stratos.zeleznalady.cz/akb
 AKL_WEB_SESSION_SECRET=<long random value>
 ```
 
-`akl-web` and `stratos-akl-adapter` include an `akl-api` audience mapper because Registry API validates bearer tokens with `AKL_OIDC_AUDIENCE=akl-api`.
+Both AKB browser clients, `akl-web` and `akb-chat-web`, issue user access
+tokens with exactly the `akl-api` and `stratos-access-api` audiences. Domain
+audiences such as `budget-web` are prohibited on AKB browser clients. The
+`stratos-akl-adapter` service client remains separate and includes only its
+route-specific `akl-api` audience.
 
 Provision the confidential `aiip-service` client, its single application role,
 and the `akb-api` audience with:
