@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "akb-clean-pilot-c0-owner-1",
+  "repository": "STRATOS/AKB",
+  "epoch": "clean-pilot-epoch-1",
+  "phase": "A",
+  "acknowledgement": "OWNER_ACKNOWLEDGED_NO_PRODUCTION_MUTATION",
+  "stores": [
+    {"storeId":"registry-metadata-versions","owner":"registry-api","technology":"PostgreSQL","contentClasses":["registry metadata","immutable document versions","files","packages","publication records"]},
+    {"storeId":"object-storage","owner":"web-upload-and-ingestion","technology":"S3-compatible object storage","contentClasses":["source blobs","renditions","upload quarantine"]},
+    {"storeId":"ingest-job-state","owner":"ingestion-service","technology":"durable filesystem volume","contentClasses":["ingest jobs","rendition cache"]},
+    {"storeId":"search-index","owner":"ingestion-service","technology":"OpenSearch","contentClasses":["search chunks","authorization coordinates"]},
+    {"storeId":"vector-index","owner":"ingestion-service","technology":"Qdrant","contentClasses":["embedding vectors","chunk payloads","authorization coordinates"]},
+    {"storeId":"citation-source-open","owner":"registry-api-and-rag-retrieval-service","technology":"PostgreSQL plus derived index metadata","contentClasses":["source file coordinates","citation coordinates","source-open references"]},
+    {"storeId":"rag-chat","owner":"registry-api-and-rag-retrieval-service","technology":"PostgreSQL","contentClasses":["assistant conversations","messages","shares","feedback"]},
+    {"storeId":"evaluation","owner":"evaluation-service","technology":"durable filesystem volumes","contentClasses":["evaluation datasets","runs","reports"]},
+    {"storeId":"audit","owner":"registry-api","technology":"PostgreSQL","contentClasses":["audit events","integration idempotency records","workflow evidence"]},
+    {"storeId":"cache-session-authorization","owner":"registry-api-and-web","technology":"PostgreSQL plus process-local bounded caches","contentClasses":["encrypted server sessions","session revocation","projection cache","authorization bindings"]}
+  ],
+  "productionMutationAuthorized": false,
+  "unknownStorePolicy": "STOP"
+}

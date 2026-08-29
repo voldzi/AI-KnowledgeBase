@@ -1,0 +1,27 @@
+{
+  "schemaVersion":"akb-clean-pilot-c1-writer-inventory-1",
+  "repository":"STRATOS/AKB",
+  "epoch":"clean-pilot-epoch-1",
+  "closed":true,
+  "unknownWriterPolicy":"STOP",
+  "writers":[
+    {"writerId":"registry-governed-api","owner":"registry-api","paths":["services/registry-api/app/api.py"],"environments":["development","test","production"],"productionPermission":"authenticated capability, exact scope and Information Policy","guard":"registry authorization tests"},
+    {"writerId":"registry-session-api","owner":"registry-api","paths":["services/registry-api/app/session_api.py"],"environments":["development","test","production"],"productionPermission":"signed internal session route only","guard":"server-session tests"},
+    {"writerId":"web-controlled-upload","owner":"web","paths":["apps/web/src/lib/upload"],"environments":["development","test","production"],"productionPermission":"upload capability, governed preflight and scanner","guard":"upload preflight tests"},
+    {"writerId":"ingestion-worker","owner":"ingestion-service","paths":["services/ingestion-service/app"],"environments":["development","test","production"],"productionPermission":"dedicated service identity and issued job authorization","guard":"ingestion authorization tests"},
+    {"writerId":"evaluation-service","owner":"evaluation-service","paths":["services/evaluation-service/app"],"environments":["development","test","production"],"productionPermission":"dedicated service identity; evaluation volumes only","guard":"evaluation service tests"},
+    {"writerId":"stratos-budget-document-bridge","owner":"web-and-registry-api","paths":["apps/web/src/lib/stratos","services/registry-api/app/api.py"],"environments":["test","production"],"productionPermission":"dedicated route grant and idempotency","guard":"STRATOS document service auth tests"},
+    {"writerId":"quality-dataset-bootstrap","owner":"web-and-evaluation-service","paths":["apps/web/src/app/api/intelligence/quality/datasets/bootstrap/route.ts"],"environments":["development","test","production"],"productionPermission":"quality-management capability; evaluation store only","guard":"quality route tests"},
+    {"writerId":"docs-folder-import","owner":"retired-tooling","paths":["tools/import_docs_folder.py"],"environments":[],"productionPermission":"none","guard":"unconditional LEGACY_MUTATION_RETIRED"},
+    {"writerId":"original-pdf-import","owner":"retired-tooling","paths":["tools/import_original_pdf_versions.py"],"environments":[],"productionPermission":"none","guard":"unconditional LEGACY_MUTATION_RETIRED"},
+    {"writerId":"legacy-epoch-reset","owner":"retired-tooling","paths":["tools/reset_akb_epoch.py"],"environments":[],"productionPermission":"none","guard":"unconditional LEGACY_MUTATION_RETIRED"},
+    {"writerId":"phase-01-smoke","owner":"retired-test-tooling","paths":["scripts/phase_01_smoke.py"],"environments":[],"productionPermission":"none","guard":"unconditional LEGACY_MUTATION_RETIRED"},
+    {"writerId":"phase-02-controlled-document-smoke","owner":"retired-test-tooling","paths":["scripts/phase_02_controlled_document_smoke.py"],"environments":[],"productionPermission":"none","guard":"unconditional LEGACY_MUTATION_RETIRED"},
+    {"writerId":"phase-03-docs-import-smoke","owner":"test-tooling","paths":["scripts/phase_03_docs_import_smoke.py"],"environments":["development","test"],"productionPermission":"none","guard":"non-production fixture boundary"},
+    {"writerId":"document-workbench-e2e","owner":"web-test-tooling","paths":["apps/web/e2e/document-workbench.spec.ts"],"environments":["test"],"productionPermission":"none","guard":"Playwright isolated test server"},
+    {"writerId":"qdrant-maintenance-backfills","owner":"ingestion-operations","paths":["scripts/backfill_qdrant_entities.py","scripts/backfill_qdrant_v2.py"],"environments":["development","controlled-maintenance"],"productionPermission":"explicit operator maintenance only; not bootstrap","guard":"explicit command and service readiness"},
+    {"writerId":"opensearch-maintenance-backfills","owner":"ingestion-operations","paths":["scripts/backfill_opensearch_entities.py","scripts/backfill_opensearch_from_qdrant.py"],"environments":["development","controlled-maintenance"],"productionPermission":"explicit operator maintenance only; not bootstrap","guard":"TLS, credential and index validation"},
+    {"writerId":"official-source-imports","owner":"controlled-content-operations","paths":["scripts/import_cz_digital_governance.sh","scripts/import_security_compliance_cz.sh"],"environments":["controlled-maintenance"],"productionPermission":"explicit content-owner operation only; not bootstrap","guard":"governed import preflight"},
+    {"writerId":"clean-pilot-disposable-bootstrap","owner":"AKB-owner","paths":["tools/clean_pilot_disposable_store.py"],"environments":["local-disposable","rehearsal-disposable"],"productionPermission":"none","guard":"new path plus disposable marker; no endpoints or connection URLs"}
+  ]
+}

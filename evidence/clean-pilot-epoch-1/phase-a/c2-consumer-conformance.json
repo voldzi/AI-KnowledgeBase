@@ -1,0 +1,14 @@
+{
+  "schemaVersion":"akb-clean-pilot-c2-consumer-conformance-1",
+  "repository":"STRATOS/AKB",
+  "epoch":"clean-pilot-epoch-1",
+  "authority":"shadow-only",
+  "consumerCutover":false,
+  "contract":{"schemaVersion":"stratos-access-projection-2","revision":"2.0.0","status":"shadow","catalogVersion":"capabilities-1.12.0","canonicalSchemaSha256":"sha256:3b11860c9b79bfb82f7792b93815f49d786667a7dd4b74f5a8ad0cb5dd6620b7"},
+  "matchRule":"one entitlement contains both requested capability and exact effectiveScope",
+  "crossEntitlementUnion":"denied",
+  "surfaces":["registry","search","retrieval","chat","preview","download","citation","source-open","export","publication"],
+  "informationPolicy":"separate mandatory gate",
+  "failClosedGroups":["draft-or-unpublished","foreign-organization","narrower-audience","explicit-denial","restricted-confidential","tlp-pap","expiry","inactive-identity","inactive-membership","schema-drift","catalog-drift","unknown-field","projection-unavailable","static-claim-fallback"],
+  "result":"PASS"
+}

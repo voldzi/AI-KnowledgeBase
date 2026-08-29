@@ -1,0 +1,15 @@
+{
+  "schemaVersion":"akb-clean-pilot-c3-test-manifest-1",
+  "repository":"STRATOS/AKB",
+  "epoch":"clean-pilot-epoch-1",
+  "environment":"local-disposable",
+  "productionConnectivity":false,
+  "productionCredentials":false,
+  "ownerResetScope":"new marked disposable store only",
+  "zeroState":{"documents":0,"documentVersions":0,"blobs":0,"ingestJobs":0,"indexedChunks":0,"vectors":0,"citations":0,"chatRagHistory":0,"evaluationBusinessData":0,"scopePublicationSessionBindings":0},
+  "secondBootstrap":"no-op",
+  "staleIdSurfaces":["registry","search","retrieval","chat","preview","download","citation","source-open","export","publication"],
+  "staleIdResult":"denied",
+  "jointRehearsalsExecuted":0,
+  "result":"PASS"
+}
