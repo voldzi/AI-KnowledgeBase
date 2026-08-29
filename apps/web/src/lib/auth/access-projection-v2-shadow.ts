@@ -72,7 +72,10 @@ export function evaluateActiveProjectionV2(
   return evaluateProjectionV2(payload, resource, ACTIVE_PROJECTION_CONTRACT, nowMs);
 }
 
-type ProjectionContract = Pick<typeof SHADOW_PROJECTION_CONTRACT, "schemaVersion" | "revision" | "status" | "digest" | "catalogVersion" | "organizationId">;
+type ProjectionContract = Pick<
+  typeof SHADOW_PROJECTION_CONTRACT | typeof ACTIVE_PROJECTION_CONTRACT,
+  "schemaVersion" | "revision" | "status" | "digest" | "catalogVersion" | "organizationId"
+>;
 
 function evaluateProjectionV2(
   payload: unknown,
