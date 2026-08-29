@@ -124,6 +124,7 @@ jobs:
           python3 tests/test_gitea_ci_operations.py
           python3 tests/test_gitea_production_deploy.py
           python3 tests/test_ci_affected_components.py
+          python3 tests/test_clean_pilot_ci_attestation.py
           npx --yes @redocly/cli lint openapi/openapi.json
       - name: Scan committed history for secrets
         run: |
@@ -408,3 +409,35 @@ jobs:
             -f infra/docker-compose/docker-compose.local-prod.yml config >/tmp/akb-compose-local-prod.yml
           AKB_POLICY_SERVICE_TOKEN=dummy-akb-policy-service-token \
           bash scripts/check_docker_home_compose_render.sh
+
+  persist-same-sha-ci-evidence:
+    name: Persist same-SHA CI evidence
+    runs-on: akb-gitea-ci
+    needs: [trusted-candidate, impact, standards, clean-pilot-phase-a, immutable-release, web, registry-api, ingestion-service, rag-retrieval-service, llm-gateway-service, evaluation-service, governance-service, compose]
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Check out exact verified SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - name: Create closed same-SHA attestation
+        run: |
+          set -euo pipefail
+          rm -rf same-sha-ci-evidence
+          python3 scripts/ci/write_same_sha_ci_evidence.py \
+            --commit "${{ github.sha }}" \
+            --ref "${{ github.ref }}" \
+            --event "${{ github.event_name }}" \
+            --run-id "${{ github.run_id }}" \
+            --run-attempt "${{ github.run_attempt }}" \
+            --output same-sha-ci-evidence/akb-gitea-ci-evidence.json
+          test "$(find same-sha-ci-evidence -maxdepth 1 -type f | wc -l | tr -d ' ')" = "1"
+      - name: Publish single-file same-SHA attestation
+        uses: actions/upload-artifact@v4
+        with:
+          name: akb-gitea-ci-evidence-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 30
+          path: same-sha-ci-evidence/akb-gitea-ci-evidence.json
