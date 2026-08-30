@@ -13,6 +13,12 @@ FILES = (
     "c2-consumer-conformance.json", "c3-akb-test-manifest.json",
 )
 REPOSITORY = "AKB/ai-knowledgebase"
+BOUNDARY_BUNDLE_CANONICAL_SHA256 = "f837d317b1c60e4477318f9ae6d81f6cb04901686020be188bb11ffc072a576b"
+C0_KEYS = {
+    "schemaVersion", "repository", "epoch", "phase",
+    "boundaryBundleCanonicalSha256", "acknowledgement", "runtimeBoundary",
+    "stores", "productionMutationAuthorized", "unknownStorePolicy",
+}
 FORBIDDEN_KEYS = {"commitSha", "reviewId", "ciRunId", "jobId", "artifactId", "releaseBom"}
 FORBIDDEN_VALUE = re.compile(r"(?:bearer\s+|token=|password=|secret=|postgres(?:ql)?://|https?://)", re.I)
 
@@ -45,8 +51,21 @@ def load(name: str) -> dict:
     return body
 
 
+def validate_c0_owner(c0: dict) -> None:
+    if set(c0) != C0_KEYS:
+        fail("C0 owner evidence root is not closed")
+    boundary_hash = c0.get("boundaryBundleCanonicalSha256")
+    if not isinstance(boundary_hash, str) or not re.fullmatch(r"[a-f0-9]{64}", boundary_hash):
+        fail("C0 boundary bundle hash is missing or non-canonical")
+    if boundary_hash != BOUNDARY_BUNDLE_CANONICAL_SHA256:
+        fail("C0 boundary bundle hash drift")
+    if c0.get("productionMutationAuthorized") is not False or c0.get("unknownStorePolicy") != "STOP":
+        fail("C0 mutation authorization or unknown-store policy drift")
+
+
 def main() -> None:
     docs = {name: load(name) for name in FILES}
+    validate_c0_owner(docs["c0-akb-owner.json"])
     stores = docs["c0-akb-owner.json"].get("stores")
     if not isinstance(stores, list) or len(stores) != 10 or len({item.get("storeId") for item in stores}) != 10:
         fail("C0 must contain exactly ten uniquely owned stores")
