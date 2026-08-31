@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts/ci"))
 
 from check_same_sha_ci_gate import OPTIONAL_RESULTS, REQUIRED_RESULTS, validate_gate  # noqa: E402
+from verify_gitea_action_artifact import validate_request, validate_response, validate_run_response  # noqa: E402
 from write_same_sha_ci_evidence import KEYS, build  # noqa: E402
 
 WORKFLOW = ROOT / ".gitea/workflows/ci.yaml"
@@ -18,14 +19,18 @@ REQUIRED_NEEDS = [
     "rag-retrieval-service", "llm-gateway-service", "evaluation-service",
     "governance-service", "compose",
 ]
+GITEA_UPLOAD_ACTION = "ChristopherHX/gitea-upload-artifact@81f940d004763f986ba3582c007fd842dd5cb0d7"
 
 
 class SameShaAttestationTests(unittest.TestCase):
     def test_final_job_has_exact_name_all_dependencies_and_artifact_pattern(self) -> None:
         text = WORKFLOW.read_text(encoding="utf-8")
-        self.assertEqual(text.count("uses: actions/upload-artifact@v3"), 2)
+        self.assertEqual(text.count(f"uses: {GITEA_UPLOAD_ACTION}"), 2)
+        self.assertNotIn("uses: actions/upload-artifact@v3", text)
         self.assertNotIn("uses: actions/upload-artifact@v4", text)
         self.assertNotIn("NODE_TLS_REJECT_UNAUTHORIZED", text)
+        self.assertGreaterEqual(text.count("actions: read"), 2)
+        self.assertGreaterEqual(text.count("GITEA_TOKEN: ${{ gitea.token }}"), 3)
         block = text.split("\n  persist-same-sha-ci-evidence:\n", 1)[1]
         self.assertIn("    name: Persist same-SHA CI evidence\n", block)
         self.assertIn(f"    needs: [{', '.join(REQUIRED_NEEDS)}]\n", block)
@@ -38,6 +43,59 @@ class SameShaAttestationTests(unittest.TestCase):
         self.assertIn('run_attempt="${AKB_GITEA_RUN_ATTEMPT:-1}"', block)
         self.assertIn('--run-attempt "$run_attempt"', block)
         self.assertNotIn("${{ github.run_attempt }}", block)
+        self.assertIn("id: publish-same-sha-evidence", block)
+        self.assertIn("steps.publish-same-sha-evidence.outputs.artifact-id", block)
+        self.assertIn("python3 scripts/ci/verify_gitea_action_artifact.py", block)
+        self.assertIn("GITEA_TOKEN: ${{ gitea.token }}", block)
+
+    def test_server_visible_artifact_contract_is_exact(self) -> None:
+        commit = "a" * 40
+        expected = validate_request(
+            api_url="https://git.example.test/api/v1", repository="AKB/ai-knowledgebase",
+            run_id="666", run_attempt="1", commit=commit, ref="refs/heads/main",
+            event="push", artifact_id="42", artifact_name=f"akb-gitea-ci-evidence-{commit}",
+        )
+        validate_response({
+            "total_count": 1,
+            "artifacts": [{
+                "id": 42, "name": f"akb-gitea-ci-evidence-{commit}",
+                "expired": False, "size_in_bytes": 224,
+                "workflow_run": {
+                    "id": 666, "run_attempt": 0, "head_sha": commit,
+                },
+            }],
+        }, expected)
+        validate_run_response({
+            "id": 666, "run_attempt": 1, "head_sha": commit,
+            "head_branch": "main", "event": "push",
+        }, expected)
+
+    def test_server_visible_artifact_contract_fails_closed(self) -> None:
+        commit = "a" * 40
+        expected = validate_request(
+            api_url="https://git.example.test/api/v1", repository="AKB/ai-knowledgebase",
+            run_id="666", run_attempt="1", commit=commit, ref="refs/heads/main",
+            event="push", artifact_id="42", artifact_name=f"akb-gitea-ci-evidence-{commit}",
+        )
+        cases = [
+            ({"total_count": 0, "artifacts": []}, "exactly one"),
+            ({"total_count": 2, "artifacts": [{}, {}]}, "exactly one"),
+            ({"total_count": 1, "artifacts": [{"id": 7}]}, "artifact id"),
+        ]
+        for payload, message in cases:
+            with self.subTest(message=message):
+                with self.assertRaisesRegex(ValueError, message):
+                    validate_response(payload, expected)
+
+        run_cases = [
+            ({"id": 666, "run_attempt": 0, "head_sha": commit, "head_branch": "main", "event": "push"}, "run_attempt"),
+            ({"id": 666, "run_attempt": 1, "head_sha": commit, "head_branch": "topic", "event": "push"}, "head_branch"),
+            ({"id": 666, "run_attempt": 1, "head_sha": commit, "head_branch": "main", "event": "workflow_dispatch"}, "event"),
+        ]
+        for payload, message in run_cases:
+            with self.subTest(message=message):
+                with self.assertRaisesRegex(ValueError, message):
+                    validate_run_response(payload, expected)
 
     def test_gate_accepts_successful_required_selected_and_skipped_jobs(self) -> None:
         environment = self._valid_gate_environment()

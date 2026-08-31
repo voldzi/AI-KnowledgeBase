@@ -70,6 +70,24 @@ configured only after the host procedure and negative tests in
 `docs/OPERATIONS/gitea-production-deploy.md` pass. The key does not authorize a
 shell and must not be made available to the normal CI workflow.
 
+## Same-SHA Evidence Artifacts
+
+The trusted workflow publishes Phase A resolver input and the final same-SHA
+attestation with the Gitea-compatible artifact v4 action pinned to an immutable
+source commit. The stock artifact v3 action uses the legacy pipeline protocol;
+its success log does not prove that the public Gitea Actions REST API exposes
+the artifact.
+
+After each upload, `scripts/ci/verify_gitea_action_artifact.py` queries the
+run-scoped public API using the ephemeral repository job token. The job passes
+only when the API returns exactly one non-expired, non-empty artifact with the
+uploaded ID and name. It verifies the artifact-to-run ID and SHA binding in the
+artifact response, then verifies the exact run attempt, SHA, branch and event
+against the authoritative run endpoint because Gitea 1.27 returns zeroed
+attempt and omitted branch/event fields in the artifact's compact run object.
+Zero results, duplicates, drift or an API failure stop the workflow. Never
+replace this check with an upload-log assertion or a private pipeline endpoint.
+
 ## Coordinated Digest Pin
 
 Perform this only while runner ID 6 is online and idle. Keep an owner-readable
