@@ -16,6 +16,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 env:
   AKB_CI_CACHE_ROOT: /cache/akb-ci
@@ -105,7 +106,7 @@ jobs:
     steps:
       - name: Check out repository
         env:
-          GITEA_TOKEN: ${{ github.token }}
+          GITEA_TOKEN: ${{ gitea.token }}
         run: |
           set -euo pipefail
           git init .
@@ -183,9 +184,10 @@ jobs:
           pnpm --dir apps/web exec tsx --test tests/access-projection-v2-shadow.test.ts
           printf '%s\n' "${{ github.sha }}" > exact-reviewed-sha.txt
       - name: Publish resolver input
-        # Gitea act_runner 0.2.11 does not implement the GitHub artifact v4
-        # protocol. Keep artifact transport pinned to the supported v3 action.
-        uses: actions/upload-artifact@v3
+        id: publish-phase-a-evidence
+        # act_runner 0.2.11 needs the Gitea-compatible v4 action. Pin the
+        # reviewed source commit so the public Actions REST API sees the upload.
+        uses: ChristopherHX/gitea-upload-artifact@81f940d004763f986ba3582c007fd842dd5cb0d7
         with:
           name: akb-clean-pilot-phase-a-${{ github.sha }}
           if-no-files-found: error
@@ -194,6 +196,22 @@ jobs:
             evidence/clean-pilot-epoch-1/phase-a/*.json
             phase-a-digests.txt
             exact-reviewed-sha.txt
+      - name: Verify resolver input is server-visible
+        env:
+          GITEA_TOKEN: ${{ gitea.token }}
+          AKB_GITEA_RUN_ATTEMPT: ${{ gitea.run_attempt }}
+          AKB_ARTIFACT_ID: ${{ steps.publish-phase-a-evidence.outputs.artifact-id }}
+        run: |
+          python3 scripts/ci/verify_gitea_action_artifact.py \
+            --api-url "${{ github.api_url }}" \
+            --repository "${{ github.repository }}" \
+            --run-id "${{ github.run_id }}" \
+            --run-attempt "${AKB_GITEA_RUN_ATTEMPT:-1}" \
+            --commit "${{ github.sha }}" \
+            --ref "${{ github.ref }}" \
+            --event "${{ github.event_name }}" \
+            --artifact-id "${AKB_ARTIFACT_ID}" \
+            --artifact-name "akb-clean-pilot-phase-a-${{ github.sha }}"
 
   immutable-release:
     name: Immutable release contract
@@ -424,6 +442,7 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
+      actions: read
     steps:
       - name: Check out exact verified SHA
         uses: actions/checkout@v4
@@ -470,11 +489,26 @@ jobs:
             --output same-sha-ci-evidence/akb-gitea-ci-evidence.json
           test "$(find same-sha-ci-evidence -maxdepth 1 -type f | wc -l | tr -d ' ')" = "1"
       - name: Publish single-file same-SHA attestation
-        # Gitea act_runner 0.2.11 does not implement the GitHub artifact v4
-        # protocol. Keep artifact transport pinned to the supported v3 action.
-        uses: actions/upload-artifact@v3
+        id: publish-same-sha-evidence
+        uses: ChristopherHX/gitea-upload-artifact@81f940d004763f986ba3582c007fd842dd5cb0d7
         with:
           name: akb-gitea-ci-evidence-${{ github.sha }}
           if-no-files-found: error
           retention-days: 30
           path: same-sha-ci-evidence/akb-gitea-ci-evidence.json
+      - name: Verify same-SHA attestation is server-visible
+        env:
+          GITEA_TOKEN: ${{ gitea.token }}
+          AKB_GITEA_RUN_ATTEMPT: ${{ gitea.run_attempt }}
+          AKB_ARTIFACT_ID: ${{ steps.publish-same-sha-evidence.outputs.artifact-id }}
+        run: |
+          python3 scripts/ci/verify_gitea_action_artifact.py \
+            --api-url "${{ github.api_url }}" \
+            --repository "${{ github.repository }}" \
+            --run-id "${{ github.run_id }}" \
+            --run-attempt "${AKB_GITEA_RUN_ATTEMPT:-1}" \
+            --commit "${{ github.sha }}" \
+            --ref "${{ github.ref }}" \
+            --event "${{ github.event_name }}" \
+            --artifact-id "${AKB_ARTIFACT_ID}" \
+            --artifact-name "akb-gitea-ci-evidence-${{ github.sha }}"
