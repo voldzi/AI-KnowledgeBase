@@ -8,6 +8,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts/ci"))
 
+from check_same_sha_ci_gate import OPTIONAL_RESULTS, REQUIRED_RESULTS, validate_gate  # noqa: E402
 from write_same_sha_ci_evidence import KEYS, build  # noqa: E402
 
 WORKFLOW = ROOT / ".gitea/workflows/ci.yaml"
@@ -28,6 +29,8 @@ class SameShaAttestationTests(unittest.TestCase):
         block = text.split("\n  persist-same-sha-ci-evidence:\n", 1)[1]
         self.assertIn("    name: Persist same-SHA CI evidence\n", block)
         self.assertIn(f"    needs: [{', '.join(REQUIRED_NEEDS)}]\n", block)
+        self.assertIn("    if: ${{ always() }}\n", block)
+        self.assertIn("python3 scripts/ci/check_same_sha_ci_gate.py", block)
         self.assertIn("name: akb-gitea-ci-evidence-${{ github.sha }}", block)
         self.assertIn("same-sha-ci-evidence/akb-gitea-ci-evidence.json", block)
         self.assertNotIn("same-sha-ci-evidence/*.json", block)
@@ -35,6 +38,43 @@ class SameShaAttestationTests(unittest.TestCase):
         self.assertIn('run_attempt="${AKB_GITEA_RUN_ATTEMPT:-1}"', block)
         self.assertIn('--run-attempt "$run_attempt"', block)
         self.assertNotIn("${{ github.run_attempt }}", block)
+
+    def test_gate_accepts_successful_required_selected_and_skipped_jobs(self) -> None:
+        environment = self._valid_gate_environment()
+        validate_gate(environment)
+        selected_key = "WEB"
+        environment[f"AKB_CI_SELECT_{selected_key}"] = "true"
+        environment[f"AKB_CI_{selected_key}_RESULT"] = "success"
+        validate_gate(environment)
+
+    def test_gate_rejects_failed_unknown_or_impact_inconsistent_jobs(self) -> None:
+        cases = [
+            ("AKB_CI_STANDARDS_RESULT", "failure", "required job standards"),
+            ("AKB_CI_SELECT_WEB", "unknown", "impact output web"),
+            ("AKB_CI_WEB_RESULT", "success", "must be skipped"),
+        ]
+        for key, value, message in cases:
+            with self.subTest(key=key, value=value):
+                environment = self._valid_gate_environment()
+                environment[key] = value
+                with self.assertRaisesRegex(ValueError, message):
+                    validate_gate(environment)
+
+        environment = self._valid_gate_environment()
+        environment["AKB_CI_SELECT_WEB"] = "true"
+        with self.assertRaisesRegex(ValueError, "must be success"):
+            validate_gate(environment)
+
+    @staticmethod
+    def _valid_gate_environment() -> dict[str, str]:
+        environment = {
+            f"AKB_CI_{key}_RESULT": "success"
+            for key in REQUIRED_RESULTS
+        }
+        for key in OPTIONAL_RESULTS:
+            environment[f"AKB_CI_SELECT_{key}"] = "false"
+            environment[f"AKB_CI_{key}_RESULT"] = "skipped"
+        return environment
 
     def test_evidence_is_closed_and_exact_for_main_push(self) -> None:
         commit = "a" * 40
