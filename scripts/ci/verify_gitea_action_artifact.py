@@ -82,29 +82,50 @@ def validate_response(payload: Any, expected: dict[str, Any]) -> None:
     workflow_run = artifact.get("workflow_run")
     if not isinstance(workflow_run, dict):
         raise ValueError("artifact workflow_run is missing")
+    artifact_run_checks = {
+        "id": expected["run_id"],
+        "head_sha": expected["commit"],
+    }
+    for key, value in artifact_run_checks.items():
+        if workflow_run.get(key) != value:
+            raise ValueError(f"artifact workflow_run {key} does not match")
+
+
+def validate_run_response(payload: Any, expected: dict[str, Any]) -> None:
+    if not isinstance(payload, dict):
+        raise ValueError("workflow run response must be an object")
     branch = expected["ref"].removeprefix("refs/heads/")
-    run_checks = {
+    checks = {
         "id": expected["run_id"],
         "run_attempt": expected["run_attempt"],
         "head_sha": expected["commit"],
         "head_branch": branch,
         "event": expected["event"],
     }
-    for key, value in run_checks.items():
-        if workflow_run.get(key) != value:
-            raise ValueError(f"artifact workflow_run {key} does not match")
+    for key, value in checks.items():
+        if payload.get(key) != value:
+            raise ValueError(f"workflow run {key} does not match")
 
 
-def fetch_payload(expected: dict[str, Any], token: str) -> Any:
+def fetch_payload(expected: dict[str, Any], token: str) -> tuple[Any, Any]:
     owner, repository = expected["repository"].split("/", 1)
     query = urlencode({"name": expected["artifact_name"]})
     url = (
         f"{expected['api_url']}/repos/{quote(owner)}/{quote(repository)}"
         f"/actions/runs/{expected['run_id']}/artifacts?{query}"
     )
-    request = Request(url, headers={"Accept": "application/json", "Authorization": f"token {token}"})
+    headers = {"Accept": "application/json", "Authorization": f"token {token}"}
+    request = Request(url, headers=headers)
+    run_url = (
+        f"{expected['api_url']}/repos/{quote(owner)}/{quote(repository)}"
+        f"/actions/runs/{expected['run_id']}"
+    )
+    run_request = Request(run_url, headers=headers)
     with urlopen(request, timeout=10) as response:
-        return json.load(response)
+        artifact_payload = json.load(response)
+    with urlopen(run_request, timeout=10) as response:
+        run_payload = json.load(response)
+    return artifact_payload, run_payload
 
 
 def main() -> int:
@@ -136,7 +157,9 @@ def main() -> int:
             raise ValueError("retry policy is invalid")
         for attempt in range(args.retries):
             try:
-                validate_response(fetch_payload(expected, token), expected)
+                artifact_payload, run_payload = fetch_payload(expected, token)
+                validate_response(artifact_payload, expected)
+                validate_run_response(run_payload, expected)
                 print(f"Gitea exposes exactly one verified artifact: {expected['artifact_name']}")
                 return 0
             except ValueError as exc:

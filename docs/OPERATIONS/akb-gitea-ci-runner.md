@@ -81,7 +81,10 @@ the artifact.
 After each upload, `scripts/ci/verify_gitea_action_artifact.py` queries the
 run-scoped public API using the ephemeral repository job token. The job passes
 only when the API returns exactly one non-expired, non-empty artifact with the
-uploaded ID and name, exact run ID and attempt, commit SHA, branch and event.
+uploaded ID and name. It verifies the artifact-to-run ID and SHA binding in the
+artifact response, then verifies the exact run attempt, SHA, branch and event
+against the authoritative run endpoint because Gitea 1.27 returns zeroed
+attempt and omitted branch/event fields in the artifact's compact run object.
 Zero results, duplicates, drift or an API failure stop the workflow. Never
 replace this check with an upload-log assertion or a private pipeline endpoint.
 

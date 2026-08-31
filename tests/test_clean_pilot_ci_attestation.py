@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts/ci"))
 
 from check_same_sha_ci_gate import OPTIONAL_RESULTS, REQUIRED_RESULTS, validate_gate  # noqa: E402
-from verify_gitea_action_artifact import validate_request, validate_response  # noqa: E402
+from verify_gitea_action_artifact import validate_request, validate_response, validate_run_response  # noqa: E402
 from write_same_sha_ci_evidence import KEYS, build  # noqa: E402
 
 WORKFLOW = ROOT / ".gitea/workflows/ci.yaml"
@@ -61,10 +61,13 @@ class SameShaAttestationTests(unittest.TestCase):
                 "id": 42, "name": f"akb-gitea-ci-evidence-{commit}",
                 "expired": False, "size_in_bytes": 224,
                 "workflow_run": {
-                    "id": 666, "run_attempt": 1, "head_sha": commit,
-                    "head_branch": "main", "event": "push",
+                    "id": 666, "run_attempt": 0, "head_sha": commit,
                 },
             }],
+        }, expected)
+        validate_run_response({
+            "id": 666, "run_attempt": 1, "head_sha": commit,
+            "head_branch": "main", "event": "push",
         }, expected)
 
     def test_server_visible_artifact_contract_fails_closed(self) -> None:
@@ -83,6 +86,16 @@ class SameShaAttestationTests(unittest.TestCase):
             with self.subTest(message=message):
                 with self.assertRaisesRegex(ValueError, message):
                     validate_response(payload, expected)
+
+        run_cases = [
+            ({"id": 666, "run_attempt": 0, "head_sha": commit, "head_branch": "main", "event": "push"}, "run_attempt"),
+            ({"id": 666, "run_attempt": 1, "head_sha": commit, "head_branch": "topic", "event": "push"}, "head_branch"),
+            ({"id": 666, "run_attempt": 1, "head_sha": commit, "head_branch": "main", "event": "workflow_dispatch"}, "event"),
+        ]
+        for payload, message in run_cases:
+            with self.subTest(message=message):
+                with self.assertRaisesRegex(ValueError, message):
+                    validate_run_response(payload, expected)
 
     def test_gate_accepts_successful_required_selected_and_skipped_jobs(self) -> None:
         environment = self._valid_gate_environment()
