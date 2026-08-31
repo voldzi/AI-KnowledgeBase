@@ -420,6 +420,7 @@ jobs:
     name: Persist same-SHA CI evidence
     runs-on: akb-gitea-ci
     needs: [trusted-candidate, impact, standards, clean-pilot-phase-a, immutable-release, web, registry-api, ingestion-service, rag-retrieval-service, llm-gateway-service, evaluation-service, governance-service, compose]
+    if: ${{ always() }}
     timeout-minutes: 5
     permissions:
       contents: read
@@ -428,6 +429,31 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
+      - name: Verify required and impact-selected jobs
+        env:
+          AKB_CI_TRUSTED_CANDIDATE_RESULT: ${{ needs['trusted-candidate'].result }}
+          AKB_CI_IMPACT_RESULT: ${{ needs.impact.result }}
+          AKB_CI_STANDARDS_RESULT: ${{ needs.standards.result }}
+          AKB_CI_CLEAN_PILOT_PHASE_A_RESULT: ${{ needs['clean-pilot-phase-a'].result }}
+          AKB_CI_SELECT_IMMUTABLE_RELEASE: ${{ needs.impact.outputs.immutable_release }}
+          AKB_CI_IMMUTABLE_RELEASE_RESULT: ${{ needs['immutable-release'].result }}
+          AKB_CI_SELECT_WEB: ${{ needs.impact.outputs.web }}
+          AKB_CI_WEB_RESULT: ${{ needs.web.result }}
+          AKB_CI_SELECT_REGISTRY_API: ${{ needs.impact.outputs.registry_api }}
+          AKB_CI_REGISTRY_API_RESULT: ${{ needs['registry-api'].result }}
+          AKB_CI_SELECT_INGESTION_SERVICE: ${{ needs.impact.outputs.ingestion_service }}
+          AKB_CI_INGESTION_SERVICE_RESULT: ${{ needs['ingestion-service'].result }}
+          AKB_CI_SELECT_RAG_RETRIEVAL_SERVICE: ${{ needs.impact.outputs.rag_retrieval_service }}
+          AKB_CI_RAG_RETRIEVAL_SERVICE_RESULT: ${{ needs['rag-retrieval-service'].result }}
+          AKB_CI_SELECT_LLM_GATEWAY_SERVICE: ${{ needs.impact.outputs.llm_gateway_service }}
+          AKB_CI_LLM_GATEWAY_SERVICE_RESULT: ${{ needs['llm-gateway-service'].result }}
+          AKB_CI_SELECT_EVALUATION_SERVICE: ${{ needs.impact.outputs.evaluation_service }}
+          AKB_CI_EVALUATION_SERVICE_RESULT: ${{ needs['evaluation-service'].result }}
+          AKB_CI_SELECT_GOVERNANCE_SERVICE: ${{ needs.impact.outputs.governance_service }}
+          AKB_CI_GOVERNANCE_SERVICE_RESULT: ${{ needs['governance-service'].result }}
+          AKB_CI_SELECT_COMPOSE: ${{ needs.impact.outputs.compose }}
+          AKB_CI_COMPOSE_RESULT: ${{ needs.compose.result }}
+        run: python3 scripts/ci/check_same_sha_ci_gate.py
       - name: Create closed same-SHA attestation
         env:
           AKB_GITEA_RUN_ATTEMPT: ${{ gitea.run_attempt }}
