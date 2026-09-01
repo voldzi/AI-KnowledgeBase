@@ -85,6 +85,33 @@ class CleanPilotC4RegistryTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("mutable infrastructure image", result.stderr + result.stdout)
 
+            publisher.write_text(
+                (ROOT / "scripts/ci/publish_clean_pilot_c4_images.sh").read_text()
+            )
+            registry = fixture / "services/registry-api/Dockerfile"
+            registry.write_text(
+                registry.read_text().replace("ARG SOURCE_DATE_EPOCH\n", "")
+            )
+            result = subprocess.run(
+                ["python3", str(validator), "--root", str(fixture)],
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("registry wheel build epoch argument", result.stderr + result.stdout)
+
+            shutil.copy2(ROOT / "services/registry-api/Dockerfile", registry)
+            registry.write_text(
+                registry.read_text().replace("    && export PIP_NO_CACHE_DIR=1 \\\n", "")
+            )
+            result = subprocess.run(
+                ["python3", str(validator), "--root", str(fixture)],
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("disabled isolated wheel pip cache", result.stderr + result.stdout)
+
     def test_secret_is_not_written_to_manifest_or_log(self) -> None:
         self.assertIn("--password-stdin", SCRIPT)
         self.assertIn("unset AKB_C4_REGISTRY_TOKEN", SCRIPT)

@@ -79,6 +79,13 @@ def check(root: Path) -> None:
         require(dockerfile, "--require-hashes -r requirements.c4.lock", f"hashed install for {service}")
         check_python_lock(service_root / "requirements.c4.lock")
 
+    registry = (root / "services/registry-api/Dockerfile").read_text(encoding="utf-8")
+    require(registry, "ARG SOURCE_DATE_EPOCH", "registry wheel build epoch argument")
+    require(registry, 'test "$SOURCE_DATE_EPOCH" -gt 0', "positive registry wheel build epoch")
+    require(registry, "export SOURCE_DATE_EPOCH", "registry wheel build epoch environment")
+    require(registry, "export PIP_NO_CACHE_DIR=1", "disabled isolated wheel pip cache")
+    require(registry, "rm -rf /root/.cache/pip", "isolated wheel pip cache cleanup")
+
     ingestion = (root / "services/ingestion-service/Dockerfile").read_text(encoding="utf-8")
     require(ingestion, DEBIAN_SNAPSHOT, "fixed Debian snapshot")
     require(ingestion, DEBIAN_SECURITY_SNAPSHOT, "fixed Debian security snapshot")
