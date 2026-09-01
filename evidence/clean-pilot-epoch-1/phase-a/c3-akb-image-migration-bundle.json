@@ -1,19 +1,19 @@
 {
   "schemaVersion": "akb-clean-pilot-stack-bundle-1",
   "repository": "AKB/ai-knowledgebase",
-  "sourceCommit": "180d5185eaefd8447ef92c8beb1ef43b088bb79c",
+  "sourceCommit": "4abd485afb0af7d39cedf062cb9834f61fd371de",
   "migrationBundleSha256": "b7cb103d0f775b242b18e611b8d748ecd1f3a20f647646f72bd0009c30dd212c",
-  "imageBundleSha256": "ddf7baf768240e3257e8f1283d4109ed6163b6cb30a37b4e0a30be02da9fecfc",
+  "imageBundleSha256": "2f0b1b9e13175b94f579ca352919ee665d8a67c82856a6af0fe43ea8ba68db99",
   "images": {
-    "postgresql": "sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685",
-    "s3-object-storage": "sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e",
-    "opensearch": "sha256:8690b204fe914c60ca76d451ac73bc0481e034d32d3779944c8caca56a2b003f",
-    "qdrant": "sha256:75eab8c4ba42096724fdcfde8b4de0b5713d529dde32f285a1f86fdcb2c9e50c",
-    "registry-api": "sha256:d77c579938be434357622035e8a5a0202820e0b593196113105aca5186ff474f",
-    "ingestion-service": "sha256:b1663702291956c9ae78d686232a47a2d697ead8635e5d5b15100a7d7b4104c2",
-    "rag-retrieval-service": "sha256:4ecb4089bfc0d1dfae189899f8aeec5049ccaf61b25a7799ff902e9fe2397328",
-    "evaluation-service": "sha256:c0bb0083ca6a042fded543bf4bf8c24c0f7ae5479bb9e8a3c5388b2e89e0e168",
-    "web": "sha256:b01770b6217696a7def4e90620da7640791009867408436713656df12f148400"
+    "postgresql": "git.home.cz/akb/cpe1-postgresql@sha256:075f7ba66bc9b3ce7d6b8b635208ff61cd7cf1a67d71ec530eec5d7ae0cbe571",
+    "s3-object-storage": "git.home.cz/akb/cpe1-s3-object-storage@sha256:a1a8bd4ac40ad7881a245bab97323e18f971e4d4cba2c2007ec1bedd21cbaba2",
+    "opensearch": "git.home.cz/akb/cpe1-opensearch@sha256:b6c3071dde7b170d85f3a44b9c4ef1cae2e7a23f47448ffd7a2538524476d864",
+    "qdrant": "git.home.cz/akb/cpe1-qdrant@sha256:da65a06bc75e42702f80c992b99c5144b0fbd675ae7a96d2991de0bf957b7071",
+    "registry-api": "git.home.cz/akb/cpe1-registry-api@sha256:a5f7612ed35fe9d66055bbdaf5f662834cd2ba63fa4702f5b20c1bf84bd08164",
+    "ingestion-service": "git.home.cz/akb/cpe1-ingestion-service@sha256:e39b5ab3232efa655bfc2fc8de17e1265d6d662adf455be70a48178189eb124f",
+    "rag-retrieval-service": "git.home.cz/akb/cpe1-rag-retrieval-service@sha256:f40348c0b6bb90beabb2b07c0d84bf9250ca5d6d8db8f96d4967f59e1dce1982",
+    "evaluation-service": "git.home.cz/akb/cpe1-evaluation-service@sha256:482296d2b514551148ef0714029bb7dbbcc4786f144840d8b8f6c43a78fc4eb0",
+    "web": "git.home.cz/akb/cpe1-web@sha256:e89c39d6eff9d70c5bed41a13e8a1a1fb90c32e93daa98188d0082c6e76707d7"
   },
   "surfaces": [
     "registry",
