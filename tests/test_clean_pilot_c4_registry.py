@@ -26,9 +26,10 @@ class CleanPilotC4RegistryTests(unittest.TestCase):
         self.assertIn("approved_sha:", WORKFLOW)
         self.assertIn("${{ gitea.token }}", WORKFLOW)
         self.assertIn(
-            "AKB_C4_REGISTRY_TOKEN: ${{ secrets.AKB_GITEA_RELEASE_GATE_TOKEN }}",
+            "AKB_C4_REGISTRY_TOKEN: ${{ secrets.AKB_GITEA_PACKAGE_RW_TOKEN }}",
             WORKFLOW,
         )
+        self.assertNotIn("AKB_C4_REGISTRY_TOKEN: ${{ secrets.AKB_GITEA_RELEASE_GATE_TOKEN }}", WORKFLOW)
         self.assertNotIn("AKB_C4_REGISTRY_TOKEN: ${{ gitea.token }}", WORKFLOW)
         self.assertIn("productionMutationAuthorized", SCRIPT)
         self.assertNotIn("docker.home.cz", WORKFLOW)
