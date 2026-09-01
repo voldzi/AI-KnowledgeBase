@@ -74,9 +74,11 @@ build_and_publish() {
   if [[ -n "$dockerfile" ]]; then
     dockerfile_args=(--file "$dockerfile")
   fi
+  # The C4 manifest and same-SHA CI attestation bind the image bundle to the
+  # reviewed source commit. Do not put the Git SHA into the image config: an
+  # evidence-only commit would otherwise change every image digest and prevent
+  # the owner-reviewed C3 manifest from reaching a stable fixed point.
   DOCKER_BUILDKIT=1 docker build --pull "${dockerfile_args[@]}" \
-    --label "org.opencontainers.image.revision=$source_sha" \
-    --label "org.opencontainers.image.source=AKB/ai-knowledgebase" \
     --tag "$target" "$context"
   docker push "$target" >/dev/null
   images["$name"]="$(resolve_pushed_ref "$name" "$target")"
