@@ -39,7 +39,7 @@ jobs:
           NODE_ENV: test
           AKB_C4_SOURCE_SHA: ${{ github.sha }}
           AKB_C4_REGISTRY_USER: ${{ github.actor }}
-          AKB_C4_REGISTRY_TOKEN: ${{ secrets.AKB_GITEA_RELEASE_GATE_TOKEN }}
+          AKB_C4_REGISTRY_TOKEN: ${{ secrets.AKB_GITEA_PACKAGE_RW_TOKEN }}
           AKB_C4_OUTPUT: clean-pilot-c4-image-manifest.json
         run: bash scripts/ci/publish_clean_pilot_c4_images.sh
       - name: Publish closed image manifest
