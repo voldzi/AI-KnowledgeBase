@@ -126,6 +126,7 @@ jobs:
           python3 tests/test_gitea_production_deploy.py
           python3 tests/test_ci_affected_components.py
           python3 tests/test_clean_pilot_ci_attestation.py
+          python3 tests/test_clean_pilot_c4_registry.py
           python3 tests/test_clean_pilot_c5.py
           npx --yes @redocly/cli lint openapi/openapi.json
       - name: Scan committed history for secrets
