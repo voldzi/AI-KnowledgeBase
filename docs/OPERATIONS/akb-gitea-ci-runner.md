@@ -93,6 +93,13 @@ replace this check with an upload-log assertion or a private pipeline endpoint.
 Perform this only while runner ID 6 is online and idle. Keep an owner-readable
 backup outside Git. Never print the registration token.
 
+Before changing the digest, build the reviewed `ci-tools` target with the
+public home CA supplied from the VM outside Git. Require successful
+`docker buildx version`, `docker compose version`, TLS access to Gitea, and a
+content digest for the resulting image. A tag is not an acceptable runner
+mapping. Stop and roll back if the image lacks Buildx; immutable release
+Dockerfiles may require BuildKit cache mounts.
+
 1. Verify the service is active and enabled, capacity is one, `.runner` is
    owned by `stratos-ci:stratos-ci` with mode `0600`, and the current label is
    still the expected `0.2.0` tag.

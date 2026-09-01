@@ -241,6 +241,11 @@ class ProductionGateTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn("openssh-client", runner_dockerfile)
+        self.assertIn(
+            "COPY --from=docker_cli /usr/local/libexec/docker/cli-plugins/docker-buildx ",
+            runner_dockerfile,
+        )
+        self.assertIn("docker buildx version", runner_dockerfile)
 
 
 if __name__ == "__main__":

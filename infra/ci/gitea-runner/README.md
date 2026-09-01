@@ -10,6 +10,11 @@ They intentionally use Debian Bookworm rather than Alpine: the Playwright
 Chromium binaries used by `apps/web` require a glibc runtime and the standard
 Linux browser libraries.
 
+The job image includes both Docker Compose and Docker Buildx CLI plugins from
+the same Docker CLI build stage. Buildx is mandatory for immutable release
+images whose Dockerfiles use BuildKit cache mounts. The image build must stop
+unless both `docker buildx version` and `docker compose version` succeed.
+
 Build and operate it only on VM125 through the runner's local Compose project.
 The private `git.home.cz.crt` is provisioned on the VM and is not tracked in
 this repository. The normal CI workflow has no production environment file,
