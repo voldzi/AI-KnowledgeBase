@@ -43,18 +43,28 @@ unset AKB_C4_REGISTRY_TOKEN
 declare -A images
 declare -A upstream
 
+resolve_pushed_ref() {
+  local name="$1" target="$2" resolved
+  # Gitea may normalize a pushed single-platform manifest and assign a digest
+  # different from the local source manifest. Pull the registry tag before
+  # recording the immutable reference so the registry remains authoritative.
+  docker pull "$target" >/dev/null
+  resolved="$(docker image inspect "$target" --format '{{range .RepoDigests}}{{println .}}{{end}}' | awk -v prefix="$registry/$owner/cpe1-$name@" 'index($0,prefix)==1 {print; exit}')"
+  [[ "$resolved" =~ ^git\.home\.cz/akb/cpe1-[a-z0-9-]+@sha256:[a-f0-9]{64}$ ]] || {
+    printf 'Registry did not return an immutable digest for %s.\n' "$name" >&2
+    exit 1
+  }
+  printf '%s\n' "$resolved"
+}
+
 publish_existing() {
   local name="$1" source_ref="$2" target
   target="$registry/$owner/cpe1-$name:$source_sha"
   docker pull "$source_ref" >/dev/null
   docker tag "$source_ref" "$target"
   docker push "$target" >/dev/null
-  images["$name"]="$(docker image inspect "$target" --format '{{range .RepoDigests}}{{println .}}{{end}}' | awk -v prefix="$registry/$owner/cpe1-$name@" 'index($0,prefix)==1 {print; exit}')"
+  images["$name"]="$(resolve_pushed_ref "$name" "$target")"
   upstream["$name"]="$(docker image inspect "$source_ref" --format '{{range .RepoDigests}}{{println .}}{{end}}' | head -n1)"
-  [[ "${images[$name]}" =~ ^git\.home\.cz/akb/cpe1-[a-z0-9-]+@sha256:[a-f0-9]{64}$ ]] || {
-    printf 'Registry did not return an immutable digest for %s.\n' "$name" >&2
-    exit 1
-  }
 }
 
 build_and_publish() {
@@ -69,11 +79,7 @@ build_and_publish() {
     --label "org.opencontainers.image.source=AKB/ai-knowledgebase" \
     --tag "$target" "$context"
   docker push "$target" >/dev/null
-  images["$name"]="$(docker image inspect "$target" --format '{{range .RepoDigests}}{{println .}}{{end}}' | awk -v prefix="$registry/$owner/cpe1-$name@" 'index($0,prefix)==1 {print; exit}')"
-  [[ "${images[$name]}" =~ ^git\.home\.cz/akb/cpe1-[a-z0-9-]+@sha256:[a-f0-9]{64}$ ]] || {
-    printf 'Registry did not return an immutable digest for %s.\n' "$name" >&2
-    exit 1
-  }
+  images["$name"]="$(resolve_pushed_ref "$name" "$target")"
 }
 
 publish_existing postgresql postgres:16-alpine

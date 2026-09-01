@@ -15,6 +15,9 @@ class CleanPilotC4RegistryTests(unittest.TestCase):
         self.assertIn('owner="${AKB_C4_REGISTRY_OWNER:-akb}"', SCRIPT)
         self.assertIn("@sha256:[a-f0-9]{64}", SCRIPT)
         self.assertIn("docker pull \"${images[$name]}\"", SCRIPT)
+        self.assertIn('images["$name"]="$(resolve_pushed_ref "$name" "$target")"', SCRIPT)
+        self.assertIn('docker pull "$target"', SCRIPT)
+        self.assertLess(SCRIPT.index('docker pull "$target"'), SCRIPT.index("printf '%s\\n' \"$resolved\""))
         self.assertIn("build_and_publish web . apps/web/Dockerfile", SCRIPT)
         self.assertIn('DOCKER_BUILDKIT=1 docker build --pull', SCRIPT)
 
