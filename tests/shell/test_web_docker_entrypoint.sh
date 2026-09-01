@@ -22,12 +22,28 @@ mkdir -p "$BIN_DIR" "$STORAGE_DIR"
 printf 'session-encryption-fixture\n' >"$SESSION_ENCRYPTION_SOURCE"
 printf 'session-store-fixture\n' >"$SESSION_STORE_SOURCE"
 
-cat >"${BIN_DIR}/su-exec" <<'SH'
+cat >"${BIN_DIR}/su" <<'SH'
 #!/bin/sh
-shift
-exec "$@"
+target=''
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -s)
+      target="$2"
+      shift 2
+      ;;
+    --)
+      shift
+      break
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+[ -n "$target" ] || exit 98
+exec "$target" "$@"
 SH
-chmod 0700 "${BIN_DIR}/su-exec"
+chmod 0700 "${BIN_DIR}/su"
 
 cat >"${BIN_DIR}/chown" <<'SH'
 #!/bin/sh
