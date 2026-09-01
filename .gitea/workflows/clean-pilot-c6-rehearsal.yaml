@@ -115,12 +115,38 @@ jobs:
           printf '%s' "${AKB_REGISTRY_TOKEN}" \
             | docker login git.home.cz --username "${AKB_REGISTRY_USER}" --password-stdin >/dev/null
           unset AKB_REGISTRY_TOKEN
-          python3 tools/clean_pilot_stack_rehearsal.py \
-            --bundle-manifest clean-pilot-c6-bundle.json \
-            --marker-root /tmp/akb-clean-pilot-c6-markers \
-            --run-id "${AKB_RUN_ID}" \
-            --source-commit "${AKB_SOURCE_SHA}" \
-            > clean-pilot-c6-result.json
+          python3 - <<'PY' > clean-pilot-c6-result.json
+          import json, os, subprocess, sys
+          from pathlib import Path
+          import tools.clean_pilot_stack_rehearsal as rehearsal
+
+          def diagnostic_run(command, *, env, cwd, check=True):
+              result = subprocess.run(command, cwd=cwd, env=env, text=True, capture_output=True)
+              if check and result.returncode:
+                  diagnostic = (result.stderr + "\n" + result.stdout)[-12000:]
+                  for key in (
+                      "AKB_REHEARSAL_POSTGRES_PASSWORD", "AKB_REHEARSAL_S3_ACCESS_KEY",
+                      "AKB_REHEARSAL_S3_SECRET_KEY", "AKB_REHEARSAL_SESSION_SECRET",
+                      "AKB_REHEARSAL_DOWNLOAD_SECRET", "AKB_REHEARSAL_UPLOAD_SECRET",
+                  ):
+                      value = env.get(key, "")
+                      if value:
+                          diagnostic = diagnostic.replace(value, "[REDACTED]")
+                  print("C6_COMMAND_DIAGNOSTIC_START", file=sys.stderr)
+                  print(diagnostic, file=sys.stderr)
+                  print("C6_COMMAND_DIAGNOSTIC_END", file=sys.stderr)
+                  rehearsal.stop("REHEARSAL_COMMAND_FAILED")
+              return result
+
+          rehearsal._run = diagnostic_run
+          result = rehearsal.execute_rehearsal(
+              Path("clean-pilot-c6-bundle.json"),
+              Path("/tmp/akb-clean-pilot-c6-markers"),
+              os.environ["AKB_RUN_ID"],
+              os.environ["AKB_SOURCE_SHA"],
+          )
+          print(json.dumps(result, sort_keys=True))
+          PY
           python3 - <<'PY'
           import json, pathlib
           result = json.loads(pathlib.Path("clean-pilot-c6-result.json").read_text())
