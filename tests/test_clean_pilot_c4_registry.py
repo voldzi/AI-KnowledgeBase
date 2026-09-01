@@ -15,6 +15,7 @@ class CleanPilotC4RegistryTests(unittest.TestCase):
         self.assertIn('owner="${AKB_C4_REGISTRY_OWNER:-akb}"', SCRIPT)
         self.assertIn("@sha256:[a-f0-9]{64}", SCRIPT)
         self.assertIn("docker pull \"${images[$name]}\"", SCRIPT)
+        self.assertIn("build_and_publish web . apps/web/Dockerfile", SCRIPT)
 
     def test_secret_is_not_written_to_manifest_or_log(self) -> None:
         self.assertIn("--password-stdin", SCRIPT)

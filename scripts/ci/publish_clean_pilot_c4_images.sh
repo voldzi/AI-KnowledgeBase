@@ -58,9 +58,13 @@ publish_existing() {
 }
 
 build_and_publish() {
-  local name="$1" context="$2" target
+  local name="$1" context="$2" dockerfile="${3:-}" target
   target="$registry/$owner/cpe1-$name:$source_sha"
-  docker build --pull \
+  local -a dockerfile_args=()
+  if [[ -n "$dockerfile" ]]; then
+    dockerfile_args=(--file "$dockerfile")
+  fi
+  docker build --pull "${dockerfile_args[@]}" \
     --label "org.opencontainers.image.revision=$source_sha" \
     --label "org.opencontainers.image.source=AKB/ai-knowledgebase" \
     --tag "$target" "$context"
@@ -81,7 +85,7 @@ build_and_publish registry-api services/registry-api
 build_and_publish ingestion-service services/ingestion-service
 build_and_publish rag-retrieval-service services/rag-retrieval-service
 build_and_publish evaluation-service services/evaluation-service
-build_and_publish web apps/web
+build_and_publish web . apps/web/Dockerfile
 
 for name in postgresql s3-object-storage opensearch qdrant registry-api ingestion-service rag-retrieval-service evaluation-service web; do
   docker pull "${images[$name]}" >/dev/null
