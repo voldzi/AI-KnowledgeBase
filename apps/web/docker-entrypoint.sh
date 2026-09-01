@@ -88,4 +88,14 @@ if [ "${AKL_DIRECTOR_COPILOT_ENABLED:-false}" = "true" ]; then
   fi
 fi
 
-exec su-exec nextjs "$@"
+if [ "$#" -eq 0 ]; then
+  echo "web command is not configured" >&2
+  exit 1
+fi
+target_command="$(command -v "$1" || true)"
+if [ -z "$target_command" ]; then
+  echo "web command is not available" >&2
+  exit 1
+fi
+shift
+exec su -s "$target_command" nextjs -- "$@"

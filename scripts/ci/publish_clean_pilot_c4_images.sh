@@ -5,6 +5,7 @@ registry="${AKB_C4_REGISTRY:-git.home.cz}"
 owner="${AKB_C4_REGISTRY_OWNER:-akb}"
 source_sha="${AKB_C4_SOURCE_SHA:-}"
 output="${AKB_C4_OUTPUT:-clean-pilot-c4-image-manifest.json}"
+platform="${AKB_C4_PLATFORM:-linux/amd64}"
 
 [[ "$registry" == "git.home.cz" && "$owner" == "akb" ]] || {
   printf 'C4 registry target must be the internal AKB Gitea namespace.\n' >&2
@@ -18,6 +19,20 @@ output="${AKB_C4_OUTPUT:-clean-pilot-c4-image-manifest.json}"
   printf 'Checked out source differs from AKB_C4_SOURCE_SHA.\n' >&2
   exit 1
 }
+[[ "$platform" == "linux/amd64" ]] || {
+  printf 'AKB_C4_PLATFORM must be the reviewed linux/amd64 platform.\n' >&2
+  exit 1
+}
+source_date_epoch="$(git show -s --format=%ct "$source_sha")"
+[[ "$source_date_epoch" =~ ^[1-9][0-9]*$ ]] || {
+  printf 'The reviewed source commit has no valid SOURCE_DATE_EPOCH.\n' >&2
+  exit 1
+}
+docker buildx version >/dev/null || {
+  printf 'Docker Buildx is required for deterministic C4 publication.\n' >&2
+  exit 1
+}
+python3 scripts/ci/check_clean_pilot_c4_inputs.py
 [[ -n "${AKB_C4_REGISTRY_TOKEN:-}" && -n "${AKB_C4_REGISTRY_USER:-}" ]] || {
   printf 'Ephemeral Gitea registry credentials are required.\n' >&2
   exit 1
@@ -74,19 +89,23 @@ build_and_publish() {
   if [[ -n "$dockerfile" ]]; then
     dockerfile_args=(--file "$dockerfile")
   fi
-  # The C4 manifest and same-SHA CI attestation bind the image bundle to the
-  # reviewed source commit. Do not put the Git SHA into the image config: an
-  # evidence-only commit would otherwise change every image digest and prevent
-  # the owner-reviewed C3 manifest from reaching a stable fixed point.
-  DOCKER_BUILDKIT=1 docker build --pull "${dockerfile_args[@]}" \
-    --tag "$target" "$context"
-  docker push "$target" >/dev/null
+  # SOURCE_DATE_EPOCH plus the image exporter's timestamp rewrite removes
+  # filesystem and config-clock variance. Attestations are deliberately kept
+  # outside the image manifest because their generated metadata is run-specific;
+  # the closed same-SHA artifact remains the authoritative C4 evidence.
+  BUILDX_NO_DEFAULT_ATTESTATIONS=1 docker buildx build --pull \
+    --platform "$platform" \
+    --provenance=false \
+    --sbom=false \
+    --build-arg "SOURCE_DATE_EPOCH=$source_date_epoch" \
+    --output "type=image,name=$target,push=true,rewrite-timestamp=true" \
+    "${dockerfile_args[@]}" "$context"
   images["$name"]="$(resolve_pushed_ref "$name" "$target")"
 }
 
-publish_existing postgresql postgres:16-alpine
-publish_existing s3-object-storage minio/minio:latest
-publish_existing opensearch opensearchproject/opensearch:2
+publish_existing postgresql postgres@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
+publish_existing s3-object-storage minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+publish_existing opensearch opensearchproject/opensearch@sha256:8690b204fe914c60ca76d451ac73bc0481e034d32d3779944c8caca56a2b003f
 publish_existing qdrant qdrant/qdrant@sha256:75eab8c4ba42096724fdcfde8b4de0b5713d529dde32f285a1f86fdcb2c9e50c
 
 build_and_publish registry-api services/registry-api
@@ -107,9 +126,10 @@ for name in "${!upstream[@]}"; do
   printf '%s\n' "${upstream[$name]}" >"$tmp_dir/upstream-$name"
 done
 
-python3 - "$tmp_dir" "$source_sha" "$output" <<'PY'
+python3 - "$tmp_dir" "$source_sha" "$source_date_epoch" "$platform" "$output" <<'PY'
 import hashlib, json, pathlib, sys
-root, source_sha, output = pathlib.Path(sys.argv[1]), sys.argv[2], pathlib.Path(sys.argv[3])
+root, source_sha = pathlib.Path(sys.argv[1]), sys.argv[2]
+source_date_epoch, platform, output = int(sys.argv[3]), sys.argv[4], pathlib.Path(sys.argv[5])
 names = "postgresql s3-object-storage opensearch qdrant registry-api ingestion-service rag-retrieval-service evaluation-service web".split()
 images = {name: (root / f"image-{name}").read_text().strip() for name in names}
 upstream = {name: (root / f"upstream-{name}").read_text().strip() for name in names[:4]}
@@ -121,6 +141,15 @@ value = {
     "registry": "git.home.cz/akb",
     "images": images,
     "upstreamSources": upstream,
+    "buildPolicy": {
+        "builder": "docker-buildx",
+        "platform": platform,
+        "sourceDateEpoch": source_date_epoch,
+        "rewriteTimestamp": True,
+        "provenance": False,
+        "sbom": False,
+        "lockedInputs": "PASS",
+    },
     "imageBundleSha256": image_bundle,
     "pullVerification": "PASS",
     "productionMutationAuthorized": False,

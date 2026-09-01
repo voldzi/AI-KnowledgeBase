@@ -3,15 +3,19 @@
 FROM node:26-alpine@sha256:2d984a15c9b54fd0aeb608b8e0d0d83529eb34d2966db27a1fb4f1edc3d298a3 AS deps
 WORKDIR /app
 COPY apps/web/package.json apps/web/pnpm-lock.yaml apps/web/pnpm-workspace.yaml ./
+ADD --checksum=sha256:deafa7ec98a1218b6a047289b92fbe2395c1e22d3495bb711653013218ee15ee \
+  https://registry.npmjs.org/pnpm/-/pnpm-11.7.0.tgz /tmp/pnpm.tgz
 # Keep dependency downloads across BuildKit retries. The production image must
 # remain buildable when the public registry has a transient slow response.
 RUN --mount=type=cache,id=akb-web-pnpm-store,target=/pnpm/store \
-  npm install -g pnpm@11.7.0 && \
-  pnpm config set store-dir /pnpm/store && \
-  pnpm config set fetch-retries 5 && \
-  pnpm config set fetch-timeout 300000 && \
-  pnpm config set network-concurrency 8 && \
-  pnpm install --frozen-lockfile
+  mkdir -p /usr/local/lib/node_modules/pnpm && \
+  tar -xzf /tmp/pnpm.tgz -C /usr/local/lib/node_modules/pnpm --strip-components=1 && \
+  rm /tmp/pnpm.tgz && \
+  node /usr/local/lib/node_modules/pnpm/bin/pnpm.cjs config set store-dir /pnpm/store && \
+  node /usr/local/lib/node_modules/pnpm/bin/pnpm.cjs config set fetch-retries 5 && \
+  node /usr/local/lib/node_modules/pnpm/bin/pnpm.cjs config set fetch-timeout 300000 && \
+  node /usr/local/lib/node_modules/pnpm/bin/pnpm.cjs config set network-concurrency 8 && \
+  node /usr/local/lib/node_modules/pnpm/bin/pnpm.cjs install --frozen-lockfile
 
 FROM node:26-alpine@sha256:2d984a15c9b54fd0aeb608b8e0d0d83529eb34d2966db27a1fb4f1edc3d298a3 AS builder
 WORKDIR /app
@@ -33,7 +37,6 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_PUBLIC_AKL_BASE_PATH=$NEXT_PUBLIC_AKL_BASE_PATH
 
-RUN apk add --no-cache su-exec
 RUN addgroup -S nextjs && adduser -S nextjs -G nextjs
 RUN mkdir -p /data/object-storage && chown -R nextjs:nextjs /data
 

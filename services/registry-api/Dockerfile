@@ -8,8 +8,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 COPY pyproject.toml ./
+COPY requirements.c4.lock ./
 COPY app ./app
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir --require-hashes -r requirements.c4.lock \
+    && pip install --no-cache-dir --no-deps .
 
 COPY alembic.ini ./alembic.ini
 COPY alembic ./alembic
