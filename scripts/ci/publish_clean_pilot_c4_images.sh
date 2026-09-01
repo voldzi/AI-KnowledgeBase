@@ -64,7 +64,7 @@ build_and_publish() {
   if [[ -n "$dockerfile" ]]; then
     dockerfile_args=(--file "$dockerfile")
   fi
-  docker build --pull "${dockerfile_args[@]}" \
+  DOCKER_BUILDKIT=1 docker build --pull "${dockerfile_args[@]}" \
     --label "org.opencontainers.image.revision=$source_sha" \
     --label "org.opencontainers.image.source=AKB/ai-knowledgebase" \
     --tag "$target" "$context"
