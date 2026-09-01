@@ -109,7 +109,7 @@ def check(root: Path) -> None:
         ('--build-arg "SOURCE_DATE_EPOCH=$source_date_epoch"', "commit timestamp"),
         ("--provenance=false", "disabled provenance"),
         ("--sbom=false", "disabled SBOM"),
-        ("rewrite-timestamp=true", "timestamp rewrite"),
+        ("unpack=false,rewrite-timestamp=true", "non-unpacking timestamp rewrite"),
         ("scripts/ci/check_clean_pilot_c4_inputs.py", "locked-input preflight"),
     ):
         require(publisher, value, label)

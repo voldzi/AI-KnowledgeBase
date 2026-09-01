@@ -98,7 +98,7 @@ build_and_publish() {
     --provenance=false \
     --sbom=false \
     --build-arg "SOURCE_DATE_EPOCH=$source_date_epoch" \
-    --output "type=image,name=$target,push=true,rewrite-timestamp=true" \
+    --output "type=image,name=$target,push=true,unpack=false,rewrite-timestamp=true" \
     "${dockerfile_args[@]}" "$context"
   images["$name"]="$(resolve_pushed_ref "$name" "$target")"
 }
