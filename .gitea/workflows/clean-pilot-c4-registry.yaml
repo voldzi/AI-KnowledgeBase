@@ -1,0 +1,68 @@
+name: AKB Clean Pilot C4 Registry Freeze
+
+on:
+  workflow_dispatch:
+    inputs:
+      approved_sha:
+        description: Exact reviewed AKB source SHA to publish
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: write
+  packages: write
+
+jobs:
+  publish-images:
+    name: Publish immutable C4 image bundle
+    runs-on: akb-gitea-ci
+    timeout-minutes: 120
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Verify explicit source approval
+        env:
+          APPROVED_SHA: ${{ inputs.approved_sha }}
+          CANDIDATE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "${APPROVED_SHA}" =~ ^[0-9a-f]{40}$ ]]
+          [[ "${APPROVED_SHA}" == "${CANDIDATE_SHA}" ]]
+          git merge-base --is-ancestor origin/main "${CANDIDATE_SHA}"
+      - name: Build, publish and pull immutable images
+        env:
+          APP_ENV: rehearsal
+          NODE_ENV: test
+          AKB_C4_SOURCE_SHA: ${{ github.sha }}
+          AKB_C4_REGISTRY_USER: ${{ github.actor }}
+          AKB_C4_REGISTRY_TOKEN: ${{ gitea.token }}
+          AKB_C4_OUTPUT: clean-pilot-c4-image-manifest.json
+        run: bash scripts/ci/publish_clean_pilot_c4_images.sh
+      - name: Publish closed image manifest
+        id: publish-c4-images
+        uses: ChristopherHX/gitea-upload-artifact@81f940d004763f986ba3582c007fd842dd5cb0d7
+        with:
+          name: akb-clean-pilot-c4-images-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 30
+          path: clean-pilot-c4-image-manifest.json
+      - name: Verify artifact is server-visible
+        env:
+          GITEA_TOKEN: ${{ gitea.token }}
+          AKB_GITEA_RUN_ATTEMPT: ${{ gitea.run_attempt }}
+          AKB_ARTIFACT_ID: ${{ steps.publish-c4-images.outputs.artifact-id }}
+        run: |
+          python3 scripts/ci/verify_gitea_action_artifact.py \
+            --api-url "${{ github.api_url }}" \
+            --repository "${{ github.repository }}" \
+            --run-id "${{ github.run_id }}" \
+            --run-attempt "${AKB_GITEA_RUN_ATTEMPT:-1}" \
+            --commit "${{ github.sha }}" \
+            --ref "${{ github.ref }}" \
+            --event "${{ github.event_name }}" \
+            --artifact-id "${AKB_ARTIFACT_ID}" \
+            --artifact-name "akb-clean-pilot-c4-images-${{ github.sha }}"
