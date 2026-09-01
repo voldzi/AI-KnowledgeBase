@@ -105,7 +105,7 @@ jobs:
           AKB_SOURCE_SHA: ${{ inputs.approved_source_sha }}
           AKB_REGISTRY_USER: ${{ github.actor }}
           AKB_REGISTRY_TOKEN: ${{ secrets.AKB_GITEA_PACKAGE_RW_TOKEN }}
-          AKB_RUN_ID: c6-${{ github.run_id }}
+          AKB_RUN_ID: c6-run-${{ github.run_id }}
         run: |
           set -euo pipefail
           cleanup() {

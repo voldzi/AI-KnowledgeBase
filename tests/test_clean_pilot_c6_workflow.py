@@ -20,6 +20,7 @@ def test_c6_uses_closed_artifact_and_private_registry_secret() -> None:
     assert "secrets.AKB_GITEA_PACKAGE_RW_TOKEN" in WORKFLOW
     assert "--password-stdin" in WORKFLOW
     assert "unset AKB_REGISTRY_TOKEN" in WORKFLOW
+    assert "AKB_RUN_ID: c6-run-${{ github.run_id }}" in WORKFLOW
     assert "clean-pilot-c6-result.json" in WORKFLOW
 
 
