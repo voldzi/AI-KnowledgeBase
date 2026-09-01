@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:26-alpine AS deps
+FROM node:26-alpine@sha256:2d984a15c9b54fd0aeb608b8e0d0d83529eb34d2966db27a1fb4f1edc3d298a3 AS deps
 WORKDIR /app
 COPY apps/web/package.json apps/web/pnpm-lock.yaml apps/web/pnpm-workspace.yaml ./
 # Keep dependency downloads across BuildKit retries. The production image must
@@ -13,7 +13,7 @@ RUN --mount=type=cache,id=akb-web-pnpm-store,target=/pnpm/store \
   pnpm config set network-concurrency 8 && \
   pnpm install --frozen-lockfile
 
-FROM node:26-alpine AS builder
+FROM node:26-alpine@sha256:2d984a15c9b54fd0aeb608b8e0d0d83529eb34d2966db27a1fb4f1edc3d298a3 AS builder
 WORKDIR /app
 ARG NEXT_PUBLIC_AKL_BASE_PATH=""
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -24,7 +24,7 @@ COPY apps/web/ ./
 COPY contracts/director-copilot/v2 /contracts/director-copilot/v2
 RUN node /usr/local/lib/node_modules/pnpm/bin/pnpm.cjs run build
 
-FROM node:26-alpine AS runner
+FROM node:26-alpine@sha256:2d984a15c9b54fd0aeb608b8e0d0d83529eb34d2966db27a1fb4f1edc3d298a3 AS runner
 WORKDIR /app
 ARG NEXT_PUBLIC_AKL_BASE_PATH=""
 ARG AKL_IMAGE_SERVICE="web"
