@@ -26,7 +26,7 @@ class CleanPilotC4RegistryTests(unittest.TestCase):
         self.assertIn('--build-arg "SOURCE_DATE_EPOCH=$source_date_epoch"', SCRIPT)
         self.assertIn("--provenance=false", SCRIPT)
         self.assertIn("--sbom=false", SCRIPT)
-        self.assertIn("rewrite-timestamp=true", SCRIPT)
+        self.assertIn("unpack=false,rewrite-timestamp=true", SCRIPT)
         self.assertIn("BUILDX_NO_DEFAULT_ATTESTATIONS=1", SCRIPT)
         self.assertIn("scripts/ci/check_clean_pilot_c4_inputs.py", SCRIPT)
         self.assertNotIn("postgres:16-alpine", SCRIPT)

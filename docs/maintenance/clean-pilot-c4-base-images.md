@@ -19,6 +19,8 @@ C4 application images are published with Docker Buildx for `linux/amd64`.
 uses `rewrite-timestamp=true`. BuildKit provenance and SBOM attestations are
 disabled for this byte-stable image manifest; the closed same-SHA CI artifact
 remains the separate source and review attestation.
+The exporter uses `unpack=false`, because loading a rewritten image into the
+runner's local Docker image store is incompatible with timestamp rewriting.
 
 PostgreSQL, MinIO, OpenSearch, and Qdrant are copied only from immutable
 SHA-256 references. The preflight rejects mutable upstream tags.
