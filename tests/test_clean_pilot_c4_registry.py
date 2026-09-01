@@ -20,6 +20,9 @@ class CleanPilotC4RegistryTests(unittest.TestCase):
         self.assertLess(SCRIPT.index('docker pull "$target"'), SCRIPT.index("printf '%s\\n' \"$resolved\""))
         self.assertIn("build_and_publish web . apps/web/Dockerfile", SCRIPT)
         self.assertIn('DOCKER_BUILDKIT=1 docker build --pull', SCRIPT)
+        self.assertIn("C4 manifest and same-SHA CI attestation bind the image bundle", SCRIPT)
+        self.assertNotIn("org.opencontainers.image.revision", SCRIPT)
+        self.assertNotIn("org.opencontainers.image.source", SCRIPT)
 
     def test_secret_is_not_written_to_manifest_or_log(self) -> None:
         self.assertIn("--password-stdin", SCRIPT)
