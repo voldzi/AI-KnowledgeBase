@@ -23,4 +23,3 @@
   "compose":"infra/clean-pilot/docker-compose.rehearsal.yml",
   "result":"PASS"
 }
-
