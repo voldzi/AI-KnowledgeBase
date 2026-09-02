@@ -17,9 +17,10 @@
   "jointRehearsalsExecuted":2,
   "actualStoreTechnologyEvidence":{"postgresql":"16","s3CompatibleObjectStorage":"minio-release-2025-09-07","opensearch":"2","qdrant":"1.18.2","durableJobEvaluationVolumes":"docker-local"},
   "sourceCommit":"180d5185eaefd8447ef92c8beb1ef43b088bb79c",
-  "imageBundleSha256":"ddf7baf768240e3257e8f1283d4109ed6163b6cb30a37b4e0a30be02da9fecfc",
+  "imageBundleSha256":"36f7eed303408b9fde5ca584ecba7b117372ec8879f9e150c0df0ef272693910",
   "migrationBundleSha256":"b7cb103d0f775b242b18e611b8d748ecd1f3a20f647646f72bd0009c30dd212c",
   "harness":"tools/clean_pilot_stack_rehearsal.py",
   "compose":"infra/clean-pilot/docker-compose.rehearsal.yml",
   "result":"PASS"
 }
+
