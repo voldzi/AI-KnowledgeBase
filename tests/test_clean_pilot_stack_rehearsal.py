@@ -94,6 +94,14 @@ def test_rehearsal_compose_is_internal_without_host_ports() -> None:
         assert f"  {service}:" in source
 
 
+def test_rehearsal_postgres_bootstraps_exact_registry_database() -> None:
+    source = (Path(__file__).resolve().parents[1] / "infra/clean-pilot/docker-compose.rehearsal.yml").read_text()
+    assert "POSTGRES_DB: akl_registry" in source
+    assert "postgresql:5432/akl_registry" in source
+    assert "pg_isready -U akl_rehearsal -d akl_registry" in source
+    assert "POSTGRES_MULTIPLE_DATABASES" not in source
+
+
 def test_remote_or_preconfigured_endpoint_environment_stops() -> None:
     with pytest.raises(RuntimeError, match="REMOTE_DOCKER_HOST_FORBIDDEN"):
         validate_environment({"DOCKER_HOST": "tcp://remote.invalid:2376"})
