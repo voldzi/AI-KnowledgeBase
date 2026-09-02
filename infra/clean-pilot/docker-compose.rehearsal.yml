@@ -15,13 +15,11 @@ services:
   postgresql:
     image: ${AKB_IMAGE_POSTGRESQL:?immutable PostgreSQL image is required}
     environment:
-      POSTGRES_DB: akl
+      POSTGRES_DB: akl_registry
       POSTGRES_USER: akl_rehearsal
       POSTGRES_PASSWORD: ${AKB_REHEARSAL_POSTGRES_PASSWORD:?ephemeral PostgreSQL password is required}
-      POSTGRES_MULTIPLE_DATABASES: akl_registry,akl_evaluation
     volumes:
       - postgresql-data:/var/lib/postgresql/data
-      - ../postgres/init:/docker-entrypoint-initdb.d:ro
     networks: [rehearsal]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U akl_rehearsal -d akl_registry"]
