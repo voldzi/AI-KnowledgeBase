@@ -23,6 +23,8 @@ def test_c6_uses_closed_artifact_and_private_registry_secret() -> None:
     assert "AKB_RUN_ID: c6-run-${{ github.run_id }}" in WORKFLOW
     assert 'diagnostic.replace(value, "[REDACTED]")' in WORKFLOW
     assert "C6_COMMAND_DIAGNOSTIC_START" in WORKFLOW
+    assert "C6_CONTAINER_STATUS" in WORKFLOW
+    assert '["docker", "logs", "--tail", "120", container_id]' in WORKFLOW
     assert "clean-pilot-c6-result.json" in WORKFLOW
 
 
