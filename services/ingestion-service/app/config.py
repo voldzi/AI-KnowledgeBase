@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import ipaddress
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
@@ -15,6 +16,9 @@ KNOWN_EMBEDDING_MODES = {"http", "mock"}
 KNOWN_INDEXER_TARGETS = {"qdrant", "opensearch", "mock"}
 KNOWN_OCR_PROVIDERS = {"disabled", "sidecar", "tesseract", "ocrmypdf"}
 KNOWN_PDF_ENGINES = {"auto", "pymupdf", "pypdf"}
+KNOWN_DOCLING_MODES = {"off", "shadow", "prefer", "enforce"}
+KNOWN_DOCLING_PIPELINES = {"standard", "granite"}
+KNOWN_DOCLING_DEVICES = {"auto", "cpu", "cuda", "mps", "mlx"}
 RAG_V2_MODES = {"off", "shadow", "enforce"}
 
 
@@ -206,6 +210,17 @@ class Settings:
 
     default_extraction_profile: str
     pdf_engine: str
+    docling_mode: str
+    docling_pipeline: str
+    docling_device: str
+    docling_artifacts_path: Path | None
+    docling_artifacts_sha256: str | None
+    docling_document_timeout_seconds: float
+    docling_worker_timeout_seconds: float
+    docling_queue_timeout_seconds: float
+    docling_max_output_bytes: int
+    docling_max_concurrency: int
+    docling_max_pages: int
     default_parser_profile: str
     default_chunking_strategy: str
     chunk_target_chars: int
@@ -272,6 +287,13 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     indexer_targets = _parse_indexer_targets(indexer_mode)
     ocr_provider = _get(source, "AKL_INGESTION_OCR_PROVIDER", "sidecar").strip().lower()
     pdf_engine = _get(source, "AKL_INGESTION_PDF_ENGINE", "auto").strip().lower()
+    docling_mode = _get(source, "AKL_INGESTION_DOCLING_MODE", "off").strip().lower()
+    docling_pipeline = _get(
+        source,
+        "AKL_INGESTION_DOCLING_PIPELINE",
+        "standard",
+    ).strip().lower()
+    docling_device = _get(source, "AKL_INGESTION_DOCLING_DEVICE", "auto").strip().lower()
 
     if auth_mode not in KNOWN_AUTH_MODES:
         raise ConfigError("AKL_AUTH_MODE must be one of: disabled, bearer, mock, oidc")
@@ -285,6 +307,18 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         raise ConfigError("AKL_INGESTION_OCR_PROVIDER must be one of: disabled, sidecar, tesseract, ocrmypdf")
     if pdf_engine not in KNOWN_PDF_ENGINES:
         raise ConfigError("AKL_INGESTION_PDF_ENGINE must be one of: auto, pymupdf, pypdf")
+    if docling_mode not in KNOWN_DOCLING_MODES:
+        raise ConfigError(
+            "AKL_INGESTION_DOCLING_MODE must be one of: off, shadow, prefer, enforce"
+        )
+    if docling_pipeline not in KNOWN_DOCLING_PIPELINES:
+        raise ConfigError(
+            "AKL_INGESTION_DOCLING_PIPELINE must be one of: standard, granite"
+        )
+    if docling_device not in KNOWN_DOCLING_DEVICES:
+        raise ConfigError(
+            "AKL_INGESTION_DOCLING_DEVICE must be one of: auto, cpu, cuda, mps, mlx"
+        )
 
     try:
         max_file_bytes = int(_get(source, "AKL_INGESTION_MAX_FILE_BYTES", str(100 * 1024 * 1024)))
@@ -314,6 +348,28 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
                 "AKL_INGESTION_RENDITION_MAX_OUTPUT_BYTES",
                 str(128 * 1024 * 1024),
             )
+        )
+        docling_document_timeout_seconds = float(
+            _get(source, "AKL_INGESTION_DOCLING_DOCUMENT_TIMEOUT_SECONDS", "300")
+        )
+        docling_worker_timeout_seconds = float(
+            _get(source, "AKL_INGESTION_DOCLING_WORKER_TIMEOUT_SECONDS", "330")
+        )
+        docling_queue_timeout_seconds = float(
+            _get(source, "AKL_INGESTION_DOCLING_QUEUE_TIMEOUT_SECONDS", "5")
+        )
+        docling_max_output_bytes = int(
+            _get(
+                source,
+                "AKL_INGESTION_DOCLING_MAX_OUTPUT_BYTES",
+                str(128 * 1024 * 1024),
+            )
+        )
+        docling_max_concurrency = int(
+            _get(source, "AKL_INGESTION_DOCLING_MAX_CONCURRENCY", "1")
+        )
+        docling_max_pages = int(
+            _get(source, "AKL_INGESTION_DOCLING_MAX_PAGES", "1000")
         )
     except ValueError as exc:
         raise ConfigError("Numeric AKL_INGESTION_* or AKL_QDRANT_* configuration value is invalid") from exc
@@ -360,6 +416,28 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         raise ConfigError(
             "AKL_INGESTION_RENDITION_MAX_OUTPUT_BYTES must be greater than zero"
         )
+    if docling_document_timeout_seconds <= 0:
+        raise ConfigError(
+            "AKL_INGESTION_DOCLING_DOCUMENT_TIMEOUT_SECONDS must be greater than zero"
+        )
+    if docling_worker_timeout_seconds < docling_document_timeout_seconds:
+        raise ConfigError(
+            "AKL_INGESTION_DOCLING_WORKER_TIMEOUT_SECONDS must be greater than or equal to the document timeout"
+        )
+    if docling_queue_timeout_seconds < 0:
+        raise ConfigError(
+            "AKL_INGESTION_DOCLING_QUEUE_TIMEOUT_SECONDS must not be negative"
+        )
+    if docling_max_output_bytes <= 0:
+        raise ConfigError(
+            "AKL_INGESTION_DOCLING_MAX_OUTPUT_BYTES must be greater than zero"
+        )
+    if not 1 <= docling_max_concurrency <= 8:
+        raise ConfigError(
+            "AKL_INGESTION_DOCLING_MAX_CONCURRENCY must be between 1 and 8"
+        )
+    if docling_max_pages <= 0:
+        raise ConfigError("AKL_INGESTION_DOCLING_MAX_PAGES must be greater than zero")
 
     service_token = source.get("AKL_SERVICE_TOKEN") or None
     rag_v2_mode = _get(source, "AKL_RAG_V2_INDEX_MODE", "off").strip().lower()
@@ -462,6 +540,27 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     rendition_cache_root = Path(
         _get(source, "AKL_INGESTION_RENDITION_CACHE_ROOT", "./rendition-cache")
     )
+    docling_artifacts_raw = _get(
+        source,
+        "AKL_INGESTION_DOCLING_ARTIFACTS_PATH",
+        "",
+    ).strip()
+    docling_artifacts_path = Path(docling_artifacts_raw) if docling_artifacts_raw else None
+    docling_artifacts_sha256 = (
+        _get(source, "AKL_INGESTION_DOCLING_ARTIFACTS_SHA256", "").strip().lower()
+        or None
+    )
+    if docling_artifacts_sha256 is not None and not re.fullmatch(
+        r"sha256:[0-9a-f]{64}",
+        docling_artifacts_sha256,
+    ):
+        raise ConfigError(
+            "AKL_INGESTION_DOCLING_ARTIFACTS_SHA256 must use sha256:<64 lowercase hex>"
+        )
+    if docling_artifacts_path is not None and not docling_artifacts_path.is_dir():
+        raise ConfigError("AKL_INGESTION_DOCLING_ARTIFACTS_PATH must be a readable directory")
+    if docling_mode != "off" and docling_artifacts_path is None:
+        raise ConfigError("Enabled Docling requires a local artifacts path")
     if any(registry_service_credentials) and not all(registry_service_credentials):
         raise ConfigError(
             "Registry service identity requires AKL_REGISTRY_SERVICE_TOKEN_URL, "
@@ -548,6 +647,11 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
             raise ConfigError(
                 "Production requires AKL_INGESTION_PROCESS_JOBS_INLINE=true until a durable worker is deployed"
             )
+        if docling_mode != "off":
+            if docling_artifacts_path is None or docling_artifacts_sha256 is None:
+                raise ConfigError(
+                    "Production Docling requires a local artifacts path and pinned SHA-256"
+                )
 
     return Settings(
         service_name=_get(source, "AKL_SERVICE_NAME", "ingestion-service"),
@@ -612,6 +716,17 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         ),
         default_extraction_profile=_get(source, "AKL_INGESTION_DEFAULT_EXTRACTION_PROFILE", "document_text_v1"),
         pdf_engine=pdf_engine,
+        docling_mode=docling_mode,
+        docling_pipeline=docling_pipeline,
+        docling_device=docling_device,
+        docling_artifacts_path=docling_artifacts_path,
+        docling_artifacts_sha256=docling_artifacts_sha256,
+        docling_document_timeout_seconds=docling_document_timeout_seconds,
+        docling_worker_timeout_seconds=docling_worker_timeout_seconds,
+        docling_queue_timeout_seconds=docling_queue_timeout_seconds,
+        docling_max_output_bytes=docling_max_output_bytes,
+        docling_max_concurrency=docling_max_concurrency,
+        docling_max_pages=docling_max_pages,
         default_parser_profile=_get(source, "AKL_INGESTION_DEFAULT_PARSER_PROFILE", "controlled_document"),
         default_chunking_strategy=_get(source, "AKL_INGESTION_DEFAULT_CHUNKING_STRATEGY", "legal_structured"),
         chunk_target_chars=chunk_target_chars,

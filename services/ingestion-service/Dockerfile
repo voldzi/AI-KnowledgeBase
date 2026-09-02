@@ -6,6 +6,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+ARG AKL_INSTALL_DOCLING=false
+
 RUN printf '%s\n' \
         'Types: deb' \
         'URIs: https://snapshot.debian.org/archive/debian/20260824T000000Z' \
@@ -40,8 +42,15 @@ RUN printf '%s\n' \
         unpaper=7.0.0-3+b2 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.c4.lock .
-RUN pip install --no-cache-dir --require-hashes -r requirements.c4.lock
+COPY requirements.c4.lock requirements-docling.c4.lock ./
+RUN case "$AKL_INSTALL_DOCLING" in \
+      true) pip install --no-cache-dir --only-binary=:all: \
+        --extra-index-url https://download.pytorch.org/whl/cpu \
+        --require-hashes -r requirements-docling.c4.lock ;; \
+      false) pip install --no-cache-dir --only-binary=:all: \
+        --require-hashes -r requirements.c4.lock ;; \
+      *) printf '%s\n' 'AKL_INSTALL_DOCLING must be true or false' >&2; exit 2 ;; \
+    esac
 
 COPY app ./app
 COPY parsers ./parsers

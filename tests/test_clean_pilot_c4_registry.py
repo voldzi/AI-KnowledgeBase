@@ -48,10 +48,14 @@ class CleanPilotC4RegistryTests(unittest.TestCase):
                 "services/registry-api/requirements.c4.lock",
                 "services/ingestion-service/Dockerfile",
                 "services/ingestion-service/requirements.c4.lock",
+                "services/ingestion-service/requirements-docling.c4.lock",
+                "services/ingestion-service/requirements-docling-macos.c4.lock",
                 "services/rag-retrieval-service/Dockerfile",
                 "services/rag-retrieval-service/requirements.c4.lock",
                 "services/evaluation-service/Dockerfile",
                 "services/evaluation-service/requirements.c4.lock",
+                "scripts/ci/compile_docling_locks.sh",
+                "scripts/setup_docling_local.sh",
             ):
                 target = fixture / relative
                 target.parent.mkdir(parents=True, exist_ok=True)

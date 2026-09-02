@@ -83,12 +83,15 @@ publish_existing() {
 }
 
 build_and_publish() {
-  local name="$1" context="$2" dockerfile="${3:-}" target
+  local name="$1" context="$2" target
+  shift 2
   target="$registry/$owner/cpe1-$name:$source_sha"
   local -a dockerfile_args=()
-  if [[ -n "$dockerfile" ]]; then
-    dockerfile_args=(--file "$dockerfile")
+  if [[ "${1:-}" != --* && -n "${1:-}" ]]; then
+    dockerfile_args=(--file "$1")
+    shift
   fi
+  local -a extra_build_args=("$@")
   # SOURCE_DATE_EPOCH plus the image exporter's timestamp rewrite removes
   # filesystem and config-clock variance. Attestations are deliberately kept
   # outside the image manifest because their generated metadata is run-specific;
@@ -99,7 +102,7 @@ build_and_publish() {
     --sbom=false \
     --build-arg "SOURCE_DATE_EPOCH=$source_date_epoch" \
     --output "type=image,name=$target,push=true,unpack=false,rewrite-timestamp=true" \
-    "${dockerfile_args[@]}" "$context"
+    "${dockerfile_args[@]}" "${extra_build_args[@]}" "$context"
   images["$name"]="$(resolve_pushed_ref "$name" "$target")"
 }
 
@@ -109,7 +112,7 @@ publish_existing opensearch opensearchproject/opensearch@sha256:8690b204fe914c60
 publish_existing qdrant qdrant/qdrant@sha256:75eab8c4ba42096724fdcfde8b4de0b5713d529dde32f285a1f86fdcb2c9e50c
 
 build_and_publish registry-api services/registry-api
-build_and_publish ingestion-service services/ingestion-service
+build_and_publish ingestion-service services/ingestion-service --build-arg AKL_INSTALL_DOCLING=true
 build_and_publish rag-retrieval-service services/rag-retrieval-service
 build_and_publish evaluation-service services/evaluation-service
 build_and_publish web . apps/web/Dockerfile

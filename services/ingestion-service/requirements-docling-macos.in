@@ -1,0 +1,5 @@
+# Native Apple Silicon qualification profile. GraniteDocling handles PDF;
+# standard Docling handles these Office/web formats without compiling
+# docling-parse, which has no compatible macOS arm64 wheel.
+-r requirements.txt
+docling-slim[cli,convert-core,format-docx,format-html,format-markdown,format-pdf-pypdfium2,format-pptx,format-xlsx,models-vlm-inline]==2.124.0
