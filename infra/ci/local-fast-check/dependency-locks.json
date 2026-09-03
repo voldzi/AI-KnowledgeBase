@@ -1,0 +1,42 @@
+{
+  "python": "3.12",
+  "schema": "akb-local-fast-check-dependency-locks-1",
+  "services": {
+    "evaluation_service": {
+      "input": "services/evaluation-service/requirements.txt",
+      "input_sha256": "d1010cb99d9218784d45c8e8da40a4aa6a538014a1cfed04024bbfae5ff899e0",
+      "lock": "services/evaluation-service/requirements.c4.lock",
+      "lock_sha256": "cc7f29b1c10a9390c2788ff67debfcbf04e7c71a4eacef0e94aea731bdedae65"
+    },
+    "governance_service": {
+      "input": "services/governance-service/requirements.txt",
+      "input_sha256": "22dbc6482af51c0e52847184726905ba82198c2b75db402344ee84f6f4da343e",
+      "lock": "infra/ci/local-fast-check/locks/governance-service.test.lock",
+      "lock_sha256": "b0e6b9eb328629c4185e024b40830c357b91e9425891df9ad17e362868e3e949"
+    },
+    "ingestion_service": {
+      "input": "services/ingestion-service/requirements.txt",
+      "input_sha256": "8af83674d4a27d18340388aaeb390e5ca5a70daec7ea909d9a3d1cde6076dda5",
+      "lock": "services/ingestion-service/requirements.c4.lock",
+      "lock_sha256": "fb56547b1651751ade04101cf31a653a7defe315f547ff7c0885a83c07be75e3"
+    },
+    "llm_gateway_service": {
+      "input": "services/llm-gateway-service/requirements.txt",
+      "input_sha256": "22dbc6482af51c0e52847184726905ba82198c2b75db402344ee84f6f4da343e",
+      "lock": "infra/ci/local-fast-check/locks/llm-gateway-service.test.lock",
+      "lock_sha256": "b971c48a6d16153f051ed6bb73085f0ad90302744c0333affdbbb2e7b177fd78"
+    },
+    "rag_retrieval_service": {
+      "input": "services/rag-retrieval-service/requirements.txt",
+      "input_sha256": "0c7b647234e84eb95d7616165430ba34f48f3285ae85f93189fc8e1bd90556d6",
+      "lock": "services/rag-retrieval-service/requirements.c4.lock",
+      "lock_sha256": "0961e478ae823a861c31319afbdd60fb9685d69d53048c7da5e05ce46fadae1e"
+    },
+    "registry_api": {
+      "input": "services/registry-api/pyproject.toml",
+      "input_sha256": "45163f2b62df971a74e4dc6f9bdb9462ef8a54b6806df1c27eae95705fb8a110",
+      "lock": "infra/ci/local-fast-check/locks/registry-api.test.lock",
+      "lock_sha256": "18586c2352a3185974b0e97fa11b7c2e7b6452c101560029234db098f41c55ea"
+    }
+  }
+}
