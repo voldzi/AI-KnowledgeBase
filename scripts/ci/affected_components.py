@@ -66,70 +66,120 @@ DOCUMENTATION_PREFIXES = ("docs/",)
 DOCUMENTATION_FILES = {"README.md", "AGENTS.md", "CLAUDE.md", "LICENSE"}
 
 
+def _impact_owner(raw_path: str) -> str | None:
+    """Return one unambiguous owner, or ``full`` for uncertain/shared input."""
+
+    path = str(PurePosixPath(raw_path.strip()))
+    if not path or path == ".":
+        return None
+    if path in DOCUMENTATION_FILES or path.startswith(DOCUMENTATION_PREFIXES):
+        return None
+    if (
+        path.startswith(".gitea/workflows/")
+        or path.startswith("scripts/ci/")
+        or path.startswith("infra/ci/local-fast-check/")
+        or path in {
+            "tests/test_ci_affected_components.py",
+            "tests/test_ci_cached_python_env.py",
+            "tests/test_clean_pilot_c4_registry.py",
+            "tests/test_local_fast_check.py",
+            "tests/test_working_baseline.py",
+        }
+    ):
+        return "ci"
+    if path.startswith("apps/web/") or path in {"package.json", "pnpm-lock.yaml"}:
+        return "web"
+    if path.startswith("services/registry-api/"):
+        return "registry_api"
+    if path.startswith("services/ingestion-service/"):
+        return "ingestion_service"
+    if path.startswith("services/rag-retrieval-service/"):
+        return "rag_retrieval_service"
+    if path.startswith("services/llm-gateway-service/"):
+        return "llm_gateway_service"
+    if path.startswith("services/evaluation-service/"):
+        return "evaluation_service"
+    if path.startswith("services/governance-service/"):
+        return "governance_service"
+    if path.startswith("infra/docker-compose/") or path in {
+        ".env.example",
+        ".env.local-prod.example",
+    }:
+        return "compose"
+    if path in {
+        "scripts/docling_local_smoke.py",
+        "scripts/provision_docling_model_bundle.sh",
+        "scripts/setup_docling_local.sh",
+        "scripts/verify_docling_provision_source.py",
+    }:
+        return "docling_release"
+    if path in {
+        "scripts/check_docker_home_compose_render.sh",
+        "tests/test_docling_production_release.py",
+    }:
+        return "docling_runtime_config"
+    if path.startswith("infra/ci/") or path.startswith("scripts/lib/") or path in {
+        "scripts/deploy_docker_home_release.sh",
+        "scripts/deploy_docker_home.sh",
+        "scripts/check_immutable_release_workflow.sh",
+        "scripts/verify_docker_home_release.sh",
+    }:
+        return "immutable_release"
+    if path.startswith("contracts/") or path.startswith("openapi/"):
+        return "full"
+    return "full"
+
+
+def impact_profile(paths: Iterable[str]) -> str:
+    """Describe why a change is narrow, empty, or forced to the full suite."""
+
+    owners = {_impact_owner(path) for path in paths}
+    owners.discard(None)
+    if not owners or owners == {"ci"}:
+        return "repository-only"
+    if "full" in owners:
+        return "full:unknown-or-shared"
+    if owners == {"docling_release"}:
+        return "narrow:docling_release"
+    if owners and owners.issubset({"docling_release", "docling_runtime_config"}):
+        return "narrow:docling_runtime_config"
+    runtime = owners.intersection(RUNTIME_COMPONENTS)
+    release = owners.intersection({"compose", "immutable_release"})
+    if len(runtime) > 1 or (runtime and release) or ("ci" in owners and len(owners) > 1):
+        return "full:mixed"
+    if len(runtime) == 1:
+        return f"narrow:{next(iter(runtime))}"
+    if owners == {"compose"}:
+        return "narrow:compose"
+    if owners == {"immutable_release"}:
+        return "narrow:immutable_release"
+    return "full:mixed"
+
+
 def plan_paths(paths: Iterable[str]) -> ImpactPlan:
+    path_list = list(paths)
+    profile = impact_profile(path_list)
+    if profile.startswith("full:"):
+        return ImpactPlan().with_all_runtime()
+
+    owners = {_impact_owner(path) for path in path_list}
+    owners.discard(None)
     plan = ImpactPlan()
-    for raw_path in paths:
-        path = str(PurePosixPath(raw_path.strip()))
-        if not path or path == ".":
-            continue
-        if path in DOCUMENTATION_FILES or path.startswith(DOCUMENTATION_PREFIXES):
-            continue
-        if path.startswith(".gitea/workflows/") or path.startswith("scripts/ci/") or path == (
-            "tests/test_ci_affected_components.py"
-        ) or path == "tests/test_clean_pilot_c4_registry.py":
-            # CI plumbing has no production runtime owner. Repository standards
-            # validate the workflow and classifier; release simulation is not
-            # relevant unless production release code also changed.
-            continue
-        if path.startswith("apps/web/"):
-            plan = plan.updated(web=True)
-        elif path.startswith("services/registry-api/"):
-            plan = plan.updated(registry_api=True)
-        elif path.startswith("services/ingestion-service/"):
-            plan = plan.updated(ingestion_service=True)
-        elif path.startswith("services/rag-retrieval-service/"):
-            plan = plan.updated(rag_retrieval_service=True)
-        elif path.startswith("services/llm-gateway-service/"):
-            plan = plan.updated(llm_gateway_service=True)
-        elif path.startswith("services/evaluation-service/"):
-            plan = plan.updated(evaluation_service=True)
-        elif path.startswith("services/governance-service/"):
-            plan = plan.updated(governance_service=True)
-        elif path.startswith("infra/docker-compose/") or path in {
-            ".env.example",
-            ".env.local-prod.example",
-        }:
+    for owner in owners:
+        if owner in RUNTIME_COMPONENTS:
+            plan = plan.updated(**{owner: True})
+        elif owner == "compose":
             plan = plan.updated(compose=True, immutable_release=True)
-        elif path in {
-            "scripts/docling_local_smoke.py",
-            "scripts/prepare_docling_provision_mount.py",
-            "scripts/provision_docling_model_bundle.sh",
-            "scripts/setup_docling_local.sh",
-            "scripts/verify_docling_provision_source.py",
-        }:
+        elif owner == "immutable_release":
+            plan = plan.updated(immutable_release=True)
+        elif owner == "docling_release":
             plan = plan.updated(ingestion_service=True, immutable_release=True)
-        elif path in {
-            "scripts/check_docker_home_compose_render.sh",
-            "tests/test_docling_production_release.py",
-        }:
+        elif owner == "docling_runtime_config":
             plan = plan.updated(
                 ingestion_service=True,
                 compose=True,
                 immutable_release=True,
             )
-        elif path.startswith("infra/ci/") or path.startswith("scripts/lib/") or path in {
-            "scripts/deploy_docker_home_release.sh",
-            "scripts/deploy_docker_home.sh",
-            "scripts/check_immutable_release_workflow.sh",
-            "scripts/verify_docker_home_release.sh",
-        }:
-            plan = plan.updated(immutable_release=True)
-        elif path.startswith("contracts/") or path.startswith("openapi/"):
-            return plan.with_all_runtime()
-        elif path in {"package.json", "pnpm-lock.yaml"}:
-            plan = plan.updated(web=True)
-        else:
-            return plan.with_all_runtime()
     return plan
 
 

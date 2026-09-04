@@ -1,0 +1,26 @@
+# syntax=docker/dockerfile:1.7
+
+FROM python:3.12-slim@sha256:e5c9fa26ffb76e11e0f054f30dc2523a2f9693f0c36c0cf1e39b27e152d899fc
+
+ARG LOCK_PATH
+ARG LOCK_SHA256
+ARG PIP_CACHE_ID
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+COPY ${LOCK_PATH} /tmp/requirements.lock
+RUN --mount=type=cache,id=${PIP_CACHE_ID},target=/root/.cache/pip,sharing=locked \
+    test -n "${LOCK_PATH}" \
+    && test -n "${LOCK_SHA256}" \
+    && test -n "${PIP_CACHE_ID}" \
+    && printf '%s  %s\n' "${LOCK_SHA256}" /tmp/requirements.lock | sha256sum -c - \
+    && pip install --require-hashes -r /tmp/requirements.lock
+
+RUN groupadd --gid 65532 akb-local-ci \
+    && useradd --uid 65532 --gid akb-local-ci --no-create-home --shell /usr/sbin/nologin akb-local-ci
+
+USER 65532:65532
+WORKDIR /work
+ENTRYPOINT ["/bin/sh", "-c"]

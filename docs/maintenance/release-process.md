@@ -142,7 +142,8 @@ Keep useful work before rebasing or moving it to a new branch. Archive unique
 historical commits until reviewed; remove only branches demonstrably merged
 into main. A stale remote-tracking ref cannot prove current server state.
 
-The MacBook can provide fast developer feedback before the trusted Gitea run:
+The MacBook provides reproducible Docker Desktop feedback before the trusted
+Gitea run:
 
 ```bash
 scripts/ci/local-fast-check.sh --base origin/main --production-sha <verified-full-production-sha>
@@ -150,16 +151,30 @@ scripts/ci/local-fast-check.sh --base origin/main --production-sha <verified-ful
 
 The helper first runs the lineage guard, then classifies committed, staged,
 unstaged and untracked changes using the same fail-closed impact matrix as
-Gitea CI and runs independent Python and web checks in parallel. Use `--full`
-for broad verification after establishing a valid baseline; it does not bypass
-the lineage guard. Use `--skip-install` only when
-the local dependency environments are already current. The helper uses local
-development configuration only; it never reads production env files, sends
-credentials to a remote host, or authorizes a deployment.
+Gitea CI. Python services run in separate hash-locked Python 3.12 containers;
+the web runs in a pinned Node/pnpm container. All application tests use a
+sanitized read-only source snapshot, isolated tmpfs workspaces, a non-root
+identity, and no network, Docker socket, `.env`, SSH key, or production secret.
+Use `--full` for broad verification after establishing a valid baseline. Use
+`--skip-install` after a successful run to require the cached dependency images
+and fail on a cache miss; it never installs into macOS Python.
+
+Multiple runtime owners, a runtime plus release infrastructure, and unknown or
+shared paths select the complete suite. Independent selected services may run
+in parallel, but never share a writable virtual environment or workspace. The
+closed JSON timing/cache result is written to
+`reports/local-fast-check/latest.json`. Full boundary, cache, disk and evidence
+details are in [local-fast-check.md](local-fast-check.md).
 
 This is an early feedback layer, not a release approval. The final candidate
 still runs on the repo-scoped VM125 runner, where the Linux/amd64 toolchain and
 persistent caches match the production build environment.
+
+Trusted CI also retains the version-pinned OpenAPI linter and content-addressed
+Python test environments. Each Python cache key binds the interpreter and the
+exact hash-locked dependency file. A missing, changed, open or unhashed lock
+fails closed; a valid cache hit skips only dependency installation, never the
+tests, same-SHA evidence or immutable release contract.
 
 ## Optimized Release Candidate Workflow
 
