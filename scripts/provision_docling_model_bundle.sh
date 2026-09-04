@@ -25,8 +25,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || usage
-[[ "$(git -C "$ROOT" rev-parse HEAD)" == "$TARGET_SHA" ]] \
-  || { printf 'The Docling provisioner must run from the exact source SHA.\n' >&2; exit 2; }
 [[ "$MODEL_ROOT" == /* && "$MODEL_ROOT" != *$'\n'* && "$MODEL_ROOT" != *$'\r'* ]] \
   || { printf 'The Docling model root is invalid.\n' >&2; exit 2; }
 
@@ -34,6 +32,10 @@ for command_name in docker git python3 sha256sum mktemp; do
   command -v "$command_name" >/dev/null \
     || { printf 'Required command is unavailable: %s\n' "$command_name" >&2; exit 2; }
 done
+
+python3 "${ROOT}/scripts/verify_docling_provision_source.py" \
+  --root "$ROOT" \
+  --sha "$TARGET_SHA"
 
 mkdir -p "$MODEL_ROOT"
 [[ -d "$MODEL_ROOT" && ! -L "$MODEL_ROOT" ]] \
