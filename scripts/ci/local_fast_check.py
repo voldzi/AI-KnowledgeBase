@@ -28,6 +28,7 @@ from affected_components import (  # noqa: E402
     impact_profile,
     plan_paths,
 )
+from check_production_build_inputs import check_definitions  # noqa: E402
 
 
 PYTHON_BASE = "python:3.12-slim@sha256:e5c9fa26ffb76e11e0f054f30dc2523a2f9693f0c36c0cf1e39b27e152d899fc"
@@ -494,7 +495,10 @@ def main() -> int:
             snapshot.mkdir(mode=0o700)
             snapshot_digest = create_sanitized_snapshot(ROOT, snapshot)
 
-            checks = [run_repository_standards(snapshot)]
+            definition_started = time.monotonic()
+            check_definitions(snapshot, plan, int(git("show", "-s", "--format=%ct", "HEAD")))
+            checks = [check_result("production_build_definitions", definition_started, "not-applicable", None)]
+            checks.append(run_repository_standards(snapshot))
             selected: list[tuple[str, object]] = []
             for spec in PYTHON_SERVICES:
                 if plan.as_dict()[spec.component]:

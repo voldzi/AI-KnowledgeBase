@@ -101,6 +101,12 @@ jobs:
           fi
           python3 scripts/ci/affected_components.py \
             changed-paths.txt --github-output "${GITHUB_OUTPUT}"
+      - name: Reject invalid production Dockerfiles before expensive checks
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/check_production_build_inputs.py \
+            --paths-file changed-paths.txt \
+            --source-date-epoch "$(git show -s --format=%ct HEAD)"
 
   standards:
     name: Repository standards
@@ -130,6 +136,7 @@ jobs:
           python3 tests/test_gitea_production_deploy.py
           python3 tests/test_ci_affected_components.py
           python3 tests/test_ci_cached_python_env.py
+          python3 tests/test_production_build_inputs.py
           python3 tests/test_clean_pilot_ci_attestation.py
           python3 tests/test_clean_pilot_c4_registry.py
           python3 tests/test_clean_pilot_c5.py

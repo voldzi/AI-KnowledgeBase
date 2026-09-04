@@ -178,6 +178,19 @@ tests, same-SHA evidence or immutable release contract.
 
 ## Optimized Release Candidate Workflow
 
+The required runtime impact job now runs Docker Buildx `--check` for the
+selected production Dockerfiles before dependent, expensive CI jobs start.
+The local fast check uses the same guard. Unknown/shared changes and release
+configuration select every production definition, including both web profiles
+and the Docling-enabled ingestion image. The check sends only Dockerfiles in an
+empty temporary context, never production environment files or credentials.
+Unavailable Docker/Buildx, a timeout or a rejected definition stops the check.
+
+This guard catches build-definition failures early but deliberately does not
+claim that images were built or runtime compatibility was proved. The exact
+production image build, trusted same-SHA CI, protected-main approval, backup,
+migration and readiness gates remain mandatory. It cannot authorize deployment.
+
 Use this sequence for every production-bound change. It keeps the existing
 fail-closed release controls while avoiding repeated merge/build/deploy loops.
 
