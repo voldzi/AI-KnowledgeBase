@@ -479,6 +479,7 @@ SUPPORTED = (
     "chat-web",
     "llm-gateway-service",
 )
+DOCLING_SIDECAR = "docling-worker"
 SERVICE_HEADER = re.compile(r"^  ([a-z0-9][a-z0-9_-]*):(?:[ \t]*#[^\r\n]*)?\r?\n?$")
 TOP_LEVEL = re.compile(r"^[A-Za-z0-9_.-]+:")
 
@@ -553,23 +554,48 @@ def normalize_one_time_central_opensearch_platform_status(value: str) -> str:
 removed = set(current_services) - set(target_services)
 added = set(target_services) - set(current_services)
 central_opensearch_cutover = removed == {"opensearch"} and not added
+docling_sidecar_transition = (
+    (added == {DOCLING_SIDECAR} and not removed)
+    or (removed == {DOCLING_SIDECAR} and not added)
+)
+
+
+def normalize_docling_runtime_volume(value: str) -> str:
+    return re.sub(
+        r"(?m)^  docling-runtime:[ \t]*(?:#[^\r\n]*)?\r?\n",
+        "",
+        value,
+    )
+
+
 current_envelope_for_comparison = (
     normalize_one_time_central_opensearch_envelope(current_envelope)
     if central_opensearch_cutover
     else current_envelope
 )
-if current_envelope_for_comparison != target_envelope:
+target_envelope_for_comparison = target_envelope
+if docling_sidecar_transition:
+    current_envelope_for_comparison = normalize_docling_runtime_volume(
+        current_envelope_for_comparison
+    )
+    target_envelope_for_comparison = normalize_docling_runtime_volume(target_envelope)
+if current_envelope_for_comparison != target_envelope_for_comparison:
     raise SystemExit(
         "shared production Compose change modifies top-level configuration outside the managed-service release boundary"
     )
 if current_services.keys() != target_services.keys():
-    if not central_opensearch_cutover and (removed or added not in ({"chat-web"}, {"llm-gateway-service"})):
+    allowed_single_addition = added in (
+        {"chat-web"},
+        {"llm-gateway-service"},
+        {DOCLING_SIDECAR},
+    ) and not removed
+    if not central_opensearch_cutover and not docling_sidecar_transition and not allowed_single_addition:
         raise SystemExit("shared production Compose change adds or removes an unsupported service")
 
 changed = []
 for name, target_block in target_services.items():
     if name not in current_services:
-        changed.append(name)
+        changed.append("ingestion-service" if name == DOCLING_SIDECAR else name)
         continue
     current_block = current_services[name]
     if central_opensearch_cutover and name == "platform-status":
@@ -577,7 +603,9 @@ for name, target_block in target_services.items():
             current_block
         )
     if current_block != target_block:
-        changed.append(name)
+        changed.append("ingestion-service" if name == DOCLING_SIDECAR else name)
+if DOCLING_SIDECAR in removed and "ingestion-service" not in changed:
+    changed.append("ingestion-service")
 if central_opensearch_cutover:
     for service in ("ingestion-service", "rag-retrieval-service"):
         if service not in changed:
@@ -2665,7 +2693,7 @@ akl_quarantine_unverified_compose_service() {
   local -a container_ids=()
 
   akl_validate_project_name "$project_name"
-  [[ "$service_name" =~ ^(registry-api|ingestion-service|rag-retrieval-service|evaluation-service|governance-service|web|chat-web|llm-gateway-service)$ ]] \
+  [[ "$service_name" =~ ^(registry-api|ingestion-service|docling-worker|rag-retrieval-service|evaluation-service|governance-service|web|chat-web|llm-gateway-service)$ ]] \
     || akl_fail "Unverified Compose service name is invalid"
   [[ "$target_image_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
     || akl_fail "Unverified durable target image ID is invalid"

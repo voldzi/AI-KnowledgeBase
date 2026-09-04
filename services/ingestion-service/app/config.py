@@ -19,6 +19,7 @@ KNOWN_PDF_ENGINES = {"auto", "pymupdf", "pypdf"}
 KNOWN_DOCLING_MODES = {"off", "shadow", "prefer", "enforce"}
 KNOWN_DOCLING_PIPELINES = {"standard", "granite"}
 KNOWN_DOCLING_DEVICES = {"auto", "cpu", "cuda", "mps", "mlx"}
+KNOWN_DOCLING_EXECUTION_MODES = {"local", "uds"}
 RAG_V2_MODES = {"off", "shadow", "enforce"}
 
 
@@ -213,10 +214,13 @@ class Settings:
     docling_mode: str
     docling_pipeline: str
     docling_device: str
+    docling_execution_mode: str
+    docling_socket_path: Path | None
     docling_artifacts_path: Path | None
     docling_artifacts_sha256: str | None
     docling_document_timeout_seconds: float
     docling_worker_timeout_seconds: float
+    docling_health_timeout_seconds: float
     docling_queue_timeout_seconds: float
     docling_max_output_bytes: int
     docling_max_concurrency: int
@@ -294,6 +298,11 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         "standard",
     ).strip().lower()
     docling_device = _get(source, "AKL_INGESTION_DOCLING_DEVICE", "auto").strip().lower()
+    docling_execution_mode = _get(
+        source,
+        "AKL_INGESTION_DOCLING_EXECUTION_MODE",
+        "local",
+    ).strip().lower()
 
     if auth_mode not in KNOWN_AUTH_MODES:
         raise ConfigError("AKL_AUTH_MODE must be one of: disabled, bearer, mock, oidc")
@@ -318,6 +327,10 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     if docling_device not in KNOWN_DOCLING_DEVICES:
         raise ConfigError(
             "AKL_INGESTION_DOCLING_DEVICE must be one of: auto, cpu, cuda, mps, mlx"
+        )
+    if docling_execution_mode not in KNOWN_DOCLING_EXECUTION_MODES:
+        raise ConfigError(
+            "AKL_INGESTION_DOCLING_EXECUTION_MODE must be one of: local, uds"
         )
 
     try:
@@ -354,6 +367,9 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         )
         docling_worker_timeout_seconds = float(
             _get(source, "AKL_INGESTION_DOCLING_WORKER_TIMEOUT_SECONDS", "330")
+        )
+        docling_health_timeout_seconds = float(
+            _get(source, "AKL_INGESTION_DOCLING_HEALTH_TIMEOUT_SECONDS", "3")
         )
         docling_queue_timeout_seconds = float(
             _get(source, "AKL_INGESTION_DOCLING_QUEUE_TIMEOUT_SECONDS", "5")
@@ -423,6 +439,10 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     if docling_worker_timeout_seconds < docling_document_timeout_seconds:
         raise ConfigError(
             "AKL_INGESTION_DOCLING_WORKER_TIMEOUT_SECONDS must be greater than or equal to the document timeout"
+        )
+    if not 0 < docling_health_timeout_seconds <= 30:
+        raise ConfigError(
+            "AKL_INGESTION_DOCLING_HEALTH_TIMEOUT_SECONDS must be between 0 and 30"
         )
     if docling_queue_timeout_seconds < 0:
         raise ConfigError(
@@ -546,6 +566,12 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         "",
     ).strip()
     docling_artifacts_path = Path(docling_artifacts_raw) if docling_artifacts_raw else None
+    docling_socket_raw = _get(
+        source,
+        "AKL_INGESTION_DOCLING_SOCKET_PATH",
+        "",
+    ).strip()
+    docling_socket_path = Path(docling_socket_raw) if docling_socket_raw else None
     docling_artifacts_sha256 = (
         _get(source, "AKL_INGESTION_DOCLING_ARTIFACTS_SHA256", "").strip().lower()
         or None
@@ -559,8 +585,17 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         )
     if docling_artifacts_path is not None and not docling_artifacts_path.is_dir():
         raise ConfigError("AKL_INGESTION_DOCLING_ARTIFACTS_PATH must be a readable directory")
-    if docling_mode != "off" and docling_artifacts_path is None:
-        raise ConfigError("Enabled Docling requires a local artifacts path")
+    if (
+        docling_mode != "off"
+        and docling_execution_mode == "local"
+        and docling_artifacts_path is None
+    ):
+        raise ConfigError("Enabled local Docling requires a local artifacts path")
+    if docling_mode != "off" and docling_execution_mode == "uds":
+        if docling_socket_path is None or not docling_socket_path.is_absolute():
+            raise ConfigError("Enabled UDS Docling requires an absolute worker socket path")
+        if docling_socket_path.suffix != ".sock":
+            raise ConfigError("AKL_INGESTION_DOCLING_SOCKET_PATH must end in .sock")
     if any(registry_service_credentials) and not all(registry_service_credentials):
         raise ConfigError(
             "Registry service identity requires AKL_REGISTRY_SERVICE_TOKEN_URL, "
@@ -648,9 +683,17 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
                 "Production requires AKL_INGESTION_PROCESS_JOBS_INLINE=true until a durable worker is deployed"
             )
         if docling_mode != "off":
-            if docling_artifacts_path is None or docling_artifacts_sha256 is None:
+            if docling_artifacts_sha256 is None:
                 raise ConfigError(
-                    "Production Docling requires a local artifacts path and pinned SHA-256"
+                    "Production Docling requires a pinned model-bundle SHA-256"
+                )
+            if docling_execution_mode != "uds":
+                raise ConfigError(
+                    "Production Docling requires the isolated UDS worker execution mode"
+                )
+            if docling_socket_path != Path("/run/akb-docling/worker.sock"):
+                raise ConfigError(
+                    "Production Docling requires the approved isolated worker socket path"
                 )
 
     return Settings(
@@ -719,10 +762,13 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         docling_mode=docling_mode,
         docling_pipeline=docling_pipeline,
         docling_device=docling_device,
+        docling_execution_mode=docling_execution_mode,
+        docling_socket_path=docling_socket_path,
         docling_artifacts_path=docling_artifacts_path,
         docling_artifacts_sha256=docling_artifacts_sha256,
         docling_document_timeout_seconds=docling_document_timeout_seconds,
         docling_worker_timeout_seconds=docling_worker_timeout_seconds,
+        docling_health_timeout_seconds=docling_health_timeout_seconds,
         docling_queue_timeout_seconds=docling_queue_timeout_seconds,
         docling_max_output_bytes=docling_max_output_bytes,
         docling_max_concurrency=docling_max_concurrency,

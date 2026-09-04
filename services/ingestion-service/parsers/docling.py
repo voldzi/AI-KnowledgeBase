@@ -16,6 +16,8 @@ import threading
 from time import perf_counter
 from typing import Any, Callable
 
+import httpx
+
 from app.config import Settings
 from app.object_storage import SourceObject
 from parsers.base import DocumentParser, ParsedBlock, ParserError, ParserResult, ParserUnavailable
@@ -59,7 +61,10 @@ TABLE_LABEL = "table"
 GRANITE_MODEL_ID = "ibm-granite/granite-docling-258M"
 WORKER_REQUEST_SCHEMA = "akb-docling-worker-request-1"
 WORKER_RESPONSE_SCHEMA = "akb-docling-worker-response-1"
+WORKER_HTTP_REQUEST_SCHEMA = "akb-docling-worker-http-request-1"
+WORKER_READINESS_SCHEMA = "akb-docling-worker-readiness-1"
 WORKER_ERROR_PATTERN = re.compile(r"^DOCLING_[A-Z0-9_]{1,80}$")
+PARSER_PROFILE_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 TESSERACT_LANGUAGE_PATTERN = re.compile(r"^[a-z0-9_-]{2,16}$")
 TESSERACT_COMMAND_PATTERN = re.compile(r"^(?:/[A-Za-z0-9._/-]+|[A-Za-z0-9._-]+)$")
 
@@ -97,11 +102,17 @@ class DoclingParser(DocumentParser):
         settings: Settings,
         *,
         converter_factory: Callable[..., Any] | None = None,
+        client_factory: Callable[[float], httpx.Client] | None = None,
     ) -> None:
         self.settings = settings
         self._converter_factory = converter_factory
+        self._client_factory = client_factory
         self._converter_cache: dict[tuple[str, bool], Any] = {}
-        self._artifact_digest: str | None = None
+        self._artifact_digest: str | None = (
+            settings.docling_artifacts_sha256
+            if settings.docling_execution_mode == "uds"
+            else None
+        )
         self._readiness_error: str | None = None
         self._capacity = threading.BoundedSemaphore(settings.docling_max_concurrency)
 
@@ -114,6 +125,8 @@ class DoclingParser(DocumentParser):
             return "disabled"
         if self._readiness_error is not None:
             return "not_ready"
+        if self.settings.docling_execution_mode == "uds":
+            return self._uds_readiness()
         if self._converter_factory is None and importlib.util.find_spec("docling") is None:
             self._readiness_error = "DOCLING_PACKAGE_UNAVAILABLE"
             return "not_ready"
@@ -166,6 +179,13 @@ class DoclingParser(DocumentParser):
     ) -> ParserResult:
         effective_pipeline = self._effective_pipeline(source)
         if self._converter_factory is None:
+            if self.settings.docling_execution_mode == "uds":
+                return self._parse_over_uds(
+                    source,
+                    pipeline=effective_pipeline,
+                    parser_profile=parser_profile,
+                    ocr_enabled=ocr_enabled,
+                )
             return self._parse_in_worker(
                 source,
                 pipeline=effective_pipeline,
@@ -217,6 +237,145 @@ class DoclingParser(DocumentParser):
                 metadata={"requires_review": True},
             )
         return result
+
+    def _uds_readiness(self) -> str:
+        socket_path = self.settings.docling_socket_path
+        expected_digest = self.settings.docling_artifacts_sha256
+        if socket_path is None or expected_digest is None:
+            self._readiness_error = "DOCLING_WORKER_CONFIGURATION_INVALID"
+            return "not_ready"
+        try:
+            socket_stat = socket_path.lstat()
+            if not stat.S_ISSOCK(socket_stat.st_mode):
+                raise OSError("worker endpoint is not a Unix socket")
+            response = self._uds_request(
+                "GET",
+                "/ready",
+                timeout=self.settings.docling_health_timeout_seconds,
+            )
+            payload = _http_json_payload(response, max_bytes=64 * 1024)
+        except (OSError, httpx.HTTPError, ParserError):
+            return "not_ready"
+        required_keys = {
+            "schema",
+            "status",
+            "execution",
+            "artifacts_sha256",
+            "max_file_bytes",
+            "max_pages",
+            "max_concurrency",
+        }
+        if (
+            response.status_code != 200
+            or not isinstance(payload, dict)
+            or set(payload) != required_keys
+            or payload.get("schema") != WORKER_READINESS_SCHEMA
+            or payload.get("status") != "ready"
+            or payload.get("execution") != "offline-uds"
+            or payload.get("artifacts_sha256") != expected_digest
+            or type(payload.get("max_file_bytes")) is not int
+            or int(payload["max_file_bytes"]) < self.settings.max_file_bytes
+            or type(payload.get("max_pages")) is not int
+            or int(payload["max_pages"]) < self.settings.docling_max_pages
+            or payload.get("max_concurrency") != 1
+        ):
+            return "not_ready"
+        return "ready"
+
+    def _parse_over_uds(
+        self,
+        source: SourceObject,
+        *,
+        pipeline: str,
+        parser_profile: str,
+        ocr_enabled: bool,
+    ) -> ParserResult:
+        expected_digest = self.settings.docling_artifacts_sha256
+        if expected_digest is None or self.settings.docling_socket_path is None:
+            raise ParserUnavailable(
+                "DOCLING_WORKER_CONFIGURATION_INVALID",
+                "The isolated Docling worker is not configured",
+            )
+        if not PARSER_PROFILE_PATTERN.fullmatch(parser_profile):
+            raise ParserError(
+                "DOCLING_WORKER_REQUEST_INVALID",
+                "The parser profile cannot be sent to the isolated worker",
+            )
+        headers = {
+            "content-type": "application/octet-stream",
+            "x-akb-docling-schema": WORKER_HTTP_REQUEST_SCHEMA,
+            "x-akb-docling-source-suffix": _safe_suffix(source),
+            "x-akb-docling-pipeline": pipeline,
+            "x-akb-docling-requested-pipeline": self.settings.docling_pipeline,
+            "x-akb-docling-parser-profile": parser_profile,
+            "x-akb-docling-ocr-enabled": "true" if ocr_enabled else "false",
+            "x-akb-docling-max-pages": str(self.settings.docling_max_pages),
+        }
+        try:
+            response = self._uds_request(
+                "POST",
+                "/v1/convert",
+                timeout=self.settings.docling_worker_timeout_seconds,
+                headers=headers,
+                content=source.content,
+            )
+            payload = _http_json_payload(
+                response,
+                max_bytes=self.settings.docling_max_output_bytes,
+            )
+        except httpx.TimeoutException as exc:
+            raise ParserError(
+                "DOCLING_WORKER_TIMEOUT",
+                "Docling exceeded the isolated worker time limit",
+            ) from exc
+        except (OSError, httpx.HTTPError) as exc:
+            raise ParserUnavailable(
+                "DOCLING_WORKER_UNAVAILABLE",
+                "The isolated Docling worker is unavailable",
+            ) from exc
+        if response.status_code != 200 and not isinstance(payload, dict):
+            raise ParserUnavailable(
+                "DOCLING_WORKER_UNAVAILABLE",
+                "The isolated Docling worker is unavailable",
+            )
+        result = _parser_result_from_worker_payload(payload)
+        metadata = result.metadata
+        if (
+            metadata.get("docling_artifacts_sha256") != expected_digest
+            or metadata.get("docling_pipeline") != pipeline
+            or metadata.get("docling_requested_pipeline") != self.settings.docling_pipeline
+        ):
+            raise ParserError(
+                "DOCLING_WORKER_RESPONSE_INVALID",
+                "The isolated Docling worker returned conflicting provenance",
+            )
+        return result
+
+    def _uds_request(
+        self,
+        method: str,
+        path: str,
+        *,
+        timeout: float,
+        headers: dict[str, str] | None = None,
+        content: bytes | None = None,
+    ) -> httpx.Response:
+        socket_path = self.settings.docling_socket_path
+        if socket_path is None:
+            raise OSError("Docling worker socket is not configured")
+        if self._client_factory is not None:
+            client = self._client_factory(timeout)
+        else:
+            transport = httpx.HTTPTransport(uds=str(socket_path), retries=0)
+            client = httpx.Client(
+                base_url="http://akb-docling-worker",
+                transport=transport,
+                timeout=timeout,
+                follow_redirects=False,
+                trust_env=False,
+            )
+        with client:
+            return client.request(method, path, headers=headers, content=content)
 
     def _parse_in_worker(
         self,
@@ -585,6 +744,27 @@ def _worker_protocol_error() -> ParserError:
         "DOCLING_WORKER_RESPONSE_INVALID",
         "The isolated Docling worker returned an invalid response",
     )
+
+
+def _http_json_payload(response: httpx.Response, *, max_bytes: int) -> object:
+    content_type = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    content_length = response.headers.get("content-length")
+    if content_type != "application/json":
+        raise _worker_protocol_error()
+    if content_length is not None:
+        try:
+            declared_length = int(content_length)
+        except ValueError as exc:
+            raise _worker_protocol_error() from exc
+        if declared_length <= 0 or declared_length > max_bytes:
+            raise _worker_protocol_error()
+    payload = response.content
+    if not payload or len(payload) > max_bytes:
+        raise _worker_protocol_error()
+    try:
+        return json.loads(payload)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise _worker_protocol_error() from exc
 
 
 def _read_private_worker_response(path: Path, *, max_bytes: int) -> object:

@@ -9,8 +9,10 @@ PDF pipeline; nenahrazuje Registry, Information Policy, audit, embeddings,
 hybridní retrieval ani citace.
 
 Implementace je připnutá na zúžený profil `docling-slim==2.124.0` s explicitně
-vybranými formáty a lokálními modely. Výchozí režim je `off`,
-takže existující ingestion zůstává beze změny.
+vybranými formáty a lokálními modely. Produkční profil používá standardní
+Docling na CPU v režimu `prefer`; nativní parser zůstává auditovatelným
+fallbackem. GraniteDocling zůstává připravenou volbou pro pozdější
+akcelerovaný profil a v CPU produkci se neaktivuje.
 
 ## Režimy
 
@@ -38,7 +40,7 @@ musí CI a serverový test používat `cpu`, pokud Metal preflight neprojde.
 
 ## Modelový balík
 
-Lokální příprava stáhne veřejné modely `layout`, `tableformer`,
+Lokální vývojová příprava může stáhnout modely `layout`, `tableformer`,
 `granitedocling` a `granitedocling_mlx` do ignorovaného adresáře `data/`:
 
 ```bash
@@ -53,6 +55,12 @@ Na Apple Silicon skript vyžaduje Python 3.14 a používá samostatný uzamčen�
 přes GraniteDocling/MLX. Produkční Linux/amd64 používá Python 3.12, plný
 `requirements-docling.c4.lock` a CPU variantu PyTorch z pevně určeného indexu.
 
+Produkční standardní balík se vytváří pouze z uzavřeného manifestu
+`services/ingestion-service/docling_models/source-bundle.json`. Manifest
+připíná přesné commity veřejných repozitářů layout a TableFormer modelů.
+Provisioner odmítne neúplný obsah, symlink, již existující cíl i jinou revizi,
+odstraní transportní cache a vytvoří read-only balík s kanonickým digestem.
+
 Produkční aktivace vyžaduje:
 
 - Docling nainstalovaný v ingestion image (`AKL_INSTALL_DOCLING=true` při buildu);
@@ -62,19 +70,28 @@ Produkční aktivace vyžaduje:
 - pouze binární balíčky; zdrojový build nové závislosti je odmítnut;
 - zúžený `docling-slim` profil bez nepoužívaného RapidOCR backendu; skenované
   dokumenty používají explicitně systémový Tesseract s instalovanými jazyky;
-- modelový balík připojený pouze pro čtení; v Docker profilu host nastaví
-  `AKL_INGESTION_DOCLING_ARTIFACTS_SOURCE_DIR` a cesta v kontejneru zůstává
-  `AKL_INGESTION_DOCLING_ARTIFACTS_PATH=/opt/docling-artifacts`;
+- modelový balík připravený skriptem
+  `scripts/provision_docling_model_bundle.sh --sha <release-sha>` nad přesným
+  release SHA;
+- modelový balík připojený pouze pro čtení a pouze do izolovaného
+  `docling-worker`; host nastaví `AKL_INGESTION_DOCLING_ARTIFACTS_SOURCE_DIR`
+  a cesta ve workeru zůstává `/opt/docling-artifacts`;
 - přesný obsahový SHA-256;
 - žádné stahování modelu za běhu; modelový balík se připravuje odděleně před aktivací;
-- úspěšný readiness a shadow acceptance.
+- `AKL_INGESTION_DOCLING_EXECUTION_MODE=uds` a pevný socket
+  `/run/akb-docling/worker.sock`;
+- úspěšný readiness a skutečný syntetický konverzní smoke test.
 
 ## Bezpečnostní hranice
 
+- Docling běží v samostatném kontejneru bez sítě, service credentials,
+  databáze, objektového úložiště a dokumentových volume. Ingestion předává
+  pouze bajty právě zpracovávaného zdroje přes privátní Unix socket.
 - Docling dostává kopii zdroje v novém privátním dočasném adresáři s režimem
   `0700`; vstup, request a odpověď workeru mají `0600`. Nikdy nedostává URL.
-- Každý převod běží v samostatném procesu bez service credentials. Nadřazený
-  proces uplatní tvrdý timeout, ukončí worker a odmítne neuzavřenou odpověď.
+- Každý převod běží v dalším samostatném procesu s omezeným prostředím.
+  Nadřazený proces uplatní tvrdý timeout, ukončí celou skupinu procesu a
+  odmítne neuzavřenou odpověď.
 - Výchozí kapacita je jedna Docling úloha. Vyčerpaná fronta skončí viditelným,
   bezpečným stavem namísto neomezeného růstu RAM.
 - Remote services a externí pluginy jsou vypnuté.
@@ -85,8 +102,10 @@ Produkční aktivace vyžaduje:
 - Výjimky nevracejí obsah backendové chyby, dokumentu ani lokální cestu.
 - Do logu a auditu se neukládá text, Docling JSON, obrázky ani tabulková data.
 - `enforce` neprovádí méně důvěryhodný parser fallback.
-- Parsing běží mimo webový event loop a Docling navíc mimo proces služby, aby
-  dlouhá inference neblokovala health, readiness ani nepoškodila webový proces.
+- Worker má read-only root filesystem, odebrané capabilities,
+  `no-new-privileges`, omezení CPU/RAM/PID a kapacitu jedna úloha.
+- Parsing běží mimo webový event loop a Docling navíc mimo proces ingestion
+  služby, aby dlouhá inference neblokovala health ani webový proces.
 
 ## Lokální ověření
 
@@ -120,19 +139,20 @@ nedostupný parser nesmí být vydáván za plně důvěryhodný výsledek.
 
 1. **Lokální technická kvalifikace:** sestavit hashově uzamčený image, ověřit offline
    standardní Docling, nativní macOS GraniteDocling, stabilitu digestu,
-   fallbacky, izolovaný timeout a regresní testy. Obraz a bezpečnostní hranice
-   jsou implementované; převod reprezentativního korpusu s finálním modelovým
-   balíkem je povinný akceptační krok před změnou z `off` na `shadow`.
-2. **Shadow korpus:** spustit `shadow` na reprezentativní sadě bez změny
+   fallbacky, izolovaný timeout a regresní testy.
+2. **Produkční bezpečná aktivace:** připravit immutable standardní modelový
+   balík, spustit izolovaný worker a v `prefer` provést syntetický release probe.
+   Při selhání Docling zůstane nativní parser dostupný a fallback je viditelný.
+3. **Shadow korpus:** spustit `shadow` na reprezentativní sadě bez změny
    autoritativních chunků. Korpus musí pokrýt interní předpisy, manuály,
    tabulky, skeny, formuláře a vícesloupcové dokumenty. Výsledek nesmí
    snížit úspěšnost citací, úplnost textu ani přesnost tabulek proti
    nativnímu parseru.
-3. **Selektivní `prefer`:** standardní Docling povolit jen pro formáty a
-   profily, které shadow gate prokazatelně zlepšil. Granite povolit jen na
+4. **Selektivní optimalizace:** podle evaluačních výsledků upravit profily,
+   OCR a typy dokumentů. Granite povolit jen na
    ukončitelném akcelerovaném workeru a pro PDF třídy, kde přináší měřené
    zlepšení. Fallback zůstává viditelný v reportu.
-4. **`enforce`:** použít pouze pro schválený extrakční profil s připnutým
+5. **`enforce`:** použít pouze pro schválený extrakční profil s připnutým
    image a modelem, procesním timeoutem, kapacitním limitem, monitoringem,
    rollbackem a opakovatelným reindexem.
 

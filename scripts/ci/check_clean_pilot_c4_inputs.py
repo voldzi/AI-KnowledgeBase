@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 from pathlib import Path
 
@@ -20,6 +21,16 @@ PNPM_CHECKSUM = "sha256:deafa7ec98a1218b6a047289b92fbe2395c1e22d3495bb7116530132
 DEBIAN_SNAPSHOT = "snapshot.debian.org/archive/debian/20260824T000000Z"
 DEBIAN_SECURITY_SNAPSHOT = "snapshot.debian.org/archive/debian-security/20260824T000000Z"
 UPSTREAM_NAMES = ("postgresql", "s3-object-storage", "opensearch", "qdrant")
+DOCLING_MODEL_SOURCES = (
+    (
+        "docling-project/docling-layout-heron",
+        "8f39ad3c0b4c58e9c2d2c84a38465abf757272d8",
+    ),
+    (
+        "docling-project/docling-models",
+        "fc0f2d45e2218ea24bce5045f58a389aed16dc23",
+    ),
+)
 
 
 def stop(message: str) -> None:
@@ -109,6 +120,7 @@ def check(root: Path) -> None:
         "--extra-index-url https://download.pytorch.org/whl/cpu",
         "reviewed CPU-only PyTorch package source",
     )
+    require(ingestion, "COPY docling_models ./docling_models", "Docling model provisioner")
     reject(ingestion, "requirements-docling.txt", "unlocked Docling requirements")
     docling_lock = root / "services/ingestion-service/requirements-docling.c4.lock"
     check_python_lock(docling_lock)
@@ -156,6 +168,45 @@ def check(root: Path) -> None:
         "AKL_DOCLING_MIN_FREE_GIB:-20",
         "Docling local disk-space preflight",
     )
+    model_manifest_path = (
+        root / "services/ingestion-service/docling_models/source-bundle.json"
+    )
+    try:
+        model_manifest = json.loads(model_manifest_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        stop(f"invalid Docling model source manifest: {exc.__class__.__name__}")
+    if not isinstance(model_manifest, dict) or set(model_manifest) != {
+        "schema",
+        "profile",
+        "docling_package",
+        "repositories",
+        "required_files",
+    }:
+        stop("Docling model source manifest is not closed")
+    if (
+        model_manifest.get("schema") != "akb-docling-model-sources-1"
+        or model_manifest.get("profile") != "standard-cpu-v1"
+        or model_manifest.get("docling_package") != "docling-slim==2.124.0"
+    ):
+        stop("Docling model source manifest contract drift")
+    repositories = model_manifest.get("repositories")
+    if not isinstance(repositories, list) or tuple(
+        (item.get("repo_id"), item.get("revision"))
+        for item in repositories
+        if isinstance(item, dict)
+    ) != DOCLING_MODEL_SOURCES:
+        stop("Docling model source revisions drifted from the approved pins")
+    provisioner = (root / "scripts/provision_docling_model_bundle.sh").read_text(
+        encoding="utf-8"
+    )
+    for value, label in (
+        ("--build-arg AKL_INSTALL_DOCLING=true", "Docling-enabled provision image"),
+        ("--read-only", "read-only provision container"),
+        ("--cap-drop ALL", "provision container capability drop"),
+        ("--security-opt no-new-privileges:true", "provision no-new-privileges"),
+        ("python -m docling_models.provision", "closed model provision entrypoint"),
+    ):
+        require(provisioner, value, label)
 
     web = (root / "apps/web/Dockerfile").read_text(encoding="utf-8")
     if web.count(f"FROM {NODE_BASE}") != 3:

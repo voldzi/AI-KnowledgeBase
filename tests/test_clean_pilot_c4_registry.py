@@ -55,7 +55,9 @@ class CleanPilotC4RegistryTests(unittest.TestCase):
                 "services/evaluation-service/Dockerfile",
                 "services/evaluation-service/requirements.c4.lock",
                 "scripts/ci/compile_docling_locks.sh",
+                "scripts/provision_docling_model_bundle.sh",
                 "scripts/setup_docling_local.sh",
+                "services/ingestion-service/docling_models/source-bundle.json",
             ):
                 target = fixture / relative
                 target.parent.mkdir(parents=True, exist_ok=True)

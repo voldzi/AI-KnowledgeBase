@@ -28,6 +28,7 @@ class AffectedComponentsTests(unittest.TestCase):
                 ".gitea/workflows/ci.yaml",
                 "scripts/ci/affected_components.py",
                 "tests/test_ci_affected_components.py",
+                "tests/test_clean_pilot_c4_registry.py",
             ]
         )
         self.assertEqual(
@@ -56,6 +57,26 @@ class AffectedComponentsTests(unittest.TestCase):
         self.assertTrue(plan.immutable_release)
         self.assertFalse(plan.web)
         self.assertFalse(plan.compose)
+
+    def test_docling_release_paths_select_only_ingestion_release_surface(self) -> None:
+        plan = plan_paths(
+            [
+                "scripts/provision_docling_model_bundle.sh",
+                "scripts/docling_local_smoke.py",
+                "scripts/setup_docling_local.sh",
+                "scripts/check_docker_home_compose_render.sh",
+                "tests/test_docling_production_release.py",
+            ]
+        )
+        self.assertTrue(plan.ingestion_service)
+        self.assertTrue(plan.compose)
+        self.assertTrue(plan.immutable_release)
+        self.assertFalse(plan.web)
+        self.assertFalse(plan.registry_api)
+        self.assertFalse(plan.rag_retrieval_service)
+        self.assertFalse(plan.llm_gateway_service)
+        self.assertFalse(plan.evaluation_service)
+        self.assertFalse(plan.governance_service)
 
     def test_unknown_or_shared_change_fails_closed_to_full_ci(self) -> None:
         plan = plan_paths(["pyproject.toml"])

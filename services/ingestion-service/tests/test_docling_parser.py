@@ -8,12 +8,18 @@ import stat
 import subprocess
 from types import SimpleNamespace
 
+import httpx
 import pytest
 
 from app.config import ConfigError, load_settings
 from app.object_storage import SourceObject
-from parsers.base import ParserError
-from parsers.docling import DoclingParser, directory_sha256
+from parsers.base import ParserError, ParserResult
+from parsers.docling import (
+    DoclingParser,
+    WORKER_READINESS_SCHEMA,
+    directory_sha256,
+    worker_success_payload,
+)
 from parsers.router import ParserRouter
 
 
@@ -148,6 +154,137 @@ class _Factory:
     def __call__(self, *, pipeline: str, ocr_enabled: bool):
         self.requests.append((pipeline, ocr_enabled))
         return self.converter
+
+
+def _uds_settings(tmp_path: Path):
+    socket_path = tmp_path / "docling.sock"
+    settings = _settings(
+        tmp_path,
+        mode="enforce",
+        AKL_INGESTION_DOCLING_EXECUTION_MODE="uds",
+        AKL_INGESTION_DOCLING_SOCKET_PATH=str(socket_path),
+    )
+    return settings, socket_path
+
+
+def _mock_socket_stat(monkeypatch: pytest.MonkeyPatch, socket_path: Path) -> None:
+    original = Path.lstat
+
+    def lstat(path: Path):  # type: ignore[no-untyped-def]
+        if path == socket_path:
+            return SimpleNamespace(st_mode=stat.S_IFSOCK)
+        return original(path)
+
+    monkeypatch.setattr(Path, "lstat", lstat)
+
+
+def test_uds_worker_readiness_and_parse_are_closed_and_pinned(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings, socket_path = _uds_settings(tmp_path)
+    _mock_socket_stat(monkeypatch, socket_path)
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/ready":
+            return httpx.Response(
+                200,
+                json={
+                    "schema": WORKER_READINESS_SCHEMA,
+                    "status": "ready",
+                    "execution": "offline-uds",
+                    "artifacts_sha256": settings.docling_artifacts_sha256,
+                    "max_file_bytes": settings.max_file_bytes,
+                    "max_pages": settings.docling_max_pages,
+                    "max_concurrency": 1,
+                },
+            )
+        assert request.url.path == "/v1/convert"
+        assert request.content == b"source"
+        assert request.headers["x-akb-docling-schema"] == "akb-docling-worker-http-request-1"
+        return httpx.Response(
+            200,
+            json=worker_success_payload(
+                ParserResult(
+                    parser_name="docling_standard",
+                    blocks=[],
+                    pages_processed=1,
+                    metadata={
+                        "docling_artifacts_sha256": settings.docling_artifacts_sha256,
+                        "docling_pipeline": "standard",
+                        "docling_requested_pipeline": "standard",
+                    },
+                )
+            ),
+        )
+
+    def client_factory(timeout: float) -> httpx.Client:
+        return httpx.Client(
+            base_url="http://worker",
+            transport=httpx.MockTransport(handler),
+            timeout=timeout,
+        )
+
+    parser = DoclingParser(settings, client_factory=client_factory)
+    assert parser.readiness() == "ready"
+    result = parser.parse(_source("manual.pdf", "application/pdf"), parser_profile="default")
+    assert result.parser_name == "docling_standard"
+    assert [request.url.path for request in requests] == [
+        "/ready",
+        "/ready",
+        "/v1/convert",
+    ]
+
+
+def test_uds_worker_rejects_provenance_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings, socket_path = _uds_settings(tmp_path)
+    _mock_socket_stat(monkeypatch, socket_path)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/ready":
+            return httpx.Response(
+                200,
+                json={
+                    "schema": WORKER_READINESS_SCHEMA,
+                    "status": "ready",
+                    "execution": "offline-uds",
+                    "artifacts_sha256": settings.docling_artifacts_sha256,
+                    "max_file_bytes": settings.max_file_bytes,
+                    "max_pages": settings.docling_max_pages,
+                    "max_concurrency": 1,
+                },
+            )
+        return httpx.Response(
+            200,
+            json=worker_success_payload(
+                ParserResult(
+                    parser_name="docling_standard",
+                    blocks=[],
+                    pages_processed=1,
+                    metadata={
+                        "docling_artifacts_sha256": "sha256:" + "0" * 64,
+                        "docling_pipeline": "standard",
+                        "docling_requested_pipeline": "standard",
+                    },
+                )
+            ),
+        )
+
+    parser = DoclingParser(
+        settings,
+        client_factory=lambda timeout: httpx.Client(
+            base_url="http://worker",
+            transport=httpx.MockTransport(handler),
+            timeout=timeout,
+        ),
+    )
+    with pytest.raises(ParserError, match="conflicting provenance"):
+        parser.parse(_source("manual.pdf", "application/pdf"), parser_profile="default")
 
 
 def test_docling_preserves_structure_tables_and_page_provenance(tmp_path: Path) -> None:
@@ -357,6 +494,52 @@ def test_docling_configuration_is_closed_and_production_is_offline(tmp_path: Pat
                 "AKL_INGESTION_DOCLING_MAX_CONCURRENCY": "9",
             }
         )
+
+
+def test_production_docling_requires_exact_isolated_socket(tmp_path: Path) -> None:
+    secret_file = tmp_path / "registry.secret"
+    secret_file.write_text("registry-secret\n", encoding="utf-8")
+    artifacts = tmp_path / "models"
+    artifacts.mkdir()
+    (artifacts / "model.bin").write_bytes(b"model")
+    base = {
+        "AKL_ENV": "production",
+        "AKL_AUTH_MODE": "oidc",
+        "AKL_OIDC_ISSUER": "https://login.example/realms/stratos",
+        "AKL_OIDC_AUDIENCE": "akl-api",
+        "AKL_OIDC_JWKS_URL": "https://login.example/realms/stratos/certs",
+        "AKL_SERVICE_ACCOUNT_SUBJECT": "svc-ingestion",
+        "AKL_INGESTION_REGISTRY_CLIENT_MODE": "http",
+        "AKL_REGISTRY_SERVICE_TOKEN_URL": "https://login.example/token",
+        "AKL_REGISTRY_SERVICE_CLIENT_ID": "svc-ingestion",
+        "AKL_REGISTRY_SERVICE_CLIENT_SECRET_FILE": str(secret_file),
+        "AKL_INGESTION_OBJECT_STORAGE_MODE": "local",
+        "AKL_OBJECT_STORAGE_ROOT": str(tmp_path / "objects"),
+        "AKL_INGESTION_EMBEDDING_CLIENT_MODE": "http",
+        "AKL_INGESTION_INDEXER_MODE": "qdrant",
+        "AKL_INGESTION_DOCLING_MODE": "prefer",
+        "AKL_INGESTION_DOCLING_ARTIFACTS_PATH": str(artifacts),
+        "AKL_INGESTION_DOCLING_ARTIFACTS_SHA256": directory_sha256(artifacts),
+    }
+    with pytest.raises(ConfigError, match="isolated UDS"):
+        load_settings(base)
+    with pytest.raises(ConfigError, match="approved isolated worker socket"):
+        load_settings(
+            {
+                **base,
+                "AKL_INGESTION_DOCLING_EXECUTION_MODE": "uds",
+                "AKL_INGESTION_DOCLING_SOCKET_PATH": "/tmp/docling.sock",
+            }
+        )
+    settings = load_settings(
+        {
+            **base,
+            "AKL_INGESTION_DOCLING_EXECUTION_MODE": "uds",
+            "AKL_INGESTION_DOCLING_SOCKET_PATH": "/run/akb-docling/worker.sock",
+        }
+    )
+    assert settings.docling_execution_mode == "uds"
+    assert settings.docling_socket_path == Path("/run/akb-docling/worker.sock")
 
 
 def test_isolated_worker_timeout_is_killed_without_inheriting_service_secrets(

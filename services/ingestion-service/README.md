@@ -103,10 +103,13 @@ curl http://localhost:8090/ready
 | `AKL_INGESTION_DOCLING_MODE` | `off`, `shadow`, `prefer`, nebo fail-closed `enforce`; výchozí `off` nemění dosavadní parser. |
 | `AKL_INGESTION_DOCLING_PIPELINE` | `standard`, nebo `granite`; GraniteDocling se používá pro PDF, ostatní podporované formáty zpracuje standardní Docling. |
 | `AKL_INGESTION_DOCLING_DEVICE` | `auto`, `cpu`, `cuda`, `mps`, nebo `mlx`; pro headless Mac test použijte `cpu`, pro interaktivní Apple Silicon `mlx`. |
+| `AKL_INGESTION_DOCLING_EXECUTION_MODE` | `local` pro vývoj nebo `uds` pro izolovaný produkční worker; produkce vyžaduje `uds`. |
+| `AKL_INGESTION_DOCLING_SOCKET_PATH` | Absolutní cesta k privátnímu Unix socketu; produkční kontrakt používá `/run/akb-docling/worker.sock`. |
 | `AKL_INGESTION_DOCLING_ARTIFACTS_PATH` | Read-only lokální modelový balík. Produkční aktivace jej vyžaduje. |
 | `AKL_INGESTION_DOCLING_ARTIFACTS_SHA256` | Kanonický SHA-256 obsahu modelového balíku; neshoda skončí fail-closed. |
 | `AKL_INGESTION_DOCLING_DOCUMENT_TIMEOUT_SECONDS` | Interní časový rozpočet Docling pipeline. |
 | `AKL_INGESTION_DOCLING_WORKER_TIMEOUT_SECONDS` | Tvrdý limit samostatného procesu; musí být alespoň jako interní limit dokumentu. |
+| `AKL_INGESTION_DOCLING_HEALTH_TIMEOUT_SECONDS` | Krátký timeout health/readiness volání izolovaného workeru. |
 | `AKL_INGESTION_DOCLING_QUEUE_TIMEOUT_SECONDS` | Nejdelší čekání na omezenou kapacitu Docling workeru. |
 | `AKL_INGESTION_DOCLING_MAX_OUTPUT_BYTES` | Maximální velikost privátní uzavřené odpovědi workeru. |
 | `AKL_INGESTION_DOCLING_MAX_CONCURRENCY` | Současné Docling převody; výchozí bezpečná hodnota je `1`. |
@@ -219,21 +222,25 @@ dynamické řešení verzí.
 Linux profil používá zúženou sadu `docling-slim` modulů pro podporované AKB
 formáty a lokální modely. OCR je explicitně svázané se systémovým Tesseractem
 a jazyky `AKL_INGESTION_OCR_LANGUAGE`; automatický RapidOCR backend není
-součástí obrazu. Při Docker spuštění musí host nastavit
-`AKL_INGESTION_DOCLING_ARTIFACTS_SOURCE_DIR` na adresář modelů a současně
-`AKL_INGESTION_DOCLING_ARTIFACTS_PATH=/opt/docling-artifacts`. Compose jej
-připojí pouze pro čtení a digest se ověřuje před prvním převodem.
+součástí obrazu. Produkce používá samostatný `docling-worker` ze stejného
+immutable ingestion image. Worker nemá síť, service credentials, databázové ani
+dokumentové volume a s ingestion službou komunikuje pouze přes privátní Unix
+socket. Host nastaví `AKL_INGESTION_DOCLING_ARTIFACTS_SOURCE_DIR` na neměnný
+adresář modelů; pouze worker jej připojí jako
+`/opt/docling-artifacts:ro`. Digest se ověřuje při startu workeru, v readiness,
+u každé odpovědi a v produkčním release gate.
 
 Docling zachovává typ bloku, hierarchii sekcí, tabulky, stránky a bounding boxy.
 Do chunk metadata se ukládá verze parseru, pipeline, modelový digest, hash
 strukturálního výsledku a výkonnostní metriky. Celý Docling JSON se do logu,
 auditu ani chunk metadata nekopíruje.
 
-Každý skutečný Docling převod běží v samostatném ukončitelném procesu s
-omezeným prostředím bez přihlašovacích údajů služby. Privátní dočasné soubory
-jsou odstraněny po převodu, worker má tvrdý timeout a výchozí kapacitu jedna
-úloha. Režim `shadow` při selhání nemění autoritativní nativní výsledek ani jeho
-stav; diagnostika zůstane pouze v obsahově bezpečných metadatech.
+Každý skutečný Docling převod běží v samostatném ukončitelném procesu uvnitř
+izolovaného workeru. Privátní dočasné soubory jsou odstraněny po převodu,
+worker má tvrdý timeout, omezení CPU/RAM/PID a kapacitu přesně jedna úloha.
+Režim `shadow` při selhání nemění autoritativní nativní výsledek ani jeho stav;
+diagnostika zůstane pouze v obsahově bezpečných metadatech. Produkční ověření
+provádí skutečný převod syntetického PDF přes tentýž Unix socket.
 
 Lokální příprava a obsahově bezpečný smoke test:
 

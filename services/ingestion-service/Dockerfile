@@ -54,6 +54,7 @@ RUN case "$AKL_INSTALL_DOCLING" in \
 
 COPY app ./app
 COPY parsers ./parsers
+COPY docling_models ./docling_models
 COPY chunkers ./chunkers
 COPY embeddings ./embeddings
 COPY indexers ./indexers
