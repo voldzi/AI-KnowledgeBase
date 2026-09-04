@@ -283,7 +283,7 @@ set -euo pipefail
 image_ref_for_service() {
   case "$1" in
     registry-api) printf '%s\n' "$REGISTRY_API_IMAGE" ;;
-    ingestion-service) printf '%s\n' "$INGESTION_SERVICE_IMAGE" ;;
+    ingestion-service|docling-worker) printf '%s\n' "$INGESTION_SERVICE_IMAGE" ;;
     rag-retrieval-service) printf '%s\n' "$RAG_RETRIEVAL_SERVICE_IMAGE" ;;
     evaluation-service) printf '%s\n' "$EVALUATION_SERVICE_IMAGE" ;;
     governance-service) printf '%s\n' "$GOVERNANCE_SERVICE_IMAGE" ;;
@@ -328,7 +328,7 @@ write_image_state() {
 container_service_for_id() {
   local requested_id="$1"
   local service state_dir
-  for service in registry-api ingestion-service rag-retrieval-service evaluation-service governance-service web chat-web llm-gateway-service; do
+  for service in registry-api ingestion-service docling-worker rag-retrieval-service evaluation-service governance-service web chat-web llm-gateway-service; do
     state_dir="${FAKE_RUNTIME_DIR}/containers/${service}"
     if [[ -f "${state_dir}/id" && "$(<"${state_dir}/id")" == "$requested_id" ]]; then
       printf '%s\n' "$service"
@@ -343,7 +343,12 @@ write_container_state() {
   local compose_file="$2"
   local image_dir="${FAKE_RUNTIME_DIR}/images/${service}"
   local state_dir="${FAKE_RUNTIME_DIR}/containers/${service}"
-  local execution_ref image_id revision project
+  local execution_ref image_id revision project release_service
+  release_service="$service"
+  if [[ "$service" == "docling-worker" ]]; then
+    image_dir="${FAKE_RUNTIME_DIR}/images/ingestion-service"
+    release_service="ingestion-service"
+  fi
   [[ -d "$image_dir" ]]
   execution_ref="$(image_ref_for_service "$service")"
   if [[ "$execution_ref" == sha256:* ]]; then
@@ -367,6 +372,7 @@ write_container_state() {
   printf '%s\n' "$image_id" >"${state_dir}/image_id"
   printf 'akl-test\n' >"${state_dir}/compose_project"
   printf '%s\n' "$service" >"${state_dir}/compose_service"
+  printf '%s\n' "$release_service" >"${state_dir}/release_service"
   printf 'False\n' >"${state_dir}/compose_oneoff"
   printf '%s\n' "$compose_file" >"${state_dir}/compose_config_files"
   printf '%s' "$service" | sha256sum | awk '{print $1}' >"${state_dir}/compose_config_hash"
@@ -621,6 +627,34 @@ if [[ "${1-}" == "inspect" ]]; then
         printf 'exited\n'
       fi
       ;;
+    '{{.State.Health.Status}}')
+      [[ "$service" == "docling-worker" ]] || exit 90
+      printf 'healthy\n'
+      ;;
+    '{{.HostConfig.NetworkMode}}')
+      [[ "$service" == "docling-worker" ]] || exit 90
+      printf 'none\n'
+      ;;
+    '{{.HostConfig.ReadonlyRootfs}}')
+      [[ "$service" == "docling-worker" ]] || exit 90
+      printf 'true\n'
+      ;;
+    '{{json .HostConfig.CapDrop}}')
+      [[ "$service" == "docling-worker" ]] || exit 90
+      printf '["ALL"]\n'
+      ;;
+    '{{json .HostConfig.SecurityOpt}}')
+      [[ "$service" == "docling-worker" ]] || exit 90
+      printf '["no-new-privileges:true"]\n'
+      ;;
+    '{{json .Config.Env}}')
+      [[ "$service" == "docling-worker" ]] || exit 90
+      printf '["AKL_INGESTION_DOCLING_MODE=prefer"]\n'
+      ;;
+    '{{json .Mounts}}')
+      [[ "$service" == "docling-worker" ]] || exit 90
+      printf '[{"Destination":"/opt/docling-artifacts","RW":false,"Type":"bind"},{"Destination":"/run/akb-docling","RW":true,"Type":"volume"},{"Destination":"/tmp","RW":true,"Type":"tmpfs"}]\n'
+      ;;
     '{{.Config.Image}}') cat "${state_dir}/image_ref" ;;
     '{{.Image}}') cat "${state_dir}/image_id" ;;
     '{{index .Config.Labels "com.docker.compose.project"}}') cat "${state_dir}/compose_project" ;;
@@ -630,7 +664,7 @@ if [[ "${1-}" == "inspect" ]]; then
     '{{index .Config.Labels "com.docker.compose.config-hash"}}') cat "${state_dir}/compose_config_hash" ;;
     '{{index .Config.Labels "org.opencontainers.image.revision"}}') cat "${state_dir}/revision" ;;
     '{{index .Config.Labels "cz.zeleznalady.akl.compose-project"}}') cat "${state_dir}/project" ;;
-    '{{index .Config.Labels "cz.zeleznalady.akl.service"}}') cat "${state_dir}/compose_service" ;;
+    '{{index .Config.Labels "cz.zeleznalady.akl.service"}}') cat "${state_dir}/release_service" ;;
     *) exit 90 ;;
   esac
   exit 0
@@ -674,7 +708,7 @@ if [[ "${1-}" == "ps" ]]; then
   shift 2
   [[ "${1-}" == "--format" && "${2-}" == '{{.ID}}' && $# -eq 2 ]]
   case "$service" in
-    registry-api|ingestion-service|rag-retrieval-service|evaluation-service|governance-service|web|chat-web|llm-gateway-service) ;;
+    registry-api|ingestion-service|docling-worker|rag-retrieval-service|evaluation-service|governance-service|web|chat-web|llm-gateway-service) ;;
     *) exit 98 ;;
   esac
   if [[ "$service" == "registry-api" \
@@ -694,6 +728,22 @@ if [[ "${1-}" == "ps" ]]; then
 fi
 
 if [[ "${1-}" == "exec" ]]; then
+  if [[ $# -eq 6 \
+    && "${3-}" == "python" \
+    && "${4-}" == "-m" \
+    && "${5-}" == "parsers.docling_service_probe" \
+    && ( "${6-}" == "--health" || "${6-}" == "--conversion-smoke" ) ]]; then
+    requested_id="${2-}"
+    service="$(container_service_for_id "$requested_id")" || exit 1
+    if [[ "${6-}" == "--health" ]]; then
+      [[ "$service" == "docling-worker" ]] || exit 98
+    else
+      [[ "$service" == "ingestion-service" ]] || exit 98
+    fi
+    printf 'docker_exec_docling_probe:%s:%s\n' "$service" "${6-}" >>"$CALL_LOG"
+    [[ "${FAKE_DOCLING_CONVERSION_SMOKE_FAIL:-false}" != "true" ]]
+    exit 0
+  fi
   if [[ $# -eq 5 \
     && "${3-}" == "python" \
     && "${4-}" == "-c" ]]; then
@@ -737,6 +787,7 @@ if [[ "${1-}" == "build" ]]; then
   revision_label=""
   project_label=""
   service_label=""
+  docling_build_arg=""
   target_ref=""
   dockerfile=""
   context=""
@@ -753,6 +804,11 @@ if [[ "${1-}" == "build" ]]; then
           cz.zeleznalady.akl.service=*) service_label="${2#*=}" ;;
           *) exit 98 ;;
         esac
+        shift 2
+        ;;
+      --build-arg)
+        [[ "${2-}" == "AKL_INSTALL_DOCLING=true" ]] || exit 98
+        docling_build_arg="$2"
         shift 2
         ;;
       --tag)
@@ -774,6 +830,7 @@ if [[ "${1-}" == "build" ]]; then
     && "$revision_label" == "$AKL_SERVICE_VERSION" \
     && "$project_label" == "akl-test" \
     && "$service_label" == "ingestion-service" \
+    && "$docling_build_arg" == "AKL_INSTALL_DOCLING=true" \
     && "$target_ref" == "$INGESTION_SERVICE_IMAGE" \
     && "$dockerfile" == "${context}/Dockerfile" \
     && "$context" == "${AKL_RELEASE_ROOT}/releases/${AKL_SERVICE_VERSION}/services/ingestion-service" \
@@ -879,7 +936,7 @@ case "$command_name" in
     printf 'up:%s\n' "$*" >>"$CALL_LOG"
     for argument in "$@"; do
       case "$argument" in
-        registry-api|ingestion-service|rag-retrieval-service|evaluation-service|governance-service|web|chat-web|llm-gateway-service)
+        registry-api|ingestion-service|docling-worker|rag-retrieval-service|evaluation-service|governance-service|web|chat-web|llm-gateway-service)
           if [[ "${FAKE_IMAGE_RETARGET_DURING_UP_SERVICE:-}" == "$argument" \
             && ! -e "${FAKE_RUNTIME_DIR}/fault-image-retarget-during-up" ]]; then
             : >"${FAKE_RUNTIME_DIR}/fault-image-retarget-during-up"
@@ -909,14 +966,14 @@ case "$command_name" in
   ps)
     case "$*" in
       '--status running --services')
-        for service in registry-api ingestion-service rag-retrieval-service evaluation-service governance-service web chat-web llm-gateway-service; do
+        for service in registry-api ingestion-service docling-worker rag-retrieval-service evaluation-service governance-service web chat-web llm-gateway-service; do
           state_dir="${FAKE_RUNTIME_DIR}/containers/${service}"
           if [[ -f "${state_dir}/running" && "$(<"${state_dir}/running")" == "true" ]]; then
             printf '%s\n' "$service"
           fi
         done
         ;;
-      '-q registry-api'|'-q ingestion-service'|'-q rag-retrieval-service'|'-q evaluation-service'|'-q governance-service'|'-q web'|'-q chat-web'|'-q llm-gateway-service')
+      '-q registry-api'|'-q ingestion-service'|'-q docling-worker'|'-q rag-retrieval-service'|'-q evaluation-service'|'-q governance-service'|'-q web'|'-q chat-web'|'-q llm-gateway-service')
         service="${2-}"
         state_dir="${FAKE_RUNTIME_DIR}/containers/${service}"
         [[ ! -f "${state_dir}/id" ]] || cat "${state_dir}/id"
@@ -929,6 +986,19 @@ case "$command_name" in
         ;;
       *) exit 96 ;;
     esac
+    ;;
+  exec)
+    [[ "${1-}" == "-T" \
+      && "${2-}" == "docling-worker" \
+      && "${3-}" == "python" \
+      && "${4-}" == "-m" \
+      && "${5-}" == "parsers.docling_service_probe" \
+      && "${6-}" == "--health" \
+      && $# -eq 6 ]]
+    state_dir="${FAKE_RUNTIME_DIR}/containers/docling-worker"
+    [[ -f "${state_dir}/running" && "$(<"${state_dir}/running")" == "true" ]]
+    printf 'compose_exec_readiness:docling-worker\n' >>"$CALL_LOG"
+    [[ "${FAKE_DOCLING_WORKER_READINESS_FAIL:-false}" != "true" ]]
     ;;
   run)
     [[ "${1-}" == "--rm" && "${2-}" == "--pull" \
@@ -1269,6 +1339,7 @@ printf 'akl/registry-api:legacy-dirty-predecessor\n' >"${legacy_registry_state}/
 printf 'sha256:%064d\n' 1 >"${legacy_registry_state}/image_id"
 printf 'akl-test\n' >"${legacy_registry_state}/compose_project"
 printf 'registry-api\n' >"${legacy_registry_state}/compose_service"
+printf 'registry-api\n' >"${legacy_registry_state}/release_service"
 printf 'False\n' >"${legacy_registry_state}/compose_oneoff"
 printf '/srv/akl/repo/infra/docker-compose/docker-compose.docker-home.yml\n' \
   >"${legacy_registry_state}/compose_config_files"

@@ -68,9 +68,17 @@ class DoclingProductionReleaseTests(unittest.TestCase):
             'docling-worker "$TARGET_INGESTION_IMAGE_ID" post-restart ingestion-service',
             deploy,
         )
+        self.assertIn('release_service" == "$image_owner"', deploy)
         self.assertIn("verify_docling_worker_identity", verify)
+        self.assertIn('release_service" == "ingestion-service"', verify)
         self.assertIn("--conversion-smoke", verify)
         self.assertIn('network_mode != "none"', verify)
+
+        common = (ROOT / "scripts/lib/immutable_release_common.sh").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('local image_owner="${6:-$service_name}"', common)
+        self.assertIn('release_service" == "$image_owner"', common)
 
     def test_model_sources_are_exact_public_commit_pins(self) -> None:
         manifest = json.loads(

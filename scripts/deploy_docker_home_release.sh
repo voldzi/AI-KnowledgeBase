@@ -686,7 +686,7 @@ assert_runtime_container_bound_to_image() {
     && "$config_files" == "$COMPOSE_FILE" \
     && "$revision" == "$TARGET_SHA" \
     && "$release_project" == "$PROJECT_NAME" \
-    && "$release_service" == "$service" ]] \
+    && "$release_service" == "$image_owner" ]] \
     || akl_fail "Runtime container provenance does not match the durable release during ${phase}: $service"
 }
 
@@ -772,15 +772,20 @@ restore_quiesced_registry_if_safe() {
 }
 
 quarantine_unverified_target_services() {
-  local service target_image_id
+  local service target_image_id image_owner
   local -a quarantine_services=("${services[@]}")
   if [[ " ${services[*]} " == *" ingestion-service "* ]]; then
     quarantine_services=(docling-worker "${quarantine_services[@]}")
   fi
   for service in "${quarantine_services[@]}"; do
+    image_owner="$service"
     case "$service" in
       registry-api) target_image_id="$TARGET_REGISTRY_IMAGE_ID" ;;
-      ingestion-service|docling-worker) target_image_id="$TARGET_INGESTION_IMAGE_ID" ;;
+      ingestion-service) target_image_id="$TARGET_INGESTION_IMAGE_ID" ;;
+      docling-worker)
+        target_image_id="$TARGET_INGESTION_IMAGE_ID"
+        image_owner="ingestion-service"
+        ;;
       rag-retrieval-service) target_image_id="$TARGET_RAG_IMAGE_ID" ;;
       evaluation-service) target_image_id="$TARGET_EVALUATION_IMAGE_ID" ;;
       governance-service) target_image_id="$TARGET_GOVERNANCE_IMAGE_ID" ;;
@@ -795,7 +800,8 @@ quarantine_unverified_target_services() {
         "$service" \
         "$target_image_id" \
         "$TARGET_SHA" \
-        "$COMPOSE_FILE"
+        "$COMPOSE_FILE" \
+        "$image_owner"
     ); then
       case "$service" in
         registry-api) TARGET_REGISTRY_QUARANTINED="true" ;;

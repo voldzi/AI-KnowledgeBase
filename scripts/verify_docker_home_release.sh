@@ -251,9 +251,9 @@ verify_docling_worker_identity() {
     && "$container_image_id" == "$expected_image_id" ]] \
     || akl_fail "Docling worker is not bound to the durable ingestion image"
 
-  image_revision="$(inspect_label "$expected_image_id" org.opencontainers.image.revision)"
-  image_project="$(inspect_label "$expected_image_id" cz.zeleznalady.akl.compose-project)"
-  image_service="$(inspect_label "$expected_image_id" cz.zeleznalady.akl.service)"
+  image_revision="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$INGESTION_SERVICE_IMAGE")"
+  image_project="$(docker image inspect --format '{{index .Config.Labels "cz.zeleznalady.akl.compose-project"}}' "$INGESTION_SERVICE_IMAGE")"
+  image_service="$(docker image inspect --format '{{index .Config.Labels "cz.zeleznalady.akl.service"}}' "$INGESTION_SERVICE_IMAGE")"
   [[ "$image_revision" == "$TARGET_SHA" \
     && "$image_project" == "$PROJECT_NAME" \
     && "$image_service" == "ingestion-service" ]] \
@@ -272,7 +272,7 @@ verify_docling_worker_identity() {
     && "$config_files" == "$COMPOSE_FILE" \
     && "$release_revision" == "$TARGET_SHA" \
     && "$release_project" == "$PROJECT_NAME" \
-    && "$release_service" == "docling-worker" ]] \
+    && "$release_service" == "ingestion-service" ]] \
     || akl_fail "Docling worker release provenance is invalid"
 
   network_mode="$(docker inspect --format '{{.HostConfig.NetworkMode}}' "$container_id")"
