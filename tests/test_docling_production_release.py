@@ -208,10 +208,7 @@ class DoclingProductionReleaseTests(unittest.TestCase):
         self.assertIn('show -s --format=%ct "$TARGET_SHA"', deploy)
         self.assertIn('[[ "$SOURCE_DATE_EPOCH" =~ ^[1-9][0-9]*$ ]]', deploy)
         self.assertIn('"SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}"', deploy)
-        self.assertIn(
-            "SOURCE_DATE_EPOCH must be derived from the exact release commit",
-            compose,
-        )
+        self.assertIn("SOURCE_DATE_EPOCH: ${SOURCE_DATE_EPOCH:-}", compose)
 
     def test_model_sources_are_exact_public_commit_pins(self) -> None:
         manifest = json.loads(

@@ -848,19 +848,6 @@ fi
 shift
 [[ "${1-}" == "--project-name" && "${2-}" == "akl-test" ]] || exit 92
 shift 2
-[[ "${SOURCE_DATE_EPOCH:-}" =~ ^[1-9][0-9]*$ ]] || {
-  printf 'fake compose did not receive a positive SOURCE_DATE_EPOCH\n' >&2
-  exit 92
-}
-expected_source_date_epoch="$(
-  git --no-replace-objects \
-    --git-dir="${AKL_RELEASE_ROOT}/git/AI-KnowledgeBase.git" \
-    show -s --format=%ct "$AKL_SERVICE_VERSION"
-)"
-[[ "$SOURCE_DATE_EPOCH" == "$expected_source_date_epoch" ]] || {
-  printf 'fake compose received SOURCE_DATE_EPOCH for a different commit\n' >&2
-  exit 92
-}
 [[ "${1-}" == "--env-file" && "${2-}" == "$AKL_PROD_ENV_FILE" ]] || {
   printf 'fake compose did not receive the active env snapshot path\n' >&2
   exit 93
@@ -935,6 +922,19 @@ case "$command_name" in
     [[ "${1-}" == "--quiet" ]]
     ;;
   build)
+    [[ "${SOURCE_DATE_EPOCH:-}" =~ ^[1-9][0-9]*$ ]] || {
+      printf 'fake compose build did not receive a positive SOURCE_DATE_EPOCH\n' >&2
+      exit 92
+    }
+    expected_source_date_epoch="$(
+      git --no-replace-objects \
+        --git-dir="${AKL_RELEASE_ROOT}/git/AI-KnowledgeBase.git" \
+        show -s --format=%ct "$AKL_SERVICE_VERSION"
+    )"
+    [[ "$SOURCE_DATE_EPOCH" == "$expected_source_date_epoch" ]] || {
+      printf 'fake compose build received SOURCE_DATE_EPOCH for a different commit\n' >&2
+      exit 92
+    }
     printf 'build:%s\n' "$*" >>"$CALL_LOG"
     if [[ "${FAKE_BUILD_FAIL_BEFORE_TAG:-false}" == "true" ]]; then
       printf 'fault:build-before-tag\n' >>"$CALL_LOG"
