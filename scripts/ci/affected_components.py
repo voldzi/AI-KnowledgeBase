@@ -80,6 +80,7 @@ def _impact_owner(raw_path: str) -> str | None:
         or path.startswith("infra/ci/local-fast-check/")
         or path in {
             "tests/test_ci_affected_components.py",
+            "tests/test_ci_cached_python_env.py",
             "tests/test_clean_pilot_c4_registry.py",
             "tests/test_local_fast_check.py",
             "tests/test_working_baseline.py",
