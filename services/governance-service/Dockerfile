@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.12-slim@sha256:e5c9fa26ffb76e11e0f054f30dc2523a2f9693f0c36c0cf1e39b27e152d899fc
 
 ENV PIP_DEFAULT_TIMEOUT=300 \
     PIP_RETRIES=8 \
@@ -12,8 +12,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.c4.lock .
+RUN pip install --no-cache-dir --only-binary=:all: --require-hashes -r requirements.c4.lock
 
 COPY app ./app
 COPY document_diff ./document_diff

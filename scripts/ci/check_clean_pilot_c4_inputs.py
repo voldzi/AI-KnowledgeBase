@@ -14,6 +14,8 @@ PYTHON_SERVICES = (
     "ingestion-service",
     "rag-retrieval-service",
     "evaluation-service",
+    "governance-service",
+    "llm-gateway-service",
 )
 PYTHON_BASE = "python:3.12-slim@sha256:e5c9fa26ffb76e11e0f054f30dc2523a2f9693f0c36c0cf1e39b27e152d899fc"
 NODE_BASE = "node:26-alpine@sha256:2d984a15c9b54fd0aeb608b8e0d0d83529eb34d2966db27a1fb4f1edc3d298a3"
@@ -263,6 +265,25 @@ def check(root: Path) -> None:
     for name, image in copied.items():
         if not re.fullmatch(r"[^\s@]+@sha256:[0-9a-f]{64}", image):
             stop(f"mutable infrastructure image for {name}")
+
+    production_publisher = (root / "scripts/ci/publish_production_images.sh").read_text(encoding="utf-8")
+    for value, label in (
+        ("docker buildx build --pull", "production Buildx pull build"),
+        ('--build-arg "SOURCE_DATE_EPOCH=$source_date_epoch"', "production commit timestamp"),
+        ("--provenance=false", "production disabled provenance"),
+        ("--sbom=false", "production disabled SBOM"),
+        ("unpack=false,rewrite-timestamp=true", "production timestamp rewrite"),
+        ("scripts/ci/check_clean_pilot_c4_inputs.py", "production locked-input preflight"),
+        ("--build-arg AKL_INSTALL_DOCLING=true", "production Docling image"),
+    ):
+        require(production_publisher, value, label)
+    services = re.findall(r"^build_image\s+([a-z0-9-]+)\s", production_publisher, re.MULTILINE)
+    if services != [
+        "registry-api", "ingestion-service", "rag-retrieval-service",
+        "evaluation-service", "governance-service", "llm-gateway-service",
+        "web", "chat-web",
+    ]:
+        stop("production application image set or order drift")
 
     print("C4 locked-input check PASS")
 

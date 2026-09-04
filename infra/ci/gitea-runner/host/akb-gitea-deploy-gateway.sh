@@ -20,12 +20,89 @@ parse_command() {
   local command_string="${SSH_ORIGINAL_COMMAND:-}"
   if [[ -n "$command_string" ]]; then
     read -r ACTION ARGUMENT EXTRA <<<"$command_string"
-    [[ -z "${EXTRA:-}" ]] || fail
   else
-    [[ $# -eq 2 ]] || fail
+    [[ $# -ge 2 && $# -le 3 ]] || fail
     ACTION="$1"
     ARGUMENT="$2"
+    EXTRA="${3:-}"
   fi
+  if [[ "$ACTION" == "import" ]]; then
+    [[ -n "${EXTRA:-}" ]] || fail
+  else
+    [[ -z "${EXTRA:-}" ]] || fail
+  fi
+}
+
+import_images() {
+  validate_sha "$ARGUMENT"
+  local release_sha="$ARGUMENT" archive_sha="$EXTRA"
+  [[ "$archive_sha" =~ ^[0-9a-f]{64}$ ]] || fail
+  local prebuilt_root="${RELEASE_ROOT}/prebuilt" archive marker
+  install -d -m 0700 "$prebuilt_root"
+  archive="$(mktemp "${prebuilt_root}/.${release_sha}.XXXXXX.tgz")"
+  marker="${prebuilt_root}/${release_sha}.env"
+  [[ ! -e "$marker" ]] || fail
+  chmod 0600 "$archive"
+  timeout 900 dd bs=1M of="$archive" status=none
+  [[ "$(sha256sum "$archive" | awk '{print $1}')" == "$archive_sha" ]] || {
+    rm -f "$archive"
+    fail
+  }
+  gzip -t "$archive" || { rm -f "$archive"; fail; }
+  local archive_manifest="${archive}.manifest.json"
+  tar -xOzf "$archive" manifest.json >"$archive_manifest" \
+    || { rm -f "$archive" "$archive_manifest"; fail; }
+  chmod 0600 "$archive_manifest"
+  python3 - "$release_sha" "$archive_manifest" <<'PY' \
+    || { rm -f "$archive" "$archive_manifest"; fail; }
+import json, sys
+with open(sys.argv[2], encoding="utf-8") as source:
+    value = json.load(source)
+expected = {
+    f"akl/{service}:{sys.argv[1]}"
+    for service in (
+        "registry-api", "ingestion-service", "rag-retrieval-service",
+        "evaluation-service", "governance-service", "llm-gateway-service",
+        "web", "chat-web",
+    )
+}
+if not isinstance(value, list) or not value:
+    raise SystemExit("archive manifest invalid")
+actual = []
+for item in value:
+    if not isinstance(item, dict) or not isinstance(item.get("RepoTags"), list):
+        raise SystemExit("archive manifest entry invalid")
+    actual.extend(item["RepoTags"])
+if set(actual) != expected or len(actual) != len(expected):
+    raise SystemExit("archive image set invalid")
+PY
+  rm -f "$archive_manifest"
+  local service image revision project owner
+  for service in registry-api ingestion-service rag-retrieval-service evaluation-service \
+    governance-service llm-gateway-service web chat-web; do
+    image="akl/${service}:${release_sha}"
+    docker image inspect "$image" >/dev/null 2>&1 && { rm -f "$archive"; fail; }
+  done
+  gzip -dc "$archive" | docker load >/dev/null || { rm -f "$archive"; fail; }
+  rm -f "$archive"
+
+  for service in registry-api ingestion-service rag-retrieval-service evaluation-service \
+    governance-service llm-gateway-service web chat-web; do
+    image="akl/${service}:${release_sha}"
+    docker image inspect "$image" >/dev/null 2>&1 || fail
+    revision="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image")"
+    project="$(docker image inspect --format '{{index .Config.Labels "cz.zeleznalady.akl.compose-project"}}' "$image")"
+    owner="$(docker image inspect --format '{{index .Config.Labels "cz.zeleznalady.akl.service"}}' "$image")"
+    [[ "$revision" == "$release_sha" && "$project" == "akl" && "$owner" == "$service" ]] || fail
+  done
+  local temporary="${marker}.${BASHPID}.tmp"
+  printf 'schema=akb-prebuilt-image-import-1\nrelease_sha=%s\narchive_sha256=%s\n' \
+    "$release_sha" "$archive_sha" >"$temporary"
+  chmod 0600 "$temporary"
+  mv "$temporary" "$marker"
+  sync -f "$marker"
+  sync -f "$prebuilt_root"
+  printf 'import=passed\nrelease_sha=%s\n' "$release_sha"
 }
 
 validate_sha() {
@@ -141,6 +218,7 @@ fi
 
 parse_command "$@"
 case "$ACTION" in
+  import) import_images ;;
   deploy) start_deploy ;;
   status) show_status ;;
   verify) verify_release ;;

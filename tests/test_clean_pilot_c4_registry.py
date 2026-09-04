@@ -42,6 +42,7 @@ class CleanPilotC4RegistryTests(unittest.TestCase):
             fixture = Path(temp)
             for relative in (
                 "scripts/ci/publish_clean_pilot_c4_images.sh",
+                "scripts/ci/publish_production_images.sh",
                 "apps/web/Dockerfile",
                 "apps/web/pnpm-lock.yaml",
                 "services/registry-api/Dockerfile",
@@ -54,6 +55,10 @@ class CleanPilotC4RegistryTests(unittest.TestCase):
                 "services/rag-retrieval-service/requirements.c4.lock",
                 "services/evaluation-service/Dockerfile",
                 "services/evaluation-service/requirements.c4.lock",
+                "services/governance-service/Dockerfile",
+                "services/governance-service/requirements.c4.lock",
+                "services/llm-gateway-service/Dockerfile",
+                "services/llm-gateway-service/requirements.c4.lock",
                 "scripts/ci/compile_docling_locks.sh",
                 "scripts/provision_docling_model_bundle.sh",
                 "scripts/verify_docling_provision_source.py",
