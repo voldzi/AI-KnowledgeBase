@@ -121,6 +121,11 @@ def check(root: Path) -> None:
         "reviewed CPU-only PyTorch package source",
     )
     require(ingestion, "COPY docling_models ./docling_models", "Docling model provisioner")
+    require(
+        ingestion,
+        "RUN chmod -R a+rX /app/docling_models /app/parsers",
+        "non-root Docling provision imports",
+    )
     reject(ingestion, "requirements-docling.txt", "unlocked Docling requirements")
     docling_lock = root / "services/ingestion-service/requirements-docling.c4.lock"
     check_python_lock(docling_lock)
@@ -202,8 +207,12 @@ def check(root: Path) -> None:
     for value, label in (
         ("--build-arg AKL_INSTALL_DOCLING=true", "Docling-enabled provision image"),
         ("--read-only", "read-only provision container"),
+        ('--user "$(id -u):$(id -g)"', "host-owned provision output"),
         ("--cap-drop ALL", "provision container capability drop"),
         ("--security-opt no-new-privileges:true", "provision no-new-privileges"),
+        ("--env HF_HUB_DISABLE_XET=1", "disabled Hugging Face Xet cache"),
+        ("--env HF_HOME=/tmp/akb-huggingface", "tmpfs Hugging Face cache"),
+        ("--env XDG_CACHE_HOME=/tmp/akb-cache", "tmpfs XDG cache"),
         ("python -m docling_models.provision", "closed model provision entrypoint"),
         ("verify_docling_provision_source.py", "exact Docling source binding"),
     ):

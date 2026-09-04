@@ -12,6 +12,24 @@ SOURCE_BINDING = ROOT / "scripts/verify_docling_provision_source.py"
 
 
 class DoclingProductionReleaseTests(unittest.TestCase):
+    def test_provisioner_uses_host_identity_and_tmpfs_cache(self) -> None:
+        provisioner = (
+            ROOT / "scripts/provision_docling_model_bundle.sh"
+        ).read_text(encoding="utf-8")
+        self.assertIn('--user "$(id -u):$(id -g)"', provisioner)
+        self.assertIn("--env HF_HUB_DISABLE_XET=1", provisioner)
+        self.assertIn("--env HF_HOME=/tmp/akb-huggingface", provisioner)
+        self.assertIn("--env XDG_CACHE_HOME=/tmp/akb-cache", provisioner)
+
+    def test_provision_image_allows_non_root_imports_without_write_access(self) -> None:
+        dockerfile = (
+            ROOT / "services/ingestion-service/Dockerfile"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "RUN chmod -R a+rX /app/docling_models /app/parsers",
+            dockerfile,
+        )
+
     def test_model_provision_source_accepts_exact_git_checkout(self) -> None:
         head = subprocess.run(
             ["git", "rev-parse", "HEAD"],

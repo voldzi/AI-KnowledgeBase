@@ -20,7 +20,7 @@ permissions:
 
 env:
   AKB_CI_CACHE_ROOT: /cache/akb-ci
-  AKB_CI_PYTHON_ENV_ROOT: /cache/akb-ci/python-envs
+  AKB_CI_PYTHON_ENV_ROOT: /tmp/akb-ci/python-envs
   DOCKER_CONFIG: /tmp/akb-docker-config
   NPM_CONFIG_CACHE: /cache/akb-ci/npm
   NPM_CONFIG_UPDATE_NOTIFIER: "false"
@@ -309,9 +309,10 @@ jobs:
         env:
           PYTHONPATH: services/registry-api
         run: |
+          set -euo pipefail
           python_env="$(python3 scripts/ci/ensure_cached_python_test_env.py --service registry_api)"
-          . "${python_env}/bin/activate"
-          python -m pytest services/registry-api/tests
+          trap 'rm -rf "${python_env}"' EXIT
+          "${python_env}/bin/python" -m pytest services/registry-api/tests
 
   ingestion-service:
     name: Python / ingestion-service
@@ -328,9 +329,10 @@ jobs:
         env:
           PYTHONPATH: services/ingestion-service
         run: |
+          set -euo pipefail
           python_env="$(python3 scripts/ci/ensure_cached_python_test_env.py --service ingestion_service)"
-          . "${python_env}/bin/activate"
-          python -m pytest services/ingestion-service/tests
+          trap 'rm -rf "${python_env}"' EXIT
+          "${python_env}/bin/python" -m pytest services/ingestion-service/tests
 
   rag-retrieval-service:
     name: Python / rag-retrieval-service
@@ -347,9 +349,10 @@ jobs:
         env:
           PYTHONPATH: services/rag-retrieval-service
         run: |
+          set -euo pipefail
           python_env="$(python3 scripts/ci/ensure_cached_python_test_env.py --service rag_retrieval_service)"
-          . "${python_env}/bin/activate"
-          python -m pytest services/rag-retrieval-service/tests
+          trap 'rm -rf "${python_env}"' EXIT
+          "${python_env}/bin/python" -m pytest services/rag-retrieval-service/tests
 
   llm-gateway-service:
     name: Python / llm-gateway-service
@@ -366,9 +369,10 @@ jobs:
         env:
           PYTHONPATH: services/llm-gateway-service
         run: |
+          set -euo pipefail
           python_env="$(python3 scripts/ci/ensure_cached_python_test_env.py --service llm_gateway_service)"
-          . "${python_env}/bin/activate"
-          python -m pytest services/llm-gateway-service/tests
+          trap 'rm -rf "${python_env}"' EXIT
+          "${python_env}/bin/python" -m pytest services/llm-gateway-service/tests
 
   evaluation-service:
     name: Python / evaluation-service
@@ -385,9 +389,10 @@ jobs:
         env:
           PYTHONPATH: services/evaluation-service
         run: |
+          set -euo pipefail
           python_env="$(python3 scripts/ci/ensure_cached_python_test_env.py --service evaluation_service)"
-          . "${python_env}/bin/activate"
-          python -m pytest services/evaluation-service/tests
+          trap 'rm -rf "${python_env}"' EXIT
+          "${python_env}/bin/python" -m pytest services/evaluation-service/tests
 
   governance-service:
     name: Python / governance-service
@@ -404,9 +409,10 @@ jobs:
         env:
           PYTHONPATH: services/governance-service
         run: |
+          set -euo pipefail
           python_env="$(python3 scripts/ci/ensure_cached_python_test_env.py --service governance_service)"
-          . "${python_env}/bin/activate"
-          python -m pytest services/governance-service/tests
+          trap 'rm -rf "${python_env}"' EXIT
+          "${python_env}/bin/python" -m pytest services/governance-service/tests
 
   compose:
     name: Docker Compose configuration

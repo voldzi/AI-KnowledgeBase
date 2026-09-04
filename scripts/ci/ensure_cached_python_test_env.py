@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create or reuse a content-addressed Python test environment for trusted CI."""
+"""Create an isolated Python test environment backed by the trusted pip cache."""
 
 from __future__ import annotations
 
@@ -18,9 +18,6 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MANIFEST = ROOT / "scripts/ci/gitea-python-test-locks.json"
 MANIFEST_KEYS = {"python", "schema", "services"}
 SERVICE_KEYS = {"input", "input_sha256", "lock", "lock_sha256"}
-MARKER_KEYS = {"schema", "service", "python", "lock_sha256"}
-
-
 class CachedEnvironmentError(RuntimeError):
     """Raised when a cached environment cannot be trusted."""
 
@@ -75,12 +72,6 @@ def validate_entry(entry: dict[str, str]) -> Path:
     return lock_path
 
 
-def python_identity() -> str:
-    implementation = sys.implementation.name
-    version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
-    return f"{implementation}-{version}"
-
-
 def validate_cache_root(cache_root: Path) -> Path:
     if not cache_root.is_absolute():
         raise CachedEnvironmentError("CI_PYTHON_CACHE_ROOT_NOT_ABSOLUTE")
@@ -91,25 +82,6 @@ def validate_cache_root(cache_root: Path) -> Path:
     return resolved
 
 
-def expected_marker(service: str, lock_sha256: str) -> dict[str, str]:
-    return {
-        "schema": "akb-ci-python-env-1",
-        "service": service,
-        "python": python_identity(),
-        "lock_sha256": lock_sha256,
-    }
-
-
-def validate_cached_environment(path: Path, marker: dict[str, str]) -> None:
-    marker_path = path / ".akb-ci-environment.json"
-    python_path = path / "bin/python"
-    if not marker_path.is_file() or not python_path.is_file():
-        raise CachedEnvironmentError("CI_PYTHON_CACHE_INCOMPLETE")
-    actual = json.loads(marker_path.read_text(encoding="utf-8"))
-    if set(actual) != MARKER_KEYS or actual != marker:
-        raise CachedEnvironmentError("CI_PYTHON_CACHE_MARKER_DRIFT")
-
-
 def ensure_environment(
     service: str,
     cache_root: Path,
@@ -118,22 +90,19 @@ def ensure_environment(
     entry = load_service(manifest_path, service)
     lock_path = validate_entry(entry)
     root = validate_cache_root(cache_root)
-    marker = expected_marker(service, entry["lock_sha256"])
-    key_material = json.dumps(marker, sort_keys=True, separators=(",", ":")).encode()
-    cache_key = hashlib.sha256(key_material).hexdigest()
-    target = root / service / cache_key
-    if target.exists():
-        validate_cached_environment(target, marker)
-        return target, "hit"
-
-    service_root = target.parent
-    service_root.mkdir(parents=True, exist_ok=True, mode=0o755)
-    temporary = Path(tempfile.mkdtemp(prefix=f".{cache_key}.", dir=service_root))
+    target = Path(tempfile.mkdtemp(prefix=f"{service}-", dir=root))
     try:
-        subprocess.run((sys.executable, "-m", "venv", str(temporary)), check=True)
+        # Virtual environments contain absolute paths and are not safe to
+        # share between act_runner job containers. Only pip's package cache is
+        # persistent; the executable environment is isolated per job.
+        subprocess.run(
+            (sys.executable, "-m", "venv", "--copies", str(target)),
+            check=True,
+            stdout=sys.stderr,
+        )
         subprocess.run(
             (
-                str(temporary / "bin/python"),
+                str(target / "bin/python"),
                 "-m",
                 "pip",
                 "install",
@@ -143,17 +112,17 @@ def ensure_environment(
                 str(lock_path),
             ),
             check=True,
+            stdout=sys.stderr,
         )
-        (temporary / ".akb-ci-environment.json").write_text(
-            json.dumps(marker, sort_keys=True, separators=(",", ":")) + "\n",
-            encoding="utf-8",
+        subprocess.run(
+            (str(target / "bin/python"), "-I", "-c", "import sys; assert sys.prefix"),
+            check=True,
+            stdout=sys.stderr,
         )
-        os.replace(temporary, target)
     except Exception:
-        shutil.rmtree(temporary, ignore_errors=True)
+        shutil.rmtree(target, ignore_errors=True)
         raise
-    validate_cached_environment(target, marker)
-    return target, "miss"
+    return target, "pip-cache-backed"
 
 
 def parse_args() -> argparse.Namespace:
@@ -167,7 +136,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--cache-root",
         type=Path,
-        default=Path(os.environ.get("AKB_CI_PYTHON_ENV_ROOT", "/cache/akb-ci/python-envs")),
+        default=Path(os.environ.get("AKB_CI_PYTHON_ENV_ROOT", "/tmp/akb-ci/python-envs")),
     )
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     return parser.parse_args()

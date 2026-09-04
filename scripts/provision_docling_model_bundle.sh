@@ -28,7 +28,7 @@ done
 [[ "$MODEL_ROOT" == /* && "$MODEL_ROOT" != *$'\n'* && "$MODEL_ROOT" != *$'\r'* ]] \
   || { printf 'The Docling model root is invalid.\n' >&2; exit 2; }
 
-for command_name in docker git python3 sha256sum mktemp; do
+for command_name in docker git id python3 sha256sum mktemp; do
   command -v "$command_name" >/dev/null \
     || { printf 'Required command is unavailable: %s\n' "$command_name" >&2; exit 2; }
 done
@@ -73,12 +73,16 @@ result_json="$(
   docker run --rm \
     --pull never \
     --read-only \
+    --user "$(id -u):$(id -g)" \
     --cap-drop ALL \
     --security-opt no-new-privileges:true \
     --pids-limit 256 \
     --memory 2g \
     --tmpfs /tmp:rw,noexec,nosuid,size=536870912 \
     --env HF_HUB_DISABLE_TELEMETRY=1 \
+    --env HF_HUB_DISABLE_XET=1 \
+    --env HF_HOME=/tmp/akb-huggingface \
+    --env XDG_CACHE_HOME=/tmp/akb-cache \
     --env DO_NOT_TRACK=1 \
     --volume "${STAGE_DIR}:/model-output" \
     "$TEMP_IMAGE" \
