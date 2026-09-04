@@ -28,7 +28,7 @@ done
 [[ "$MODEL_ROOT" == /* && "$MODEL_ROOT" != *$'\n'* && "$MODEL_ROOT" != *$'\r'* ]] \
   || { printf 'The Docling model root is invalid.\n' >&2; exit 2; }
 
-for command_name in docker git python3 sha256sum mktemp; do
+for command_name in docker git id python3 sha256sum mktemp; do
   command -v "$command_name" >/dev/null \
     || { printf 'Required command is unavailable: %s\n' "$command_name" >&2; exit 2; }
 done
@@ -48,9 +48,6 @@ STAGE_DIR=""
 cleanup() {
   local status=$?
   if [[ -n "$STAGE_DIR" && -d "$STAGE_DIR" ]]; then
-    python3 "${ROOT}/scripts/prepare_docling_provision_mount.py" seal \
-      --model-root "$MODEL_ROOT" \
-      --stage "$STAGE_DIR" >/dev/null 2>&1 || true
     rm -rf -- "$STAGE_DIR"
   fi
   rmdir "$LOCK_DIR" 2>/dev/null || true
@@ -61,9 +58,6 @@ trap cleanup EXIT
 STAGE_DIR="$(mktemp -d "${MODEL_ROOT}/.docling-standard-stage.XXXXXX")"
 [[ "$STAGE_DIR" == "${MODEL_ROOT}/.docling-standard-stage."* ]] \
   || { printf 'The Docling staging directory escaped its root.\n' >&2; exit 2; }
-python3 "${ROOT}/scripts/prepare_docling_provision_mount.py" prepare \
-  --model-root "$MODEL_ROOT" \
-  --stage "$STAGE_DIR"
 TEMP_IMAGE="akl/ingestion-docling-provision:${TARGET_SHA}"
 
 DOCKER_BUILDKIT=1 docker build \
@@ -79,6 +73,7 @@ result_json="$(
   docker run --rm \
     --pull never \
     --read-only \
+    --user "$(id -u):$(id -g)" \
     --cap-drop ALL \
     --security-opt no-new-privileges:true \
     --pids-limit 256 \
@@ -94,9 +89,6 @@ result_json="$(
     python -m docling_models.provision \
       --output "/model-output/${PROFILE}"
 )"
-python3 "${ROOT}/scripts/prepare_docling_provision_mount.py" seal \
-  --model-root "$MODEL_ROOT" \
-  --stage "$STAGE_DIR"
 
 IFS='|' read -r artifacts_sha256 source_manifest_sha256 <<<"$(
   python3 - "$result_json" <<'PY'

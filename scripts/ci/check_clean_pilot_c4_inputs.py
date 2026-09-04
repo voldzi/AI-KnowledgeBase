@@ -121,6 +121,11 @@ def check(root: Path) -> None:
         "reviewed CPU-only PyTorch package source",
     )
     require(ingestion, "COPY docling_models ./docling_models", "Docling model provisioner")
+    require(
+        ingestion,
+        "RUN chmod -R a+rX /app/docling_models /app/parsers",
+        "non-root Docling provision imports",
+    )
     reject(ingestion, "requirements-docling.txt", "unlocked Docling requirements")
     docling_lock = root / "services/ingestion-service/requirements-docling.c4.lock"
     check_python_lock(docling_lock)
@@ -202,6 +207,7 @@ def check(root: Path) -> None:
     for value, label in (
         ("--build-arg AKL_INSTALL_DOCLING=true", "Docling-enabled provision image"),
         ("--read-only", "read-only provision container"),
+        ('--user "$(id -u):$(id -g)"', "host-owned provision output"),
         ("--cap-drop ALL", "provision container capability drop"),
         ("--security-opt no-new-privileges:true", "provision no-new-privileges"),
         ("--env HF_HUB_DISABLE_XET=1", "disabled Hugging Face Xet cache"),
@@ -220,16 +226,6 @@ def check(root: Path) -> None:
         ("Git source tree does not match the expected SHA", "exact Git source binding"),
     ):
         require(source_binding, value, label)
-
-    provision_mount = (
-        root / "scripts/prepare_docling_provision_mount.py"
-    ).read_text(encoding="utf-8")
-    for value, label in (
-        ("root_mode & 0o077", "private model root"),
-        ("resolved_stage.chmod(0o733)", "remapped container staging access"),
-        ("resolved_stage.chmod(0o700)", "sealed staging directory"),
-    ):
-        require(provision_mount, value, label)
 
     web = (root / "apps/web/Dockerfile").read_text(encoding="utf-8")
     if web.count(f"FROM {NODE_BASE}") != 3:

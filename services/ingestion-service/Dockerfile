@@ -62,6 +62,11 @@ COPY intelligence ./intelligence
 COPY renditions ./renditions
 COPY openapi.yaml README.md ./
 
+# Immutable release trees can be extracted with owner-only source modes. The
+# model provisioner runs as the invoking host uid, so only its import surface
+# must be readable without granting it write access.
+RUN chmod -R a+rX /app/docling_models /app/parsers
+
 EXPOSE 8090
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

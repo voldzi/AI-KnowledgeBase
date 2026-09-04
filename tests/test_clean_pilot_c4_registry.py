@@ -56,7 +56,6 @@ class CleanPilotC4RegistryTests(unittest.TestCase):
                 "services/evaluation-service/requirements.c4.lock",
                 "scripts/ci/compile_docling_locks.sh",
                 "scripts/provision_docling_model_bundle.sh",
-                "scripts/prepare_docling_provision_mount.py",
                 "scripts/verify_docling_provision_source.py",
                 "scripts/setup_docling_local.sh",
                 "services/ingestion-service/docling_models/source-bundle.json",
