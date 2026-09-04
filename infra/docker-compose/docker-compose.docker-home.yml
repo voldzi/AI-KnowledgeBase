@@ -350,6 +350,8 @@ services:
     build:
       context: ../../services/registry-api
       labels: *immutable-release-labels
+      args:
+        SOURCE_DATE_EPOCH: ${SOURCE_DATE_EPOCH:-}
     image: ${REGISTRY_API_IMAGE:-akl/registry-api:${AKL_IMAGE_TAG:-docker-home}}
     restart: unless-stopped
     read_only: true

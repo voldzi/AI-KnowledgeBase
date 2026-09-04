@@ -34,6 +34,8 @@ while [[ $# -gt 0 ]]; do
 done
 [[ -n "$TARGET_SHA" ]] || usage
 akl_validate_full_sha "$TARGET_SHA"
+[[ -z "${SOURCE_DATE_EPOCH+x}" ]] \
+  || akl_fail "Ambient SOURCE_DATE_EPOCH is forbidden; it is derived from the exact target commit"
 
 RELEASE_ROOT="${AKL_RELEASE_ROOT:-/srv/akl}"
 ENV_SOURCE_FILE="${AKL_PROD_ENV_FILE:-${RELEASE_ROOT}/env/akl.prod.env}"
@@ -949,6 +951,11 @@ akl_assert_no_ambient_compose_overrides \
   CHAT_WEB_IMAGE \
   LLM_GATEWAY_SERVICE_IMAGE
 AKL_SERVICE_VERSION="$TARGET_SHA"
+SOURCE_DATE_EPOCH="$(
+  git --no-replace-objects --git-dir="$GIT_DIR" show -s --format=%ct "$TARGET_SHA"
+)" || akl_fail "Could not derive SOURCE_DATE_EPOCH from the exact target commit"
+[[ "$SOURCE_DATE_EPOCH" =~ ^[1-9][0-9]*$ ]] \
+  || akl_fail "The exact target commit has no valid SOURCE_DATE_EPOCH"
 REGISTRY_API_IMAGE="akl/registry-api:${TARGET_SHA}"
 INGESTION_SERVICE_IMAGE="akl/ingestion-service:${TARGET_SHA}"
 RAG_RETRIEVAL_SERVICE_IMAGE="akl/rag-retrieval-service:${TARGET_SHA}"
@@ -960,6 +967,7 @@ LLM_GATEWAY_SERVICE_IMAGE="akl/llm-gateway-service:${TARGET_SHA}"
 COMPOSE=(
   env
   "AKL_SERVICE_VERSION=${AKL_SERVICE_VERSION}"
+  "SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}"
   "REGISTRY_API_IMAGE=${REGISTRY_API_IMAGE}"
   "INGESTION_SERVICE_IMAGE=${INGESTION_SERVICE_IMAGE}"
   "RAG_RETRIEVAL_SERVICE_IMAGE=${RAG_RETRIEVAL_SERVICE_IMAGE}"
