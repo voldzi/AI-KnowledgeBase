@@ -76,7 +76,7 @@ def plan_paths(paths: Iterable[str]) -> ImpactPlan:
             continue
         if path.startswith(".gitea/workflows/") or path.startswith("scripts/ci/") or path == (
             "tests/test_ci_affected_components.py"
-        ):
+        ) or path == "tests/test_clean_pilot_c4_registry.py":
             # CI plumbing has no production runtime owner. Repository standards
             # validate the workflow and classifier; release simulation is not
             # relevant unless production release code also changed.
@@ -100,6 +100,21 @@ def plan_paths(paths: Iterable[str]) -> ImpactPlan:
             ".env.local-prod.example",
         }:
             plan = plan.updated(compose=True, immutable_release=True)
+        elif path in {
+            "scripts/docling_local_smoke.py",
+            "scripts/provision_docling_model_bundle.sh",
+            "scripts/setup_docling_local.sh",
+        }:
+            plan = plan.updated(ingestion_service=True, immutable_release=True)
+        elif path in {
+            "scripts/check_docker_home_compose_render.sh",
+            "tests/test_docling_production_release.py",
+        }:
+            plan = plan.updated(
+                ingestion_service=True,
+                compose=True,
+                immutable_release=True,
+            )
         elif path.startswith("infra/ci/") or path.startswith("scripts/lib/") or path in {
             "scripts/deploy_docker_home_release.sh",
             "scripts/deploy_docker_home.sh",

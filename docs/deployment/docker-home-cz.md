@@ -287,6 +287,7 @@ Služby:
 
 - `web`
 - `registry-api`
+- `docling-worker`
 - `ingestion-service`
 - `rag-retrieval-service`
 - `llm-gateway-service`
@@ -314,10 +315,26 @@ AKL_RAG_AUTHZ_MODE=registry
 AKL_RAG_RETRIEVER_MODE=qdrant
 AKL_RAG_FULLTEXT_MODE=opensearch
 AKL_INGESTION_INDEXER_MODE=qdrant,opensearch
+AKL_INSTALL_DOCLING=true
+AKL_INGESTION_DOCLING_MODE=prefer
+AKL_INGESTION_DOCLING_PIPELINE=standard
+AKL_INGESTION_DOCLING_DEVICE=cpu
+AKL_INGESTION_DOCLING_EXECUTION_MODE=uds
+AKL_INGESTION_DOCLING_SOCKET_PATH=/run/akb-docling/worker.sock
+AKL_INGESTION_DOCLING_ARTIFACTS_SOURCE_DIR=/srv/akl/models/docling-standard-<digest-prefix>
+AKL_INGESTION_DOCLING_ARTIFACTS_SHA256=sha256:<canonical-bundle-digest>
 AKL_QDRANT_COLLECTION=akl_document_chunks
 AKL_OPENSEARCH_BASE_URL=https://opensearch.home.cz:9200
 AKL_OPENSEARCH_INDEX=akl_document_chunks
 ```
+
+`docling-worker` používá stejný immutable image jako `ingestion-service`, ale
+běží bez sítě, tajných údajů a datových volume. Modelový balík se před
+aktivací vytvoří nad přesným release SHA pomocí
+`scripts/provision_docling_model_bundle.sh`; jeho cesta a digest se potom vloží
+do chráněného produkčního env. Release gate odmítne zapisovatelný, neúplný
+nebo digestově odlišný balík a po startu provede skutečný převod syntetického
+PDF. Modely se za běhu nestahují.
 
 Produkční OpenSearch je externí sdílený cluster, nikoli lokální Compose
 kontejner. Ingestion používá výhradně účet `akl_ingestion_writer`, RAG výhradně

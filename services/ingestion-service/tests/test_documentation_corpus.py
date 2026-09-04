@@ -10,7 +10,7 @@ from app.config import load_settings
 from app.pipeline import _quality_report
 from app.schemas import DocumentMetadata
 from chunkers.logical import LogicalStructureChunker
-from parsers.base import ParserError
+from parsers.base import ParsedBlock, ParserError, ParserResult
 from parsers.text import TextParser
 from tests.test_format_parsers import _source
 
@@ -83,4 +83,33 @@ def test_empty_non_paginated_document_is_not_rated_as_good() -> None:
     parsed = TextParser().parse(_source("empty.md", "text/markdown", b"---\nstatus: valid\n---\n"), parser_profile="default")
     quality = _quality_report(parsed, extraction_profile="document_text_v1")
     assert quality.quality_tier == "poor"
+    assert quality.requires_review is True
+
+
+def test_review_quality_tier_always_requires_human_review() -> None:
+    parsed = ParserResult(
+        parser_name="fixture",
+        blocks=[
+            ParsedBlock(
+                text="x" * 500,
+                page_number=1,
+                section_path=[],
+                section_title=None,
+                article_number=None,
+                paragraph_number=None,
+                char_start=0,
+                char_end=500,
+            )
+        ],
+        pages_processed=2,
+        metadata={
+            "pages_with_text": 1,
+            "empty_pages": [2],
+            "text_chars_extracted": 500,
+        },
+    )
+
+    quality = _quality_report(parsed, extraction_profile="document_text_v1")
+
+    assert quality.quality_tier == "review"
     assert quality.requires_review is True

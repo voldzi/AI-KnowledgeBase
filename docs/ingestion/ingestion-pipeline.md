@@ -13,7 +13,7 @@ Tento dokument popisuje implementovaný tok `services/ingestion-service`.
 4. Pipeline pod stejnou vlastní service identity načte metadata dokumentu a
    verze přes Registry API.
 5. Object storage klient načte zdrojový soubor.
-6. Parser router zvolí HTML/HTM/XHTML, XLSX/XLSM, PPTX, TXT/MD/CSV/JSON/XML, PDF nebo DOCX parser. HTML parser extrahuje nadpisy jako sekce a přeskakuje skripty/styly; XLSX parser extrahuje řádky listů jako tabulkové bloky (oddělovač `|`), s opakováním hlavičky v pokračovacích blocích; PPTX parser extrahuje slidy jako stránky s titulkem slidu jako sekcí, včetně tabulek a poznámek lektora; text parser bezpečně indexuje i strukturované textové zdroje CSV, JSON a XML.
+6. Parser router zvolí HTML/HTM/XHTML, XLSX/XLSM, PPTX, TXT/MD/CSV/JSON/XML, PDF nebo DOCX parser. Volitelný Docling adaptér může běžet v režimu `shadow`, `prefer` nebo `enforce`; výchozí `off` zachovává původní cestu. GraniteDocling se používá jen pro PDF. HTML parser extrahuje nadpisy jako sekce a přeskakuje skripty/styly; XLSX parser extrahuje řádky listů jako tabulkové bloky (oddělovač `|`), s opakováním hlavičky v pokračovacích blocích; PPTX parser extrahuje slidy jako stránky s titulkem slidu jako sekcí, včetně tabulek a poznámek lektora; text parser bezpečně indexuje i strukturované textové zdroje CSV, JSON a XML.
 7. OCR fallback se použije při selhání parseru nebo nízkém množství extrahovaného textu. Podporované providery jsou `sidecar`, `tesseract` pro obrázky a `ocrmypdf` pro PDF. OCR výstup ukládá metadata parser enginu, jazyka, počtu stran s textem, prázdných stran a kvality.
 8. Pipeline vytvoří `quality` report s `quality_score`, `quality_tier` a `requires_review`; nízká kvalita OCR přidá varování `LOW_OCR_QUALITY` nebo `OCR_EMPTY_PAGES`.
 9. Logical chunker vytvoří `DocumentChunk` objekty s citovatelnými metadaty včetně parser/OCR quality evidence.
@@ -48,6 +48,11 @@ Tento dokument popisuje implementovaný tok `services/ingestion-service`.
 - Kvalita extrakce není důkaz věcné správnosti, úplnosti obrázků ani platnosti
   dokumentu. Návrhy infrastruktury a autorské vzory se nesmějí vydávat za
   ověřené nastavení konkrétní instalace.
+
+## Docling a GraniteDocling
+
+Řízené režimy, lokální modelový balík, bezpečnostní omezení, akceptační metriky
+a postup přechodu jsou popsány v [Docling a GraniteDocling](docling-granite.md).
 
 Změna parseru sama nepřepíše existující index. Již vložené dokumenty je
 nutné po ověření releasu řízeně znovu zpracovat přes existující ingestion

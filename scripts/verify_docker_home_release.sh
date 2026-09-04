@@ -222,6 +222,119 @@ verify_all_runtime_identities() {
 
 verify_all_runtime_identities
 
+verify_docling_worker_identity() {
+  local container_ps_output container_id expected_image_id container_image_ref
+  local container_image_id image_revision image_project image_service
+  local compose_project compose_service compose_oneoff config_files
+  local release_revision release_project release_service network_mode read_only
+  local cap_drop security_options environment_json mounts_json mode
+  local ingestion_container_id
+  local -a container_ids=()
+
+  expected_image_id="${AKL_RELEASE_EXPECTED_INGESTION_IMAGE_ID:-}"
+  [[ "$expected_image_id" =~ ^sha256:[0-9a-f]{64}$ ]] \
+    || akl_fail "Docling worker requires the durable ingestion image ID"
+  container_ps_output="$("${COMPOSE[@]}" ps -q docling-worker)" \
+    || akl_fail "Could not enumerate the isolated Docling worker"
+  if [[ -n "$container_ps_output" ]]; then
+    mapfile -t container_ids <<<"$container_ps_output"
+  fi
+  [[ ${#container_ids[@]} -eq 1 && -n "${container_ids[0]}" ]] \
+    || akl_fail "Docling worker must resolve to exactly one container"
+  container_id="${container_ids[0]}"
+  [[ "$(docker inspect --format '{{.State.Running}}' "$container_id")" == "true" \
+    && "$(docker inspect --format '{{.State.Health.Status}}' "$container_id")" == "healthy" ]] \
+    || akl_fail "Docling worker is not running and healthy"
+  container_image_ref="$(docker inspect --format '{{.Config.Image}}' "$container_id")"
+  container_image_id="$(docker inspect --format '{{.Image}}' "$container_id")"
+  [[ "$container_image_ref" == "$expected_image_id" \
+    && "$container_image_id" == "$expected_image_id" ]] \
+    || akl_fail "Docling worker is not bound to the durable ingestion image"
+
+  image_revision="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$INGESTION_SERVICE_IMAGE")"
+  image_project="$(docker image inspect --format '{{index .Config.Labels "cz.zeleznalady.akl.compose-project"}}' "$INGESTION_SERVICE_IMAGE")"
+  image_service="$(docker image inspect --format '{{index .Config.Labels "cz.zeleznalady.akl.service"}}' "$INGESTION_SERVICE_IMAGE")"
+  [[ "$image_revision" == "$TARGET_SHA" \
+    && "$image_project" == "$PROJECT_NAME" \
+    && "$image_service" == "ingestion-service" ]] \
+    || akl_fail "Docling worker image provenance is invalid"
+
+  compose_project="$(inspect_label "$container_id" com.docker.compose.project)"
+  compose_service="$(inspect_label "$container_id" com.docker.compose.service)"
+  compose_oneoff="$(inspect_label "$container_id" com.docker.compose.oneoff)"
+  config_files="$(inspect_label "$container_id" com.docker.compose.project.config_files)"
+  release_revision="$(inspect_label "$container_id" org.opencontainers.image.revision)"
+  release_project="$(inspect_label "$container_id" cz.zeleznalady.akl.compose-project)"
+  release_service="$(inspect_label "$container_id" cz.zeleznalady.akl.service)"
+  [[ "$compose_project" == "$PROJECT_NAME" \
+    && "$compose_service" == "docling-worker" \
+    && "${compose_oneoff,,}" == "false" \
+    && "$config_files" == "$COMPOSE_FILE" \
+    && "$release_revision" == "$TARGET_SHA" \
+    && "$release_project" == "$PROJECT_NAME" \
+    && "$release_service" == "ingestion-service" ]] \
+    || akl_fail "Docling worker release provenance is invalid"
+
+  network_mode="$(docker inspect --format '{{.HostConfig.NetworkMode}}' "$container_id")"
+  read_only="$(docker inspect --format '{{.HostConfig.ReadonlyRootfs}}' "$container_id")"
+  cap_drop="$(docker inspect --format '{{json .HostConfig.CapDrop}}' "$container_id")"
+  security_options="$(docker inspect --format '{{json .HostConfig.SecurityOpt}}' "$container_id")"
+  environment_json="$(docker inspect --format '{{json .Config.Env}}' "$container_id")"
+  mounts_json="$(docker inspect --format '{{json .Mounts}}' "$container_id")"
+  python3 - "$network_mode" "$read_only" "$cap_drop" "$security_options" \
+    "$environment_json" "$mounts_json" <<'PY'
+import json
+import sys
+
+network_mode, read_only, raw_caps, raw_security, raw_environment, raw_mounts = sys.argv[1:]
+if network_mode != "none" or read_only.lower() != "true":
+    raise SystemExit("Docling worker network/rootfs isolation is invalid")
+caps = json.loads(raw_caps)
+security = json.loads(raw_security)
+if caps != ["ALL"] or "no-new-privileges:true" not in security:
+    raise SystemExit("Docling worker Linux security controls are invalid")
+environment = json.loads(raw_environment)
+for item in environment:
+    name = item.split("=", 1)[0].upper()
+    if (
+        name.endswith(("_PASSWORD", "_SECRET", "_TOKEN"))
+        or any(fragment in name for fragment in (
+            "DATABASE", "OIDC", "REGISTRY", "OPENSEARCH", "QDRANT",
+            "S3_ACCESS", "LLM_GATEWAY",
+        ))
+    ):
+        raise SystemExit("Docling worker contains a forbidden credential-bearing environment key")
+mounts = json.loads(raw_mounts)
+destinations = {}
+for item in mounts:
+    destination = item.get("Destination")
+    if destination == "/tmp" and item.get("Type") == "tmpfs":
+        continue
+    destinations[destination] = item.get("RW")
+if destinations != {"/opt/docling-artifacts": False, "/run/akb-docling": True}:
+    raise SystemExit("Docling worker mounts exceed the approved model/socket boundary")
+PY
+
+  mode="$(akl_env_value "$ENV_FILE" AKL_INGESTION_DOCLING_MODE off)"
+  if [[ "$mode" == "off" ]]; then
+    return 0
+  fi
+  [[ "$mode" == "shadow" || "$mode" == "prefer" || "$mode" == "enforce" ]] \
+    || akl_fail "Production Docling mode is invalid"
+  docker exec "$container_id" python -m parsers.docling_service_probe --health \
+    || akl_fail "Docling worker health probe failed"
+  ingestion_container_id="$("${COMPOSE[@]}" ps -q ingestion-service)"
+  [[ -n "$ingestion_container_id" && "$ingestion_container_id" != *$'\n'* ]] \
+    || akl_fail "Docling conversion smoke requires exactly one ingestion container"
+  docker exec "$ingestion_container_id" \
+    python -m parsers.docling_service_probe --conversion-smoke \
+    || akl_fail "Docling offline conversion smoke failed"
+}
+
+if [[ "$INGESTION_AFFECTED" == "true" ]]; then
+  verify_docling_worker_identity
+fi
+
 verify_ingestion_readiness() {
   local attempt container_ps_output container_id
   local -a container_ids=()

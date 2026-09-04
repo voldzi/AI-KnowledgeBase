@@ -448,9 +448,61 @@ services:
       <<: *python-healthcheck
     logging: *json-logging
 
+  docling-worker:
+    image: ${INGESTION_SERVICE_IMAGE:-akl/ingestion-service:${AKL_IMAGE_TAG:-docker-home}}
+    restart: unless-stopped
+    init: true
+    read_only: true
+    network_mode: none
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: ${AKL_INGESTION_DOCLING_PIDS_LIMIT:-256}
+    mem_limit: ${AKL_INGESTION_DOCLING_MEMORY_LIMIT:-6g}
+    cpus: ${AKL_INGESTION_DOCLING_CPU_LIMIT:-4.0}
+    stop_grace_period: 10s
+    labels:
+      <<: *immutable-release-labels
+      cz.zeleznalady.akl.service: docling-worker
+    command: ["python", "-m", "parsers.docling_service"]
+    environment:
+      AKL_INGESTION_DOCLING_MODE: ${AKL_INGESTION_DOCLING_MODE:-off}
+      AKL_INGESTION_DOCLING_PIPELINE: ${AKL_INGESTION_DOCLING_PIPELINE:-standard}
+      AKL_INGESTION_DOCLING_DEVICE: ${AKL_INGESTION_DOCLING_DEVICE:-cpu}
+      AKL_INGESTION_DOCLING_SOCKET_PATH: /run/akb-docling/worker.sock
+      AKL_INGESTION_DOCLING_ARTIFACTS_PATH: /opt/docling-artifacts
+      AKL_INGESTION_DOCLING_ARTIFACTS_SHA256: ${AKL_INGESTION_DOCLING_ARTIFACTS_SHA256:-}
+      AKL_INGESTION_MAX_FILE_BYTES: ${AKL_INGESTION_MAX_FILE_BYTES:-104857600}
+      AKL_INGESTION_DOCLING_DOCUMENT_TIMEOUT_SECONDS: ${AKL_INGESTION_DOCLING_DOCUMENT_TIMEOUT_SECONDS:-300}
+      AKL_INGESTION_DOCLING_WORKER_TIMEOUT_SECONDS: ${AKL_INGESTION_DOCLING_WORKER_TIMEOUT_SECONDS:-330}
+      AKL_INGESTION_DOCLING_QUEUE_TIMEOUT_SECONDS: ${AKL_INGESTION_DOCLING_QUEUE_TIMEOUT_SECONDS:-5}
+      AKL_INGESTION_DOCLING_MAX_OUTPUT_BYTES: ${AKL_INGESTION_DOCLING_MAX_OUTPUT_BYTES:-134217728}
+      AKL_INGESTION_DOCLING_MAX_PAGES: ${AKL_INGESTION_DOCLING_MAX_PAGES:-1000}
+      AKL_INGESTION_OCR_LANGUAGE: ${AKL_INGESTION_OCR_LANGUAGE:-ces+eng}
+      AKL_INGESTION_TESSERACT_COMMAND: ${AKL_INGESTION_TESSERACT_COMMAND:-tesseract}
+      HF_HUB_OFFLINE: "1"
+      HF_DATASETS_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      TOKENIZERS_PARALLELISM: "false"
+      PYTHONNOUSERSITE: "1"
+      HOME: /tmp/docling-home
+      TMPDIR: /tmp
+    volumes:
+      - ${AKL_INGESTION_DOCLING_ARTIFACTS_SOURCE_DIR:-/dev/null}:/opt/docling-artifacts:ro
+      - docling-runtime:/run/akb-docling
+    tmpfs:
+      - /tmp:mode=1777,size=${AKL_INGESTION_DOCLING_TMPFS_SIZE:-2147483648}
+    healthcheck:
+      test: ["CMD", "python", "-m", "parsers.docling_service_probe", "--health"]
+      <<: *python-healthcheck
+    logging: *json-logging
+
   ingestion-service:
     build:
       context: ../../services/ingestion-service
+      args:
+        AKL_INSTALL_DOCLING: ${AKL_INSTALL_DOCLING:-false}
       labels:
         <<: *immutable-release-labels
         cz.zeleznalady.akl.service: ingestion-service
@@ -502,6 +554,19 @@ services:
       AKL_OBJECT_STORAGE_LOCAL_FALLBACK_READ: ${AKL_OBJECT_STORAGE_LOCAL_FALLBACK_READ:-true}
       AKL_INGESTION_DEFAULT_EXTRACTION_PROFILE: ${AKL_INGESTION_DEFAULT_EXTRACTION_PROFILE:-document_text_v1}
       AKL_INGESTION_PDF_ENGINE: ${AKL_INGESTION_PDF_ENGINE:-auto}
+      AKL_INGESTION_DOCLING_MODE: ${AKL_INGESTION_DOCLING_MODE:-off}
+      AKL_INGESTION_DOCLING_PIPELINE: ${AKL_INGESTION_DOCLING_PIPELINE:-standard}
+      AKL_INGESTION_DOCLING_DEVICE: ${AKL_INGESTION_DOCLING_DEVICE:-auto}
+      AKL_INGESTION_DOCLING_EXECUTION_MODE: ${AKL_INGESTION_DOCLING_EXECUTION_MODE:-uds}
+      AKL_INGESTION_DOCLING_SOCKET_PATH: /run/akb-docling/worker.sock
+      AKL_INGESTION_DOCLING_ARTIFACTS_SHA256: ${AKL_INGESTION_DOCLING_ARTIFACTS_SHA256:-}
+      AKL_INGESTION_DOCLING_DOCUMENT_TIMEOUT_SECONDS: ${AKL_INGESTION_DOCLING_DOCUMENT_TIMEOUT_SECONDS:-300}
+      AKL_INGESTION_DOCLING_WORKER_TIMEOUT_SECONDS: ${AKL_INGESTION_DOCLING_WORKER_TIMEOUT_SECONDS:-330}
+      AKL_INGESTION_DOCLING_HEALTH_TIMEOUT_SECONDS: ${AKL_INGESTION_DOCLING_HEALTH_TIMEOUT_SECONDS:-3}
+      AKL_INGESTION_DOCLING_QUEUE_TIMEOUT_SECONDS: ${AKL_INGESTION_DOCLING_QUEUE_TIMEOUT_SECONDS:-5}
+      AKL_INGESTION_DOCLING_MAX_OUTPUT_BYTES: ${AKL_INGESTION_DOCLING_MAX_OUTPUT_BYTES:-134217728}
+      AKL_INGESTION_DOCLING_MAX_CONCURRENCY: ${AKL_INGESTION_DOCLING_MAX_CONCURRENCY:-1}
+      AKL_INGESTION_DOCLING_MAX_PAGES: ${AKL_INGESTION_DOCLING_MAX_PAGES:-1000}
       AKL_INGESTION_OCR_PROVIDER: ${AKL_INGESTION_OCR_PROVIDER:-ocrmypdf}
       AKL_INGESTION_OCR_LANGUAGE: ${AKL_INGESTION_OCR_LANGUAGE:-ces+eng}
       AKL_INGESTION_OCRMYPDF_COMMAND: ${AKL_INGESTION_OCRMYPDF_COMMAND:-ocrmypdf}
@@ -547,10 +612,13 @@ services:
       - ${AKL_S3_ACCESS_KEY_ID_SOURCE_FILE:-/dev/null}:/run/secrets/akb-s3-access-key-id:ro
       - ${AKL_S3_SECRET_ACCESS_KEY_SOURCE_FILE:-/dev/null}:/run/secrets/akb-s3-secret-access-key:ro
       - ingestion-jobs:/data/ingestion-jobs
+      - docling-runtime:/run/akb-docling:ro
       - ${AKL_INGESTION_REGISTRY_CLIENT_SECRET_FILE:-/srv/akl/env/svc-ingestion.client-secret}:/run/secrets/svc-ingestion-client-secret:ro
       - ${AKL_OPENSEARCH_CA_SOURCE_FILE:-/srv/akl/env/opensearch-root-ca.pem}:/run/secrets/opensearch-root-ca.pem:ro
       - ${AKL_OPENSEARCH_INGESTION_PASSWORD_SOURCE_FILE:-/srv/akl/env/akl-opensearch-ingestion.password}:/run/secrets/akl-opensearch-password:ro
     depends_on:
+      docling-worker:
+        condition: service_healthy
       registry-api:
         condition: service_healthy
       qdrant:
@@ -884,5 +952,6 @@ volumes:
   caddy-config:
   qdrant-data:
   ingestion-jobs:
+  docling-runtime:
   evaluation-reports:
   evaluation-datasets:

@@ -27,7 +27,7 @@ technical compatibility prefixes unless an explicit migration changes them.
 | --- | --- |
 | `apps/web` | Next.js web frontend, AKB web/API bridge, auth callback handling, document viewer, employee chat portal, Intelligence Workbench, and admin workspace. |
 | `services/registry-api` | Document registry, versions, assignments, authorization checks, external document references, workflow tasks, audit events, permission-scoped document readiness aggregates, and Intelligence analyst cases with saved queries/evidence references. |
-| `services/ingestion-service` | Ingestion jobs, source parsing, OCR fallback, logical chunking, embeddings, Qdrant/OpenSearch indexing, ingestion reports. |
+| `services/ingestion-service` | Ingestion jobs, source parsing, feature-gated Docling/GraniteDocling extraction, OCR fallback, logical chunking, embeddings, Qdrant/OpenSearch indexing, ingestion reports. Production Docling runs in a networkless sidecar and is reached only over a private Unix socket. |
 | `services/rag-retrieval-service` | Permission-aware retrieval, answer composition, source context, citation opening, employee chat APIs. |
 | `services/llm-gateway-service` | LLM provider routing, model management, chat completions, embeddings. |
 | `services/evaluation-service` | RAG quality evaluations, datasets, runs, reports. |

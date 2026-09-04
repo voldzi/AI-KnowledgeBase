@@ -163,6 +163,27 @@ autorizace.
 5. Recreate `ingestion-service`, wait for `/ready`, then run one disposable
    dedicated-confirm ingestion and verify status-only transition to `INDEXED`.
 
+### Docling worker unavailable or conversion fallback
+
+1. Confirm `docling-worker` is running and healthy and that its Docker network
+   mode is `none`. Do not add a network as a repair.
+2. Compare only the configured model-bundle path and SHA-256 with the immutable
+   marker under `/srv/akl/models`; do not print model paths together with any
+   production environment contents.
+3. Run `python -m parsers.docling_service_probe --health` inside the worker and
+   `python -m parsers.docling_service_probe --conversion-smoke` inside
+   `ingestion-service`. The latter uses a synthetic PDF and no business data.
+4. If the bundle is missing or its digest differs, keep Docling unavailable and
+   prepare a new immutable bundle from the exact release SHA. Never enable
+   runtime downloads or relax the digest gate.
+5. In `prefer`, confirm the ingestion report records
+   `DOCLING_PREFERRED_FALLBACK` or `DOCLING_LOW_TEXT_FALLBACK`; the native
+   parser remains the safe fallback. In `enforce`, leave the job failed and do
+   not substitute another parser.
+6. Recreate `docling-worker` first, wait for health, then recreate
+   `ingestion-service`. A release-bound repair must still pass the normal
+   immutable same-SHA gate.
+
 ## Controlled Rule Missing, Stale Or Conflicting
 
 1. Open `/controlled-documentation` and select the exact domain and

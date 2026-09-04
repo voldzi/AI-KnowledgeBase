@@ -162,7 +162,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "indexer": await _indexer(request).readiness(),
             "job_store": _store(request).readiness(),
             "object_storage": _object_storage(request).readiness(),
-            "parser": _parser_readiness(settings),
+            "parser": _parser_readiness(settings, _parser_router(request)),
             "renditions": _pdf_renditions(request).readiness(),
             "worker": "ready" if settings.process_jobs_inline else "not_ready",
         }
@@ -800,7 +800,11 @@ def _pipeline(request: Request) -> IngestionPipeline:
     return request.app.state.pipeline
 
 
-def _parser_readiness(settings: Settings) -> str:
+def _parser_router(request: Request) -> ParserRouter:
+    return request.app.state.parser_router
+
+
+def _parser_readiness(settings: Settings, parser_router: ParserRouter) -> str:
     command = None
     if settings.ocr_provider == "tesseract":
         command = settings.tesseract_command
@@ -808,7 +812,8 @@ def _parser_readiness(settings: Settings) -> str:
         command = settings.ocrmypdf_command
     if command and shutil.which(command) is None:
         return "not_ready"
-    return "ready"
+    docling_status = parser_router.readiness()
+    return "ready" if docling_status in {"ready", "disabled"} else "not_ready"
 
 
 def _guard_request(request: Request) -> AuthContext:

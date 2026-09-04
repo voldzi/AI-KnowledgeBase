@@ -51,6 +51,7 @@ for service_name in (
     "rag-retrieval-service",
     "llm-gateway-service",
     "governance-service",
+    "docling-worker",
 ):
     service = services[service_name]
     if service.get("read_only") is not True:
@@ -69,6 +70,7 @@ release_services = (
     "evaluation-service",
     "governance-service",
     "llm-gateway-service",
+    "docling-worker",
 )
 for service_name in release_services:
     image = tagged_compose["services"][service_name].get("image", "")
@@ -79,6 +81,46 @@ for service_name in release_services:
 
 if "qdrant" not in services:
     raise SystemExit("Production Compose must retain the shared Qdrant service.")
+
+worker = services["docling-worker"]
+if worker.get("network_mode") != "none":
+    raise SystemExit("Docling worker must have no Docker network.")
+if worker.get("pids_limit") != 256 or worker.get("mem_limit") != "6442450944":
+    raise SystemExit("Docling worker resource limits are missing or unexpected.")
+if worker.get("cpus") != 4.0:
+    raise SystemExit("Docling worker CPU limit is missing or unexpected.")
+if worker.get("command") != ["python", "-m", "parsers.docling_service"]:
+    raise SystemExit("Docling worker must expose only the Unix-socket service.")
+worker_environment = worker.get("environment", {})
+for key in worker_environment:
+    upper = key.upper()
+    if (
+        upper.endswith(("_PASSWORD", "_SECRET", "_TOKEN"))
+        or any(fragment in upper for fragment in (
+            "DATABASE", "OIDC", "REGISTRY", "OPENSEARCH", "QDRANT",
+            "S3_ACCESS", "LLM_GATEWAY",
+        ))
+    ):
+        raise SystemExit(f"Docling worker contains forbidden environment key: {key}")
+worker_volumes = {
+    mount["target"]: (mount["type"], bool(mount.get("read_only")))
+    for mount in worker.get("volumes", [])
+}
+if worker_volumes != {
+    "/opt/docling-artifacts": ("bind", True),
+    "/run/akb-docling": ("volume", False),
+}:
+    raise SystemExit("Docling worker mounts exceed the approved model/socket boundary.")
+ingestion_volumes = {
+    mount["target"]: bool(mount.get("read_only"))
+    for mount in services["ingestion-service"].get("volumes", [])
+}
+if ingestion_volumes.get("/run/akb-docling") is not True:
+    raise SystemExit("Ingestion must mount the Docling socket volume read-only.")
+if "/opt/docling-artifacts" in ingestion_volumes:
+    raise SystemExit("Ingestion must not mount the Docling model bundle.")
+if services["ingestion-service"].get("depends_on", {}).get("docling-worker", {}).get("condition") != "service_healthy":
+    raise SystemExit("Ingestion must wait for the isolated Docling worker health gate.")
 PY
 
 printf 'Rendered compose config to %s\n' "$OUTPUT_FILE"

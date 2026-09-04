@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from app.errors import IngestionError
@@ -146,7 +147,8 @@ class IngestionPipeline:
                     "The source content does not match the immutable Registry version hash",
                     status_code=409,
                 )
-            parser_result = self.parser_router.parse(
+            parser_result = await asyncio.to_thread(
+                self.parser_router.parse,
                 source,
                 parser_profile=request.parser_profile,
                 ocr_enabled=request.ocr_enabled,
@@ -490,7 +492,7 @@ def _quality_report(parser_result, *, extraction_profile: str) -> IngestionQuali
         coverage_units=coverage_units,
         empty_pages=empty_pages,
     )
-    requires_review = metadata.get("requires_review") is True or quality_tier == "poor" or (
+    requires_review = metadata.get("requires_review") is True or quality_tier in {"review", "poor"} or (
         parser_result.ocr_used and (quality_score < 0.75 or bool(empty_pages))
     )
 
@@ -513,6 +515,13 @@ def _quality_report(parser_result, *, extraction_profile: str) -> IngestionQuali
 
 def _quality_warnings(quality: IngestionQualityReport, *, source_mime_type: str) -> list[ReportMessage]:
     warnings: list[ReportMessage] = []
+    if quality.requires_review:
+        warnings.append(
+            ReportMessage(
+                code="EXTRACTION_REVIEW_REQUIRED",
+                message="Extraction quality requires human review before the result is trusted.",
+            )
+        )
     if source_mime_type == "application/pdf" and quality.pages_processed > 0:
         coverage = quality.pages_with_text / quality.pages_processed
         if coverage < 0.6 and not quality.ocr_used:
