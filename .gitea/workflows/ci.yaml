@@ -310,8 +310,7 @@ jobs:
           PYTHONPATH: services/registry-api
         run: |
           python_env="$(python3 scripts/ci/ensure_cached_python_test_env.py --service registry_api)"
-          . "${python_env}/bin/activate"
-          python -m pytest services/registry-api/tests
+          "${python_env}/bin/python" -m pytest services/registry-api/tests
 
   ingestion-service:
     name: Python / ingestion-service
@@ -329,8 +328,7 @@ jobs:
           PYTHONPATH: services/ingestion-service
         run: |
           python_env="$(python3 scripts/ci/ensure_cached_python_test_env.py --service ingestion_service)"
-          . "${python_env}/bin/activate"
-          python -m pytest services/ingestion-service/tests
+          "${python_env}/bin/python" -m pytest services/ingestion-service/tests
 
   rag-retrieval-service:
     name: Python / rag-retrieval-service
@@ -348,8 +346,7 @@ jobs:
           PYTHONPATH: services/rag-retrieval-service
         run: |
           python_env="$(python3 scripts/ci/ensure_cached_python_test_env.py --service rag_retrieval_service)"
-          . "${python_env}/bin/activate"
-          python -m pytest services/rag-retrieval-service/tests
+          "${python_env}/bin/python" -m pytest services/rag-retrieval-service/tests
 
   llm-gateway-service:
     name: Python / llm-gateway-service
@@ -367,8 +364,7 @@ jobs:
           PYTHONPATH: services/llm-gateway-service
         run: |
           python_env="$(python3 scripts/ci/ensure_cached_python_test_env.py --service llm_gateway_service)"
-          . "${python_env}/bin/activate"
-          python -m pytest services/llm-gateway-service/tests
+          "${python_env}/bin/python" -m pytest services/llm-gateway-service/tests
 
   evaluation-service:
     name: Python / evaluation-service
@@ -386,8 +382,7 @@ jobs:
           PYTHONPATH: services/evaluation-service
         run: |
           python_env="$(python3 scripts/ci/ensure_cached_python_test_env.py --service evaluation_service)"
-          . "${python_env}/bin/activate"
-          python -m pytest services/evaluation-service/tests
+          "${python_env}/bin/python" -m pytest services/evaluation-service/tests
 
   governance-service:
     name: Python / governance-service
@@ -405,8 +400,7 @@ jobs:
           PYTHONPATH: services/governance-service
         run: |
           python_env="$(python3 scripts/ci/ensure_cached_python_test_env.py --service governance_service)"
-          . "${python_env}/bin/activate"
-          python -m pytest services/governance-service/tests
+          "${python_env}/bin/python" -m pytest services/governance-service/tests
 
   compose:
     name: Docker Compose configuration

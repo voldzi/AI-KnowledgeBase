@@ -108,6 +108,8 @@ class CachedPythonEnvironmentTests(unittest.TestCase):
             "governance_service",
         ):
             self.assertIn(f"--service {service}", workflow)
+        self.assertNotIn('${python_env}/bin/activate', workflow)
+        self.assertEqual(workflow.count('${python_env}/bin/python" -m pytest'), 6)
 
     def test_validate_only_does_not_create_cache(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
