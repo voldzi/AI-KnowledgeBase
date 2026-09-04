@@ -20,9 +20,12 @@ class ProductionPythonBuildResilienceTests(unittest.TestCase):
                 encoding="utf-8"
             )
             with self.subTest(service=service):
-                self.assertIn("PIP_DEFAULT_TIMEOUT=300", dockerfile)
-                self.assertIn("PIP_RETRIES=8", dockerfile)
-                self.assertIn("PIP_DISABLE_PIP_VERSION_CHECK=1", dockerfile)
+                self.assertIn(
+                    "ENV PIP_DEFAULT_TIMEOUT=300 \\\n"
+                    "    PIP_RETRIES=8 \\\n"
+                    "    PIP_DISABLE_PIP_VERSION_CHECK=1",
+                    dockerfile,
+                )
 
 
 if __name__ == "__main__":
