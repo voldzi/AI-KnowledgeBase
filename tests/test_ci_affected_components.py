@@ -64,6 +64,7 @@ class AffectedComponentsTests(unittest.TestCase):
                 "scripts/provision_docling_model_bundle.sh",
                 "scripts/docling_local_smoke.py",
                 "scripts/setup_docling_local.sh",
+                "scripts/verify_docling_provision_source.py",
                 "scripts/check_docker_home_compose_render.sh",
                 "tests/test_docling_production_release.py",
             ]

@@ -104,6 +104,7 @@ def plan_paths(paths: Iterable[str]) -> ImpactPlan:
             "scripts/docling_local_smoke.py",
             "scripts/provision_docling_model_bundle.sh",
             "scripts/setup_docling_local.sh",
+            "scripts/verify_docling_provision_source.py",
         }:
             plan = plan.updated(ingestion_service=True, immutable_release=True)
         elif path in {

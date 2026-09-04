@@ -8,9 +8,100 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
+SOURCE_BINDING = ROOT / "scripts/verify_docling_provision_source.py"
 
 
 class DoclingProductionReleaseTests(unittest.TestCase):
+    def test_model_provision_source_accepts_exact_git_checkout(self) -> None:
+        head = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        result = subprocess.run(
+            ["python3", str(SOURCE_BINDING), "--root", str(ROOT), "--sha", head],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("(git)", result.stdout)
+
+    def test_model_provision_source_accepts_exact_immutable_release(self) -> None:
+        sha = "a" * 40
+        with tempfile.TemporaryDirectory() as directory:
+            release = Path(directory) / "releases" / sha
+            release.mkdir(parents=True)
+            marker = release / ".akl-release-sha"
+            manifest = release / ".akl-release-manifest"
+            marker.write_text(f"{sha}\n", encoding="ascii")
+            manifest.write_text(
+                f"git_sha={sha}\n"
+                "trusted_ref=refs/remotes/origin/main\n"
+                "prepared_utc=2026-09-04T08:23:52Z\n",
+                encoding="ascii",
+            )
+            marker.chmod(0o444)
+            manifest.chmod(0o444)
+            release.chmod(0o555)
+            try:
+                result = subprocess.run(
+                    [
+                        "python3",
+                        str(SOURCE_BINDING),
+                        "--root",
+                        str(release),
+                        "--sha",
+                        sha,
+                    ],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+            finally:
+                release.chmod(0o755)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("(release-marker)", result.stdout)
+
+    def test_model_provision_source_rejects_writable_release_marker(self) -> None:
+        sha = "b" * 40
+        with tempfile.TemporaryDirectory() as directory:
+            release = Path(directory) / "releases" / sha
+            release.mkdir(parents=True)
+            marker = release / ".akl-release-sha"
+            manifest = release / ".akl-release-manifest"
+            marker.write_text(f"{sha}\n", encoding="ascii")
+            manifest.write_text(
+                f"git_sha={sha}\n"
+                "trusted_ref=refs/remotes/origin/main\n"
+                "prepared_utc=2026-09-04T08:23:52Z\n",
+                encoding="ascii",
+            )
+            marker.chmod(0o644)
+            manifest.chmod(0o444)
+            release.chmod(0o555)
+            try:
+                result = subprocess.run(
+                    [
+                        "python3",
+                        str(SOURCE_BINDING),
+                        "--root",
+                        str(release),
+                        "--sha",
+                        sha,
+                    ],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+            finally:
+                release.chmod(0o755)
+                marker.chmod(0o644)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("read-only", result.stderr)
+
     def test_production_compose_enforces_isolated_worker_boundary(self) -> None:
         result = subprocess.run(
             ["bash", str(ROOT / "scripts/check_docker_home_compose_render.sh")],
@@ -22,19 +113,14 @@ class DoclingProductionReleaseTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_compose_transition_maps_sidecar_to_ingestion_owner(self) -> None:
-        current = subprocess.run(
-            [
-                "git",
-                "show",
-                "origin/main:infra/docker-compose/docker-compose.docker-home.yml",
-            ],
-            cwd=ROOT,
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout
         target = (ROOT / "infra/docker-compose/docker-compose.docker-home.yml").read_text(
             encoding="utf-8"
+        )
+        worker_cpu = "cpus: ${AKL_INGESTION_DOCLING_CPU_LIMIT:-4.0}"
+        self.assertEqual(target.count(worker_cpu), 1)
+        current = target.replace(
+            worker_cpu,
+            "cpus: ${AKL_INGESTION_DOCLING_CPU_LIMIT:-3.0}",
         )
         with tempfile.TemporaryDirectory() as directory:
             current_path = Path(directory) / "current.yml"

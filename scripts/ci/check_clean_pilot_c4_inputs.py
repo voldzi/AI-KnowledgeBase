@@ -205,8 +205,18 @@ def check(root: Path) -> None:
         ("--cap-drop ALL", "provision container capability drop"),
         ("--security-opt no-new-privileges:true", "provision no-new-privileges"),
         ("python -m docling_models.provision", "closed model provision entrypoint"),
+        ("verify_docling_provision_source.py", "exact Docling source binding"),
     ):
         require(provisioner, value, label)
+    source_binding = (
+        root / "scripts/verify_docling_provision_source.py"
+    ).read_text(encoding="utf-8")
+    for value, label in (
+        ("release source root must be a read-only real directory", "read-only release source"),
+        ("release source manifest is not closed", "closed release source manifest"),
+        ("Git source tree does not match the expected SHA", "exact Git source binding"),
+    ):
+        require(source_binding, value, label)
 
     web = (root / "apps/web/Dockerfile").read_text(encoding="utf-8")
     if web.count(f"FROM {NODE_BASE}") != 3:
