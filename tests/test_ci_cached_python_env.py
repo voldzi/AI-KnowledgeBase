@@ -16,11 +16,9 @@ sys.path.insert(0, str(ROOT / "scripts/ci"))
 from ensure_cached_python_test_env import (  # noqa: E402
     CachedEnvironmentError,
     ensure_environment,
-    expected_marker,
     load_service,
     main,
     validate_cache_root,
-    validate_cached_environment,
 )
 
 
@@ -69,21 +67,7 @@ class CachedPythonEnvironmentTests(unittest.TestCase):
             with self.assertRaisesRegex(CachedEnvironmentError, "MANIFEST_NOT_CLOSED"):
                 load_service(manifest, "missing")
 
-    def test_cache_marker_is_closed_and_exact(self) -> None:
-        marker = expected_marker("registry_api", "a" * 64)
-        self.assertEqual(marker["schema"], "akb-ci-python-env-2")
-        with tempfile.TemporaryDirectory() as temporary:
-            environment = Path(temporary) / "environment"
-            (environment / "bin").mkdir(parents=True)
-            (environment / "bin/python").write_text("")
-            marker_path = environment / ".akb-ci-environment.json"
-            marker_path.write_text(json.dumps(marker))
-            validate_cached_environment(environment, marker)
-            marker_path.write_text(json.dumps({**marker, "unexpected": True}))
-            with self.assertRaisesRegex(CachedEnvironmentError, "MARKER_DRIFT"):
-                validate_cached_environment(environment, marker)
-
-    def test_environment_is_created_at_its_final_path(self) -> None:
+    def test_environment_is_ephemeral_and_uses_copied_interpreter(self) -> None:
         entry = {
             "input": "unused",
             "input_sha256": "b" * 64,
@@ -93,10 +77,16 @@ class CachedPythonEnvironmentTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             cache_root = Path(temporary) / "akb" / "python-envs"
 
-            def fake_run(command: tuple[str, ...], *, check: bool) -> None:
+            commands: list[tuple[str, ...]] = []
+
+            def fake_run(
+                command: tuple[str, ...], *, check: bool, stdout: object
+            ) -> None:
                 self.assertTrue(check)
-                if command[1:3] == ("-m", "venv"):
-                    environment = Path(command[3])
+                self.assertIs(stdout, sys.stderr)
+                commands.append(command)
+                if command[1:4] == ("-m", "venv", "--copies"):
+                    environment = Path(command[4])
                     (environment / "bin").mkdir(parents=True)
                     (environment / "bin/python").write_text("")
 
@@ -110,9 +100,11 @@ class CachedPythonEnvironmentTests(unittest.TestCase):
             ):
                 environment, status = ensure_environment("registry_api", cache_root)
 
-            self.assertEqual(status, "miss")
-            self.assertEqual(environment.parent.parent, cache_root.resolve())
-            self.assertTrue((environment / ".akb-ci-environment.json").is_file())
+            self.assertEqual(status, "pip-cache-backed")
+            self.assertEqual(environment.parent, cache_root.resolve())
+            self.assertIn("--copies", commands[0])
+            self.assertEqual(commands[-1][1:3], ("-I", "-c"))
+            self.assertFalse((environment / ".akb-ci-environment.json").exists())
 
     def test_cache_root_must_be_absolute_and_scoped(self) -> None:
         with self.assertRaisesRegex(CachedEnvironmentError, "NOT_ABSOLUTE"):
@@ -123,9 +115,11 @@ class CachedPythonEnvironmentTests(unittest.TestCase):
             root = Path(temporary) / "akb" / "python-envs"
             self.assertEqual(validate_cache_root(root), root.resolve())
 
-    def test_workflow_pins_tools_and_reuses_content_addressed_envs(self) -> None:
+    def test_workflow_pins_tools_and_uses_isolated_ephemeral_envs(self) -> None:
         workflow = (ROOT / ".gitea/workflows/ci.yaml").read_text()
         self.assertIn("NPM_CONFIG_CACHE: /cache/akb-ci/npm", workflow)
+        self.assertIn("PIP_CACHE_DIR: /cache/akb-ci/pip", workflow)
+        self.assertIn("AKB_CI_PYTHON_ENV_ROOT: /tmp/akb-ci/python-envs", workflow)
         self.assertIn("@redocly/cli@2.51.1", workflow)
         self.assertNotIn("npx --yes @redocly/cli lint", workflow)
         self.assertNotIn("pip install --upgrade pip", workflow)
@@ -143,6 +137,7 @@ class CachedPythonEnvironmentTests(unittest.TestCase):
             self.assertIn(f"--service {service}", workflow)
         self.assertNotIn('${python_env}/bin/activate', workflow)
         self.assertEqual(workflow.count('${python_env}/bin/python" -m pytest'), 6)
+        self.assertEqual(workflow.count("trap 'rm -rf \"${python_env}\"' EXIT"), 6)
 
     def test_validate_only_does_not_create_cache(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
