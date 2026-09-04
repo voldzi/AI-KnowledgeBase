@@ -30,6 +30,7 @@ class AffectedComponentsTests(unittest.TestCase):
                 "tests/test_ci_affected_components.py",
                 "tests/test_clean_pilot_c4_registry.py",
                 "tests/test_working_baseline.py",
+                "tests/test_production_build_inputs.py",
                 "infra/ci/local-fast-check/Dockerfile.python",
             ]
         )

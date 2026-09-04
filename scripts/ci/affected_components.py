@@ -84,6 +84,7 @@ def _impact_owner(raw_path: str) -> str | None:
             "tests/test_clean_pilot_c4_registry.py",
             "tests/test_local_fast_check.py",
             "tests/test_working_baseline.py",
+            "tests/test_production_build_inputs.py",
         }
     ):
         return "ci"

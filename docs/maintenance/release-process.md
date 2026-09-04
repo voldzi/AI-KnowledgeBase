@@ -185,6 +185,10 @@ configuration select every production definition, including both web profiles
 and the Docling-enabled ingestion image. The check sends only Dockerfiles in an
 empty temporary context, never production environment files or credentials.
 Unavailable Docker/Buildx, a timeout or a rejected definition stops the check.
+BuildKit may resolve the public base image or Dockerfile frontend during this
+check; `--network=none` applies to build execution, not image metadata lookup.
+No build instructions execute. The existing networkless application-test
+containers retain their unchanged isolation boundary.
 
 This guard catches build-definition failures early but deliberately does not
 claim that images were built or runtime compatibility was proved. The exact
