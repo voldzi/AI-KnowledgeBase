@@ -99,6 +99,9 @@ def provision(*, manifest_path: Path, output: Path) -> dict[str, object]:
         assert isinstance(repositories, list)
         clean_environment = {
             "HF_HUB_DISABLE_TELEMETRY": "1",
+            "HF_HUB_DISABLE_XET": "1",
+            "HF_HOME": "/tmp/akb-huggingface",
+            "XDG_CACHE_HOME": "/tmp/akb-cache",
             "DO_NOT_TRACK": "1",
         }
         for key, value in clean_environment.items():

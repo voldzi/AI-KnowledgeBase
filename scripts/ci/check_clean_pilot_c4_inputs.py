@@ -204,6 +204,9 @@ def check(root: Path) -> None:
         ("--read-only", "read-only provision container"),
         ("--cap-drop ALL", "provision container capability drop"),
         ("--security-opt no-new-privileges:true", "provision no-new-privileges"),
+        ("--env HF_HUB_DISABLE_XET=1", "disabled Hugging Face Xet cache"),
+        ("--env HF_HOME=/tmp/akb-huggingface", "tmpfs Hugging Face cache"),
+        ("--env XDG_CACHE_HOME=/tmp/akb-cache", "tmpfs XDG cache"),
         ("python -m docling_models.provision", "closed model provision entrypoint"),
         ("verify_docling_provision_source.py", "exact Docling source binding"),
     ):

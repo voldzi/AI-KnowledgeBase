@@ -19,6 +19,9 @@ class DoclingProductionReleaseTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("prepare_docling_provision_mount.py\" prepare", provisioner)
         self.assertIn("prepare_docling_provision_mount.py\" seal", provisioner)
+        self.assertIn("--env HF_HUB_DISABLE_XET=1", provisioner)
+        self.assertIn("--env HF_HOME=/tmp/akb-huggingface", provisioner)
+        self.assertIn("--env XDG_CACHE_HOME=/tmp/akb-cache", provisioner)
 
     def test_model_provision_mount_is_temporarily_executable_and_writeable(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

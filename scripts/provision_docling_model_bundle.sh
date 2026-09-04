@@ -85,6 +85,9 @@ result_json="$(
     --memory 2g \
     --tmpfs /tmp:rw,noexec,nosuid,size=536870912 \
     --env HF_HUB_DISABLE_TELEMETRY=1 \
+    --env HF_HUB_DISABLE_XET=1 \
+    --env HF_HOME=/tmp/akb-huggingface \
+    --env XDG_CACHE_HOME=/tmp/akb-cache \
     --env DO_NOT_TRACK=1 \
     --volume "${STAGE_DIR}:/model-output" \
     "$TEMP_IMAGE" \

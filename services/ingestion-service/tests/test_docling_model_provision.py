@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -52,6 +53,9 @@ def test_provision_uses_exact_public_revisions_and_creates_immutable_bundle(
         "fc0f2d45e2218ea24bce5045f58a389aed16dc23",
     ]
     assert all(call["token"] is False for call in calls)
+    assert os.environ["HF_HUB_DISABLE_XET"] == "1"
+    assert os.environ["HF_HOME"] == "/tmp/akb-huggingface"
+    assert os.environ["XDG_CACHE_HOME"] == "/tmp/akb-cache"
     marker = json.loads((output / "akb-docling-model-bundle.json").read_text())
     assert set(marker) == {
         "schema",
