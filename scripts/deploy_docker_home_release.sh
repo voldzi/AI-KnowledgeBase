@@ -947,8 +947,7 @@ akl_assert_no_ambient_compose_overrides \
   GOVERNANCE_SERVICE_IMAGE \
   WEB_IMAGE \
   CHAT_WEB_IMAGE \
-  LLM_GATEWAY_SERVICE_IMAGE \
-  SOURCE_DATE_EPOCH
+  LLM_GATEWAY_SERVICE_IMAGE
 AKL_SERVICE_VERSION="$TARGET_SHA"
 SOURCE_DATE_EPOCH="$(
   git --no-replace-objects --git-dir="$GIT_DIR" show -s --format=%ct "$TARGET_SHA"
