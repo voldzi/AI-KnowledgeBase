@@ -300,10 +300,23 @@ These are operating targets, not reasons to weaken a gate:
 - ordinary final-candidate-to-production path: at most 15 minutes;
 - forward-fix or rollback decision: within 2 minutes of a verified failure.
 
-The target architecture is build-once promotion: CI publishes signed,
-content-addressed images and a release manifest, and production pulls and
-verifies those digests instead of compiling source. Until that pipeline exists,
-the exact local production-image preflight above is mandatory.
+Production deployment uses build-once promotion. After the exact main SHA has
+passed trusted CI, the protected manual workflow builds all eight application
+images on the AKB runner from locked inputs, publishes content-addressed images
+to the internal registry, and stores the closed manifest as
+`akb-production-images-<full-sha>`. It then pulls those exact digest references,
+transfers an integrity-checked image archive through the restricted deployment
+gateway, and activates the imported images. The production host does not run a
+source build in this path.
+
+The gateway accepts only the exact eight `akl/<service>:<full-sha>` images. It
+verifies the archive digest and each image's release SHA, compose project, and
+service ownership labels before writing a private prebuilt marker. The normal
+immutable deployment still performs disk and secret preflight, Registry writer
+quiescence, backup, migration, image-identity checks, health/readiness checks,
+and atomic activation. Missing, malformed, additional, or mismatched evidence
+fails closed. The legacy production build path remains available only for a
+reviewed recovery while the gateway rollout is being completed.
 
 ## Release Tag
 

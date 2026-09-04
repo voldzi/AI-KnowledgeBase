@@ -964,6 +964,35 @@ GOVERNANCE_SERVICE_IMAGE="akl/governance-service:${TARGET_SHA}"
 WEB_IMAGE="akl/web:${TARGET_SHA}"
 CHAT_WEB_IMAGE="akl/chat-web:${TARGET_SHA}"
 LLM_GATEWAY_SERVICE_IMAGE="akl/llm-gateway-service:${TARGET_SHA}"
+PREBUILT_IMAGES="false"
+PREBUILT_MARKER="${RELEASE_ROOT}/prebuilt/${TARGET_SHA}.env"
+if [[ -e "$PREBUILT_MARKER" ]]; then
+  marker_identity="$(stat -c '%U:%G:%a:%h:%F' "$PREBUILT_MARKER")" \
+    || akl_fail "Could not inspect prebuilt image marker"
+  [[ ! -L "$PREBUILT_MARKER" \
+    && "$marker_identity" == "$(id -un):$(id -gn):600:1:regular file" ]] \
+    || akl_fail "Prebuilt image marker is not a private single-link regular file"
+  python3 - "$PREBUILT_MARKER" "$TARGET_SHA" <<'PY' \
+    || akl_fail "Prebuilt image marker is invalid"
+import re, sys
+from pathlib import Path
+values = {}
+for line in Path(sys.argv[1]).read_text().splitlines():
+    if "=" not in line:
+        raise SystemExit("malformed marker")
+    key, value = line.split("=", 1)
+    if key in values:
+        raise SystemExit("duplicate marker key")
+    values[key] = value
+if list(values) != ["schema", "release_sha", "archive_sha256"]:
+    raise SystemExit("unexpected marker keys")
+if values["schema"] != "akb-prebuilt-image-import-1" or values["release_sha"] != sys.argv[2]:
+    raise SystemExit("marker identity mismatch")
+if not re.fullmatch(r"[0-9a-f]{64}", values["archive_sha256"]):
+    raise SystemExit("archive digest invalid")
+PY
+  PREBUILT_IMAGES="true"
+fi
 COMPOSE=(
   env
   "AKL_SERVICE_VERSION=${AKL_SERVICE_VERSION}"
@@ -1411,7 +1440,8 @@ for service in "${services[@]}"; do
     chat-web) target_image="$CHAT_WEB_IMAGE" ;;
     llm-gateway-service) target_image="$LLM_GATEWAY_SERVICE_IMAGE" ;;
   esac
-  if docker image inspect "$target_image" >/dev/null 2>&1; then
+  if [[ "$PREBUILT_IMAGES" != "true" ]] \
+    && docker image inspect "$target_image" >/dev/null 2>&1; then
     TARGET_BUILD_MAY_HAVE_STARTED="true"
     RETRY_REQUIRES_DESCENDANT_SHA="true"
     akl_burn_release_sha "$RELEASE_ROOT" "$TARGET_SHA" immutable_target_tag_exists
@@ -1423,33 +1453,39 @@ printf 'Rendering immutable release compose configuration...\n'
 akl_assert_expected_env_snapshot "$ENV_FILE"
 "${COMPOSE[@]}" config --quiet
 
-printf 'Building only affected services: %s\n' "$SERVICE_CSV"
+if [[ "$PREBUILT_IMAGES" == "true" ]]; then
+  printf 'Using prebuilt immutable images for: %s\n' "$SERVICE_CSV"
+else
+  printf 'Building only affected services: %s\n' "$SERVICE_CSV"
+fi
 TARGET_BUILD_MAY_HAVE_STARTED="true"
 RETRY_REQUIRES_DESCENDANT_SHA="true"
 akl_burn_release_sha "$RELEASE_ROOT" "$TARGET_SHA" build_may_have_started
 write_deployment_record target_build_may_have_started
 akl_assert_expected_env_snapshot "$ENV_FILE"
-compose_build_services=()
-for service in "${services[@]}"; do
-  [[ "$service" == "ingestion-service" ]] || compose_build_services+=("$service")
-done
-if [[ ${#compose_build_services[@]} -gt 0 ]]; then
-  DOCKER_BUILDKIT=1 "${COMPOSE[@]}" build "${compose_build_services[@]}"
-fi
-if [[ " ${services[*]} " == *" ingestion-service "* ]]; then
-  env \
-    "AKL_SERVICE_VERSION=${AKL_SERVICE_VERSION}" \
-    "AKL_RELEASE_COMPOSE_PROJECT=${PROJECT_NAME}" \
-    "INGESTION_SERVICE_IMAGE=${INGESTION_SERVICE_IMAGE}" \
-    'DOCKER_BUILDKIT=1' \
-    docker build --pull=false \
-    --label "org.opencontainers.image.revision=${TARGET_SHA}" \
-    --label "cz.zeleznalady.akl.compose-project=${PROJECT_NAME}" \
-    --label 'cz.zeleznalady.akl.service=ingestion-service' \
-    --build-arg AKL_INSTALL_DOCLING=true \
-    --tag "$INGESTION_SERVICE_IMAGE" \
-    --file "${release_dir}/services/ingestion-service/Dockerfile" \
-    "${release_dir}/services/ingestion-service"
+if [[ "$PREBUILT_IMAGES" != "true" ]]; then
+  compose_build_services=()
+  for service in "${services[@]}"; do
+    [[ "$service" == "ingestion-service" ]] || compose_build_services+=("$service")
+  done
+  if [[ ${#compose_build_services[@]} -gt 0 ]]; then
+    DOCKER_BUILDKIT=1 "${COMPOSE[@]}" build "${compose_build_services[@]}"
+  fi
+  if [[ " ${services[*]} " == *" ingestion-service "* ]]; then
+    env \
+      "AKL_SERVICE_VERSION=${AKL_SERVICE_VERSION}" \
+      "AKL_RELEASE_COMPOSE_PROJECT=${PROJECT_NAME}" \
+      "INGESTION_SERVICE_IMAGE=${INGESTION_SERVICE_IMAGE}" \
+      'DOCKER_BUILDKIT=1' \
+      docker build --pull=false \
+      --label "org.opencontainers.image.revision=${TARGET_SHA}" \
+      --label "cz.zeleznalady.akl.compose-project=${PROJECT_NAME}" \
+      --label 'cz.zeleznalady.akl.service=ingestion-service' \
+      --build-arg AKL_INSTALL_DOCLING=true \
+      --tag "$INGESTION_SERVICE_IMAGE" \
+      --file "${release_dir}/services/ingestion-service/Dockerfile" \
+      "${release_dir}/services/ingestion-service"
+  fi
 fi
 for service in "${services[@]}"; do
   verified_image_id="$(verify_target_image_identity "$service" post-build)"

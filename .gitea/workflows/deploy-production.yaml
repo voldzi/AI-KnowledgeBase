@@ -16,7 +16,8 @@ on:
 
 permissions:
   contents: read
-  actions: read
+  actions: write
+  packages: write
 
 concurrency:
   group: akb-production-deploy
@@ -91,6 +92,41 @@ jobs:
             --sha "${{ inputs.approved_sha }}" \
             --token-file "${token_file}"
 
+      - name: Build and publish immutable production images once
+        env:
+          APP_ENV: release-candidate
+          NODE_ENV: test
+          AKB_RELEASE_SOURCE_SHA: ${{ inputs.approved_sha }}
+          AKB_RELEASE_REGISTRY_USER: ${{ github.actor }}
+          AKB_RELEASE_REGISTRY_TOKEN: ${{ secrets.AKB_GITEA_PACKAGE_RW_TOKEN }}
+        run: bash scripts/ci/publish_production_images.sh
+
+      - name: Publish closed production image manifest
+        id: publish-production-images
+        uses: ChristopherHX/gitea-upload-artifact@81f940d004763f986ba3582c007fd842dd5cb0d7
+        with:
+          name: akb-production-images-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 30
+          path: akb-production-image-manifest.json
+
+      - name: Verify production image manifest is server-visible
+        env:
+          GITEA_TOKEN: ${{ gitea.token }}
+          AKB_GITEA_RUN_ATTEMPT: ${{ gitea.run_attempt }}
+          AKB_ARTIFACT_ID: ${{ steps.publish-production-images.outputs.artifact-id }}
+        run: |
+          python3 scripts/ci/verify_gitea_action_artifact.py \
+            --api-url "${{ github.api_url }}" \
+            --repository "${{ github.repository }}" \
+            --run-id "${{ github.run_id }}" \
+            --run-attempt "${AKB_GITEA_RUN_ATTEMPT:-1}" \
+            --commit "${{ github.sha }}" \
+            --ref "${{ github.ref }}" \
+            --event "${{ github.event_name }}" \
+            --artifact-id "${AKB_ARTIFACT_ID}" \
+            --artifact-name "akb-production-images-${{ github.sha }}"
+
       - name: Ensure restricted deployment SSH client
         run: |
           set -euo pipefail
@@ -106,6 +142,8 @@ jobs:
         env:
           DEPLOY_KEY: ${{ secrets.AKB_PRODUCTION_DEPLOY_SSH_KEY }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.AKB_PRODUCTION_DEPLOY_KNOWN_HOSTS }}
+          AKB_RELEASE_REGISTRY_USER: ${{ github.actor }}
+          AKB_RELEASE_REGISTRY_TOKEN: ${{ secrets.AKB_GITEA_PACKAGE_RW_TOKEN }}
           RELEASE_SHA: ${{ inputs.approved_sha }}
         run: |
           set +x
@@ -113,6 +151,7 @@ jobs:
           umask 077
           ssh_dir="$(mktemp -d)"
           cleanup() {
+            docker logout git.home.cz >/dev/null 2>&1 || true
             find "${ssh_dir}" -type f -exec shred -u {} \; 2>/dev/null || true
             rmdir "${ssh_dir}" 2>/dev/null || true
           }
@@ -124,6 +163,10 @@ jobs:
           printf '%s\n' "${DEPLOY_KEY}" >"${ssh_dir}/id_ed25519"
           printf '%s\n' "${DEPLOY_KNOWN_HOSTS}" >"${ssh_dir}/known_hosts"
           chmod 0600 "${ssh_dir}/id_ed25519" "${ssh_dir}/known_hosts"
+          [[ -n "${AKB_RELEASE_REGISTRY_USER}" && -n "${AKB_RELEASE_REGISTRY_TOKEN}" ]]
+          printf '%s' "${AKB_RELEASE_REGISTRY_TOKEN}" \
+            | docker login git.home.cz --username "${AKB_RELEASE_REGISTRY_USER}" --password-stdin >/dev/null
+          unset AKB_RELEASE_REGISTRY_TOKEN
 
           ssh_command=(
             ssh
@@ -136,6 +179,41 @@ jobs:
             -i "${ssh_dir}/id_ed25519"
             voldzi@docker.home.cz
           )
+
+          mapfile -t release_images < <(
+            python3 - "${RELEASE_SHA}" <<'PY'
+          import json, re, sys
+          from pathlib import Path
+          value = json.loads(Path("akb-production-image-manifest.json").read_text())
+          names = ["registry-api", "ingestion-service", "rag-retrieval-service", "evaluation-service", "governance-service", "llm-gateway-service", "web", "chat-web"]
+          if list(value) != ["buildPolicy", "imageBundleSha256", "images", "platform", "productionMutationAuthorized", "repository", "schema", "sourceCommit", "sourceDateEpoch"]:
+              raise SystemExit("PRODUCTION_IMAGE_MANIFEST_NOT_CLOSED")
+          if value["schema"] != "akb-production-image-manifest-1" or value["sourceCommit"] != sys.argv[1]:
+              raise SystemExit("PRODUCTION_IMAGE_MANIFEST_IDENTITY_INVALID")
+          if sorted(value["images"]) != sorted(names):
+              raise SystemExit("PRODUCTION_IMAGE_SET_INVALID")
+          for name in names:
+              ref = value["images"][name]
+              if not re.fullmatch(rf"git\.home\.cz/akb/akb-{re.escape(name)}@sha256:[0-9a-f]{{64}}", ref):
+                  raise SystemExit("PRODUCTION_IMAGE_REFERENCE_INVALID")
+              print(f"{name}={ref}")
+          PY
+          )
+          image_tags=()
+          for coordinate in "${release_images[@]}"; do
+            service="${coordinate%%=*}"
+            reference="${coordinate#*=}"
+            docker pull "${reference}" >/dev/null
+            tag="akl/${service}:${RELEASE_SHA}"
+            docker tag "${reference}" "${tag}"
+            image_tags+=("${tag}")
+          done
+          archive="${ssh_dir}/akb-images.tgz"
+          docker save "${image_tags[@]}" | gzip -n >"${archive}"
+          archive_sha="$(sha256sum "${archive}" | awk '{print $1}')"
+          [[ "${archive_sha}" =~ ^[0-9a-f]{64}$ ]]
+          "${ssh_command[@]}" "import ${RELEASE_SHA} ${archive_sha}" <"${archive}"
+          unlink "${archive}"
 
           start_output="$("${ssh_command[@]}" "deploy ${RELEASE_SHA}")"
           operation_id="$(printf '%s\n' "${start_output}" | awk -F= '$1 == "operation_id" {print $2}')"

@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
+import io
+import json
+import os
 from pathlib import Path
 import stat
 import subprocess
+import tarfile
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -18,6 +23,76 @@ GATE_SPEC.loader.exec_module(production_gate)
 
 
 class ProductionGateTests(unittest.TestCase):
+    @staticmethod
+    def _docker_archive(sha: str, *, extra: bool = False) -> bytes:
+        services = ["registry-api", "ingestion-service", "rag-retrieval-service", "evaluation-service", "governance-service", "llm-gateway-service", "web", "chat-web"]
+        manifest = [{"Config": f"{index}.json", "RepoTags": [f"akl/{service}:{sha}"], "Layers": []} for index, service in enumerate(services)]
+        if extra:
+            manifest.append({"Config": "extra.json", "RepoTags": [f"akl/unexpected:{sha}"], "Layers": []})
+        output = io.BytesIO()
+        with tarfile.open(fileobj=output, mode="w:gz") as archive:
+            data = json.dumps(manifest).encode()
+            info = tarfile.TarInfo("manifest.json")
+            info.size = len(data)
+            archive.addfile(info, io.BytesIO(data))
+        return output.getvalue()
+
+    def test_gateway_accepts_only_exact_prebuilt_image_set(self) -> None:
+        sha = "a" * 40
+        gateway = ROOT / "infra/ci/gitea-runner/host/akb-gitea-deploy-gateway.sh"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            docker = fake_bin / "docker"
+            docker.write_text("""#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$1 ${2:-}" == "image inspect" ]]; then
+  [[ -f "$FAKE_DOCKER_STATE" ]] || exit 1
+  service="${@: -1}"; service="${service#akl/}"; service="${service%%:*}"
+  if [[ "$*" == *org.opencontainers.image.revision* ]]; then printf '%s\\n' "$FAKE_SHA"
+  elif [[ "$*" == *cz.zeleznalady.akl.compose-project* ]]; then printf 'akl\\n'
+  elif [[ "$*" == *cz.zeleznalady.akl.service* ]]; then printf '%s\\n' "$service"
+  fi
+elif [[ "$1" == "load" ]]; then cat >/dev/null; touch "$FAKE_DOCKER_STATE"
+else exit 2
+fi
+""")
+            docker.chmod(0o755)
+            timeout = fake_bin / "timeout"
+            timeout.write_text("#!/usr/bin/env bash\nshift\nexec \"$@\"\n")
+            timeout.chmod(0o755)
+            sync = fake_bin / "sync"
+            sync.write_text("#!/usr/bin/env bash\nexit 0\n")
+            sync.chmod(0o755)
+            environment = {
+                **os.environ,
+                "AKB_GATEWAY_TEST_MODE": "1",
+                "AKL_RELEASE_ROOT": str(root / "release"),
+                "PATH": f"{fake_bin}:{os.environ['PATH']}",
+                "FAKE_SHA": sha,
+                "FAKE_DOCKER_STATE": str(root / "docker-loaded"),
+            }
+            archive = self._docker_archive(sha)
+            result = subprocess.run(
+                ["bash", str(gateway), "import", sha, hashlib.sha256(archive).hexdigest()],
+                input=archive, capture_output=True, env=environment,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr.decode())
+            marker = root / "release/prebuilt" / f"{sha}.env"
+            self.assertTrue(marker.is_file())
+            self.assertEqual(marker.stat().st_mode & 0o077, 0)
+
+            other_sha = "b" * 40
+            (root / "docker-loaded").unlink()
+            bad_archive = self._docker_archive(other_sha, extra=True)
+            bad = subprocess.run(
+                ["bash", str(gateway), "import", other_sha, hashlib.sha256(bad_archive).hexdigest()],
+                input=bad_archive, capture_output=True, env={**environment, "FAKE_SHA": other_sha},
+            )
+            self.assertNotEqual(bad.returncode, 0)
+            self.assertFalse((root / "release/prebuilt" / f"{other_sha}.env").exists())
+
     def test_api_client_uses_system_ca_without_token_in_process_args(self) -> None:
         token = "a" * 40
 
@@ -216,6 +291,32 @@ class ProductionGateTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("env -u SSH_ORIGINAL_COMMAND setsid", gateway)
 
+    def test_prebuilt_import_is_closed_and_production_build_is_skipped(self) -> None:
+        gateway = (ROOT / "infra/ci/gitea-runner/host/akb-gitea-deploy-gateway.sh").read_text()
+        deploy = (ROOT / "scripts/deploy_docker_home_release.sh").read_text()
+        publisher = (ROOT / "scripts/ci/publish_production_images.sh").read_text()
+        workflow = (ROOT / ".gitea/workflows/deploy-production.yaml").read_text()
+
+        self.assertIn('[[ "$archive_sha" =~ ^[0-9a-f]{64}$ ]]', gateway)
+        self.assertIn('timeout 900 dd bs=1M', gateway)
+        self.assertIn('gzip -t "$archive"', gateway)
+        self.assertIn('schema=akb-prebuilt-image-import-1', gateway)
+        self.assertIn('[[ "$revision" == "$release_sha"', gateway)
+        self.assertIn('PREBUILT_IMAGES="true"', deploy)
+        self.assertIn('if [[ "$PREBUILT_IMAGES" != "true" ]]; then', deploy)
+        self.assertIn('Using prebuilt immutable images', deploy)
+        self.assertIn('akb-production-image-manifest-1', publisher)
+        self.assertEqual(publisher.count('build_image '), 8)
+        self.assertIn('if docker pull "$target"', publisher)
+        self.assertIn('Existing immutable image provenance is invalid', publisher)
+        self.assertIn('docker save "${image_tags[@]}" | gzip -n', workflow)
+        self.assertIn('akb-production-images-${{ github.sha }}', workflow)
+        self.assertIn('verify_gitea_action_artifact.py', workflow)
+        self.assertIn('"import ${RELEASE_SHA} ${archive_sha}"', workflow)
+        self.assertLess(workflow.index("Require successful trusted main CI"), workflow.index("Build and publish immutable production images once"))
+        self.assertLess(workflow.index("Build and publish immutable production images once"), workflow.index('"import ${RELEASE_SHA} ${archive_sha}"'))
+        self.assertLess(workflow.index('"import ${RELEASE_SHA} ${archive_sha}"'), workflow.index('"deploy ${RELEASE_SHA}"'))
+
     def test_deploy_workflow_is_manual_and_uses_only_restricted_secrets(self) -> None:
         workflow = (ROOT / ".gitea/workflows/deploy-production.yaml").read_text(
             encoding="utf-8"
@@ -232,6 +333,7 @@ class ProductionGateTests(unittest.TestCase):
         self.assertIn("Gitea release-gate token is not configured.", workflow)
         self.assertIn("secrets.AKB_PRODUCTION_DEPLOY_SSH_KEY", workflow)
         self.assertIn("secrets.AKB_PRODUCTION_DEPLOY_KNOWN_HOSTS", workflow)
+        self.assertIn("secrets.AKB_GITEA_PACKAGE_RW_TOKEN", workflow)
         self.assertIn("command -v ssh", workflow)
         self.assertIn("apt-get install -y -qq --no-install-recommends openssh-client", workflow)
         self.assertNotIn("AKL_PROD_ENV", workflow)
