@@ -98,6 +98,7 @@ class CachedPythonEnvironmentTests(unittest.TestCase):
         self.assertNotIn("pip install --upgrade pip", workflow)
         self.assertIn("pytest==9.1.1", workflow)
         self.assertIn("--validate-only", workflow)
+        self.assertIn("python3 tests/test_ci_cached_python_env.py", workflow)
         for service in (
             "registry_api",
             "ingestion_service",
