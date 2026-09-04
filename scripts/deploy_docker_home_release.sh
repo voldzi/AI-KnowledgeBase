@@ -34,6 +34,8 @@ while [[ $# -gt 0 ]]; do
 done
 [[ -n "$TARGET_SHA" ]] || usage
 akl_validate_full_sha "$TARGET_SHA"
+[[ -z "${SOURCE_DATE_EPOCH+x}" ]] \
+  || akl_fail "Ambient SOURCE_DATE_EPOCH is forbidden; it is derived from the exact target commit"
 
 RELEASE_ROOT="${AKL_RELEASE_ROOT:-/srv/akl}"
 ENV_SOURCE_FILE="${AKL_PROD_ENV_FILE:-${RELEASE_ROOT}/env/akl.prod.env}"

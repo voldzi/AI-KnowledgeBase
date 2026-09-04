@@ -207,6 +207,7 @@ class DoclingProductionReleaseTests(unittest.TestCase):
 
         self.assertIn('show -s --format=%ct "$TARGET_SHA"', deploy)
         self.assertIn('[[ "$SOURCE_DATE_EPOCH" =~ ^[1-9][0-9]*$ ]]', deploy)
+        self.assertIn('[[ -z "${SOURCE_DATE_EPOCH+x}" ]]', deploy)
         self.assertIn('"SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}"', deploy)
         self.assertIn("SOURCE_DATE_EPOCH: ${SOURCE_DATE_EPOCH:-}", compose)
 
