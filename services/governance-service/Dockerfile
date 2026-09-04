@@ -1,5 +1,9 @@
 FROM python:3.12-slim
 
+ENV PIP_DEFAULT_TIMEOUT=300 \\
+    PIP_RETRIES=8 \\
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
 LABEL cz.zeleznalady.akl.service="governance-service"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

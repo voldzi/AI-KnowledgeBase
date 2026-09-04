@@ -1,5 +1,9 @@
 FROM python:3.12-slim@sha256:e5c9fa26ffb76e11e0f054f30dc2523a2f9693f0c36c0cf1e39b27e152d899fc
 
+ENV PIP_DEFAULT_TIMEOUT=300 \\
+    PIP_RETRIES=8 \\
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
 ARG SOURCE_DATE_EPOCH
 
 LABEL cz.zeleznalady.akl.service="registry-api"
