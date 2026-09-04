@@ -184,6 +184,19 @@ class DoclingProductionReleaseTests(unittest.TestCase):
         self.assertIn('local image_owner="${6:-$service_name}"', common)
         self.assertIn('release_service" == "$image_owner"', common)
 
+    def test_docling_sidecar_advances_managed_boundary_revision(self) -> None:
+        deploy = (ROOT / "scripts/deploy_docker_home_release.sh").read_text(
+            encoding="utf-8"
+        )
+        compose = (
+            ROOT / "infra/docker-compose/docker-compose.docker-home.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn("  docling-worker:\n", compose)
+        self.assertEqual(
+            deploy.count("AKL_IMMUTABLE_MANAGED_BOUNDARY_REVISION=5"), 1
+        )
+        self.assertNotIn("AKL_IMMUTABLE_MANAGED_BOUNDARY_REVISION=4", deploy)
+
     def test_model_sources_are_exact_public_commit_pins(self) -> None:
         manifest = json.loads(
             (
