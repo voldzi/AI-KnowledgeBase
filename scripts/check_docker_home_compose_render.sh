@@ -8,12 +8,16 @@ OUTPUT_FILE="${ROOT_DIR}/.tmp/docker-home-compose.rendered.yml"
 JSON_OUTPUT_FILE="${ROOT_DIR}/.tmp/docker-home-compose.rendered.json"
 TAGGED_JSON_OUTPUT_FILE="${ROOT_DIR}/.tmp/docker-home-compose.tagged.json"
 TEST_IMAGE_TAG="0123456789abcdef0123456789abcdef01234567"
+TEST_SOURCE_DATE_EPOCH="1"
 
 mkdir -p "${ROOT_DIR}/.tmp"
 
-docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config >"$OUTPUT_FILE"
-docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config --format json >"$JSON_OUTPUT_FILE"
+SOURCE_DATE_EPOCH="$TEST_SOURCE_DATE_EPOCH" \
+  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config >"$OUTPUT_FILE"
+SOURCE_DATE_EPOCH="$TEST_SOURCE_DATE_EPOCH" \
+  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config --format json >"$JSON_OUTPUT_FILE"
 AKL_IMAGE_TAG="$TEST_IMAGE_TAG" \
+  SOURCE_DATE_EPOCH="$TEST_SOURCE_DATE_EPOCH" \
   docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config --format json \
   >"$TAGGED_JSON_OUTPUT_FILE"
 

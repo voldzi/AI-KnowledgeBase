@@ -848,6 +848,19 @@ fi
 shift
 [[ "${1-}" == "--project-name" && "${2-}" == "akl-test" ]] || exit 92
 shift 2
+[[ "${SOURCE_DATE_EPOCH:-}" =~ ^[1-9][0-9]*$ ]] || {
+  printf 'fake compose did not receive a positive SOURCE_DATE_EPOCH\n' >&2
+  exit 92
+}
+expected_source_date_epoch="$(
+  git --no-replace-objects \
+    --git-dir="${AKL_RELEASE_ROOT}/git/AI-KnowledgeBase.git" \
+    show -s --format=%ct "$AKL_SERVICE_VERSION"
+)"
+[[ "$SOURCE_DATE_EPOCH" == "$expected_source_date_epoch" ]] || {
+  printf 'fake compose received SOURCE_DATE_EPOCH for a different commit\n' >&2
+  exit 92
+}
 [[ "${1-}" == "--env-file" && "${2-}" == "$AKL_PROD_ENV_FILE" ]] || {
   printf 'fake compose did not receive the active env snapshot path\n' >&2
   exit 93
@@ -2231,6 +2244,18 @@ git -C "$WORK_REPO" add services/registry-api/release.txt
 git -C "$WORK_REPO" commit --quiet -m 'registry release for retryable pre-stop primary gate'
 PRE_STOP_GATE_RETRY_SHA="$(git -C "$WORK_REPO" rev-parse HEAD)"
 git -C "$WORK_REPO" push --quiet origin main
+
+printf 'MARK ambient-source-date-epoch-override\n' >>"$CALL_LOG"
+if SOURCE_DATE_EPOCH=1 \
+  "${AKL_RELEASE_ROOT}/current/scripts/deploy_docker_home_release.sh" --sha "$PRE_STOP_GATE_RETRY_SHA"; then
+  fail 'deployment accepted an ambient SOURCE_DATE_EPOCH override'
+fi
+ambient_epoch_log="$(awk '/^MARK ambient-source-date-epoch-override$/ {capture=1; next} capture' "$CALL_LOG")"
+if grep -q '^postgres_primary_gate:\|^build:\|^registry_stop$\|^alembic_upgrade$' <<<"$ambient_epoch_log"; then
+  fail 'ambient SOURCE_DATE_EPOCH override reached a database gate, build, writer stop, or migration'
+fi
+assert_current_sha "$SHA_ONE"
+assert_runtime_marker "$SHA_ONE" verified
 
 printf 'MARK ambient-database-url-override\n' >>"$CALL_LOG"
 if AKL_REGISTRY_DATABASE_URL='postgresql+psycopg://ambient_user:ambient_secret@wrong-db.internal:5432/wrong_registry' \

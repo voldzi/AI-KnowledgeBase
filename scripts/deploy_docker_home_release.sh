@@ -947,8 +947,14 @@ akl_assert_no_ambient_compose_overrides \
   GOVERNANCE_SERVICE_IMAGE \
   WEB_IMAGE \
   CHAT_WEB_IMAGE \
-  LLM_GATEWAY_SERVICE_IMAGE
+  LLM_GATEWAY_SERVICE_IMAGE \
+  SOURCE_DATE_EPOCH
 AKL_SERVICE_VERSION="$TARGET_SHA"
+SOURCE_DATE_EPOCH="$(
+  git --no-replace-objects --git-dir="$GIT_DIR" show -s --format=%ct "$TARGET_SHA"
+)" || akl_fail "Could not derive SOURCE_DATE_EPOCH from the exact target commit"
+[[ "$SOURCE_DATE_EPOCH" =~ ^[1-9][0-9]*$ ]] \
+  || akl_fail "The exact target commit has no valid SOURCE_DATE_EPOCH"
 REGISTRY_API_IMAGE="akl/registry-api:${TARGET_SHA}"
 INGESTION_SERVICE_IMAGE="akl/ingestion-service:${TARGET_SHA}"
 RAG_RETRIEVAL_SERVICE_IMAGE="akl/rag-retrieval-service:${TARGET_SHA}"
@@ -960,6 +966,7 @@ LLM_GATEWAY_SERVICE_IMAGE="akl/llm-gateway-service:${TARGET_SHA}"
 COMPOSE=(
   env
   "AKL_SERVICE_VERSION=${AKL_SERVICE_VERSION}"
+  "SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}"
   "REGISTRY_API_IMAGE=${REGISTRY_API_IMAGE}"
   "INGESTION_SERVICE_IMAGE=${INGESTION_SERVICE_IMAGE}"
   "RAG_RETRIEVAL_SERVICE_IMAGE=${RAG_RETRIEVAL_SERVICE_IMAGE}"

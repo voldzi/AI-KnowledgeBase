@@ -197,6 +197,22 @@ class DoclingProductionReleaseTests(unittest.TestCase):
         )
         self.assertNotIn("AKL_IMMUTABLE_MANAGED_BOUNDARY_REVISION=4", deploy)
 
+    def test_release_derives_registry_build_epoch_from_exact_target(self) -> None:
+        deploy = (ROOT / "scripts/deploy_docker_home_release.sh").read_text(
+            encoding="utf-8"
+        )
+        compose = (
+            ROOT / "infra/docker-compose/docker-compose.docker-home.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('show -s --format=%ct "$TARGET_SHA"', deploy)
+        self.assertIn('[[ "$SOURCE_DATE_EPOCH" =~ ^[1-9][0-9]*$ ]]', deploy)
+        self.assertIn('"SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}"', deploy)
+        self.assertIn(
+            "SOURCE_DATE_EPOCH must be derived from the exact release commit",
+            compose,
+        )
+
     def test_model_sources_are_exact_public_commit_pins(self) -> None:
         manifest = json.loads(
             (
