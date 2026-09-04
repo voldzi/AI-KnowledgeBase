@@ -87,6 +87,10 @@ if "qdrant" not in services:
     raise SystemExit("Production Compose must retain the shared Qdrant service.")
 
 worker = services["docling-worker"]
+if worker.get("labels", {}).get("cz.zeleznalady.akl.service") != "ingestion-service":
+    raise SystemExit(
+        "Docling worker must retain the ingestion-service immutable image owner."
+    )
 if worker.get("network_mode") != "none":
     raise SystemExit("Docling worker must have no Docker network.")
 if worker.get("pids_limit") != 256 or worker.get("mem_limit") != "6442450944":
