@@ -11,7 +11,6 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
-import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -93,7 +92,7 @@ def validate_cache_root(cache_root: Path) -> Path:
 
 def expected_marker(service: str, lock_sha256: str) -> dict[str, str]:
     return {
-        "schema": "akb-ci-python-env-1",
+        "schema": "akb-ci-python-env-2",
         "service": service,
         "python": python_identity(),
         "lock_sha256": lock_sha256,
@@ -128,12 +127,15 @@ def ensure_environment(
 
     service_root = target.parent
     service_root.mkdir(parents=True, exist_ok=True, mode=0o755)
-    temporary = Path(tempfile.mkdtemp(prefix=f".{cache_key}.", dir=service_root))
     try:
-        subprocess.run((sys.executable, "-m", "venv", str(temporary)), check=True)
+        # Python virtual environments embed their creation path and are not
+        # relocatable. Build directly at the content-addressed final path;
+        # the closed marker is written last, so interrupted builds remain
+        # incomplete and are rejected on the next run.
+        subprocess.run((sys.executable, "-m", "venv", str(target)), check=True)
         subprocess.run(
             (
-                str(temporary / "bin/python"),
+                str(target / "bin/python"),
                 "-m",
                 "pip",
                 "install",
@@ -144,13 +146,12 @@ def ensure_environment(
             ),
             check=True,
         )
-        (temporary / ".akb-ci-environment.json").write_text(
+        (target / ".akb-ci-environment.json").write_text(
             json.dumps(marker, sort_keys=True, separators=(",", ":")) + "\n",
             encoding="utf-8",
         )
-        os.replace(temporary, target)
     except Exception:
-        shutil.rmtree(temporary, ignore_errors=True)
+        shutil.rmtree(target, ignore_errors=True)
         raise
     validate_cached_environment(target, marker)
     return target, "miss"

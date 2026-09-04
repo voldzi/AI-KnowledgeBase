@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT / "scripts/ci"))
 
 from ensure_cached_python_test_env import (  # noqa: E402
     CachedEnvironmentError,
+    ensure_environment,
     expected_marker,
     load_service,
     main,
@@ -70,6 +71,7 @@ class CachedPythonEnvironmentTests(unittest.TestCase):
 
     def test_cache_marker_is_closed_and_exact(self) -> None:
         marker = expected_marker("registry_api", "a" * 64)
+        self.assertEqual(marker["schema"], "akb-ci-python-env-2")
         with tempfile.TemporaryDirectory() as temporary:
             environment = Path(temporary) / "environment"
             (environment / "bin").mkdir(parents=True)
@@ -80,6 +82,37 @@ class CachedPythonEnvironmentTests(unittest.TestCase):
             marker_path.write_text(json.dumps({**marker, "unexpected": True}))
             with self.assertRaisesRegex(CachedEnvironmentError, "MARKER_DRIFT"):
                 validate_cached_environment(environment, marker)
+
+    def test_environment_is_created_at_its_final_path(self) -> None:
+        entry = {
+            "input": "unused",
+            "input_sha256": "b" * 64,
+            "lock": "unused.lock",
+            "lock_sha256": "a" * 64,
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            cache_root = Path(temporary) / "akb" / "python-envs"
+
+            def fake_run(command: tuple[str, ...], *, check: bool) -> None:
+                self.assertTrue(check)
+                if command[1:3] == ("-m", "venv"):
+                    environment = Path(command[3])
+                    (environment / "bin").mkdir(parents=True)
+                    (environment / "bin/python").write_text("")
+
+            with mock.patch(
+                "ensure_cached_python_test_env.load_service", return_value=entry
+            ), mock.patch(
+                "ensure_cached_python_test_env.validate_entry",
+                return_value=ROOT / "requirements.lock",
+            ), mock.patch(
+                "ensure_cached_python_test_env.subprocess.run", side_effect=fake_run
+            ):
+                environment, status = ensure_environment("registry_api", cache_root)
+
+            self.assertEqual(status, "miss")
+            self.assertEqual(environment.parent.parent, cache_root.resolve())
+            self.assertTrue((environment / ".akb-ci-environment.json").is_file())
 
     def test_cache_root_must_be_absolute_and_scoped(self) -> None:
         with self.assertRaisesRegex(CachedEnvironmentError, "NOT_ABSOLUTE"):
