@@ -86,7 +86,10 @@ def test_optional_production_check_does_not_claim_it_was_done(repo) -> None:
     assert code == 0 and result["production_checked"] is False
 
 
-def test_fast_check_covers_staged_changes_and_checks_lineage_before_install() -> None:
-    source = (ROOT / "scripts/ci/local-fast-check.sh").read_text()
-    assert "git diff --cached --name-only --" in source
-    assert source.index("check_working_baseline.py") < source.index("pip install")
+def test_fast_check_delegates_to_stdlib_orchestrator_and_checks_lineage_first() -> None:
+    entrypoint = (ROOT / "scripts/ci/local-fast-check.sh").read_text()
+    source = (ROOT / "scripts/ci/local_fast_check.py").read_text()
+    assert "local_fast_check.py" in entrypoint
+    assert '("diff", "--cached", "--name-only", "--")' in source
+    main_source = source[source.index("def main()") :]
+    assert main_source.index("check_working_baseline.py") < main_source.index("docker_available()")

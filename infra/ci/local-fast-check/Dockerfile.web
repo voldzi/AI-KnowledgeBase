@@ -1,0 +1,29 @@
+# syntax=docker/dockerfile:1.7
+
+FROM node:26-alpine@sha256:2d984a15c9b54fd0aeb608b8e0d0d83529eb34d2966db27a1fb4f1edc3d298a3
+
+ARG PNPM_CACHE_ID
+ENV CI=true \
+    NEXT_TELEMETRY_DISABLED=1
+WORKDIR /opt/web
+
+COPY apps/web/package.json apps/web/pnpm-lock.yaml apps/web/pnpm-workspace.yaml ./
+ADD --checksum=sha256:deafa7ec98a1218b6a047289b92fbe2395c1e22d3495bb711653013218ee15ee \
+  https://registry.npmjs.org/pnpm/-/pnpm-11.7.0.tgz /tmp/pnpm.tgz
+RUN --mount=type=cache,id=${PNPM_CACHE_ID},target=/pnpm/store,sharing=locked \
+    test -n "${PNPM_CACHE_ID}" \
+    && mkdir -p /usr/local/lib/node_modules/pnpm \
+    && tar -xzf /tmp/pnpm.tgz -C /usr/local/lib/node_modules/pnpm --strip-components=1 \
+    && rm /tmp/pnpm.tgz \
+    && printf '%s\n' '#!/bin/sh' 'exec node /usr/local/lib/node_modules/pnpm/bin/pnpm.cjs "$@"' >/usr/local/bin/pnpm \
+    && chmod 0755 /usr/local/bin/pnpm \
+    && node /usr/local/lib/node_modules/pnpm/bin/pnpm.cjs config set store-dir /pnpm/store \
+    && node /usr/local/lib/node_modules/pnpm/bin/pnpm.cjs install --frozen-lockfile
+
+RUN addgroup -g 65532 -S akb-local-ci \
+    && adduser -u 65532 -S -D -H -G akb-local-ci akb-local-ci \
+    && chmod -R a+rX /opt/web
+
+USER 65532:65532
+WORKDIR /work
+ENTRYPOINT ["/bin/sh", "-c"]
