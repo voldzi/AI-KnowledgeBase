@@ -248,5 +248,22 @@ class ProductionGateTests(unittest.TestCase):
         self.assertIn("docker buildx version", runner_dockerfile)
 
 
+    def test_release_classifier_ignores_only_declared_external_keycloak_sources(self) -> None:
+        deploy_script = (ROOT / "scripts/deploy_docker_home_release.sh").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(
+            "infra/keycloak/README.md|infra/keycloak/realm-akl.json|"
+            "infra/keycloak/realm-stratos.json|"
+            "infra/keycloak/update-stratos-public-routing.sh)",
+            deploy_script,
+        )
+        self.assertIn(
+            "services/*|apps/*|infra/reverse-proxy/*|infra/keycloak/*|",
+            deploy_script,
+        )
+        self.assertIn("Release changes unsupported runtime path", deploy_script)
+
+
 if __name__ == "__main__":
     unittest.main()
