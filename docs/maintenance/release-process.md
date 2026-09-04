@@ -170,6 +170,12 @@ This is an early feedback layer, not a release approval. The final candidate
 still runs on the repo-scoped VM125 runner, where the Linux/amd64 toolchain and
 persistent caches match the production build environment.
 
+Trusted CI also retains the version-pinned OpenAPI linter and content-addressed
+Python test environments. Each Python cache key binds the interpreter and the
+exact hash-locked dependency file. A missing, changed, open or unhashed lock
+fails closed; a valid cache hit skips only dependency installation, never the
+tests, same-SHA evidence or immutable release contract.
+
 ## Optimized Release Candidate Workflow
 
 Use this sequence for every production-bound change. It keeps the existing

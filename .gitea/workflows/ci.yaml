@@ -20,7 +20,11 @@ permissions:
 
 env:
   AKB_CI_CACHE_ROOT: /cache/akb-ci
+  AKB_CI_PYTHON_ENV_ROOT: /cache/akb-ci/python-envs
   DOCKER_CONFIG: /tmp/akb-docker-config
+  NPM_CONFIG_CACHE: /cache/akb-ci/npm
+  NPM_CONFIG_UPDATE_NOTIFIER: "false"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
   PIP_CACHE_DIR: /cache/akb-ci/pip
   PLAYWRIGHT_BROWSERS_PATH: /cache/akb-ci/playwright
   PNPM_STORE_DIR: /cache/akb-ci/pnpm-store
@@ -128,7 +132,17 @@ jobs:
           python3 tests/test_clean_pilot_ci_attestation.py
           python3 tests/test_clean_pilot_c4_registry.py
           python3 tests/test_clean_pilot_c5.py
-          npx --yes @redocly/cli lint openapi/openapi.json
+          for service in \
+            registry_api \
+            ingestion_service \
+            rag_retrieval_service \
+            llm_gateway_service \
+            evaluation_service \
+            governance_service; do
+            python3 scripts/ci/ensure_cached_python_test_env.py \
+              --validate-only --service "${service}"
+          done
+          npx --yes --prefer-offline @redocly/cli@2.51.1 lint openapi/openapi.json
       - name: Scan committed history for secrets
         run: |
           set -euo pipefail
@@ -176,8 +190,7 @@ jobs:
           python3 scripts/ci/check_clean_pilot_c5.py | tee -a phase-a-digests.txt
           python3 -m venv .phase-a-venv
           . .phase-a-venv/bin/activate
-          python -m pip install --upgrade pip
-          python -m pip install pytest
+          python -m pip install pytest==9.1.1
           python -m pytest -q tests/test_clean_pilot_disposable_store.py tests/test_clean_pilot_stack_rehearsal.py
           python tests/test_clean_pilot_c5.py
           python -m pytest -q tests/test_standalone_chat_keycloak.py tests/test_managed_identity_preflight.py
@@ -291,16 +304,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
-      - name: Install dependencies and test
-        working-directory: services/registry-api
+      - name: Restore locked dependencies and test
         env:
-          PYTHONPATH: .
+          PYTHONPATH: services/registry-api
         run: |
-          python3 -m venv .venv
-          . .venv/bin/activate
-          python -m pip install --upgrade pip
-          python3 -m pip install -e ".[test]"
-          python -m pytest
+          python_env="$(python3 scripts/ci/ensure_cached_python_test_env.py --service registry_api)"
+          . "${python_env}/bin/activate"
+          python -m pytest services/registry-api/tests
 
   ingestion-service:
     name: Python / ingestion-service
@@ -313,16 +323,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
-      - name: Install dependencies and test
-        working-directory: services/ingestion-service
+      - name: Restore locked dependencies and test
         env:
-          PYTHONPATH: .
+          PYTHONPATH: services/ingestion-service
         run: |
-          python3 -m venv .venv
-          . .venv/bin/activate
-          python -m pip install --upgrade pip
-          python3 -m pip install -r requirements.txt
-          python -m pytest
+          python_env="$(python3 scripts/ci/ensure_cached_python_test_env.py --service ingestion_service)"
+          . "${python_env}/bin/activate"
+          python -m pytest services/ingestion-service/tests
 
   rag-retrieval-service:
     name: Python / rag-retrieval-service
@@ -335,16 +342,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
-      - name: Install dependencies and test
-        working-directory: services/rag-retrieval-service
+      - name: Restore locked dependencies and test
         env:
-          PYTHONPATH: .
+          PYTHONPATH: services/rag-retrieval-service
         run: |
-          python3 -m venv .venv
-          . .venv/bin/activate
-          python -m pip install --upgrade pip
-          python3 -m pip install -r requirements.txt
-          python -m pytest
+          python_env="$(python3 scripts/ci/ensure_cached_python_test_env.py --service rag_retrieval_service)"
+          . "${python_env}/bin/activate"
+          python -m pytest services/rag-retrieval-service/tests
 
   llm-gateway-service:
     name: Python / llm-gateway-service
@@ -357,16 +361,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
-      - name: Install dependencies and test
-        working-directory: services/llm-gateway-service
+      - name: Restore locked dependencies and test
         env:
-          PYTHONPATH: .
+          PYTHONPATH: services/llm-gateway-service
         run: |
-          python3 -m venv .venv
-          . .venv/bin/activate
-          python -m pip install --upgrade pip
-          python3 -m pip install -r requirements.txt
-          python -m pytest
+          python_env="$(python3 scripts/ci/ensure_cached_python_test_env.py --service llm_gateway_service)"
+          . "${python_env}/bin/activate"
+          python -m pytest services/llm-gateway-service/tests
 
   evaluation-service:
     name: Python / evaluation-service
@@ -379,16 +380,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
-      - name: Install dependencies and test
-        working-directory: services/evaluation-service
+      - name: Restore locked dependencies and test
         env:
-          PYTHONPATH: .
+          PYTHONPATH: services/evaluation-service
         run: |
-          python3 -m venv .venv
-          . .venv/bin/activate
-          python -m pip install --upgrade pip
-          python3 -m pip install -r requirements.txt
-          python -m pytest
+          python_env="$(python3 scripts/ci/ensure_cached_python_test_env.py --service evaluation_service)"
+          . "${python_env}/bin/activate"
+          python -m pytest services/evaluation-service/tests
 
   governance-service:
     name: Python / governance-service
@@ -401,16 +399,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
-      - name: Install dependencies and test
-        working-directory: services/governance-service
+      - name: Restore locked dependencies and test
         env:
-          PYTHONPATH: .
+          PYTHONPATH: services/governance-service
         run: |
-          python3 -m venv .venv
-          . .venv/bin/activate
-          python -m pip install --upgrade pip
-          python3 -m pip install -r requirements.txt
-          python -m pytest
+          python_env="$(python3 scripts/ci/ensure_cached_python_test_env.py --service governance_service)"
+          . "${python_env}/bin/activate"
+          python -m pytest services/governance-service/tests
 
   compose:
     name: Docker Compose configuration
