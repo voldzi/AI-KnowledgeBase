@@ -172,6 +172,15 @@ class DoclingProductionReleaseTests(unittest.TestCase):
             'docling-worker "$TARGET_INGESTION_IMAGE_ID" post-restart ingestion-service',
             deploy,
         )
+        compose = (
+            ROOT / "infra/docker-compose/docker-compose.docker-home.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "cz.zeleznalady.akl.service: ingestion-service",
+            compose.split("  docling-worker:\n", 1)[1].split(
+                "  ingestion-service:\n", 1
+            )[0],
+        )
         self.assertIn('release_service" == "$image_owner"', deploy)
         self.assertIn("verify_docling_worker_identity", verify)
         self.assertIn('release_service" == "ingestion-service"', verify)

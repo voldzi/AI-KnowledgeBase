@@ -466,7 +466,7 @@ services:
     stop_grace_period: 10s
     labels:
       <<: *immutable-release-labels
-      cz.zeleznalady.akl.service: docling-worker
+      cz.zeleznalady.akl.service: ingestion-service
     command: ["python", "-m", "parsers.docling_service"]
     environment:
       AKL_INGESTION_DOCLING_MODE: ${AKL_INGESTION_DOCLING_MODE:-off}
