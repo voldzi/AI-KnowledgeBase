@@ -218,6 +218,16 @@ def check(root: Path) -> None:
     ):
         require(source_binding, value, label)
 
+    provision_mount = (
+        root / "scripts/prepare_docling_provision_mount.py"
+    ).read_text(encoding="utf-8")
+    for value, label in (
+        ("root_mode & 0o077", "private model root"),
+        ("resolved_stage.chmod(0o733)", "remapped container staging access"),
+        ("resolved_stage.chmod(0o700)", "sealed staging directory"),
+    ):
+        require(provision_mount, value, label)
+
     web = (root / "apps/web/Dockerfile").read_text(encoding="utf-8")
     if web.count(f"FROM {NODE_BASE}") != 3:
         stop("all three web stages must use the pinned Node base")

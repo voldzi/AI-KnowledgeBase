@@ -62,6 +62,7 @@ class AffectedComponentsTests(unittest.TestCase):
         plan = plan_paths(
             [
                 "scripts/provision_docling_model_bundle.sh",
+                "scripts/prepare_docling_provision_mount.py",
                 "scripts/docling_local_smoke.py",
                 "scripts/setup_docling_local.sh",
                 "scripts/verify_docling_provision_source.py",
