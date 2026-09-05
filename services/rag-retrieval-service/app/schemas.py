@@ -262,7 +262,10 @@ class RagAnswer(BaseModel):
     obligations: list[str] = Field(default_factory=list)
     claims: list[dict[str, Any]] = Field(default_factory=list)
     evidence_status: Literal["supported", "partial", "unsupported", "not_checked"] = "not_checked"
-    verification_model: str | None = None
+    verification_model: str | None = Field(
+        default=None,
+        description="Verifier identity. deterministic-extractive-support-v2 accepts only complete source statements; model verification requires complete claim coverage and verbatim evidence.",
+    )
     conflicts: list[dict[str, Any]] = Field(default_factory=list)
 
 

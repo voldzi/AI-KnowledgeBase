@@ -470,7 +470,7 @@ class QualityGateCheck(BaseModel):
 
 
 class QualityGateResult(BaseModel):
-    status: GateStatus
+    status: GateStatus = Field(description="Any execution error fails the gate. A passed exploratory gate is not release evidence unless all required checks are eligible and passed.")
     checks: list[QualityGateCheck]
     eligible_cases: int
     excluded_draft_cases: int = 0

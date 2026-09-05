@@ -1855,6 +1855,7 @@ paths:
   /api/v1/workflow/tasks:
     get:
       summary: List Workflow Tasks
+      description: Return an authorized page and exact authorized total; candidates are processed in bounded batches.
       operationId: list_workflow_tasks_api_v1_workflow_tasks_get
       parameters:
       - name: status

@@ -3841,6 +3841,7 @@
     "/api/v1/workflow/tasks": {
       "get": {
         "summary": "List Workflow Tasks",
+        "description": "Return an authorized page and exact authorized total; candidates are processed in bounded batches.",
         "operationId": "registry_api_list_workflow_tasks_api_v1_workflow_tasks_get",
         "parameters": [
           {
@@ -28971,7 +28972,8 @@
                 "type": "null"
               }
             ],
-            "title": "Verification Model"
+            "title": "Verification Model",
+            "description": "Verifier identity. deterministic-extractive-support-v2 accepts only complete source statements; model verification requires complete claim coverage and verbatim evidence."
           },
           "conflicts": {
             "items": {
@@ -32359,6 +32361,7 @@
       "EvaluationServiceQualityGateResult": {
         "properties": {
           "status": {
+            "description": "Any execution error fails the gate. A passed exploratory gate is not release evidence unless all required checks are eligible and passed.",
             "type": "string",
             "enum": [
               "passed",

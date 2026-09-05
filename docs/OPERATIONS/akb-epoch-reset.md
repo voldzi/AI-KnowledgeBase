@@ -1,78 +1,65 @@
-# Guarded AKB Epoch Reset
+# AKB Empty-Epoch Operations
 
-## Purpose
+## Supported Scope
 
-`tools/reset_akb_epoch.py` is the AKB owner command for G5/G7. It clears AKB
-Registry data including audit, document object storage, Qdrant, OpenSearch,
-ingestion jobs, and evaluation datasets/reports, then proves zero state. It does
-not reset other STRATOS applications, Keycloak, monitoring, networking, or host
-configuration.
+An empty STRATOS database is not an empty AKB installation. AKB independently
+owns Registry metadata and versions, document blobs, ingestion/job state,
+search/vector indexes, citations/source-open references, RAG/chat history,
+evaluation business data, audit, and cache/session authorization bindings.
 
-Do not run this command against production before G4, two successful G5
-rehearsals, G6 isolated restore, and the coordinated G7 approval.
+The repository provides isolated technical rehearsals through
+`tools/clean_pilot_stack_rehearsal.py`. They are disposable-only and do not
+authorize a production reset. Keep their isolation guards intact.
 
-## Dry Run
+There is currently no approved production reset command in this runbook.
+`tools/reset_akb_epoch.py` is unconditionally blocked by
+`retire_legacy_mutation` before reading or changing stores, including in
+dry-run mode. Do not remove that guard or copy its destructive routines into
+an operator shell. It is not a supported inventory or production tool.
 
-Dry-run is the default and performs inventory only. Always point it explicitly
-at the disposable integration compose/env files:
+## Production Change Prerequisites
 
-```bash
-python3 tools/reset_akb_epoch.py \
-  --compose-file <g4-compose-file> \
-  --env-file <g4-env-file> \
-  --object-storage-root <g4-object-storage-root> \
-  --report reports/g5-reset-rehearsal-1-dry-run.json
-```
+Prepare a separate, reviewed owner change before touching production data:
 
-The report records counts and a small set of technical ids; it never records
-document metadata, bodies, prompts, answers, tokens, or credentials.
+1. Record the exact deployed release, store identities and owners, writers,
+   service dependencies, and the intended empty-epoch boundary. Do not infer
+   targets from default environment values or a compose project name.
+2. Explicitly authorize the data scope. Preserve identity infrastructure and
+   STRATOS data. Archive required audit evidence with restricted access.
+3. Create a complete backup and independently verify its digest and isolated
+   restore. A JSON assertion of successful backup is not proof of recovery.
+4. Rehearse the exact topology twice on new isolated stores. Prove bootstrap,
+   a second no-op bootstrap, all-store zero counts, stale-ID denial and
+   cleanup limited to those disposable resources.
+5. Define the coordinated cutover, maintenance window, writer pause,
+   rollback and post-cutover checks. Prefer a new isolated empty store set
+   with a reversible cutover over deletion of the only working copy.
+6. Obtain the production change approval after these prerequisites pass.
+   Resetting STRATOS or passing a source-only rehearsal is not this approval.
 
-## Apply Guards
-
-Apply requires all three independent controls:
-
-1. `--apply`;
-2. exact confirmation `--confirm RESET-AKB-EPOCH`;
-3. a separately prepared backup verification manifest.
-
-The manifest contract is:
-
-```json
-{
-  "schema_version": "akb-backup-verification-1",
-  "backup_id": "g5-rehearsal-1",
-  "backup_sha256": "<64 lowercase hexadecimal characters>",
-  "backup_verified": true,
-  "isolated_restore_tested": true
-}
-```
-
-The apply command for a disposable environment is:
-
-```bash
-python3 tools/reset_akb_epoch.py \
-  --apply \
-  --confirm RESET-AKB-EPOCH \
-  --backup-manifest <verified-backup-manifest.json> \
-  --compose-file <g4-compose-file> \
-  --env-file <g4-env-file> \
-  --object-storage-root <g4-object-storage-root> \
-  --report reports/g5-reset-rehearsal-1.json
-```
-
-Use a distinct report for rehearsal 2. A failed component or unavailable
-ingestion/evaluation store makes zero-state verification fail and returns a
-non-zero exit status. Never bypass a failure by editing the resulting report.
+Missing or contradictory target, backup, restore, rehearsal or approval
+evidence means STOP. Never fabricate evidence to make a gate pass.
 
 ## Acceptance Evidence
 
-- before/after counts for every Registry table;
-- object file and byte counts;
-- Qdrant and OpenSearch counts;
-- ingestion and evaluation file counts;
-- no old document, version, audit, chunk, or source identifier retrievable;
-- health/readiness and new-epoch upload/index/search/AI/citation smoke;
-- separate G6 restore evidence.
+Before enabling the first customer import, record aggregate counts for:
 
-The reset report and backup manifest are operational evidence and must be kept
-outside source control if they contain environment identifiers.
+- Registry documents, immutable versions, assignments/publication bindings;
+- document blobs and attachments, including their byte count;
+- ingestion jobs and durable worker state;
+- OpenSearch chunks and Qdrant vectors in every active collection;
+- citations, source-open references and stale version IDs;
+- chat/RAG conversations, messages and sharing bindings;
+- evaluation business datasets and reports;
+- old authorization/session/cache bindings and derived workflow tasks;
+- the new audit boundary and the separately verified prior audit archive.
+
+Zero must be demonstrated across the stores and through authorized read
+surfaces, not inferred from an empty UI list. After enabling maintenance and
+integration writers, repeat the counts and stale-ID checks. No bootstrap,
+fixture, connector or escalation cycle may recreate old business data.
+
+Record health/readiness and a separately authorized new-epoch
+upload/index/search/chat/citation smoke. Keep production evidence outside
+Git when it identifies the environment; never include tokens, credentials,
+document bodies, prompts, answers or personally identifying data.

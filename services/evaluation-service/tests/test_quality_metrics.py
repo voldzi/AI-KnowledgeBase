@@ -9,6 +9,17 @@ def test_quality_gate_uses_interpolated_percentile() -> None:
     assert _percentile([100, 200, 300, 400], 0.95) == 385
 
 
+def test_error_cases_cannot_disappear_from_quality_verdict():
+    from types import SimpleNamespace
+    from app.config import load_settings
+    from app.quality import evaluate_quality_gate
+
+    run = SimpleNamespace(cases=[SimpleNamespace(status="error", judgment_status="gold")])
+    gate = evaluate_quality_gate(run, load_settings({}))
+    assert gate.status == "failed"
+    assert gate.eligible_cases == 0
+
+
 def test_low_precision_is_reported_as_retrieval_relevance_failure() -> None:
     case = EvalCase(
         case_id="precision_case",

@@ -188,6 +188,62 @@ def test_workflow_task_sync_skips_audit_events_that_already_have_tasks(
     assert not any(source_key.startswith("audit:") for source_key in upserted_source_keys)
 
 
+def test_unknown_and_maintenance_warnings_remain_audit_only(client, admin_headers, db_session):
+    from sqlalchemy import select
+    from app.models import AuditEvent, WorkflowTask
+
+    event_ids = []
+    for event_type in ("workflow.task.sla_escalated", "workflow.task.failed", "unknown.failed"):
+        response = client.post(
+            "/api/v1/audit/events", headers=admin_headers,
+            json={"actor_id": "system", "event_type": event_type,
+                  "resource_type": "workflow_task", "resource_id": "task_test",
+                  "severity": "critical", "metadata": {}},
+        )
+        assert response.status_code == 201
+        event_ids.append(response.json()["audit_event_id"])
+    for _ in range(4):
+        _maintain(db_session)
+    assert list(db_session.scalars(select(WorkflowTask))) == []
+    assert len(list(db_session.scalars(
+        select(AuditEvent).where(AuditEvent.audit_event_id.in_(event_ids))
+    ))) == 3
+
+
+def test_workflow_pagination_is_bounded_and_preserves_authorized_total(
+    client, admin_headers, db_session, monkeypatch,
+):
+    from datetime import timedelta
+    from app import api as registry_api
+    from app.models import WorkflowTask, utcnow
+
+    now = utcnow()
+    for i in range(405):
+        db_session.add(WorkflowTask(
+            kind="audit", priority="medium", status="open", title=f"Signal {i:04d}",
+            description="Synthetic review", source="test", role="Auditor", owner_label="Auditor",
+            due_at=now + timedelta(seconds=i), task_metadata={},
+        ))
+    db_session.commit()
+    batch_sizes = []
+    original = registry_api._visible_workflow_tasks
+
+    def visible(db, principal, context, tasks, *args):
+        batch_sizes.append(len(tasks))
+        allowed = original(db, principal, context, tasks, *args)
+        # A denied item must not consume a visible offset or affect total.
+        return [item for item in allowed if int(item[0].title.split()[-1]) % 2 == 0]
+
+    monkeypatch.setattr(registry_api, "_visible_workflow_tasks", visible)
+    response = client.get("/api/v1/workflow/tasks?offset=98&limit=5", headers=admin_headers)
+    assert response.status_code == 200
+    assert response.json()["total"] == 203
+    assert [item["title"] for item in response.json()["items"]] == [
+        "Signal 0196", "Signal 0198", "Signal 0200", "Signal 0202", "Signal 0204",
+    ]
+    assert batch_sizes == [200, 200, 5]
+
+
 def test_workflow_task_action_resolves_task_and_writes_audit(client, admin_headers, db_session):
     document = _create_document(client, admin_headers)
     _maintain(db_session)
@@ -341,7 +397,7 @@ def test_workflow_action_audit_keeps_assignment_context(client, admin_headers, d
     assert event["metadata"]["escalation_subject_id"] == "user_escalation"
 
 
-def test_overdue_task_is_escalated_with_priority_bump_and_audit(client, admin_headers, db_session):
+def test_overdue_task_is_escalated_with_priority_bump_and_audit(client, admin_headers, db_session, monkeypatch):
     from datetime import timedelta
 
     from app.models import WorkflowTask, AuditEvent, utcnow
@@ -398,3 +454,14 @@ def test_overdue_task_is_escalated_with_priority_bump_and_audit(client, admin_he
         ).scalars()
     )
     assert len(events_after) == 1
+
+    # Advance through several SLA periods: the escalation itself never becomes
+    # another task, even after it would have become overdue.
+    from app import api as registry_api
+    for days in (3, 6, 9):
+        future = utcnow() + timedelta(days=days)
+        monkeypatch.setattr(registry_api, "utcnow", lambda: future)
+        _maintain(db_session)
+    assert list(db_session.scalars(
+        select(WorkflowTask).where(WorkflowTask.source == "workflow.task.sla_escalated")
+    )) == []

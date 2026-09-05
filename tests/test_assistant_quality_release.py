@@ -18,16 +18,21 @@ def _report() -> dict[str, object]:
         "run_id": "eval_run_1",
         "dataset_id": "professional_czech_knowledge_v1",
         "status": "completed",
-        "summary": {"gold_cases": 8},
+        "summary": {"gold_cases": 8, "total_cases": 8, "passed_cases": 8,
+                    "failed_cases": 0, "error_cases": 0},
         "quality_gate": {
             "status": "passed",
             "eligible_cases": 8,
             "checks": [
                 {
-                    "key": "retrieval_recall",
+                    "key": key,
                     "eligible": True,
                     "passed": True,
+                    "operator": operator,
+                    "actual": 1.0 if operator == ">=" else 0.0,
+                    "threshold": 1.0 if operator == ">=" else 0.0,
                 }
+                for key, operator in MODULE.REQUIRED_CHECKS.items()
             ],
         },
         "comparison": {
@@ -53,6 +58,8 @@ def test_release_gate_accepts_reviewed_non_regressing_report() -> None:
         (("status",), "completed_with_errors"),
         (("summary", "gold_cases"), 2),
         (("quality_gate", "status"), "failed"),
+        (("summary", "error_cases"), 1),
+        (("summary", "total_cases"), 9),
         (("comparison", "regressions"), ["retrieval_recall"]),
     ],
 )
@@ -68,3 +75,25 @@ def test_release_gate_fails_closed(path: tuple[str, ...], value: object) -> None
             expected_dataset_id="professional_czech_knowledge_v1",
             min_gold_cases=7,
         )
+
+
+@pytest.mark.parametrize("mutation", [
+    lambda checks: checks.pop(),
+    lambda checks: checks.append(dict(checks[0])),
+    lambda checks: checks.append("malformed"),
+    lambda checks: checks[0].update(eligible=False),
+    lambda checks: checks[0].update(passed=False),
+    lambda checks: checks[0].update(actual=float("nan")),
+    lambda checks: checks[0].update(actual=float("inf")),
+    lambda checks: checks[0].update(actual=True),
+    lambda checks: checks[0].update(actual=0),
+    lambda checks: checks[0].update(key="unknown"),
+    lambda checks: checks[0].update(operator="<="),
+    lambda checks: checks[0].update(extra=True),
+    lambda checks: checks[3].update(threshold=0.1),
+])
+def test_release_gate_requires_measured_complete_coverage(mutation):
+    report = _report()
+    mutation(report["quality_gate"]["checks"])
+    with pytest.raises(MODULE.QualityReleaseError):
+        MODULE.validate_quality_report(report, expected_dataset_id=None, min_gold_cases=7)
