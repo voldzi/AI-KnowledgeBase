@@ -2,10 +2,12 @@ import re
 import secrets
 import unicodedata
 from collections import Counter
+from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
 from contextvars import copy_context
 from datetime import date, datetime, timedelta, timezone
 from hashlib import sha256
+from itertools import islice
 import json
 from threading import Lock
 from typing import Annotated, Literal
@@ -2238,6 +2240,11 @@ def _upsert_derived_task(
         setattr(task, key, value)
 
 
+# Only actionable domain events create tasks. Task maintenance warnings must
+# remain audit records; deriving tasks from them creates an escalation loop.
+_ACTIONABLE_WORKFLOW_AUDIT_EVENTS = frozenset({"ingestion.job.failed"})
+
+
 def _sync_derived_workflow_tasks(db: Session) -> None:
     existing_tasks_by_source_key = {
         task.source_key: task
@@ -2424,6 +2431,7 @@ def _sync_derived_workflow_tasks(db: Session) -> None:
             )
             .where(
                 AuditEvent.severity.in_(["warning", "error", "critical"]),
+                AuditEvent.event_type.in_(_ACTIONABLE_WORKFLOW_AUDIT_EVENTS),
                 WorkflowTask.task_id.is_(None),
             )
         ).scalars()
@@ -9119,6 +9127,7 @@ def list_workflow_tasks(
     limit: Limit = 100,
     offset: Offset = 0,
 ) -> WorkflowTaskListResponse:
+    """Return an authorized page and exact authorized total; candidates are processed in bounded batches."""
     context = require_global_action(principal, Action.workflow_task_read, db)
     can_read_team = principal.service_identity or (
         "akb:manage_document" in context.capabilities if context.access_v2
@@ -9142,20 +9151,45 @@ def list_workflow_tasks(
     if assigned_to_me:
         stmt = stmt.where(WorkflowTask.owner_id.in_({context.subject_id, *context.groups}))
 
-    tasks = list(db.execute(stmt).scalars())
+    result = db.execute(stmt.execution_options(yield_per=_WORKFLOW_TASK_BATCH_SIZE))
+    tasks = result.scalars()
     query = (search_query or "").strip().casefold()
     if query:
-        tasks = [task for task in tasks if query in " ".join(
+        tasks = (task for task in tasks if query in " ".join(
             str(value or "") for value in (task.title, task.document_title, task.description, task.owner_label)
-        ).casefold()]
-    with policy_decision_scope():
-        return _workflow_task_page(db, principal, context, tasks, assigned_to_me, can_read_team, limit, offset)
+        ).casefold())
+    try:
+        with policy_decision_scope():
+            return _workflow_task_page(db, principal, context, tasks, assigned_to_me, can_read_team, limit, offset)
+    finally:
+        result.close()
+
+
+_WORKFLOW_TASK_BATCH_SIZE = 200
 
 
 def _workflow_task_page(
-    db: Session, principal: Principal, context: SubjectContext, tasks: list[WorkflowTask],
+    db: Session, principal: Principal, context: SubjectContext, tasks: Iterable[WorkflowTask],
     assigned_to_me: bool, can_read_team: bool, limit: int, offset: int,
 ) -> WorkflowTaskListResponse:
+    # Total remains an authorized count, never the raw SQL candidate count.
+    # Bound ORM loading and response memory without skipping any policy checks.
+    iterator = iter(tasks)
+    items: list[WorkflowTaskResponse] = []
+    total = 0
+    while batch := list(islice(iterator, _WORKFLOW_TASK_BATCH_SIZE)):
+        visible = _visible_workflow_tasks(db, principal, context, batch, assigned_to_me, can_read_team)
+        for task, document in visible:
+            if offset <= total < offset + limit:
+                items.append(_workflow_task_response(task, context, document))
+            total += 1
+    return WorkflowTaskListResponse(items=items, total=total, limit=limit, offset=offset)
+
+
+def _visible_workflow_tasks(
+    db: Session, principal: Principal, context: SubjectContext, tasks: list[WorkflowTask],
+    assigned_to_me: bool, can_read_team: bool,
+) -> list[tuple[WorkflowTask, Document | None]]:
     documents_by_id = {document.document_id: document for document in _workflow_documents(
         db, principal, list({task.document_id for task in tasks if task.document_id}),
     )}
@@ -9188,10 +9222,7 @@ def _workflow_task_page(
             raise
         visible_tasks.append((task, document))
 
-    return WorkflowTaskListResponse(
-        items=[_workflow_task_response(task, context, document) for task, document in visible_tasks[offset:offset + limit]],
-        total=len(visible_tasks), limit=limit, offset=offset,
-    )
+    return visible_tasks
 
 
 @router.post("/workflow/tasks/{task_id}/actions", response_model=WorkflowTaskResponse)

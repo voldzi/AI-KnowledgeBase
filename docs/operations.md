@@ -46,8 +46,8 @@ payload, selector hash or authentication material.
 A first protected page entry without an AKB session starts one normal PKCE
 redirect to the approved issuer. With an existing session, a silent central
 check can replace a different prior browser identity. The short signed
-synchronization marker is bound to the selector and is not an authorization
-credential. Separate session-only attempt and signed-out markers prevent
+synchronization marker is bound to the selector, expires after 30 seconds and
+is not an authorization credential. Separate session-only attempt and signed-out markers prevent
 automatic retries after an error or logout. A manual retry is required.
 
 Persistence comes only from the verified central access-token policy, never

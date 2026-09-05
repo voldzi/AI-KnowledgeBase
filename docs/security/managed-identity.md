@@ -65,8 +65,9 @@ human bearer or a Director token to work around this boundary.
    errors or logout. The user may explicitly retry. A late silent callback
    cannot recreate a missing, expired or revoked prior BFF session.
 
-Existing BFF page entry retains its short signed central-identity sync marker
-for detecting an account switch. A changed central subject replaces and
+Existing BFF page entry retains its signed 30-second central-identity sync
+marker for detecting an account switch while allowing a cold page render to
+finish. A changed central subject replaces and
 revokes the prior browser session; it does not merge accounts by login/email.
 Same-app RSC navigation and `router.refresh()` do not start that additional
 top-level OIDC synchronization. They still resolve the opaque server session

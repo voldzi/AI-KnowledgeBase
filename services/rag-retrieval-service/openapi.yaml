@@ -3037,6 +3037,7 @@ components:
           - type: string
           - type: 'null'
           title: Verification Model
+          description: Verifier identity. deterministic-extractive-support-v2 accepts only complete source statements; model verification requires complete claim coverage and verbatim evidence.
         conflicts:
           items:
             additionalProperties: true

@@ -33,8 +33,8 @@ host applications do not make authorization decisions for AKB documents.
   Code + PKCE redirect, without `prompt=login` or `max_age=0`. A valid central
   session in the same browser/profile avoids another password form. Existing
   AKB page-entry sessions use a silent central identity check. The short-lived
-  AKB-only synchronization marker is signed, `HttpOnly`, bound to one opaque
-  server-session selector and used solely to complete this round trip. It is
+  30-second AKB-only synchronization marker is signed, `HttpOnly`, bound to one
+  opaque server-session selector and used solely to complete this round trip. It is
   not an identity token. Failed callbacks and logout require explicit retry;
   there is no repeating automatic login loop. A successful central identity
   change replaces and revokes the previous AKB session in that browser. An
