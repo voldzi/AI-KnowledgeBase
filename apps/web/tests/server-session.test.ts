@@ -54,7 +54,7 @@ describe("server-side OIDC session cookie", () => {
     assert.equal(options.maxAge, 90 * 24 * 60 * 60);
   });
 
-  it("binds the short-lived central SSO marker to one server session", async () => {
+  it("binds the central SSO render marker to one server session", async () => {
     const selector = "a".repeat(43);
     const now = Date.UTC(2026, 7, 26, 8, 0, 0);
     const marker = await createCentralSsoSyncMarker(config, selector, now);
@@ -72,11 +72,15 @@ describe("server-side OIDC session cookie", () => {
       false,
     );
     assert.equal(
-      await hasCurrentCentralSsoSyncMarker(config, selector, marker, now + 6_000),
+      await hasCurrentCentralSsoSyncMarker(config, selector, marker, now + 20_000),
+      true,
+    );
+    assert.equal(
+      await hasCurrentCentralSsoSyncMarker(config, selector, marker, now + 31_000),
       false,
     );
     const options = centralSsoSyncCookieOptions(config);
-    assert.equal(options.maxAge, 5);
+    assert.equal(options.maxAge, 30);
     assert.equal(options.httpOnly, true);
   });
 

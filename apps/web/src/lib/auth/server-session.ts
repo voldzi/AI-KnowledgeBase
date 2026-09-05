@@ -57,8 +57,10 @@ const ABSOLUTE_TTL_MS = 90 * 86_400_000;
 const IDLE_TTL_MS = 30 * 86_400_000;
 const IDENTITY_VALIDATION_INTERVAL_MS = 15 * 60_000;
 // This marker breaks the silent-SSO redirect loop while keeping each new
-// application entry tied to the current Keycloak browser session.
-const CENTRAL_SSO_SYNC_TTL_MS = 5_000;
+// application entry tied to the current central browser session. It must
+// outlive a cold first render, but remain short enough that returning after a
+// central account switch promptly re-synchronizes the AKB session.
+const CENTRAL_SSO_SYNC_TTL_MS = 30_000;
 
 export async function createServerSession(
   config: AklConfig,
