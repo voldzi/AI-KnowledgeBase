@@ -1,0 +1,243 @@
+name: ${AKB_REHEARSAL_PROJECT:?AKB_REHEARSAL_PROJECT is required}
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "5m"
+    max-file: "2"
+
+x-volume-labels: &volume-labels
+  akb.clean-pilot.disposable: "true"
+  akb.clean-pilot.epoch: clean-pilot-epoch-1
+  akb.clean-pilot.run: ${AKB_REHEARSAL_RUN_ID:?AKB_REHEARSAL_RUN_ID is required}
+
+services:
+  postgresql:
+    image: ${AKB_IMAGE_POSTGRESQL:?immutable PostgreSQL image is required}
+    environment:
+      POSTGRES_DB: akl_registry
+      POSTGRES_USER: akl_rehearsal
+      POSTGRES_PASSWORD: ${AKB_REHEARSAL_POSTGRES_PASSWORD:?ephemeral PostgreSQL password is required}
+    volumes:
+      - postgresql-data:/var/lib/postgresql/data
+    networks: [rehearsal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U akl_rehearsal -d akl_registry"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    logging: *logging
+
+  s3-object-storage:
+    image: ${AKB_IMAGE_S3_OBJECT_STORAGE:?immutable S3 image is required}
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: ${AKB_REHEARSAL_S3_ACCESS_KEY:?ephemeral S3 access key is required}
+      MINIO_ROOT_PASSWORD: ${AKB_REHEARSAL_S3_SECRET_KEY:?ephemeral S3 secret is required}
+    volumes:
+      - s3-data:/data
+    networks: [rehearsal]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/minio/health/ready >/dev/null"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    logging: *logging
+
+  opensearch:
+    image: ${AKB_IMAGE_OPENSEARCH:?immutable OpenSearch image is required}
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    networks: [rehearsal]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9200/_cluster/health >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 40
+    logging: *logging
+
+  qdrant:
+    image: ${AKB_IMAGE_QDRANT:?immutable Qdrant image is required}
+    volumes:
+      - qdrant-data:/qdrant/storage
+    networks: [rehearsal]
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c '</dev/tcp/127.0.0.1/6333' >/dev/null 2>&1"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    logging: *logging
+
+  registry-api:
+    image: ${AKB_IMAGE_REGISTRY_API:?immutable Registry image is required}
+    environment:
+      AKL_ENV: development
+      AKL_AUTH_MODE: mock
+      AKL_DATABASE_URL: postgresql+psycopg://akl_rehearsal:${AKB_REHEARSAL_POSTGRES_PASSWORD}@postgresql:5432/akl_registry
+      AKL_AUTO_CREATE_SCHEMA: "true"
+      AKL_MOCK_SUBJECT: rehearsal-user
+      AKL_MOCK_ROLES: '["admin","reader"]'
+      AKL_ASSISTANT_PURGE_ENABLED: "false"
+      AKL_WORKFLOW_MAINTENANCE_ENABLED: "false"
+      AKL_OBJECT_STORAGE_MODE: s3
+      AKL_S3_ENDPOINT: http://s3-object-storage:9000
+      AKL_S3_BUCKET: rehearsal-documents
+      AKL_S3_ACCESS_KEY_ID: ${AKB_REHEARSAL_S3_ACCESS_KEY}
+      AKL_S3_SECRET_ACCESS_KEY: ${AKB_REHEARSAL_S3_SECRET_KEY}
+      AKL_WEB_SESSION_STORE_SECRET: ${AKB_REHEARSAL_SESSION_SECRET}
+      AKL_WEB_UPLOAD_SIGNING_SECRET: ${AKB_REHEARSAL_UPLOAD_SECRET}
+    depends_on:
+      postgresql: {condition: service_healthy}
+      s3-object-storage: {condition: service_healthy}
+    networks: [rehearsal]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=2).read()"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    logging: *logging
+
+  ingestion-service:
+    image: ${AKB_IMAGE_INGESTION_SERVICE:?immutable Ingestion image is required}
+    environment:
+      AKL_ENV: development
+      AKL_AUTH_MODE: mock
+      AKL_INGESTION_REGISTRY_CLIENT_MODE: mock
+      AKL_INGESTION_EMBEDDING_CLIENT_MODE: mock
+      AKL_INGESTION_INDEXER_MODE: qdrant,opensearch
+      AKL_OBJECT_STORAGE_MODE: s3
+      AKL_S3_ENDPOINT: http://s3-object-storage:9000
+      AKL_S3_BUCKET: rehearsal-documents
+      AKL_S3_ACCESS_KEY_ID: ${AKB_REHEARSAL_S3_ACCESS_KEY}
+      AKL_S3_SECRET_ACCESS_KEY: ${AKB_REHEARSAL_S3_SECRET_KEY}
+      AKL_QDRANT_BASE_URL: http://qdrant:6333
+      AKL_QDRANT_COLLECTION: rehearsal_chunks
+      AKL_OPENSEARCH_BASE_URL: http://opensearch:9200
+      AKL_OPENSEARCH_INDEX: rehearsal_chunks
+      AKL_INGESTION_JOB_STORE_PATH: /data/ingestion-jobs
+      AKL_INGESTION_RENDITION_CACHE_ROOT: /data/ingestion-jobs/renditions
+      AKL_INGESTION_RENDITION_ENABLED: "false"
+      AKL_INGESTION_PROCESS_JOBS_INLINE: "false"
+    volumes:
+      - ingestion-jobs:/data/ingestion-jobs
+    depends_on:
+      registry-api: {condition: service_healthy}
+      qdrant: {condition: service_healthy}
+      opensearch: {condition: service_healthy}
+      s3-object-storage: {condition: service_healthy}
+    networks: [rehearsal]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health',timeout=2).read()"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    logging: *logging
+
+  rag-retrieval-service:
+    image: ${AKB_IMAGE_RAG_RETRIEVAL_SERVICE:?immutable RAG image is required}
+    environment:
+      AKL_ENV: development
+      AKL_AUTH_MODE: mock
+      AKL_RAG_DEPENDENCY_MODE: mock
+      AKL_RAG_REGISTRY_CLIENT_MODE: mock
+      AKL_RAG_RETRIEVER_MODE: qdrant
+      AKL_RAG_FULLTEXT_MODE: opensearch
+      AKL_RAG_LLM_CLIENT_MODE: mock
+      AKL_RAG_AUTHZ_MODE: dev
+      AKL_QDRANT_BASE_URL: http://qdrant:6333
+      AKL_QDRANT_COLLECTION: rehearsal_chunks
+      AKL_OPENSEARCH_BASE_URL: http://opensearch:9200
+      AKL_OPENSEARCH_INDEX: rehearsal_chunks
+      AKL_RAG_ENABLE_RERANKING: "false"
+    depends_on:
+      qdrant: {condition: service_healthy}
+      opensearch: {condition: service_healthy}
+    networks: [rehearsal]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health',timeout=2).read()"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    logging: *logging
+
+  evaluation-service:
+    image: ${AKB_IMAGE_EVALUATION_SERVICE:?immutable Evaluation image is required}
+    environment:
+      AKL_ENV: development
+      AKL_AUTH_MODE: mock
+      AKL_EVAL_DEPENDENCY_MODE: mock
+      AKL_EVAL_RAG_CLIENT_MODE: mock
+      AKL_EVAL_REGISTRY_CLIENT_MODE: mock
+      AKL_EVAL_DATASETS_DIR: /data/evaluation-datasets
+      AKL_EVAL_REPORTS_DIR: /data/evaluation-reports
+    volumes:
+      - evaluation-datasets:/data/evaluation-datasets
+      - evaluation-reports:/data/evaluation-reports
+    depends_on:
+      registry-api: {condition: service_healthy}
+      rag-retrieval-service: {condition: service_healthy}
+    networks: [rehearsal]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health',timeout=2).read()"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    logging: *logging
+
+  web:
+    image: ${AKB_IMAGE_WEB:?immutable Web image is required}
+    environment:
+      AKL_ENV: development
+      AKL_API_CLIENT_MODE: production
+      AKL_AUTH_MODE: mock
+      AKL_REGISTRY_API_BASE_URL: http://registry-api:8000/api/v1
+      AKL_INGESTION_API_BASE_URL: http://ingestion-service:8090/api/v1
+      AKL_RAG_API_BASE_URL: http://rag-retrieval-service:8080/api/v1
+      AKL_GOVERNANCE_API_BASE_URL: http://rag-retrieval-service:8080/api/v1
+      AKL_EVALUATION_API_BASE_URL: http://evaluation-service:8080/api/v1
+      AKL_OBJECT_STORAGE_MODE: s3
+      AKL_S3_ENDPOINT: http://s3-object-storage:9000
+      AKL_S3_BUCKET: rehearsal-documents
+      AKL_S3_ACCESS_KEY_ID: ${AKB_REHEARSAL_S3_ACCESS_KEY}
+      AKL_S3_SECRET_ACCESS_KEY: ${AKB_REHEARSAL_S3_SECRET_KEY}
+      AKL_WEB_SESSION_SECRET: ${AKB_REHEARSAL_SESSION_SECRET}
+      AKL_WEB_SESSION_ENCRYPTION_KEY: ${AKB_REHEARSAL_SESSION_SECRET}
+      AKL_WEB_SESSION_STORE_SECRET: ${AKB_REHEARSAL_SESSION_SECRET}
+      AKL_WEB_DOWNLOAD_SIGNING_SECRET: ${AKB_REHEARSAL_DOWNLOAD_SECRET}
+      AKL_WEB_UPLOAD_SIGNING_SECRET: ${AKB_REHEARSAL_UPLOAD_SECRET}
+      AKL_DIRECTOR_COPILOT_ENABLED: "false"
+      NEXT_PUBLIC_STRATOS_HOME_URL: /disabled
+      NEXT_PUBLIC_PROJECTFLOW_URL: /disabled
+      NEXT_PUBLIC_ARCHFLOW_URL: /disabled
+      NEXT_PUBLIC_AKB_PUBLIC_URL: /chat
+    depends_on:
+      registry-api: {condition: service_healthy}
+      ingestion-service: {condition: service_healthy}
+      rag-retrieval-service: {condition: service_healthy}
+      evaluation-service: {condition: service_healthy}
+    networks: [rehearsal]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://$${HOSTNAME}:3000/health >/dev/null"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+    logging: *logging
+
+networks:
+  rehearsal:
+    internal: true
+    labels: *volume-labels
+
+volumes:
+  postgresql-data: {labels: *volume-labels}
+  s3-data: {labels: *volume-labels}
+  opensearch-data: {labels: *volume-labels}
+  qdrant-data: {labels: *volume-labels}
+  ingestion-jobs: {labels: *volume-labels}
+  evaluation-datasets: {labels: *volume-labels}
+  evaluation-reports: {labels: *volume-labels}

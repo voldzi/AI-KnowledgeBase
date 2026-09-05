@@ -1,5 +1,9 @@
 import type { ApiRequestContext, ResponseLanguage } from "@/lib/types";
-import type { ConversationQueryState } from "@/lib/director-copilot/query-state";
+import {
+  resolveConversationQuery,
+  type ConversationQueryState,
+} from "@/lib/director-copilot/query-state";
+import { sourceForMetric } from "@/lib/director-copilot/semantic-catalog";
 
 import { directorCopilotV2AccessFor, type DirectorCopilotV2AccessDecision } from "./access";
 import {
@@ -27,6 +31,8 @@ export const DIRECTOR_COPILOT_V2_PLAN_VERSION = "director-copilot-v2-query-plan-
 
 export interface DirectorCopilotV2PlanNode {
   node_id: string;
+  question: string;
+  query_state: ConversationQueryState;
   application: ActiveDirectorCopilotV2Application;
   tool_id: DirectorCopilotV2ToolId;
   schema_revision: string;
@@ -59,7 +65,12 @@ export function buildDirectorCopilotV2Plan(input: {
   now?: Date;
 }): DirectorCopilotV2Plan {
   const now = input.now ?? new Date();
-  const applications = applicationsForIntent(input.intent, input.queryState.sources);
+  const components = planningComponents({
+    message: input.message,
+    intent: input.intent,
+    queryState: input.queryState,
+    now,
+  });
   const planSeed = {
     version: DIRECTOR_COPILOT_V2_PLAN_VERSION,
     intent: input.intent,
@@ -68,11 +79,12 @@ export function buildDirectorCopilotV2Plan(input: {
     projection_hash: accessProjectionHash(input.context),
   };
   const planId = directorCopilotV2StableId("plan", planSeed);
-  const nodes = applications.map((application) => {
-    const toolId = toolForApplication(application, input.queryState);
+  const nodes = components.map((component, index) => {
+    const { application, question, queryState } = component;
+    const toolId = toolForApplication(application, queryState);
     const manifest = input.catalog.byTool.get(toolId);
     if (!manifest) throw new Error(`Director Copilot V2 manifest is missing ${toolId}.`);
-    const granularity = granularityForManifest(input.queryState, input.context, application, manifest);
+    const granularity = granularityForManifest(queryState, input.context, application, manifest);
     const access = directorCopilotV2AccessFor(
       input.context,
       application,
@@ -81,11 +93,13 @@ export function buildDirectorCopilotV2Plan(input: {
       now.getTime(),
     );
     const filterResolution = entityFiltersForApplication(
-      input.queryState,
+      queryState,
       application,
     );
     const toolCallId = directorCopilotV2StableId("call", {
       plan_id: planId,
+      node_index: index,
+      question,
       application,
       tool_id: toolId,
     });
@@ -95,8 +109,8 @@ export function buildDirectorCopilotV2Plan(input: {
           toolCallId,
           toolId,
           actorId: input.context.subjectId,
-          queryState: input.queryState,
-          message: input.message,
+          queryState,
+          message: question,
           granularity,
           manifest,
           scopes: access.scopes,
@@ -105,7 +119,9 @@ export function buildDirectorCopilotV2Plan(input: {
         })
       : null;
     return {
-      node_id: `node_${application}`,
+      node_id: `node_${application}_${index + 1}`,
+      question,
+      query_state: queryState,
       application,
       tool_id: toolId,
       schema_revision: manifest.schema_revision,
@@ -126,6 +142,154 @@ export function buildDirectorCopilotV2Plan(input: {
     projection_hash: accessProjectionHash(input.context),
     query_state: input.queryState,
     nodes,
+  };
+}
+
+interface PlanningComponent {
+  question: string;
+  application: ActiveDirectorCopilotV2Application;
+  queryState: ConversationQueryState;
+}
+
+function planningComponents(input: {
+  message: string;
+  intent: DirectorCopilotIntent;
+  queryState: ConversationQueryState;
+  now: Date;
+}): PlanningComponent[] {
+  const questions = splitCompositeQuestion(input.message);
+  if (questions.length < 2) {
+    return fallbackPlanningComponents(input.message, input.intent, input.queryState);
+  }
+
+  let inheritedState = input.queryState;
+  const components: PlanningComponent[] = [];
+  const relationshipQuery = isCrossSourceRelationshipQuery(input.message, input.queryState);
+  for (const question of questions) {
+    const resolved = resolveConversationQuery({
+      message: question,
+      context: { stratos_query_state: inheritedState },
+      now: input.now,
+    });
+    if (!resolved.recognized || resolved.state.sources.length === 0) continue;
+    const localState = explicitCurrentPeriodState(question, resolved.state, input.now);
+    inheritedState = localState;
+    for (const application of selectedApplications(localState.sources)) {
+      components.push({
+        question,
+        application,
+        queryState: relationshipQuery
+          ? relationshipSourceScopedState(localState, application)
+          : sourceScopedState(localState, application),
+      });
+    }
+  }
+
+  const unique = components.filter((component, index, all) => (
+    all.findIndex((candidate) => (
+      candidate.question === component.question
+      && candidate.application === component.application
+      && candidate.queryState.operation === component.queryState.operation
+    )) === index
+  ));
+  return unique.length >= 2
+    ? unique
+    : fallbackPlanningComponents(input.message, input.intent, input.queryState);
+}
+
+function isCrossSourceRelationshipQuery(
+  message: string,
+  state: ConversationQueryState,
+): boolean {
+  if (!state.sources.includes("projectflow") || state.sources.length < 2) return false;
+  const normalized = message.normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  return /\b(navazan\w*|propojen\w*|souvis\w*|vazb\w*|spojen\w*|relationship\w*|linked)\b/.test(normalized);
+}
+
+function relationshipSourceScopedState(
+  state: ConversationQueryState,
+  application: ActiveDirectorCopilotV2Application,
+): ConversationQueryState {
+  return {
+    ...sourceScopedState(state, application),
+    granularity: application === "archflow" ? "item" : "project",
+  };
+}
+
+function fallbackPlanningComponents(
+  message: string,
+  intent: DirectorCopilotIntent,
+  queryState: ConversationQueryState,
+): PlanningComponent[] {
+  return applicationsForIntent(intent, queryState.sources).map((application) => ({
+    question: message,
+    application,
+    queryState: fallbackSourceScopedState(queryState, application),
+  }));
+}
+
+function explicitCurrentPeriodState(
+  question: string,
+  state: ConversationQueryState,
+  now: Date,
+): ConversationQueryState {
+  const normalized = question.normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  if (!/\b(aktualni|soucasny|nyni|prave ted|dnes|current|currently|now)\b/.test(normalized)) {
+    return state;
+  }
+  return {
+    ...structuredClone(state),
+    period: {
+      type: "current",
+      fiscal_year: now.getUTCFullYear(),
+      as_of: now.toISOString(),
+      interval: null,
+    },
+  };
+}
+
+function fallbackSourceScopedState(
+  state: ConversationQueryState,
+  application: ActiveDirectorCopilotV2Application,
+): ConversationQueryState {
+  const scoped = sourceScopedState(state, application);
+  if (state.sources.length < 2 || !state.sources.includes("projectflow")) return scoped;
+  return {
+    ...scoped,
+    granularity: application === "archflow" ? "item" : "project",
+  };
+}
+
+function splitCompositeQuestion(message: string): string[] {
+  const normalized = message.normalize("NFKC").replace(/\s+/g, " ").trim();
+  if (!normalized) return [];
+  const interrogative = String.raw`(?:(?:v|ve|na|podle|dle|z|ze|u)\s+)?(?:jak(?:y|ý|a|á|e|é|em|ém|ou)?|kolik|kter(?:e|é|y|ý|a|á)|co|what|how|which)`;
+  const boundary = new RegExp(
+    String.raw`(?:[;?]\s*|:\s*(?=(?:a\s+)?${interrogative}\b)|,\s*(?=(?:a\s+)?${interrogative}\b)|\s+a\s+(?=${interrogative}\b))`,
+    "iu",
+  );
+  return normalized
+    .split(boundary)
+    .map((part) => part.replace(/^(?:a|and)\s+/iu, "").trim())
+    .filter((part) => part.length >= 4);
+}
+
+function sourceScopedState(
+  state: ConversationQueryState,
+  application: ActiveDirectorCopilotV2Application,
+): ConversationQueryState {
+  const metrics = state.metrics.filter((metric) => sourceForMetric(metric) === application);
+  return {
+    ...structuredClone(state),
+    sources: [application],
+    metrics,
+    sort: state.sort && sourceForMetric(state.sort.metric) === application
+      ? state.sort
+      : null,
   };
 }
 

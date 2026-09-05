@@ -622,13 +622,13 @@ async def test_opensearch_entity_relationships_builds_evidence_edges(tmp_path, m
                                     "document_version_id": "ver_1",
                                     "document_title": "Directive",
                                     "version_label": "1.0",
-                                    "text": "RMO 12/2024 assigns aiip.office@example.cz as contact.",
+                                    "text": "RMO 12/2024 assigns knowledge.office@example.cz as contact.",
                                     "page_number": 2,
                                     "section_title": "Article 4",
                                     "source_file_name": "directive.pdf",
                                     "entity_pairs": [
                                         "document_number:RMO12/2024",
-                                        "email:aiip.office@example.cz",
+                                        "email:knowledge.office@example.cz",
                                     ],
                                 }
                             },
@@ -639,13 +639,13 @@ async def test_opensearch_entity_relationships_builds_evidence_edges(tmp_path, m
                                     "document_version_id": "ver_1",
                                     "document_title": "Directive",
                                     "version_label": "1.0",
-                                    "text": "RMO 12/2024 references aiip.office@example.cz again.",
+                                    "text": "RMO 12/2024 references knowledge.office@example.cz again.",
                                     "page_number": 3,
                                     "section_title": "Article 5",
                                     "source_file_name": "directive.pdf",
                                     "entity_pairs": [
                                         "document_number:RMO12/2024",
-                                        "email:aiip.office@example.cz",
+                                        "email:knowledge.office@example.cz",
                                     ],
                                 }
                             },
@@ -670,7 +670,7 @@ async def test_opensearch_entity_relationships_builds_evidence_edges(tmp_path, m
     assert report.total_edges == 1
     assert report.edges[0].relationship_type == "co_occurs"
     assert report.edges[0].source.entity_value == "RMO12/2024"
-    assert report.edges[0].target.entity_value == "aiip.office@example.cz"
+    assert report.edges[0].target.entity_value == "knowledge.office@example.cz"
     assert report.edges[0].evidence_count == 2
     assert report.edges[0].document_count == 1
     assert len(report.edges[0].evidence) == 2

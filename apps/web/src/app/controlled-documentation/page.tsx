@@ -1,7 +1,9 @@
 import { PageHeader } from "@/components/page-header";
 import { ControlledDocumentationWorkbench } from "@/features/controlled-documentation/controlled-documentation-workbench";
 import { getServerApiClients, getServerRequestContextForPath } from "@/lib/api/server";
-import { requirePageAccess } from "@/lib/auth/server-route-guard";
+import { requireWorkspaceRouteAccess } from "@/lib/auth/server-route-guard";
+import { canReviewControlledDocumentation } from "@/lib/controlled-documentation/contract";
+import type { ControlledDocumentPackageList, Document } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -16,10 +18,10 @@ export default async function ControlledDocumentationPage({ searchParams }: Cont
   const clients = getServerApiClients();
   const context =
     await getServerRequestContextForPath(controlledRequestPath(domain, validOn));
-  requirePageAccess(context, "knowledge_workspace");
+  requireWorkspaceRouteAccess(context, "/controlled-documentation");
   const authorization = await clients.registry.getAuthorizationHints(context);
-  const [documents, packages, rules] = await Promise.all([
-    clients.registry.listDocuments(context),
+  const canReview = canReviewControlledDocumentation(authorization);
+  const [packages, rules] = await Promise.all([
     clients.registry.listControlledDocumentPackages(context, {
       domain,
       validOn,
@@ -27,10 +29,11 @@ export default async function ControlledDocumentationPage({ searchParams }: Cont
     }),
     clients.registry.listControlledRules(domain, context, {
       validOn,
-      approvedOnly: false,
+      approvedOnly: !canReview,
       includeInactive: authorization.can_update,
     }),
   ]);
+  const documents = await loadReferencedDocuments(packages, clients.registry, context);
 
   return (
     <>
@@ -49,6 +52,24 @@ export default async function ControlledDocumentationPage({ searchParams }: Cont
       />
     </>
   );
+}
+
+async function loadReferencedDocuments(
+  packages: ControlledDocumentPackageList,
+  registry: ReturnType<typeof getServerApiClients>["registry"],
+  context: Awaited<ReturnType<typeof getServerRequestContextForPath>>,
+): Promise<Document[]> {
+  // Package labels already carry the human title. Resolve only legacy members
+  // without a label and keep the initial request bounded.
+  const documentIds = [...new Set(
+    packages.items.flatMap((item) => item.members
+      .filter((member) => !member.label)
+      .map((member) => member.document_id)),
+  )].slice(0, 50);
+  const results = await Promise.allSettled(
+    documentIds.map((documentId) => registry.getDocument(documentId, context)),
+  );
+  return results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
 }
 
 function controlledDomain(value: string | string[] | undefined): string {

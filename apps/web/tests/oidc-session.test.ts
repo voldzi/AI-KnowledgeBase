@@ -1,22 +1,20 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { identityFixture } from "./helpers/managed-identity";
 
 import {
+  buildAuthorizationUrl,
   buildPublicAppUrl,
+  isAllowedAuthNavigationRequestOrigin,
+  isAllowedPublicOrigin,
   contextFromOidcAccessToken,
   contextFromOidcSession,
   createState,
   getOrRefreshOidcSession,
   normalizeReturnToForPublicBase,
-  OIDC_REFRESH_COOKIE,
-  OIDC_SESSION_COOKIE,
-  openSession,
-  readSessionCookie,
+  parseState,
   refreshOidcSession,
   safeReturnToFromState,
-  sealBrowserSession,
-  sealRefreshToken,
-  sealSession,
   sessionFromTokens
 } from "../src/lib/auth/oidc";
 
@@ -59,57 +57,12 @@ describe("OIDC web session", () => {
     assert.equal(contextFromOidcAccessToken(jwt({ sub: "expired", exp: 1 }), 2_000), null);
   });
 
-  it("seals and opens a session cookie payload", () => {
-    const session = sessionFromTokens(
-      { access_token: jwt({ sub: "user-123" }), refresh_token: "refresh-token", expires_in: 600 },
-      1_000
-    );
-    const sealed = sealSession(session, "test-secret");
-    const opened = openSession(sealed, "test-secret", 2_000);
-
-    assert.equal(opened?.accessToken, session.accessToken);
-    assert.equal(opened?.refreshToken, "refresh-token");
-    assert.equal(opened?.expiresAt, session.expiresAt);
-    assert.equal(opened?.subjectId, session.subjectId);
-    assert.deepEqual(opened?.roles, []);
-    assert.deepEqual(opened?.groups, []);
-    assert.equal(openSession(sealed, "wrong-secret", 2_000), null);
-    assert.equal(openSession(sealed, "test-secret", session.expiresAt + 1), null);
-    assert.equal(openSession(sealed, "test-secret", session.expiresAt + 1, { allowExpired: true })?.subjectId, "user-123");
-  });
-
-  it("keeps access tokens out of browser cookies and restores only the refresh token", () => {
-    const config = testOidcConfig();
-    const accessToken = jwt({ sub: "user-123" });
-    const session = sessionFromTokens(
-      { access_token: accessToken, refresh_token: "refresh-token", expires_in: 600 },
-      1_000
-    );
-    const browserSession = sealBrowserSession(session, "test-secret");
-    const refreshCookie = sealRefreshToken("refresh-token", "test-secret");
-    const opened = openSession(browserSession, "test-secret", 2_000);
-    const read = readSessionCookie(
-      {
-        get: (name: string) =>
-          ({
-            [OIDC_SESSION_COOKIE]: { value: browserSession },
-            [OIDC_REFRESH_COOKIE]: { value: refreshCookie }
-          })[name]
-      },
-      config,
-      2_000
-    );
-
-    assert.equal(opened?.accessToken, undefined);
-    assert.equal(opened?.refreshToken, undefined);
-    assert.equal(read?.accessToken, undefined);
-    assert.equal(read?.refreshToken, "refresh-token");
-  });
-
   it("deduplicates refresh rotation and reuses the server-side access session", async () => {
     const config = testOidcConfig();
-    const refreshedAccessToken = jwt({
+    const fixture = await identityFixture(60_000, { issuer: config.oidc.issuer, external: true, lifetime: 600 });
+    const refreshedAccessToken = await fixture.sign({
       sub: "dedupe-user",
+      aud: "akl-api",
       realm_access: { roles: ["reader"] }
     });
     const session = {
@@ -120,11 +73,13 @@ describe("OIDC web session", () => {
       accessToken: undefined
     };
     let refreshRequests = 0;
-    const fetchImpl = async () => {
+    fixture.state.handle = async (url) => {
+      if (url !== fixture.discovery.token_endpoint) return undefined;
       refreshRequests += 1;
       return new Response(
         JSON.stringify({
           access_token: refreshedAccessToken,
+          token_type: "Bearer",
           refresh_token: "dedupe-refresh-new",
           expires_in: 600
         }),
@@ -133,14 +88,14 @@ describe("OIDC web session", () => {
     };
 
     const [first, second] = await Promise.all([
-      getOrRefreshOidcSession(config, session, 60_000, fetchImpl),
-      getOrRefreshOidcSession(config, session, 60_000, fetchImpl)
+      getOrRefreshOidcSession(config, session, 60_000, fixture.fetcher),
+      getOrRefreshOidcSession(config, session, 60_000, fixture.fetcher)
     ]);
     const fromRotatedCookie = await getOrRefreshOidcSession(
       config,
       { ...first!, accessToken: undefined },
       61_000,
-      fetchImpl
+      fixture.fetcher
     );
 
     assert.equal(refreshRequests, 1);
@@ -150,35 +105,12 @@ describe("OIDC web session", () => {
     assert.equal(fromRotatedCookie?.refreshToken, "dedupe-refresh-new");
   });
 
-  it("restores an expired metadata session so its refresh token can renew access", () => {
-    const config = testOidcConfig();
-    const session = sessionFromTokens(
-      { access_token: jwt({ sub: "user-123" }), refresh_token: "refresh-token", expires_in: 30 },
-      1_000
-    );
-    const browserSession = sealBrowserSession(session, "test-secret");
-    const refreshCookie = sealRefreshToken("refresh-token", "test-secret");
-    const read = readSessionCookie(
-      {
-        get: (name: string) =>
-          ({
-            [OIDC_SESSION_COOKIE]: { value: browserSession },
-            [OIDC_REFRESH_COOKIE]: { value: refreshCookie }
-          })[name]
-      },
-      config,
-      session.expiresAt + 1
-    );
-
-    assert.equal(read?.subjectId, "user-123");
-    assert.equal(read?.accessToken, undefined);
-    assert.equal(read?.refreshToken, "refresh-token");
-  });
-
   it("refreshes a non-expired metadata session when the access token is absent", async () => {
     const config = testOidcConfig();
-    const refreshedAccessToken = jwt({
+    const fixture = await identityFixture(60_000, { issuer: config.oidc.issuer, external: true, lifetime: 600 });
+    const refreshedAccessToken = await fixture.sign({
       sub: "user-123",
+      aud: "akl-api",
       realm_access: { roles: ["reader"] }
     });
     const session = {
@@ -189,16 +121,16 @@ describe("OIDC web session", () => {
       accessToken: undefined
     };
 
-    const refreshed = await refreshOidcSession(config, session, 60_000, async () =>
-      new Response(
+    fixture.state.handle = async (url) => url !== fixture.discovery.token_endpoint ? undefined : new Response(
         JSON.stringify({
           access_token: refreshedAccessToken,
+          token_type: "Bearer",
           refresh_token: "refresh-new",
           expires_in: 600
         }),
         { status: 200, headers: { "content-type": "application/json" } }
-      )
-    );
+      );
+    const refreshed = await refreshOidcSession(config, session, 60_000, fixture.fetcher);
 
     assert.equal(refreshed?.accessToken, refreshedAccessToken);
     assert.equal(refreshed?.refreshToken, "refresh-new");
@@ -207,8 +139,10 @@ describe("OIDC web session", () => {
 
   it("refreshes an expired web session with the OIDC refresh token", async () => {
     const config = testOidcConfig();
-    const refreshedAccessToken = jwt({
+    const fixture = await identityFixture(60_000, { issuer: config.oidc.issuer, external: true, lifetime: 600 });
+    const refreshedAccessToken = await fixture.sign({
       sub: "user-123",
+      aud: "akl-api",
       realm_access: { roles: ["reader"] },
       groups: ["employees"],
       name: "Demo User"
@@ -218,8 +152,8 @@ describe("OIDC web session", () => {
       1_000
     );
 
-    const refreshed = await refreshOidcSession(config, session, 60_000, async (input, init) => {
-      assert.equal(String(input), "https://login.example/realms/stratos/protocol/openid-connect/token");
+    fixture.state.handle = async (url, init) => {
+      if (url !== fixture.discovery.token_endpoint) return undefined;
       assert.equal(init?.method, "POST");
       const body = init?.body as URLSearchParams;
       assert.equal(body.get("grant_type"), "refresh_token");
@@ -228,12 +162,14 @@ describe("OIDC web session", () => {
       return new Response(
         JSON.stringify({
           access_token: refreshedAccessToken,
+          token_type: "Bearer",
           refresh_token: "refresh-new",
           expires_in: 600
         }),
         { status: 200, headers: { "content-type": "application/json" } }
       );
-    });
+    };
+    const refreshed = await refreshOidcSession(config, session, 60_000, fixture.fetcher);
 
     assert.equal(refreshed?.accessToken, refreshedAccessToken);
     assert.equal(refreshed?.refreshToken, "refresh-new");
@@ -255,12 +191,77 @@ describe("OIDC web session", () => {
     );
   });
 
+  it("validates state-changing requests against the configured public origin", () => {
+    const config = testOidcConfig();
+    assert.equal(isAllowedPublicOrigin(config, "https://stratos.example"), true);
+    assert.equal(
+      isAllowedPublicOrigin(config, "https://stratos.example:443"),
+      true,
+    );
+    assert.equal(isAllowedPublicOrigin(config, "http://akl-web:3000"), false);
+    assert.equal(isAllowedPublicOrigin(config, "https://attacker.example"), false);
+    assert.equal(isAllowedPublicOrigin(config, null), false);
+  });
+
+  it("allows an opaque origin only for a same-origin document navigation", () => {
+    const config = testOidcConfig();
+    const headers = (values: Record<string, string>) => new Headers(values);
+
+    assert.equal(
+      isAllowedAuthNavigationRequestOrigin(
+        config,
+        headers({
+          origin: "null",
+          "sec-fetch-site": "same-origin",
+          "sec-fetch-mode": "navigate",
+          "sec-fetch-dest": "document",
+        }),
+      ),
+      true,
+    );
+    assert.equal(
+      isAllowedAuthNavigationRequestOrigin(
+        config,
+        headers({
+          origin: "null",
+          "sec-fetch-site": "cross-site",
+          "sec-fetch-mode": "navigate",
+          "sec-fetch-dest": "document",
+        }),
+      ),
+      false,
+    );
+    assert.equal(
+      isAllowedAuthNavigationRequestOrigin(
+        config,
+        headers({ origin: "null", "sec-fetch-site": "same-origin" }),
+      ),
+      false,
+    );
+  });
+
   it("falls back to a safe return path for malformed OIDC state", () => {
     const state = createState("/chat");
 
     assert.equal(safeReturnToFromState(state, "/"), "/chat");
     assert.equal(safeReturnToFromState("not-base64-json", "/"), "/");
     assert.equal(safeReturnToFromState(null, "/"), "/");
+  });
+
+  it("can parse old state but does not use it as session-policy evidence", () => {
+    assert.equal(parseState(createState("/chat", true)).remember, true);
+    assert.equal(parseState(createState("/chat")).remember, false);
+    assert.equal(parseState(createState("/chat", false, "silent")).mode, "silent");
+    assert.equal(parseState(createState("/chat")).mode, "interactive");
+  });
+
+  it("uses prompt=none only for silent STRATOS SSO", () => {
+    const config = testOidcConfig();
+    const silent = new URL(buildAuthorizationUrl(config, createState("/chat"), "verifier", "silent"));
+    const interactive = new URL(buildAuthorizationUrl(config, createState("/chat"), "verifier"));
+
+    assert.equal(silent.searchParams.get("prompt"), "none");
+    assert.equal(interactive.searchParams.get("prompt"), null);
   });
 
   it("normalizes return paths against the configured public base path", () => {

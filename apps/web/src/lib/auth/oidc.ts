@@ -2,6 +2,11 @@ import crypto from "node:crypto";
 
 import type { AklConfig } from "@/lib/api/config";
 import type { ApiRequestContext } from "@/lib/types";
+import {
+  identityJson, isManagedIdentity, managedDiscovery,
+  verifyManagedIdToken, verifyManagedUserToken, verifyApprovedOidcJwt,
+} from "./managed-oidc";
+import { centralSessionPolicy, type CentralSessionPolicy, type SessionPolicyReason } from "./session-policy";
 
 export const OIDC_STATE_COOKIE = "akl_oidc_state";
 export const OIDC_SESSION_COOKIE = "akl_session";
@@ -30,27 +35,50 @@ export interface OidcSession {
   groups: string[];
   name?: string;
   email?: string;
+  keycloakSessionId?: string;
+  identityIssuer?: string;
+  identityClientId?: string;
+  identitySource?: string;
+  identityAudience?: "employees" | "external";
+  rememberDevice?: boolean;
+  centralSessionStartedAt?: number;
+  sessionAbsoluteExpiresAt?: number;
+  sessionPolicyReason?: SessionPolicyReason;
 }
 
 export interface OidcCallbackTokens {
   access_token: string;
+  token_type?: string;
   refresh_token?: string;
   id_token?: string;
   expires_in?: number;
 }
 
+export type OidcAuthorizationMode = "interactive" | "silent";
+
 export function buildAuthorizationUrl(
   config: AklConfig,
   state: string,
   codeVerifier?: string,
+  mode: OidcAuthorizationMode = "interactive",
+  authorizationEndpoint?: string,
 ): string {
   const oidc = requireOidcConfig(config);
-  const url = new URL(`${oidc.issuer}/protocol/openid-connect/auth`);
+  if (isManagedIdentity(config) && (!authorizationEndpoint || !codeVerifier)) throw new Error("OIDC_DISCOVERY_AND_PKCE_REQUIRED");
+  const url = new URL(authorizationEndpoint ?? `${oidc.issuer}/protocol/openid-connect/auth`);
   url.searchParams.set("client_id", oidc.clientId);
   url.searchParams.set("redirect_uri", oidc.redirectUri);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("scope", oidc.scopes);
   url.searchParams.set("state", state);
+  if (codeVerifier) {
+    const nonce = parseState(state).nonce;
+    if (!nonce) throw new Error("OIDC_NONCE_REQUIRED");
+    url.searchParams.set("nonce", nonce);
+  }
+  if (mode === "silent") {
+    url.searchParams.set("prompt", "none");
+  }
   if (codeVerifier) {
     url.searchParams.set("code_challenge", pkceCodeChallenge(codeVerifier));
     url.searchParams.set("code_challenge_method", "S256");
@@ -58,19 +86,40 @@ export function buildAuthorizationUrl(
   return url.toString();
 }
 
+export async function resolveAuthorizationUrl(config: AklConfig, state: string, codeVerifier: string, mode: OidcAuthorizationMode = "interactive", fetcher: typeof fetch = fetch): Promise<string> {
+  const endpoint = isManagedIdentity(config) ? (await managedDiscovery(config, fetcher)).authorization_endpoint : undefined;
+  return buildAuthorizationUrl(config, state, codeVerifier, mode, endpoint);
+}
+
 export function createPkceVerifier(): string {
   return crypto.randomBytes(48).toString("base64url");
 }
 
-export function buildLogoutUrl(config: AklConfig): string {
+export function buildLogoutUrl(config: AklConfig, endpoint?: string): string {
   const oidc = requireOidcConfig(config);
-  const url = new URL(`${oidc.issuer}/protocol/openid-connect/logout`);
+  if (isManagedIdentity(config) && !endpoint) throw new Error("OIDC_DISCOVERY_REQUIRED");
+  const url = new URL(endpoint ?? `${oidc.issuer}/protocol/openid-connect/logout`);
   url.searchParams.set("client_id", oidc.clientId);
   url.searchParams.set(
     "post_logout_redirect_uri",
-    oidc.redirectUri.replace(/\/api\/auth\/callback$/, ""),
+    oidc.logoutRedirectUri ?? oidc.redirectUri.replace(/\/api\/auth\/callback$/, ""),
   );
   return url.toString();
+}
+
+export async function resolveLogoutUrl(config: AklConfig, fetcher: typeof fetch = fetch): Promise<string> {
+  const endpoint = isManagedIdentity(config) ? (await managedDiscovery(config, fetcher)).end_session_endpoint : undefined;
+  return buildLogoutUrl(config, endpoint);
+}
+
+export async function revokeOidcRefreshToken(config: AklConfig, session: OidcSession, fetcher: typeof fetch = fetch): Promise<void> {
+  const oidc = requireOidcConfig(config);
+  if (!session.refreshToken) return;
+  if (isManagedIdentity(config) && (session.identityIssuer !== oidc.issuer || session.identityClientId !== oidc.clientId)) return;
+  const endpoint = isManagedIdentity(config) ? (await managedDiscovery(config, fetcher)).revocation_endpoint : `${oidc.issuer}/protocol/openid-connect/revoke`;
+  const body = new URLSearchParams({ token: session.refreshToken, token_type_hint: "refresh_token", client_id: oidc.clientId });
+  if (!isManagedIdentity(config) && oidc.clientSecret) body.set("client_secret", oidc.clientSecret);
+  await fetcher(endpoint, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body, cache: "no-store", redirect: "error", signal: AbortSignal.timeout(3_000), opentelemetry: { ignore: true, propagateContext: false } });
 }
 
 export function buildPublicAppUrl(config: AklConfig, path: string): string {
@@ -78,6 +127,38 @@ export function buildPublicAppUrl(config: AklConfig, path: string): string {
   const publicBaseUrl = oidc.redirectUri.replace(/\/api\/auth\/callback$/, "");
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   return `${publicBaseUrl}${normalizedPath === "/" ? "" : normalizedPath}`;
+}
+
+export function isAllowedPublicOrigin(
+  config: AklConfig,
+  origin: string | null,
+): boolean {
+  if (!origin) return false;
+  try {
+    return (
+      new URL(origin).origin === new URL(buildPublicAppUrl(config, "/")).origin
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function isAllowedAuthNavigationRequestOrigin(
+  config: AklConfig,
+  headers: Pick<Headers, "get">,
+): boolean {
+  const origin = headers.get("origin");
+  if (isAllowedPublicOrigin(config, origin)) return true;
+
+  // Some managed browser shells serialize a same-origin form navigation with
+  // an opaque Origin. Fetch Metadata headers are browser-controlled and keep
+  // this exception limited to a top-level, same-origin document navigation.
+  return (
+    origin === "null" &&
+    headers.get("sec-fetch-site") === "same-origin" &&
+    headers.get("sec-fetch-mode") === "navigate" &&
+    headers.get("sec-fetch-dest") === "document"
+  );
 }
 
 export function normalizeReturnToForPublicBase(
@@ -107,6 +188,7 @@ export async function exchangeAuthorizationCode(
   config: AklConfig,
   code: string,
   codeVerifier?: string,
+  fetcher: typeof fetch = fetch,
 ): Promise<OidcCallbackTokens> {
   const oidc = requireOidcConfig(config);
   const body = new URLSearchParams({
@@ -115,26 +197,52 @@ export async function exchangeAuthorizationCode(
     code,
     redirect_uri: oidc.redirectUri,
   });
-  if (oidc.clientSecret) {
+  if (!isManagedIdentity(config) && oidc.clientSecret) {
     body.set("client_secret", oidc.clientSecret);
   }
   if (codeVerifier) {
     body.set("code_verifier", codeVerifier);
   }
 
-  const response = await fetch(`${oidc.issuer}/protocol/openid-connect/token`, {
+  if (isManagedIdentity(config)) {
+    if (!codeVerifier) throw new Error("OIDC_PKCE_REQUIRED");
+    const discovery = await managedDiscovery(config, fetcher);
+    return await identityJson(discovery.token_endpoint, {
+      method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body,
+    }, fetcher) as unknown as OidcCallbackTokens;
+  }
+
+  return await identityJson(`${oidc.issuer}/protocol/openid-connect/token`, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body,
-  });
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    const summary = detail ? `: ${detail.slice(0, 300)}` : "";
-    throw new Error(
-      `OIDC token exchange failed with ${response.status}${summary}`,
-    );
-  }
-  return (await response.json()) as OidcCallbackTokens;
+  }, fetcher) as unknown as OidcCallbackTokens;
+}
+
+export async function verifiedSessionFromTokens(config: AklConfig, tokens: OidcCallbackTokens, nonce: string | undefined, nowMs = Date.now(), fetcher: typeof fetch = fetch, previous?: OidcSession): Promise<OidcSession> {
+  if (typeof tokens.access_token !== "string" || !tokens.access_token) throw new Error("OIDC_ACCESS_TOKEN_MISSING");
+  if (typeof tokens.token_type !== "string" || tokens.token_type.toLowerCase() !== "bearer" || (tokens.refresh_token !== undefined && (typeof tokens.refresh_token !== "string" || !tokens.refresh_token))) throw new Error("OIDC_TOKEN_RESPONSE_INVALID");
+  if (nonce !== undefined && !tokens.refresh_token) throw new Error("OIDC_REFRESH_TOKEN_MISSING");
+  const managed = isManagedIdentity(config);
+  const claims = managed ? await verifyManagedUserToken(config, tokens.access_token, fetcher, nowMs)
+    : await verifyApprovedOidcJwt(config, tokens.access_token, config.oidc!.accessTokenAudience ?? "akl-api", fetcher, nowMs);
+  if (!stringClaim(claims.sub) || claims.sub!.length > 160 || claims.stratos_service === true || claims.typ === "Offline" || (claims.azp !== undefined && claims.azp !== config.oidc!.clientId) || (claims.client_id !== undefined && claims.client_id !== config.oidc!.clientId)) throw new Error("OIDC_USER_CLAIMS_INVALID");
+  if (nonce !== undefined && !tokens.id_token) throw new Error("OIDC_ID_TOKEN_MISSING");
+  if (tokens.id_token) await verifyManagedIdToken(config, tokens.id_token, claims.sub!, nonce, fetcher, nowMs);
+  const previousPolicy = previous?.sessionAbsoluteExpiresAt !== undefined ? {
+    rememberDevice: previous.rememberDevice === true, centralSessionStartedAt: previous.centralSessionStartedAt,
+    sessionAbsoluteExpiresAt: previous.sessionAbsoluteExpiresAt, sessionPolicyReason: previous.sessionPolicyReason ?? "REMEMBER_CLAIM_MISSING",
+  } satisfies CentralSessionPolicy : undefined;
+  const policy = centralSessionPolicy(claims, nowMs, previousPolicy);
+  return {
+    accessToken: tokens.access_token, refreshToken: tokens.refresh_token, idToken: tokens.id_token,
+    expiresAt: claims.exp! * 1_000, subjectId: claims.sub!, roles: managed ? [] : extractRoles(claims), groups: managed ? [] : stringArrayClaim(claims.groups),
+    name: stringClaim(claims.name), email: stringClaim(claims.email),
+    keycloakSessionId: stringClaim(claims.sid), identityIssuer: config.oidc!.issuer,
+    identityClientId: config.oidc!.clientId, identitySource: managed ? String(claims.identity_source) : undefined,
+    identityAudience: managed ? claims.identity_audience as "employees" | "external" : undefined,
+    ...policy,
+  };
 }
 
 function pkceCodeChallenge(codeVerifier: string): string {
@@ -170,6 +278,10 @@ export function sessionFromTokens(
     groups: stringArrayClaim(claims.groups),
     name: stringClaim(claims.name) ?? stringClaim(fallbackClaims.name),
     email: stringClaim(claims.email) ?? stringClaim(fallbackClaims.email),
+    keycloakSessionId:
+      stringClaim(claims.sid) ??
+      stringClaim(claims.session_state) ??
+      stringClaim(fallbackClaims.sid),
   };
 }
 
@@ -215,20 +327,31 @@ export function contextFromOidcAccessToken(
   }
 }
 
-export function createState(returnTo: string | null): string {
+export function createState(
+  returnTo: string | null,
+  remember = false,
+  mode: OidcAuthorizationMode = "interactive",
+): string {
   const nonce = crypto.randomBytes(18).toString("base64url");
   return Buffer.from(
-    JSON.stringify({ nonce, returnTo: returnTo || "/" }),
+    JSON.stringify({ nonce, returnTo: returnTo || "/", remember, mode }),
     "utf8",
   ).toString("base64url");
 }
 
-export function parseState(value: string): { nonce: string; returnTo: string } {
+export function parseState(value: string): {
+  nonce: string;
+  returnTo: string;
+  remember: boolean;
+  mode: OidcAuthorizationMode;
+} {
   const parsed = JSON.parse(
     Buffer.from(value, "base64url").toString("utf8"),
   ) as {
     nonce?: unknown;
     returnTo?: unknown;
+    remember?: unknown;
+    mode?: unknown;
   };
   return {
     nonce: typeof parsed.nonce === "string" ? parsed.nonce : "",
@@ -236,6 +359,8 @@ export function parseState(value: string): { nonce: string; returnTo: string } {
       typeof parsed.returnTo === "string" && parsed.returnTo.startsWith("/")
         ? parsed.returnTo
         : "/",
+    remember: parsed.remember === true,
+    mode: parsed.mode === "silent" ? "silent" : "interactive",
   };
 }
 
@@ -251,137 +376,6 @@ export function safeReturnToFromState(
   } catch {
     return fallback;
   }
-}
-
-export function sealBrowserSession(
-  session: OidcSession,
-  secret: string,
-): string {
-  const {
-    accessToken: _accessToken,
-    idToken: _idToken,
-    refreshToken: _refreshToken,
-    ...browserSession
-  } = session;
-  return sealSession(browserSession, secret);
-}
-
-export function sealRefreshToken(refreshToken: string, secret: string): string {
-  return sealTokenCookie({ refreshToken }, secret);
-}
-
-function sealTokenCookie(payload: Record<string, string>, secret: string): string {
-  const iv = crypto.randomBytes(12);
-  const key = sessionKey(secret);
-  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
-  const plaintext = Buffer.from(JSON.stringify(payload), "utf8");
-  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return Buffer.concat([iv, tag, ciphertext]).toString("base64url");
-}
-
-function openRefreshToken(value: string, secret: string): string | undefined {
-  return openTokenCookie(value, secret, "refreshToken");
-}
-
-function openTokenCookie(
-  value: string,
-  secret: string,
-  keyName: "refreshToken",
-): string | undefined {
-  try {
-    const payload = Buffer.from(value, "base64url");
-    const iv = payload.subarray(0, 12);
-    const tag = payload.subarray(12, 28);
-    const ciphertext = payload.subarray(28);
-    const decipher = crypto.createDecipheriv(
-      "aes-256-gcm",
-      sessionKey(secret),
-      iv,
-    );
-    decipher.setAuthTag(tag);
-    const plaintext = Buffer.concat([
-      decipher.update(ciphertext),
-      decipher.final(),
-    ]);
-    const parsed = JSON.parse(plaintext.toString("utf8")) as Record<
-      string,
-      unknown
-    >;
-    const token = parsed[keyName];
-    return typeof token === "string" && token
-      ? token
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-export function sealSession(session: OidcSession, secret: string): string {
-  const iv = crypto.randomBytes(12);
-  const key = sessionKey(secret);
-  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
-  const plaintext = Buffer.from(JSON.stringify(session), "utf8");
-  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return Buffer.concat([iv, tag, ciphertext]).toString("base64url");
-}
-
-export function openSession(
-  value: string,
-  secret: string,
-  nowMs = Date.now(),
-  options: { allowExpired?: boolean } = {},
-): OidcSession | null {
-  try {
-    const payload = Buffer.from(value, "base64url");
-    const iv = payload.subarray(0, 12);
-    const tag = payload.subarray(12, 28);
-    const ciphertext = payload.subarray(28);
-    const decipher = crypto.createDecipheriv(
-      "aes-256-gcm",
-      sessionKey(secret),
-      iv,
-    );
-    decipher.setAuthTag(tag);
-    const plaintext = Buffer.concat([
-      decipher.update(ciphertext),
-      decipher.final(),
-    ]);
-    const session = JSON.parse(plaintext.toString("utf8")) as OidcSession;
-    if (
-      !session.subjectId ||
-      (!options.allowExpired && session.expiresAt <= nowMs)
-    ) {
-      return null;
-    }
-    return session;
-  } catch {
-    return null;
-  }
-}
-
-export function readSessionCookie(
-  cookies: { get(name: string): { value: string } | undefined },
-  config: AklConfig,
-  nowMs = Date.now(),
-): OidcSession | null {
-  const oidc = requireOidcConfig(config);
-  const sessionValue = cookies.get(OIDC_SESSION_COOKIE)?.value;
-  const session = sessionValue
-    ? openSession(sessionValue, oidc.sessionSecret, nowMs, { allowExpired: true })
-    : null;
-  if (!session) {
-    return null;
-  }
-  const refreshValue = cookies.get(OIDC_REFRESH_COOKIE)?.value;
-  const refreshToken = refreshValue
-    ? openRefreshToken(refreshValue, oidc.sessionSecret)
-    : undefined;
-  return {
-    ...session,
-    ...(refreshToken ? { refreshToken } : {}),
-  };
 }
 
 export function rememberOidcSession(
@@ -412,6 +406,7 @@ export async function getOrRefreshOidcSession(
   nowMs = Date.now(),
   fetchImpl: typeof fetch = fetch,
 ): Promise<OidcSession | null> {
+  if (!matchesManagedClient(config, session)) return null;
   if (session.accessToken && session.expiresAt > nowMs) {
     return session;
   }
@@ -452,6 +447,7 @@ export async function refreshOidcSession(
   nowMs = Date.now(),
   fetchImpl: typeof fetch = fetch,
 ): Promise<OidcSession | null> {
+  if (!matchesManagedClient(config, session)) return null;
   if (session.accessToken && session.expiresAt > nowMs) {
     return session;
   }
@@ -460,6 +456,24 @@ export async function refreshOidcSession(
   }
 
   const oidc = requireOidcConfig(config);
+  if (isManagedIdentity(config)) {
+    try {
+      const discovery = await managedDiscovery(config, fetchImpl, nowMs);
+      const body = new URLSearchParams({ grant_type: "refresh_token", client_id: oidc.clientId, refresh_token: session.refreshToken });
+      const tokens = await identityJson(discovery.token_endpoint, {
+        method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body,
+      }, fetchImpl) as unknown as OidcCallbackTokens;
+      const refreshed = await verifiedSessionFromTokens(config, tokens, undefined, nowMs, fetchImpl, session);
+      if (refreshed.subjectId !== session.subjectId || refreshed.identitySource !== session.identitySource || refreshed.identityAudience !== session.identityAudience || refreshed.keycloakSessionId !== session.keycloakSessionId) return null;
+      const userinfo = await identityJson(discovery.userinfo_endpoint, {
+        headers: { Authorization: `Bearer ${refreshed.accessToken}` },
+      }, fetchImpl);
+      if (userinfo.sub !== session.subjectId) return null;
+      return { ...refreshed, refreshToken: refreshed.refreshToken ?? session.refreshToken };
+    } catch {
+      return null;
+    }
+  }
   const body = new URLSearchParams({
     grant_type: "refresh_token",
     client_id: oidc.clientId,
@@ -469,23 +483,20 @@ export async function refreshOidcSession(
     body.set("client_secret", oidc.clientSecret);
   }
 
-  const response = await fetchImpl(
-    `${oidc.issuer}/protocol/openid-connect/token`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body,
-    },
-  );
-  if (!response.ok) {
+  try {
+    const tokens = await identityJson(`${oidc.issuer}/protocol/openid-connect/token`, {
+      method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body,
+    }, fetchImpl) as unknown as OidcCallbackTokens;
+    const refreshed = await verifiedSessionFromTokens(config, tokens, undefined, nowMs, fetchImpl, session);
+    if (refreshed.subjectId !== session.subjectId || refreshed.keycloakSessionId !== session.keycloakSessionId) return null;
+    return { ...refreshed, refreshToken: refreshed.refreshToken ?? session.refreshToken };
+  } catch {
     return null;
   }
-  const tokens = (await response.json()) as OidcCallbackTokens;
-  const refreshed = sessionFromTokens(tokens, nowMs);
-  return {
-    ...refreshed,
-    refreshToken: refreshed.refreshToken ?? session.refreshToken,
-  };
+}
+
+function matchesManagedClient(config: AklConfig, session: OidcSession): boolean {
+  return !isManagedIdentity(config) || (session.identityIssuer === config.oidc?.issuer && session.identityClientId === config.oidc?.clientId);
 }
 
 export function cookieOptions(config: AklConfig) {
@@ -505,10 +516,6 @@ export function requireOidcConfig(
     throw new Error("OIDC configuration is not available.");
   }
   return config.oidc;
-}
-
-function sessionKey(secret: string): Buffer {
-  return crypto.createHash("sha256").update(secret).digest();
 }
 
 function oidcSessionCacheKey(config: AklConfig, refreshToken: string): string {

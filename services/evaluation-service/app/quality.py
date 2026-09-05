@@ -125,6 +125,8 @@ def evaluate_quality_gate(run: EvaluationRun, settings: Settings) -> QualityGate
     ]
     evaluated = [check for check in checks if check.eligible]
     status = "not_evaluated" if not evaluated else "passed" if all(check.passed for check in evaluated) else "failed"
+    if any(case.status == "error" for case in run.cases):
+        status = "failed"
     return QualityGateResult(
         status=status,
         checks=checks,

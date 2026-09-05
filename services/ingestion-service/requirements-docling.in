@@ -1,0 +1,5 @@
+# Linux/amd64 ingestion and Docling dependency input. The selected slim extras
+# cover every AKB format and local model path without the unused RapidOCR stack;
+# production images install only the generated hash-locked file.
+-r requirements.txt
+docling-slim[cli,convert-core,format-docx,format-html,format-markdown,format-pdf,format-pptx,format-xlsx,models-local,models-vlm-inline]==2.124.0

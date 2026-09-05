@@ -58,7 +58,11 @@ Real local RAG používá:
 - `AKL_RAG_HIGH_QUALITY_CHAT_MODEL=gemma4:31b-mlx`
 - `AKL_RAG_HIGH_QUALITY_MIN_CONTEXT_CHUNKS=6`
 - `AKL_RAG_EMBEDDING_MODEL=bge-m3`
-- `AKL_RAG_ANSWER_MAX_TOKENS=512`
+- `AKL_RAG_MAX_CONTEXT_CHARS=20000`
+- `AKL_RAG_ANSWER_MAX_TOKENS=1536`
+- `AKL_ASSISTANT_HISTORY_MAX_USER_MESSAGES=12`
+- `AKL_ASSISTANT_HISTORY_MAX_MESSAGE_CHARS=800`
+- `AKL_ASSISTANT_HISTORY_MAX_CHARS=6000`
 - `AKL_RAG_SOURCE_CONTEXT_WINDOW=1`
 - `AKL_RAG_AUTHZ_MODE=dev`
 - Qdrant kolekci `akl_document_chunks` s vektorem velikosti `1024` a distance `Cosine`
@@ -101,9 +105,12 @@ OpenSearch dotaz používá vážený `multi_match` přes `document_title`,
 `search_text`, `text` a `normalized_text`, plus phrase boost pro přesné názvy a
 formulace. Dotaz se konzervativně rozšiřuje o doménová synonyma pro řízené
 dokumenty, například `RMO` -> `rozkaz ministra obrany`, `gestor` ->
-`odpovedny/vlastnik`, `cl` -> `clanek` a `odst` -> `odstavec`. Identifikátory
-typu `RMO 12/2024`, `cl. 4` a `odst. 2` dostávají samostatné phrase/wildcard
-boosty, aby přesné citace porážely obecné textové shody.
+`odpovedny/vlastnik`, `cl` -> `clanek` a `odst` -> `odstavec`. Jednoznačné
+ekvivalenty z lokálního SSP snapshotu se používají pouze jako omezené
+retrieval hints; neschválený pojem nesmí směrovat na živou aplikaci. Krátký
+uživatelský dotaz má navíc nízko váženou fuzzy větev pro běžné překlepy.
+Identifikátory typu `RMO 12/2024`, `cl. 4` a `odst. 2` dostávají samostatné
+phrase/wildcard boosty, aby přesné citace porážely obecné textové shody.
 
 Filtry na `classification`, `document_type`, `tags`, `status`, `valid_from` a `valid_to` se
 aplikují už v OpenSearch dotazu. Registry authorization zůstává samostatná

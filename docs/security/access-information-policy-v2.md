@@ -80,21 +80,6 @@ must all match; the manager's current local capability and ingestion proof are
 still required, while ordinary uploads continue to use the verified user
 bearer.
 
-AIIP ingestion is a narrower exception described in ADR 0008. Only the
-`aiip-service` client may enter the `aiip-upload` route family, and every call
-must carry a second, independent current actor bearer in
-`X-AIIP-Actor-Authorization`. Registry calls the dedicated central
-AIIP-to-AKB resource endpoint with `AKB_AIIP_INGEST_SERVICE_TOKEN`; this token
-must differ from `AKB_POLICY_SERVICE_TOKEN`. STRATOS verifies the actor's
-active identity, membership, AIIP access, `aiip:ingest_own_document`, exact
-registered source lineage, scope, policy, correlation id, and idempotency key.
-AKB accepts only an exact confirmation and derives document owner,
-assignments, `uploaded_by`, scope, parent, and policy from that confirmation.
-Caller-supplied owner or arbitrary metadata is not part of this contract.
-Generic external-document, version, and current-pointer write routes reject
-`STRATOS_AIIP` and AIIP-governed lineage, so another valid AKB identity cannot
-bypass the dedicated dual-identity and central-confirmation boundary.
-
 A missing, stale, mismatched, or over-broad credential fails closed.
 `akb:upload` deliberately does not imply `akb:assign_policy`. Because AKB has
 no safe `POLICY_PENDING` read model, a denied resource registration aborts the
@@ -201,10 +186,10 @@ diagnostic content from leaking when central verification fails.
 ## Integration Envelope
 
 External upload accepts only `stratos-integration-envelope-1`. Its organization,
-binding id/version/hash, classification, `sourceResource`, and exact scope must
-equal the supplied policy and the currently registered source lineage. AIIP
-preflight, immutable version creation, current-pointer reconciliation, and
-idempotent replay each re-confirm that lineage centrally. The signed upload
+binding id/version/hash, classification, and exact scope must equal the supplied
+policy and the currently registered source lineage. Preflight, immutable
+version creation, current-pointer reconciliation, and idempotent replay each
+re-confirm that lineage centrally. The signed upload
 token binds all confirmation coordinates through confirm. It is returned only
 inside preflight `required_headers`. Binary upload authenticates with that token,
 performs a bounded read, verifies the exact signed size and SHA-256, persists

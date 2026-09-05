@@ -3,14 +3,13 @@ import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/page-header";
 import { DocumentDetail } from "@/features/documents/document-detail";
 import { getServerApiClients, getServerRequestContextForPath } from "@/lib/api/server";
-import { requirePageAccess } from "@/lib/auth/server-route-guard";
-import { controlledDocumentationDomain } from "@/lib/controlled-documentation/contract";
+import { requireWorkspaceRouteAccess } from "@/lib/auth/server-route-guard";
+import { canReviewControlledDocumentation, controlledDocumentationDomain } from "@/lib/controlled-documentation/contract";
+import { selectedDocumentVersion } from "@/lib/documents/review-version";
 import {
   ApiClientError,
-  type AuditEvent,
   type ControlledDocumentPackage,
   type ControlledRule,
-  type RegistryWorkflowTask,
 } from "@/lib/types";
 import { listVisibleIngestionJobs } from "@/lib/ingestion/governed-operations";
 
@@ -28,12 +27,15 @@ export default async function DocumentDetailPage({ params, searchParams }: Docum
   const clients = getServerApiClients();
   const requestPath = documentDetailRequestPath(documentId, resolvedSearchParams);
   const context = await getServerRequestContextForPath(requestPath);
-  requirePageAccess(context, "knowledge_workspace");
+  requireWorkspaceRouteAccess(context, "/documents");
 
   try {
-    const document = await clients.registry.getDocument(documentId, context);
+    const [document, authorization] = await Promise.all([
+      clients.registry.getDocument(documentId, context),
+      clients.registry.getAuthorizationHints(context),
+    ]);
     const controlledDomain = controlledDocumentationDomain(document);
-    const [assignments, versions, jobs, authorization, workflowTasks, auditEvents, controlledContext] = await Promise.all([
+    const [assignments, versions, jobsResult, workflowResult, auditResult, controlledContext] = await Promise.all([
       clients.registry.listDocumentAssignments(documentId, context).catch((error) => {
         if (error instanceof ApiClientError && error.status === 404) {
           return [];
@@ -41,21 +43,30 @@ export default async function DocumentDetailPage({ params, searchParams }: Docum
         throw error;
       }),
       clients.registry.listDocumentVersions(documentId, context),
-      listVisibleIngestionJobs(clients, [{ document_id: documentId }], context),
-      clients.registry.getAuthorizationHints(context),
-      listVisibleWorkflowTasks(
+      optionalSection(listVisibleIngestionJobs(clients, [{ document_id: documentId }], context)),
+      optionalSection(
         clients.registry.listWorkflowTasks(context, { includeResolved: true, documentId }),
       ),
-      listVisibleAuditEvents(clients.registry.listAuditEvents(context, { limit: 200 })),
+      authorization.can_read_audit
+        ? optionalSection(clients.registry.listAuditEvents(context, { limit: 200 }))
+        : Promise.resolve({ items: [], available: false, failed: false }),
       controlledDomain
-        ? listControlledDocumentContext(clients, context, controlledDomain, documentId)
+        ? listControlledDocumentContext(clients, context, controlledDomain, documentId, authorization)
         : Promise.resolve({
             packages: [] as ControlledDocumentPackage[],
             rules: [] as ControlledRule[],
             available: true,
           }),
     ]);
-    const currentVersion = versions.find((version) => version.status === "valid") ?? versions[0];
+    const requestedVersion = resolvedSearchParams.version;
+    if (Array.isArray(requestedVersion)) notFound();
+    const currentVersion = selectedDocumentVersion(versions, requestedVersion);
+    if (requestedVersion && !currentVersion) notFound();
+    const unavailableSections = [
+      ...(jobsResult.failed ? ["processing"] : []),
+      ...(workflowResult.failed ? ["workflow"] : []),
+      ...(auditResult.failed ? ["audit"] : []),
+    ];
     const publication = currentVersion
       ? await clients.registry
           .getDocumentPublication(documentId, currentVersion.document_version_id, context)
@@ -80,13 +91,16 @@ export default async function DocumentDetailPage({ params, searchParams }: Docum
           }}
         />
         <DocumentDetail
+          key={`${documentId}:${currentVersion?.document_version_id ?? "none"}`}
           document={document}
           versions={versions}
-          jobs={jobs}
+          jobs={jobsResult.items}
           authorization={authorization}
           assignments={assignments}
-          workflowTasks={workflowTasks}
-          auditEvents={auditEvents}
+          workflowTasks={workflowResult.items}
+          workflowAvailable={workflowResult.available}
+          auditEvents={auditResult.items}
+          unavailableSections={unavailableSections}
           publication={publication}
           controlledDomain={controlledDomain}
           controlledPackages={controlledContext.packages}
@@ -124,15 +138,16 @@ async function listControlledDocumentContext(
   context: Awaited<ReturnType<typeof getServerRequestContextForPath>>,
   domain: string,
   documentId: string,
+  authorization: { can_update: boolean; can_publish: boolean },
 ) {
   try {
     const [packages, rules] = await Promise.all([
       clients.registry.listControlledDocumentPackages(context, {
         domain,
-        includeInactive: true,
+        includeInactive: authorization.can_update,
       }),
       clients.registry.listControlledRules(domain, context, {
-        approvedOnly: false,
+        approvedOnly: !canReviewControlledDocumentation(authorization),
       }),
     ]);
     const relatedPackages = packages.items.filter(
@@ -162,20 +177,13 @@ async function listControlledDocumentContext(
   }
 }
 
-async function listVisibleWorkflowTasks(request: Promise<RegistryWorkflowTask[]>) {
+async function optionalSection<T>(request: Promise<T[]>) {
   try {
-    return await request;
+    return { items: await request, available: true, failed: false };
   } catch (error) {
-    if (error instanceof ApiClientError && error.status === 403) return [];
-    throw error;
-  }
-}
-
-async function listVisibleAuditEvents(request: Promise<AuditEvent[]>) {
-  try {
-    return await request;
-  } catch (error) {
-    if (error instanceof ApiClientError && error.status === 403) return [];
+    if (error instanceof ApiClientError && (error.status === 403 || error.status >= 500)) {
+      return { items: [] as T[], available: false, failed: error.status >= 500 };
+    }
     throw error;
   }
 }

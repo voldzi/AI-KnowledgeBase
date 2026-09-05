@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://akb.invalid/schemas/local-fast-check-summary.schema.json",
+  "additionalProperties": false,
+  "properties": {
+    "base": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
+    "cache": {
+      "additionalProperties": false,
+      "properties": {
+        "automatic_prune": {"const": false},
+        "buildkit_scopes": {"const": "separate-per-service"},
+        "image_hits": {"minimum": 0, "type": "integer"},
+        "image_misses": {"minimum": 0, "type": "integer"},
+        "mode": {"enum": ["build-on-miss", "require-existing"]}
+      },
+      "required": ["mode", "image_hits", "image_misses", "buildkit_scopes", "automatic_prune"],
+      "type": "object"
+    },
+    "checks": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "cache": {"enum": ["hit", "miss", "not-applicable"]},
+          "duration_ms": {"minimum": 0, "type": "integer"},
+          "id": {"minLength": 1, "type": "string"},
+          "image_digest": {"type": ["string", "null"]},
+          "status": {"const": "passed"}
+        },
+        "required": ["id", "status", "duration_ms", "cache", "image_digest"],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "commit": {"pattern": "^[0-9a-f]{40}$", "type": "string"},
+    "impact_profile": {"minLength": 1, "type": "string"},
+    "platform": {"enum": ["linux/arm64", "linux/amd64"]},
+    "schema": {"const": "akb-local-fast-check-1"},
+    "snapshot_sha256": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+    "status": {"const": "passed"},
+    "total_duration_ms": {"minimum": 0, "type": "integer"},
+    "trusted_gitea_ci_required": {"const": true},
+    "working_tree_dirty": {"type": "boolean"}
+  },
+  "required": ["schema", "commit", "working_tree_dirty", "base", "snapshot_sha256", "impact_profile", "platform", "status", "checks", "total_duration_ms", "cache", "trusted_gitea_ci_required"],
+  "type": "object"
+}

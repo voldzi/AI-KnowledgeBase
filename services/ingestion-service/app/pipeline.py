@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from app.errors import IngestionError
@@ -146,7 +147,8 @@ class IngestionPipeline:
                     "The source content does not match the immutable Registry version hash",
                     status_code=409,
                 )
-            parser_result = self.parser_router.parse(
+            parser_result = await asyncio.to_thread(
+                self.parser_router.parse,
                 source,
                 parser_profile=request.parser_profile,
                 ocr_enabled=request.ocr_enabled,
@@ -477,16 +479,20 @@ def _quality_report(parser_result, *, extraction_profile: str) -> IngestionQuali
     pages_with_text = int(metadata.get("pages_with_text") or _pages_with_text(parser_result))
     empty_pages = [int(page) for page in metadata.get("empty_pages", []) if isinstance(page, int)]
     text_chars = int(metadata.get("text_chars_extracted") or parser_result.text_length)
-    coverage = (pages_with_text / pages_processed) if pages_processed else 0.0
-    expected_chars = max(1, pages_processed * 250)
+    # Non-paginated sources have one logical body, not an invented page.
+    non_paginated = metadata.get("page_mapping") == "unavailable"
+    coverage_units = 1 if non_paginated else pages_processed
+    units_with_text = int(text_chars > 0) if non_paginated else pages_with_text
+    coverage = (units_with_text / coverage_units) if coverage_units else 0.0
+    expected_chars = max(1, coverage_units * 250)
     density = min(1.0, text_chars / expected_chars)
     quality_score = round(max(0.0, min(1.0, (coverage * 0.7) + (density * 0.3))), 2)
     quality_tier = _quality_tier(
         quality_score=quality_score,
-        pages_processed=pages_processed,
+        coverage_units=coverage_units,
         empty_pages=empty_pages,
     )
-    requires_review = quality_tier == "poor" or (
+    requires_review = metadata.get("requires_review") is True or quality_tier in {"review", "poor"} or (
         parser_result.ocr_used and (quality_score < 0.75 or bool(empty_pages))
     )
 
@@ -509,6 +515,13 @@ def _quality_report(parser_result, *, extraction_profile: str) -> IngestionQuali
 
 def _quality_warnings(quality: IngestionQualityReport, *, source_mime_type: str) -> list[ReportMessage]:
     warnings: list[ReportMessage] = []
+    if quality.requires_review:
+        warnings.append(
+            ReportMessage(
+                code="EXTRACTION_REVIEW_REQUIRED",
+                message="Extraction quality requires human review before the result is trusted.",
+            )
+        )
     if source_mime_type == "application/pdf" and quality.pages_processed > 0:
         coverage = quality.pages_with_text / quality.pages_processed
         if coverage < 0.6 and not quality.ocr_used:
@@ -546,8 +559,8 @@ def _pages_with_text(parser_result) -> int:
     return len({block.page_number for block in parser_result.blocks if block.page_number and block.text.strip()})
 
 
-def _quality_tier(*, quality_score: float, pages_processed: int, empty_pages: list[int]) -> str:
-    if pages_processed <= 0 or quality_score < 0.45:
+def _quality_tier(*, quality_score: float, coverage_units: int, empty_pages: list[int]) -> str:
+    if coverage_units <= 0 or quality_score < 0.45:
         return "poor"
     if quality_score >= 0.75 and not empty_pages:
         return "good"

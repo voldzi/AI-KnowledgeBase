@@ -97,6 +97,24 @@ Povinné produkční klíče jsou `OTEL_SDK_DISABLED=false`, privátní
 nesmí zastavit aplikaci; export probíhá asynchronně. Podrobný provozní postup je
 v `docs/OPERATIONS/central-observability.md`.
 
+Release-managed web, Registry, Ingestion, RAG, LLM Gateway, Evaluation a
+Governance image používají stejný plný `AKL_IMAGE_TAG`. Chybějící explicitní
+override nesmí jednotlivou službu vrátit na mutable `docker-home` tag.
+Qdrant je sdílená spravovaná služba. Jeho image a Compose blok se nemění v
+běžném AKB immutable releasu; změnu verze nebo připnutí OCI digests provádí
+samostatný koordinovaný infrastrukturní release. Hodnota `QDRANT_IMAGE` může
+být v chráněné provozní konfiguraci řízeně nastavena bez ukládání do repozitáře.
+
+Registry, RAG, LLM Gateway a Governance běží jako neprivilegovaný uživatel
+`akb` s read-only root filesystemem, `no-new-privileges`, bez Linux capabilities
+a s tmpfs `/tmp`. Read-only secret mounts musí zůstat čitelné přesně touto
+numerickou identitou; preflight to ověřuje bez výpisu jejich obsahu.
+
+Povinný ClamAV skener přijímá nejvýše 100 MiB. Ingestion a Budget intake proto
+nesmějí inzerovat ani přijmout vyšší limit; běžný interaktivní upload může mít
+užší limit. Překročení limitu skončí před trvalým uložením a nikdy se neoznačí
+jako čistý dokument.
+
 ## 2. PostgreSQL
 
 Použít PostgreSQL, ne SQLite.
@@ -196,7 +214,7 @@ Cílový realm:
 - clients:
   - `akl-web`, `budget-web`, `projectflow-web`, `archflow-web`, `stratos-shell` public OIDC clients,
   - `akl-api`, `budget-api`, `projectflow-api`, `archflow-api` confidential service clients,
-  - `stratos-akl-adapter` confidential service client pro STRATOS adapter.
+  - `stratos-akb-service` confidential service client for the bounded STRATOS document integration route.
 - sdílené realm role:
   - `stratos_admin`
   - `stratos_user`
@@ -213,7 +231,7 @@ Cílový realm:
 - AKL zároveň v tokenu zachovává kanonické role `admin`, `document_manager`,
   `document_owner`, `document_gestor`, `reader`, `auditor` a servisní role bez
   prefixu, protože aktuální Registry API autorizuje přes tento kontrakt.
-- `akl-web` a `stratos-akl-adapter` mají audience mapper na `akl-api`; Registry API v produkci validuje `AKL_OIDC_AUDIENCE=akl-api`.
+- `akl-web` has the approved browser audiences; `stratos-akb-service` has only its route-specific `akl-api` service audience. Registry API validates `AKL_OIDC_AUDIENCE=akl-api` and an exact service route grant.
 - Pokud AKB/Keycloak provozní skript zapisuje service client hodnoty pro STRATOS
   aplikace, na `docker.home.cz` musí cílit na `/srv/STRATOS/deploy/.env`.
   STRATOS compose čte `deploy/.env`, ne root `.env`; zápis jinam se nepropíše
@@ -255,7 +273,7 @@ Bootstrap postup:
 3. Nastavit redirect URI pro produkční AKL doménu a interní testovací URL na `docker.home.cz`.
 4. Ověřit login přes AKL frontend.
 5. Ověřit browser login pro `akl-web`.
-6. Ověřit service token pro `stratos-akl-adapter`.
+6. Verify the route-bound service token for `stratos-akb-service`; unknown and retired clients must be rejected.
 
 ## 5. Docker Compose Profil
 
@@ -269,6 +287,7 @@ Služby:
 
 - `web`
 - `registry-api`
+- `docling-worker`
 - `ingestion-service`
 - `rag-retrieval-service`
 - `llm-gateway-service`
@@ -296,10 +315,26 @@ AKL_RAG_AUTHZ_MODE=registry
 AKL_RAG_RETRIEVER_MODE=qdrant
 AKL_RAG_FULLTEXT_MODE=opensearch
 AKL_INGESTION_INDEXER_MODE=qdrant,opensearch
+AKL_INSTALL_DOCLING=true
+AKL_INGESTION_DOCLING_MODE=prefer
+AKL_INGESTION_DOCLING_PIPELINE=standard
+AKL_INGESTION_DOCLING_DEVICE=cpu
+AKL_INGESTION_DOCLING_EXECUTION_MODE=uds
+AKL_INGESTION_DOCLING_SOCKET_PATH=/run/akb-docling/worker.sock
+AKL_INGESTION_DOCLING_ARTIFACTS_SOURCE_DIR=/srv/akl/models/docling-standard-<digest-prefix>
+AKL_INGESTION_DOCLING_ARTIFACTS_SHA256=sha256:<canonical-bundle-digest>
 AKL_QDRANT_COLLECTION=akl_document_chunks
 AKL_OPENSEARCH_BASE_URL=https://opensearch.home.cz:9200
 AKL_OPENSEARCH_INDEX=akl_document_chunks
 ```
+
+`docling-worker` používá stejný immutable image jako `ingestion-service`, ale
+běží bez sítě, tajných údajů a datových volume. Modelový balík se před
+aktivací vytvoří nad přesným release SHA pomocí
+`scripts/provision_docling_model_bundle.sh`; jeho cesta a digest se potom vloží
+do chráněného produkčního env. Release gate odmítne zapisovatelný, neúplný
+nebo digestově odlišný balík a po startu provede skutečný převod syntetického
+PDF. Modely se za běhu nestahují.
 
 Produkční OpenSearch je externí sdílený cluster, nikoli lokální Compose
 kontejner. Ingestion používá výhradně účet `akl_ingestion_writer`, RAG výhradně
@@ -616,5 +651,5 @@ forward-fix; žádný release skript automatickou obnovu DB neprovádí.
 - Rozhodnout, zda SeaweedFS bude připojený přes S3 gateway nebo filesystem mount. Pro dlouhodobý provoz preferovat S3 adapter.
 - Nasadit přes připravený standalone compose profil `infra/docker-compose/docker-compose.docker-home.yml`.
 - Ověřit, že `apps/web/pnpm-lock.yaml` ukazuje `@voldzi/stratos-ui` na veřejný npm tarball.
-- Doplnit reálné hodnoty OIDC produkční konfigurace do `/srv/akl/env/akl.prod.env` včetně `AKL_WEB_PUBLIC_BASE_URL` a `AKL_WEB_SESSION_SECRET`.
+- Doplnit reálné hodnoty OIDC produkční konfigurace do `/srv/akl/env/akl.prod.env` včetně `AKL_WEB_PUBLIC_BASE_URL`, `AKL_WEB_SESSION_SECRET` a cest k odděleným souborům `AKL_WEB_SESSION_ENCRYPTION_KEY_SOURCE_FILE` a `AKL_WEB_SESSION_STORE_SECRET_SOURCE_FILE`. Oba soubory musí být vlastněné provozním účtem, mít režim `0600` a nesmí být v Git. Webové entrypointy je po read-only mountu zkopírují do soukromého `/run/akl-secrets` tmpfs pro proces `nextjs`; neměňte proto vlastnictví ani režim hostitelských zdrojových souborů kvůli kontejneru.
 - Připravit monitoring a log retention pro `/srv/akl/data/logs`.

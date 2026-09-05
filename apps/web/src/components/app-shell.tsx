@@ -6,8 +6,10 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
+  useTransition,
 } from "react";
 import {
   Bot,
@@ -43,6 +45,7 @@ import {
 } from "@voldzi/stratos-ui";
 
 import {
+  canAccessAppShellRoute,
   canAccessWorkspaceRoute,
   isEmployeeChatOnly,
 } from "@/lib/auth/authorization";
@@ -62,7 +65,7 @@ import type { WebProfile } from "@/lib/api/config";
 const navigation = {
   cs: [
     { href: "/dashboard", label: "Přehled", icon: LayoutDashboard },
-    { href: "/tasks", label: "Úkoly", icon: ListChecks },
+    { href: "/tasks", label: "Moje práce", icon: ListChecks },
     { href: "/documents", label: "Dokumenty", icon: Database },
     { href: "/controlled-documentation", label: "Řízené předpisy", icon: BookOpen },
     { href: "/ingestion", label: "Zpracování", icon: FileClock },
@@ -76,7 +79,7 @@ const navigation = {
   ],
   en: [
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/tasks", label: "Tasks", icon: ListChecks },
+    { href: "/tasks", label: "My workspace", icon: ListChecks },
     { href: "/documents", label: "Documents", icon: Database },
     { href: "/controlled-documentation", label: "Controlled documents", icon: BookOpen },
     { href: "/ingestion", label: "Ingestion", icon: FileClock },
@@ -155,11 +158,11 @@ const shellCopy = {
     groupKnowledge: "Znalosti",
     groupIntelligence: "Analytika",
     groupGovernance: "Dohled",
-    healthOk: "Stav systému",
-    apiModeMock: "Mock API režim",
-    apiModeProduction: "Produkční API klienti",
-    authModeMock: "dev auth",
-    authModeOidc: "OIDC auth",
+    healthOk: "Služba připravena",
+    apiModeMock: "Vývojový režim",
+    apiModeProduction: "Připojeno ke službám",
+    authModeMock: "Vývojové přihlášení",
+    authModeOidc: "Přihlášení aktivní",
   },
   en: {
     assistantBrand: "Knowledge assistant",
@@ -204,11 +207,11 @@ const shellCopy = {
     groupKnowledge: "Knowledge",
     groupIntelligence: "Analytics",
     groupGovernance: "Governance",
-    healthOk: "System status",
-    apiModeMock: "Mock API mode",
-    apiModeProduction: "Production API clients",
-    authModeMock: "dev auth",
-    authModeOidc: "OIDC auth",
+    healthOk: "Service ready",
+    apiModeMock: "Development mode",
+    apiModeProduction: "Connected to services",
+    authModeMock: "Development sign-in",
+    authModeOidc: "Sign-in active",
   },
 } satisfies Record<AklLanguage, Record<string, string>>;
 
@@ -384,9 +387,15 @@ function AppShellContent({
     overlayMediaQuery: sidebarOverlayMediaQuery,
   });
   const [commandCenterOpen, setCommandCenterOpen] = useState(false);
+  const [navigationPending, startNavigation] = useTransition();
+  const navigate = useCallback((href: string) => {
+    startNavigation(() => router.push(href));
+  }, [router]);
   const [commandCenterQuery, setCommandCenterQuery] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [applicationAccess, setApplicationAccess] = useState(initialUser?.applicationAccess);
+  const [identityLoaded, setIdentityLoaded] = useState(Boolean(initialUser) || authMode === "mock");
+  const authenticatedSubject = useRef(initialUser?.subjectId ?? "");
   const [settingsMode, setSettingsMode] =
     useState<SettingsSurfaceMode>("modal");
   const [settingsDirty, setSettingsDirty] = useState(false);
@@ -415,12 +424,12 @@ function AppShellContent({
   }));
   const [userProfile, setUserProfile] = useState<AklUserProfile>(() => ({
     name:
-      authMode === "mock" ? "AKB Dev User" : (initialUser?.subjectId ?? "AKB"),
+      authMode === "mock" ? "AKB Dev User" : "AKB",
     email: authMode === "mock" ? "dev@akl.local" : undefined,
     initials:
       authMode === "mock"
         ? "AD"
-        : initialsFromName(initialUser?.subjectId ?? "AKB"),
+        : "AKB",
     roles: initialUser?.roles ?? [],
     capabilities: initialUser?.capabilities ?? [],
   }));
@@ -484,6 +493,8 @@ function AppShellContent({
             )
           : [];
         setApplicationAccess(nextApplicationAccess);
+        authenticatedSubject.current = String(payload.user.subjectId ?? "");
+        setIdentityLoaded(true);
         setUserProfile({
           name,
           email,
@@ -516,10 +527,8 @@ function AppShellContent({
   const applyProfileSettings = useCallback(
     (payload: ProfileSettingsPayload) => {
       const identity = payload.identity ?? {};
-      const roles = arrayOfStrings(identity.roles);
-      const groups = arrayOfStrings(identity.groups);
-      const permissions = arrayOfStrings(identity.permissions);
-      const capabilities = arrayOfStrings(identity.capabilities);
+      const profileSubject = identity.subject_id ?? payload.subject_id;
+      if (!authenticatedSubject.current || profileSubject !== authenticatedSubject.current) return;
       const fallbackName =
         typeof identity.display_name === "string" && identity.display_name
           ? identity.display_name
@@ -530,8 +539,8 @@ function AppShellContent({
         name: fallbackName,
         email: typeof identity.email === "string" ? identity.email : undefined,
         initials: initialsFromName(fallbackName),
-        roles: roles.length ? roles : (initialUser?.roles ?? []),
-        capabilities: capabilities.length ? capabilities : (initialUser?.capabilities ?? []),
+        roles: initialUser?.roles ?? [],
+        capabilities: initialUser?.capabilities ?? [],
       };
       const nextValues = createSettingsValues({
         authModeLabel,
@@ -575,26 +584,16 @@ function AppShellContent({
       setSettingsValues(mergedValues);
       setSettingsDirty(false);
       setSettingsSaveError(null);
-      setUserProfile({
+      // Preferences can change presentation, never the verified access projection.
+      setUserProfile((current) => ({
+        ...current,
         name: nextName,
         email: nextEmail,
         initials: initialsFromName(nextName),
-        roles: fallbackUser.roles,
-        capabilities: fallbackUser.capabilities,
         avatarColor,
         avatarId,
         avatarImageUrl,
-      });
-      setAccessInfo({
-        subjectId:
-          typeof identity.subject_id === "string"
-            ? identity.subject_id
-            : (payload.subject_id ?? initialUser?.subjectId ?? ""),
-        roles: fallbackUser.roles,
-        capabilities: fallbackUser.capabilities,
-        groups,
-        permissions,
-      });
+      }));
       setLanguage(nextLanguage);
       const appMode = mergedProfileSettings.settingsMode;
       if (isSettingsSurfaceMode(appMode)) {
@@ -620,6 +619,7 @@ function AppShellContent({
     },
     [
       authModeLabel,
+      initialUser?.capabilities,
       initialUser?.roles,
       initialUser?.subjectId,
       language,
@@ -664,6 +664,7 @@ function AppShellContent({
   );
 
   useEffect(() => {
+    if (!identityLoaded) return;
     let active = true;
     profileSettingsClient
       .get()
@@ -677,7 +678,7 @@ function AppShellContent({
     return () => {
       active = false;
     };
-  }, [applyProfileSettings, profileSettingsClient]);
+  }, [applyProfileSettings, identityLoaded, profileSettingsClient]);
 
   useEffect(() => {
     const refreshProfile = () => {
@@ -735,6 +736,24 @@ function AppShellContent({
     },
     [language, userProfile.capabilities, userProfile.roles, webProfile],
   );
+  useEffect(() => {
+    if (!identityLoaded || accessibleNavigation.length === 0) {
+      return;
+    }
+    const currentRouteAllowed = canAccessAppShellRoute(
+      userProfile.roles,
+      pathname,
+      userProfile.capabilities,
+      webProfile,
+    );
+    if (currentRouteAllowed) {
+      return;
+    }
+    const fallback = ["/chat", "/documents", "/dashboard", "/admin", "/help"]
+      .map((href) => accessibleNavigation.find((item) => item.href === href))
+      .find((item) => item !== undefined) ?? accessibleNavigation[0]!;
+    router.replace(fallback.href);
+  }, [accessibleNavigation, identityLoaded, pathname, router, userProfile.capabilities, userProfile.roles, webProfile]);
   const railDefinitions: Array<{
     id: ShellModuleId;
     label: string;
@@ -809,7 +828,7 @@ function AppShellContent({
   }, [accessibleNavigation, activeModule, activeModuleRoutes, activeSubmenuItem?.href, copy]);
   const commandCenterItems = useMemo<CommandCenterItem[]>(() => {
     const openRoute = (href: string) => {
-      router.push(href);
+      navigate(href);
       setCommandCenterOpen(false);
     };
     const navigationItems: CommandCenterItem[] = accessibleNavigation.map(
@@ -866,7 +885,8 @@ function AppShellContent({
         },
       });
     }
-    quickActions.push({
+    if (canAccessWorkspaceRoute(userProfile.roles, "/chat", userProfile.capabilities)) {
+      quickActions.push({
         id: "knowledge:chat",
         type: "report",
         title: language === "cs" ? "Dotaz se zdroji" : "Ask with citations",
@@ -886,8 +906,9 @@ function AppShellContent({
           onSelect: () => openRoute("/chat"),
         },
       });
+    }
     return [...navigationItems, ...quickActions];
-  }, [accessibleNavigation, copy, language, router, userProfile.roles]);
+  }, [accessibleNavigation, copy, language, navigate, userProfile.capabilities, userProfile.roles]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -902,7 +923,11 @@ function AppShellContent({
   }, []);
 
   const handleLogout = () => {
-    window.location.assign(withAppBasePath("/api/auth/logout"));
+    const form = document.createElement("form");
+    form.method = "post";
+    form.action = withAppBasePath("/api/auth/logout");
+    document.body.appendChild(form);
+    form.submit();
   };
 
   const handleSettingsValueChange = (
@@ -1072,7 +1097,7 @@ function AppShellContent({
           }
           activeItemId={activeModule}
           panelOpen={shellSidebarOpen}
-          mobileFallback={isChatPath ? "none" : "bottom"}
+          mobileFallback="bottom"
           mobileAriaLabel={
             language === "cs" ? "Moduly AKB" : "AKB modules"
           }
@@ -1091,7 +1116,7 @@ function AppShellContent({
               !railSidebar.isOverlayViewport() && item.id !== activeModule;
             railSidebar.selectRailItem(item.id);
             if (shouldNavigate) {
-              router.push(item.href);
+              navigate(item.href);
             }
           }}
           onMobileItemSelect={(itemId) => {
@@ -1133,6 +1158,10 @@ function AppShellContent({
                 href={href}
                 className={className}
                 onClick={onClick}
+                onNavigate={(event) => {
+                  event.preventDefault();
+                  navigate(href);
+                }}
                 aria-current={ariaCurrent}
                 title={title}
                 target={target}
@@ -1201,6 +1230,10 @@ function AppShellContent({
         </>
       }
     >
+      {navigationPending ? <div className="workspace-navigation-status" role="status" aria-live="polite">
+        <span className="dashboard-loading__indicator" aria-hidden="true" />
+        {language === "cs" ? "Načítám stránku..." : "Loading page..."}
+      </div> : null}
       {children}
     </StratosUiAppShell>
   );
@@ -1360,12 +1393,6 @@ function stringSetting(value: unknown, fallback: string): string {
 
 function booleanSetting(value: unknown, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
-}
-
-function arrayOfStrings(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === "string")
-    : [];
 }
 
 function isSettingsSurfaceMode(value: unknown): value is SettingsSurfaceMode {

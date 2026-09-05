@@ -218,8 +218,72 @@ describe("Director Copilot conversation query state", () => {
       metric: "budget.plan_amount",
       direction: "desc",
     });
-    assert.deepEqual(resolved.state.group_by, []);
+    assert.deepEqual(resolved.state.group_by, ["procurement_action"]);
     assert.deepEqual(resolved.state.entity_filters.project_ids, []);
+  });
+
+  it("drills from the IT budget into planned actions without losing the year or scope", () => {
+    const previous = resolveConversationQuery({
+      message: "Jaký má IT rozpočet na rok 2025?", now: NOW,
+    }).state;
+    for (const message of ["A jaká byla nejdražší položka?", "A jaká je nejvyšší položka plánu?"]) {
+      const resolved = resolveConversationQuery({ message, context: { stratos_query_state: previous }, now: NOW });
+      assert.deepEqual(resolved.state.sources, ["budget"]);
+      assert.deepEqual(resolved.state.metrics, ["budget.plan_amount"]);
+      assert.equal(resolved.state.period.fiscal_year, 2025);
+      assert.equal(resolved.state.scope_label, "IT");
+      assert.equal(resolved.state.granularity, "item");
+      assert.equal(resolved.state.operation, "rank");
+      assert.deepEqual(resolved.state.group_by, ["procurement_action"]);
+    }
+  });
+
+  it("does not reinterpret an explicitly requested budget line as a procurement action", () => {
+    const resolved = resolveConversationQuery({ message: "Jaká je nejvyšší rozpočtová položka na rok 2025?", now: NOW });
+    assert.equal(resolved.state.granularity, "item");
+    assert.equal(resolved.state.operation, "rank");
+    assert.deepEqual(resolved.state.group_by, []);
+  });
+
+  it("starts an unrelated ArchFlow topic with the current period and no old entity filters", () => {
+    const previous = resolveConversationQuery({ message: "Jaký má IT rozpočet na rok 2025?", now: NOW }).state;
+    previous.entity_filters.project_ids = ["project-old"];
+    previous.entity_filters.budget_scope_ids = ["budget-old"];
+    const resolved = resolveConversationQuery({
+      message: "Jaké potřeby eviduje ArchFlow pro Sekci IT?",
+      context: { stratos_query_state: previous }, now: NOW,
+    });
+    assert.deepEqual(resolved.state.sources, ["archflow"]);
+    assert.equal(resolved.state.period.type, "current");
+    assert.equal(resolved.state.period.fiscal_year, 2026);
+    assert.equal(resolved.state.scope_label, "IT");
+    assert.ok(Object.values(resolved.state.entity_filters).every((ids) => ids.length === 0));
+    assert.deepEqual(resolved.state.metrics, []);
+  });
+
+  it("honors an explicit current state while retaining an explicit historical year", () => {
+    const previous = resolveConversationQuery({ message: "Stav projektů za rok 2025", now: NOW }).state;
+    const current = resolveConversationQuery({
+      message: "Jaký je aktuální stav projektového portfolia Sekce IT?",
+      context: { stratos_query_state: previous }, now: NOW,
+    });
+    assert.equal(current.state.period.type, "current");
+    assert.equal(current.state.period.as_of, NOW.toISOString());
+    const historical = resolveConversationQuery({
+      message: "Jaký je aktuálně evidovaný rozpočet na rok 2025?", now: NOW,
+    });
+    assert.equal(historical.state.period.fiscal_year, 2025);
+  });
+
+  it("does not attach an earlier business scope to an unrelated question", () => {
+    const previous = resolveConversationQuery({ message: "Jaký má IT rozpočet na rok 2025?", now: NOW }).state;
+    const resolved = resolveConversationQuery({
+      message: "Jak nastavím dovolenou?", context: { stratos_query_state: previous }, now: NOW,
+    });
+    assert.equal(resolved.recognized, false);
+    assert.equal(resolved.state.scope_label, null);
+    assert.equal(resolved.state.period.type, "current");
+    assert.equal(resolved.state.granularity, "authorized_scope");
   });
 
   it("treats a planned action as a Budget item rather than an organizational aggregate", () => {
@@ -295,6 +359,21 @@ describe("Director Copilot conversation query state", () => {
     );
   });
 
+  it("does not carry ArchFlow context into an explicit NIS2 question", () => {
+    const previous = resolveConversationQuery({
+      message: "Jaké potřeby eviduje Sekce IT?",
+      now: NOW,
+    }).state;
+
+    assert.equal(
+      classifyDirectorCopilotV2Intent(
+        "Co znamená NIS2 a jaké povinnosti ukládá? Uveď citovatelné zdroje.",
+        { stratos_query_state: previous },
+      ),
+      null,
+    );
+  });
+
   it("routes AI intake concepts to ArchFlow", () => {
     const resolved = resolveConversationQuery({
       message: "V jakém stavu jsou AI podněty v ArchFlow?",
@@ -312,17 +391,6 @@ describe("Director Copilot conversation query state", () => {
       ),
       "archflow_demand_overview",
     );
-  });
-
-  it("does not preserve the retired AIIP application name as a live source", () => {
-    const resolved = resolveConversationQuery({
-      message: "Kolik podnětů eviduje AIIP?",
-      now: NOW,
-    });
-
-    assert.equal(resolved.recognized, false);
-    assert.deepEqual(resolved.state.sources, []);
-    assert.equal(classifyDirectorCopilotV2Intent("Kolik podnětů eviduje AIIP?"), null);
   });
 
   it("sanitizes untrusted persisted context and never accepts authorization fields", () => {

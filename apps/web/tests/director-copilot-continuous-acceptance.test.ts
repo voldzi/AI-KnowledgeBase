@@ -86,6 +86,39 @@ const OPERATION_TEMPLATES: Array<{
 ];
 
 describe("continuous Czech assistant acceptance", () => {
+  it("decomposes a management question into independently planned source operations", () => {
+    const message = "Pro poradu: jaký má IT rozpočet na rok 2025, kolik akcí je v plánu a v jakém stavu je aktuální projektové portfolio?";
+    const resolved = resolveConversationQuery({ message, now: NOW });
+    const plan = buildDirectorCopilotV2Plan({
+      message,
+      language: "cs",
+      context: projectedContext(),
+      intent: "portfolio_performance_overview",
+      queryState: resolved.state,
+      catalog: pinnedDirectorCopilotV2CatalogForTests(),
+      now: NOW,
+    });
+
+    assert.deepEqual(
+      plan.nodes.map((node) => node.application),
+      ["budget", "budget", "projectflow"],
+    );
+    assert.deepEqual(
+      plan.nodes.map((node) => node.query_state.operation),
+      ["summary", "count", "summary"],
+    );
+    assert.deepEqual(
+      plan.nodes.map((node) => node.query_state.period.type),
+      ["fiscal_year", "fiscal_year", "current"],
+    );
+    assert.deepEqual(
+      plan.nodes.map((node) => node.query_state.period.fiscal_year),
+      [2025, 2025, 2026],
+    );
+    assert.equal(new Set(plan.nodes.map((node) => node.node_id)).size, 3);
+    assert.equal(plan.nodes[1]?.request?.parameters.limit, 1);
+  });
+
   it("plans more than 300 realistic live-data questions with bounded latency", () => {
     const catalog = pinnedDirectorCopilotV2CatalogForTests();
     const context = projectedContext();
@@ -254,6 +287,18 @@ describe("continuous Czech assistant acceptance", () => {
       "Jaké typy dokumentů máme v registru?",
       "Vytvoř přehled dokumentů k projektům.",
     ];
+    const employeeTaskQuestions = [
+      ["Jak si nastavím dovolenou?", "procedure"],
+      ["Kde najdu formulář pro zahraniční cestu?", "resource"],
+      ["Kam nahlásím problém s tiskárnou?", "support_channel"],
+      ["Kdo je gestorem směrnice o práci na dálku?", "owner"],
+      ["Za co odpovídá vedoucí zaměstnanec?", "responsibility"],
+      ["Do kdy musím vyúčtovat služební cestu?", "deadline"],
+      ["Jaké doklady musím přiložit k cestovnímu příkazu?", "obligation"],
+      ["Co platí pro práci z domova podle interního předpisu?", "policy"],
+      ["Kde najdu uživatelskou příručku docházkového systému?", "resource"],
+      ["Jak se přihlásím do docházkového systému?", "procedure"],
+    ] as const;
     let evaluated = 0;
 
     for (const prefix of ["", "Prosím, ", "Pro audit: ", "Pro vedení: "] as const) {
@@ -279,9 +324,16 @@ describe("continuous Czech assistant acceptance", () => {
         );
         evaluated += 1;
       }
+      for (const [message, intent] of employeeTaskQuestions) {
+        const route = routeAssistantMessage(`${prefix}${message}`, "cs");
+        assert.equal(route.tool, "rag_document_answer", message);
+        assert.equal(route.documentKnowledge.intent, intent, message);
+        assert.equal(route.queryPlan.quality_gates.citations_required, true, message);
+        evaluated += 1;
+      }
     }
 
-    assert.equal(evaluated, 60);
+    assert.equal(evaluated, 100);
   });
 });
 

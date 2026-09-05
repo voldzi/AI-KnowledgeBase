@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stratos.zeleznalady.cz/contracts/clean-pilot-epoch/v2/source-evidence-claim.schema.json",
+  "title": "STRATOS Clean Pilot Phase A source evidence claim",
+  "description": "A closed non-authoritative pointer to source bytes inside a pull-request candidate. The server-side resolver derives immutable commit provenance later.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "provider",
+    "repository",
+    "path",
+    "mediaType",
+    "byteSha256",
+    "canonicalJsonSha256"
+  ],
+  "properties": {
+    "provider": { "const": "gitea" },
+    "repository": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}/[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"
+    },
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._/-]+$"
+    },
+    "mediaType": { "const": "application/json" },
+    "byteSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "canonicalJsonSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

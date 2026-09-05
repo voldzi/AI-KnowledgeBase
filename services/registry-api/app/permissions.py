@@ -102,22 +102,7 @@ ROLE_ACTIONS: dict[str, set[str]] = {
         Action.rag_check_compliance.value,
         Action.audit_write.value,
     },
-    "service_llm_gateway": {
-        Action.audit_write.value,
-    },
     "service_evaluation": {
-        Action.document_read.value,
-        Action.rag_query.value,
-        Action.audit_write.value,
-    },
-    "service_governance": {
-        Action.document_read.value,
-        Action.rag_check_compliance.value,
-        Action.workflow_task_read.value,
-        Action.workflow_task_write.value,
-        Action.audit_write.value,
-    },
-    "service_aiip": {
         Action.document_read.value,
         Action.rag_query.value,
         Action.audit_write.value,
@@ -144,10 +129,7 @@ ROLE_MAX_CLASSIFICATION = {
     "auditor": Classification.confidential.value,
     "service_ingestion": Classification.confidential.value,
     "service_rag": Classification.confidential.value,
-    "service_llm_gateway": Classification.public.value,
     "service_evaluation": Classification.restricted.value,
-    "service_governance": Classification.confidential.value,
-    "service_aiip": Classification.internal.value,
     "stratos_service": Classification.confidential.value,
 }
 
@@ -569,36 +551,14 @@ def evaluate_employee_directive_projection(
     action: str,
     document: Document,
     version: DocumentVersion | None = None,
+    packages: list[ControlledDocumentPackage] | None = None,
 ) -> Decision | None:
     if db is None or EMPLOYEE_DIRECTIVES_SCOPE not in context.scopes:
         return None
     base = _v2_base_decision(context, action)
     if base is not None or action not in _EMPLOYEE_DIRECTIVE_ACTIONS:
         return None
-    package_query = (
-        select(ControlledDocumentPackage)
-        .outerjoin(
-            ControlledDocumentPackageMember,
-            ControlledDocumentPackageMember.package_id
-            == ControlledDocumentPackage.package_id,
-        )
-        .where(
-            ControlledDocumentPackage.organization_id == context.organization_id,
-            ControlledDocumentPackage.source_type == "internal_directive",
-            ControlledDocumentPackage.status == "valid",
-            ControlledDocumentPackage.effective_from <= date.today(),
-            or_(
-                ControlledDocumentPackage.effective_to.is_(None),
-                ControlledDocumentPackage.effective_to >= date.today(),
-            ),
-            or_(
-                ControlledDocumentPackage.primary_document_id == document.document_id,
-                ControlledDocumentPackageMember.document_id == document.document_id,
-            ),
-        )
-        .options(selectinload(ControlledDocumentPackage.members))
-    )
-    for package in db.execute(package_query).scalars().unique():
+    for package in packages if packages is not None else employee_directive_packages(db, context, document.document_id):
         if (package.package_metadata or {}).get("employee_access") is False:
             continue
         source_version_ids = {
@@ -623,12 +583,7 @@ def evaluate_employee_directive_projection(
         if not candidate_versions:
             continue
         if all(
-            _employee_directive_source_allows(
-                context,
-                action,
-                document,
-                source_version,
-            )
+            _employee_directive_source_allows(context, action, document, source_version)
             for source_version in candidate_versions
         ):
             return Decision(
@@ -646,6 +601,38 @@ def evaluate_employee_directive_projection(
                 ("EMPLOYEE_DIRECTIVE_PROJECTION_ALLOW",),
             )
     return None
+
+
+def employee_directive_packages(
+    db: Session, context: SubjectContext, document_id: str | None = None,
+) -> list[ControlledDocumentPackage]:
+    if not context.access_v2 or EMPLOYEE_DIRECTIVES_SCOPE not in context.scopes:
+        return []
+    package_query = (
+        select(ControlledDocumentPackage)
+        .outerjoin(
+            ControlledDocumentPackageMember,
+            ControlledDocumentPackageMember.package_id
+            == ControlledDocumentPackage.package_id,
+        )
+        .where(
+            ControlledDocumentPackage.organization_id == context.organization_id,
+            ControlledDocumentPackage.source_type == "internal_directive",
+            ControlledDocumentPackage.status == "valid",
+            ControlledDocumentPackage.effective_from <= date.today(),
+            or_(
+                ControlledDocumentPackage.effective_to.is_(None),
+                ControlledDocumentPackage.effective_to >= date.today(),
+            ),
+        )
+        .options(selectinload(ControlledDocumentPackage.members))
+    )
+    if document_id is not None:
+        package_query = package_query.where(or_(
+            ControlledDocumentPackage.primary_document_id == document_id,
+            ControlledDocumentPackageMember.document_id == document_id,
+        ))
+    return list(db.execute(package_query).scalars().unique())
 
 
 def _v2_document_decision(context: SubjectContext, action: str, document: Document) -> Decision:
@@ -1183,7 +1170,7 @@ def require_document_action(
 ) -> SubjectContext:
     context = context_for_principal(principal, db)
     decision = evaluate_document_access(context, action.value, document)
-    if not decision.allowed:
+    if not decision.allowed and not principal.service_identity:
         employee_directive_decision = evaluate_employee_directive_projection(
             db=db,
             context=context,
@@ -1225,7 +1212,7 @@ def require_document_version_action(
             and is_official_public_source_document(document)
         ),
     )
-    if not decision.allowed:
+    if not decision.allowed and not principal.service_identity:
         employee_directive_decision = evaluate_employee_directive_projection(
             db=db,
             context=context,

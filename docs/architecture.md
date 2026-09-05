@@ -1,5 +1,11 @@
 # AKB Architecture
 
+Portable architecture, runtime inventory and the supported-mode boundary for a
+foreign installation are documented in
+`docs/deployment/external-environment-architecture.md`. The current supported
+production mode is integrated with STRATOS identity/access/policy; the local
+development profile is not an autonomous production security profile.
+
 AKB is the Document AI backend for controlled documents and STRATOS knowledge
 workflows. It owns document metadata, versions, source-file references,
 ingestion, extraction, chunking, embeddings, Qdrant indexing, retrieval,
@@ -21,7 +27,7 @@ technical compatibility prefixes unless an explicit migration changes them.
 | --- | --- |
 | `apps/web` | Next.js web frontend, AKB web/API bridge, auth callback handling, document viewer, employee chat portal, Intelligence Workbench, and admin workspace. |
 | `services/registry-api` | Document registry, versions, assignments, authorization checks, external document references, workflow tasks, audit events, permission-scoped document readiness aggregates, and Intelligence analyst cases with saved queries/evidence references. |
-| `services/ingestion-service` | Ingestion jobs, source parsing, OCR fallback, logical chunking, embeddings, Qdrant/OpenSearch indexing, ingestion reports. |
+| `services/ingestion-service` | Ingestion jobs, source parsing, feature-gated Docling/GraniteDocling extraction, OCR fallback, logical chunking, embeddings, Qdrant/OpenSearch indexing, ingestion reports. Production Docling runs in a networkless sidecar and is reached only over a private Unix socket. |
 | `services/rag-retrieval-service` | Permission-aware retrieval, answer composition, source context, citation opening, employee chat APIs. |
 | `services/llm-gateway-service` | LLM provider routing, model management, chat completions, embeddings. |
 | `services/evaluation-service` | RAG quality evaluations, datasets, runs, reports. |
@@ -62,6 +68,16 @@ intelligence workbench -> AKB web route -> Registry metadata/readiness/case APIs
 intelligence workbench -> AKB web bridge -> Ingestion OpenSearch intelligence endpoints
 director copilot -> AKB orchestrator -> authorized read-only STRATOS domain tools -> evidence snapshot -> answer/artifact
 ```
+
+Before a document question enters RAG, the web bridge deterministically maps
+ordinary employee language to a bounded document task such as procedure,
+resource, support channel, owner, responsibility, deadline, obligation, or
+policy lookup. The task selects an existing citation-bound answer mode and
+retrieval-only vocabulary expansion. It never changes authorization or source
+precedence: Registry and Information Policy still select the allowed current or
+historically effective versions, and only retrieved chunks may support the
+answer. Task state can continue across a referential follow-up and page reload,
+but a self-contained new topic resets it.
 
 ## Portable Knowledge Bundles
 
@@ -141,10 +157,22 @@ Profile and tooling details: `docs/integration/STRATOS_OKF_PROFILE.md`.
   displayed versus matching counts. Desktop support panels are resizable and
   collapsible; compact layouts use focus-safe drawers so navigation and source
   context do not reduce the transcript to an unusable column.
+- A compound management question is decomposed into bounded source questions
+  before execution. Each node carries its own operation, period, metric,
+  granularity and source scope, so a count requested from Budget cannot change
+  a ProjectFlow summary in the same turn. The global conversation state remains
+  only the bounded continuation state. Nodes still perform their own fresh
+  authorization and evidence checks. Current live-source data older than seven
+  days remains attributable but is shown with a visible staleness warning.
 - Director Copilot V2 is the sole live-data path after joint production
   acceptance. A slow, failed, denied or contract-drifting source returns its
   explicit V2 result and cannot be substituted by document RAG. The runtime
   does not retain a V1 baseline, shadow comparison or fallback execution path.
+- Assistant planning separates source selection from the user's answer goal.
+  Analytical goals may run the pinned live-data tools and authorized document
+  retrieval concurrently, but their evidence is rendered in separate sections.
+  Document citations cannot supply a missing live value, and live facts cannot
+  become an uncited recommendation, causal claim or scenario calculation.
 - The semantic catalog is enriched by an immutable local SSP snapshot with
   source attribution and a content SHA-256. The full imported vocabulary is
   context only. Only separately reviewed concept bindings may influence a
@@ -196,7 +224,6 @@ Detailed architecture references:
 - `docs/ARCHITECTURE/02_SERVICE_BOUNDARIES.md`
 - `docs/ARCHITECTURE/enterprise-architecture.md`
 - `docs/ARCHITECTURE/professional-knowledge-chat-plan.md`
-- `docs/ARCHITECTURE/director-copilot-implementation-plan.md`
 - `docs/ARCHITECTURE/standalone-chat-pwa.md`
 - `docs/integration/STRATOS_EXTERNAL_DOCUMENTS_API.md`
 - `docs/29_STRATOS_SHARED_LIBRARIES.md`

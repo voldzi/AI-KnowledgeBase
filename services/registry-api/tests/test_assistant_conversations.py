@@ -214,7 +214,7 @@ def test_conversation_list_exposes_only_bounded_derived_suggestion_signals(
                     "citations": [],
                     "metadata": {
                         "director_copilot_history": {
-                            "intent": "aiip_idea_overview",
+                            "intent": "archflow_need_overview",
                         }
                     },
                 },

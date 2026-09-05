@@ -10,6 +10,7 @@ import {
   registryTopicsForDocumentListRequest,
   registryReportKindFromMessage,
   registryDocumentTypeFilterForReport,
+  registrySummaryOptionsFromMessage,
   summarizeRegistryReportForAudit
 } from "../src/lib/reporting/assistant-registry-report";
 
@@ -109,9 +110,17 @@ describe("assistant registry report", () => {
     assert.equal(registryReportKindFromMessage("Jakého typu jsou dokumenty, které máš k dispozici?"), "document_type_count");
     assert.equal(registryReportKindFromMessage("Ok vytvoř tedy sestavu, kde bude typ počet"), "document_type_count");
     assert.equal(registryReportKindFromMessage("Kolik máme smluv?"), "document_inventory_summary");
+    assert.equal(
+      registryReportKindFromMessage("Kolik máme platných interních směrnic a které to jsou?"),
+      "document_list",
+    );
     assert.equal(registryDocumentTypeFilterForReport("Kolik máme smluv?", "document_inventory_summary"), "contract");
     assert.equal(registryDocumentTypeFilterForReport("Kolik máme smluv?", "document_type_count"), null);
     assert.deepEqual(registryTopicsForDocumentListRequest("Kolik máme smluv?", ["smlouvy"], "cs"), []);
+    assert.deepEqual(
+      registrySummaryOptionsFromMessage("Kolik máme platných interních směrnic a které to jsou?"),
+      { status: "valid", classification: "internal", documentType: "directive" },
+    );
   });
 
   it("returns an exact and direct permission-scoped contract count", () => {

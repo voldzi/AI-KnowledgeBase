@@ -37,3 +37,16 @@ Služba vrátí `confidence=insufficient_source`, pokud:
 ## Bezpečnostní pravidlo
 
 No-answer policy se vyhodnocuje až po authz filtru. To znamená, že existence neautorizovaného zdroje nesmí sama o sobě vést k věcné odpovědi.
+
+## Živá data a kombinované odpovědi
+
+Stav `no_data` z Director Copilot V2 je rovněž nedostatečný zdroj, nikoli
+potvrzení nulové hodnoty. Odpověď proto používá
+`confidence=insufficient_source`, pojmenuje zdroj a rozhodné období a nabídne
+bezpečné upřesnění nebo jiné období.
+
+U analytického cíle může AKB vedle nedostupného živého výsledku zobrazit obecný
+postup z autorizovaných citovaných dokumentů. Obě části musí zůstat oddělené a
+odpověď musí výslovně uvést, že dokumentový podklad nenahrazuje chybějící živá
+data. Bez citace se doporučení, příčina ani scénář nevytváří. Hypotetické částky
+se nepočítají bez explicitních vstupů a řízeného výpočetního modelu.

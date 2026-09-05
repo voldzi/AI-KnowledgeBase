@@ -4,6 +4,7 @@ import type { AklConfig } from "@/lib/api/config";
 import { ApiClientError, type ApiRequestContext } from "@/lib/types";
 
 import { contextFromOidcAccessToken } from "./oidc";
+import { isManagedIdentity, verifyManagedUserToken } from "./managed-oidc";
 
 interface ProjectionAccess {
   application?: unknown;
@@ -31,13 +32,19 @@ export async function contextFromStratosAccessProjection(
   const oidc = config.oidc;
   if (!oidc) throw projectionUnavailable("OIDC access projection is not configured.");
 
-  const identity = contextFromOidcAccessToken(accessToken, nowMs);
+  const managed = isManagedIdentity(config);
+  const managedClaims = managed
+    ? await verifyManagedUserToken(config, accessToken, fetcher, nowMs).catch(() => null)
+    : null;
+  const identity = managed
+    ? managedClaims ? { subjectId: managedClaims.sub! } : null
+    : contextFromOidcAccessToken(accessToken, nowMs);
   if (!identity) {
     throw new ApiClientError("Bearer token is invalid or expired.", 401, "ACCESS_TOKEN_INVALID", "stratos-access");
   }
   const key = crypto.createHash("sha256").update(accessToken).digest("hex");
   const cached = projectionCache.get(key);
-  if (!bypassCache && cached && cached.expiresAt > nowMs) return cached.context;
+  if (!managed && !bypassCache && cached && cached.expiresAt > nowMs) return cached.context;
 
   let response: Response;
   try {
@@ -48,18 +55,15 @@ export async function contextFromStratosAccessProjection(
         Authorization: `Bearer ${accessToken}`,
       },
       cache: "no-store",
+      redirect: "error",
       signal: AbortSignal.timeout(oidc.accessProjectionTimeoutMs),
     });
   } catch {
     throw projectionUnavailable("STRATOS access projection is unavailable.");
   }
   if (response.status === 401 || response.status === 403) {
-    const reason = await upstreamRejectionReason(response);
-    const tokenRouting = tokenRoutingClaims(accessToken);
     console.warn("STRATOS access projection rejected bearer identity.", {
       status: response.status,
-      reason,
-      ...tokenRouting,
     });
     throw new ApiClientError("STRATOS rejected the bearer identity.", response.status, "ACCESS_PROJECTION_DENIED", "stratos-access");
   }
@@ -71,6 +75,9 @@ export async function contextFromStratosAccessProjection(
   }
   if (body.tenantId !== "org_stratos") {
     throw new ApiClientError("STRATOS organization does not match AKB.", 403, "ORGANIZATION_MISMATCH", "stratos-access");
+  }
+  if (managed && (body.id !== identity.subjectId || (body.identitySubject !== undefined && body.identitySubject !== identity.subjectId) || body.active === false || body.isActive === false || body.identityActive === false)) {
+    throw new ApiClientError("STRATOS identity does not match the verified subject.", 403, "ACCESS_PROJECTION_IDENTITY_MISMATCH", "stratos-access");
   }
 
   const applicationAccess = body.applicationAccess
@@ -110,11 +117,16 @@ export async function contextFromStratosAccessProjection(
     authorizationSource: "stratos_projection",
     accessToken,
   };
+  if (managedClaims?.identity_audience === "external") {
+    if (applicationAccess.some((item) => [...item.scopes, ...item.effectiveScopes].includes("recipient_set:employee-directives"))) {
+      throw new ApiClientError("Employee scope is not valid for this identity.", 403, "ACCESS_PROJECTION_IDENTITY_MISMATCH", "stratos-access");
+    }
+  }
 
   const tokenExpiry = tokenExpiryMs(accessToken);
   const configuredExpiry = nowMs + oidc.accessProjectionCacheTtlMs;
   const expiresAt = Math.min(tokenExpiry ?? configuredExpiry, configuredExpiry);
-  if (oidc.accessProjectionCacheTtlMs > 0 && expiresAt > nowMs) {
+  if (!managed && oidc.accessProjectionCacheTtlMs > 0 && expiresAt > nowMs) {
     projectionCache.set(key, { context, expiresAt });
   }
   return context;
@@ -126,30 +138,6 @@ export function resetAccessProjectionCacheForTests(): void {
 
 function normalizeApplication(value: unknown): string {
   return typeof value === "string" ? value.toLowerCase().replaceAll("_", "-") : "";
-}
-
-async function upstreamRejectionReason(response: Response): Promise<string> {
-  const body = await response.json().catch(() => null);
-  if (!isRecord(body) || typeof body.message !== "string") return "unspecified";
-  const normalized = body.message.replaceAll(/[\r\n\t]+/g, " ").trim();
-  return normalized.slice(0, 160) || "unspecified";
-}
-
-function tokenRoutingClaims(accessToken: string): { audiences: string[]; authorizedParty: string | null } {
-  try {
-    const payload = JSON.parse(Buffer.from(accessToken.split(".")[1] ?? "", "base64url").toString("utf8")) as Record<string, unknown>;
-    const audiences = Array.isArray(payload.aud)
-      ? stringArray(payload.aud)
-      : typeof payload.aud === "string" && payload.aud
-        ? [payload.aud]
-        : [];
-    return {
-      audiences: audiences.slice(0, 8).map((audience) => audience.slice(0, 80)),
-      authorizedParty: typeof payload.azp === "string" ? payload.azp.slice(0, 80) : null,
-    };
-  } catch {
-    return { audiences: [], authorizedParty: null };
-  }
 }
 
 function stringArray(value: unknown): string[] {

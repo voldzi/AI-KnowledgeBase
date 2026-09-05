@@ -126,6 +126,64 @@ def test_xlsx_parser_repeats_header_in_continuation_blocks() -> None:
         assert block.text.splitlines()[0] == "ID | Hodnota"
 
 
+def test_xlsx_blank_cells_do_not_shift_a_value_into_another_column() -> None:
+    workbook = Workbook()
+    workbook.active.append(["Service", "Minimum", "Proposed", "Guaranteed"])
+    workbook.active.append(["AKB", None, "32 GB", None])
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    result = XlsxParser().parse(_source("sizing.xlsx", "application/octet-stream", buffer.getvalue()), parser_profile="default")
+    assert "AKB |  | 32 GB | " in result.blocks[0].text
+
+
+def test_docx_retains_body_order_headings_and_table_associations() -> None:
+    from docx import Document
+    from parsers.docx import DocxParser
+
+    document = Document()
+    document.add_heading("Pilot infrastructure", level=1)
+    document.add_heading("Sizing proposal", level=2)
+    document.add_paragraph("These values are proposals, not measured minima.")
+    table = document.add_table(rows=2, cols=3)
+    for cell, text in zip(table.rows[0].cells, ["Service", "Minimum", "Proposed"]):
+        cell.text = text
+    table.rows[1].cells[0].text = "AKB"
+    table.rows[1].cells[2].text = "32 GB"
+    document.add_heading("Recovery", level=2)
+    document.add_paragraph("RTO must be agreed with the recipient.")
+    buffer = io.BytesIO()
+    document.save(buffer)
+    result = DocxParser().parse(_source("pilot.docx", "application/octet-stream", buffer.getvalue()), parser_profile="default")
+    texts = [block.text for block in result.blocks]
+    sizing = next(block for block in result.blocks if block.block_type == "table")
+    assert texts.index(sizing.text) < texts.index("Recovery")
+    assert sizing.section_path == ["Pilot infrastructure", "Sizing proposal"]
+    assert "AKB |  | 32 GB" in sizing.text
+    assert result.blocks[-1].section_path == ["Pilot infrastructure", "Recovery"]
+    assert all(block.page_number is None for block in result.blocks)
+    assert result.tables_detected == 1
+
+
+def test_docx_review_warning_survives_good_text_extraction_quality() -> None:
+    from docx import Document
+    from docx.oxml import OxmlElement
+
+    from app.pipeline import _quality_report
+    from parsers.docx import DocxParser
+
+    document = Document()
+    paragraph = document.add_paragraph("Readable body text with sufficient density. " * 10)
+    paragraph._p.append(OxmlElement("w:ins"))
+    buffer = io.BytesIO()
+    document.save(buffer)
+    parsed = DocxParser().parse(_source("revision.docx", "application/octet-stream", buffer.getvalue()), parser_profile="default")
+    quality = _quality_report(parsed, extraction_profile="document_text_v1")
+    assert quality.quality_tier == "good"
+    assert quality.pages_processed == quality.pages_with_text == 0
+    assert quality.requires_review is True
+    assert any(code == "DOCX_TRACKED_CHANGES_REQUIRE_REVIEW" for code, _ in parsed.warnings)
+
+
 def test_pptx_parser_extracts_slides_with_titles_and_notes() -> None:
     from pptx import Presentation
     from pptx.util import Inches

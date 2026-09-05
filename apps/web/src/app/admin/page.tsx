@@ -1,14 +1,14 @@
 import { PageHeader } from "@/components/page-header";
 import { AdminSkeleton } from "@/features/admin/admin-skeleton";
 import { getServerApiClients, getServerRequestContextForPath } from "@/lib/api/server";
-import { requirePageAccess } from "@/lib/auth/server-route-guard";
+import { requireWorkspaceRouteAccess } from "@/lib/auth/server-route-guard";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
   const clients = getServerApiClients();
   const context = await getServerRequestContextForPath("/admin");
-  requirePageAccess(context, "admin");
+  requireWorkspaceRouteAccess(context, "/admin");
   const [authorization, roleMappings] = await Promise.all([
     clients.registry.getAuthorizationHints(context),
     clients.registry.listRoleMappings(context, true),

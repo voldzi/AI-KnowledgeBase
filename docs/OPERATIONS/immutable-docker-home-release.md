@@ -90,9 +90,12 @@ deploy from the mutable `/srv/akl/repo` working tree.
   production Compose file is accepted only when a structural comparison proves
   that its complete top-level envelope and every unmanaged service block are
   byte-identical; only changed blocks belonging to those managed services
-  are selected. Adding/removing a service or changing reverse proxy,
-  platform-status, networks, volumes, or another unmanaged block fails before
-  build.
+  are selected. The one explicit structural extension is the networkless
+  `docling-worker` plus its private `docling-runtime` socket volume. Both are
+  owned by the `ingestion-service` release unit, use the exact same durable
+  ingestion image, and are verified together. Any other added/removed service
+  or volume, or a change to reverse proxy, platform-status, networks or another
+  unmanaged block fails before build.
   `infra/keycloak/realm-stratos.json` and
   `infra/keycloak/update-stratos-public-routing.sh` are the only explicit
   non-runtime exceptions: the shared STRATOS realm and its public-routing

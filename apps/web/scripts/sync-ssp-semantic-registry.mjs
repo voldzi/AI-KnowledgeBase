@@ -9,7 +9,7 @@ const ENDPOINT = "https://xn--slovnk-7va.gov.cz/sparql";
 const PAGE_SIZE = 500;
 const MAX_CONCEPTS = 20_000;
 const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
-const SOURCE_IDS = new Set(["budget", "projectflow", "archflow", "aiip"]);
+const SOURCE_IDS = new Set(["budget", "projectflow", "archflow"]);
 const METRIC_IDS = new Set([
   "budget.plan_amount",
   "budget.actual_amount",
@@ -25,11 +25,6 @@ const METRIC_IDS = new Set([
   "archflow.need.impact_score",
   "archflow.need.decision",
   "archflow.need.budget_handoff_status",
-  "aiip.idea.status",
-  "aiip.idea.value_score",
-  "aiip.idea.risk_score",
-  "aiip.idea.expected_benefit",
-  "aiip.idea.handoff_status",
 ]);
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_OUTPUT = resolve(

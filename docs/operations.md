@@ -4,6 +4,65 @@ This document is the flat operational entry point for AKB. Detailed deployment
 and runbook material remains in `docs/deployment/`, `docs/OPERATIONS/`, and
 service README files.
 
+Foreign-environment operators start with
+`docs/deployment/external-environment-installation.md`,
+`docs/OPERATIONS/external-environment-runbook.md` and
+`docs/OPERATIONS/disaster-recovery.md`. These guides distinguish portable
+requirements from the site-specific `docker.home.cz` immutable release.
+
+## Server-side browser sessions
+
+Production OIDC uses database-backed AKB sessions. Configure three separate
+operator-owned files with mode `0600`:
+
+```dotenv
+AKL_WEB_SESSION_ENCRYPTION_KEY_SOURCE_FILE=/srv/akl/env/akb-web-session-encryption.key
+AKL_CHAT_WEB_SESSION_ENCRYPTION_KEY_SOURCE_FILE=/srv/akl/env/akb-chat-session-encryption.key
+AKL_WEB_SESSION_STORE_SECRET_SOURCE_FILE=/srv/akl/env/akb-web-session-store.secret
+AKL_WEB_SESSION_ABSOLUTE_TTL_DAYS=90
+AKL_WEB_SESSION_IDLE_TTL_DAYS=30
+AKL_WEB_IDENTITY_VALIDATION_INTERVAL_MINUTES=15
+```
+
+Web and standalone Chat have different encryption keys. Only the internal
+AKB session-store HMAC credential is shared with Registry; it is not a browser
+session secret and is never shared with STRATOS. Values must be independent
+random secrets of at least 32 bytes and must not be placed in Git, Compose,
+logs or deployment reports. Provision the distinct Chat key before promoting
+this release. Rotating a key and restarting its consumer invalidates sessions
+that cannot be decrypted; plan a controlled re-login for that application.
+Apply Alembic migration `0026_web_sessions` on installations missing it.
+
+On `docker.home.cz`, the operator-owned source files are mounted read-only in
+the web containers. Their root entrypoint copies each required session secret
+to the private `/run/akl-secrets` tmpfs, sets ownership to the unprivileged
+`nextjs` process and uses that runtime copy. Keep the source files at `0600`;
+do not broaden host permissions for a container user.
+
+The browser cookie contains only an opaque selector. Operators may inspect
+session counts and revocation audit events, but must not export the encrypted
+payload, selector hash or authentication material.
+
+A first protected page entry without an AKB session starts one normal PKCE
+redirect to the approved issuer. With an existing session, a silent central
+check can replace a different prior browser identity. The short signed
+synchronization marker is bound to the selector, expires after 30 seconds and
+is not an authorization credential. Separate session-only attempt and signed-out markers prevent
+automatic retries after an error or logout. A manual retry is required.
+
+Persistence comes only from the verified central access-token policy, never
+from an AKB checkbox. The configured 90-day / 30-day values are upper bounds;
+the absolute deadline starts at `stratos_session_started_at`, not at entry
+into AKB. Short sessions are limited to 24 hours absolute / 8 hours idle.
+IAM must coordinate the Keycloak `stratos-session-policy-mapper` for both
+browser clients before accepting persistent SSO. Missing policy does not
+silently create a long-lived cookie.
+
+See [central SSO and managed identity](security/managed-identity.md) for exact
+configuration, the read-only preflight, the separate-browser acceptance
+matrix and the remaining worker-identity gate for managed mode. This change
+does not activate managed identity or change production IAM configuration.
+
 ## STRATOS content-security profile
 
 AKB owns the central Document Intake malware boundary for all document
@@ -117,6 +176,43 @@ narrow assistant/source smoke
 ```
 
 Do not manipulate VPN, VLAN, firewall, or network segmentation from this repo.
+
+### Dashboard read path
+
+The operational dashboard renders an immediate loading state while its
+permission-scoped server data is fetched. Independent Registry, audit and
+authorization reads start concurrently. Workflow GETs do not materialize tasks
+or escalate SLA priorities. Treat a sustained `listWorkflowTasks` latency above two seconds
+as a Registry performance incident; do not hide it by weakening authorization
+or omitting task visibility.
+
+The personal `/tasks` workspace reads one page of the active tab (25 rows),
+not every tab or the complete audit/ingestion history. Capability-based display
+hints reuse the fresh access projection; task actions remain server-authorized.
+Workflow reads have a 15-second web-to-Registry deadline. Invalid page envelopes,
+duplicate rows or authorization-service failures must show an unavailable state,
+never a misleading empty or complete queue. Registry filter requests have a
+20-second browser deadline and ignore stale responses after another filter change.
+
+Registry's `AKL_WORKFLOW_MAINTENANCE_ENABLED` defaults to `true`.
+`AKL_WORKFLOW_MAINTENANCE_INTERVAL_SECONDS` defaults to 60 (range 15-3600).
+The loop materializes derived document/governance/audit tasks and escalates
+overdue work outside GET requests. A PostgreSQL transaction-level advisory lock
+serializes cycles across replicas; a busy replica skips that cycle. Failed
+cycles roll back and emit only `workflow_maintenance_failed`, without database
+parameters. Successful cycles emit `workflow_maintenance_completed`. Monitor
+these events and overdue queues; HTTP readiness alone is not proof that a cycle
+succeeded. Disabling this loop pauses derived-task freshness and SLA escalation,
+not explicit review submission or decisions.
+
+Review submission and decisions use existing Registry transactions and audit
+events. No SMTP setting, role grant or database migration is required. The
+Registry loop above does not publish documents or grant rights. The task list
+is the current notification surface. Future
+outbox-backed e-mail and deadline-digest requirements are documented in
+[the workflow runbook](ui/workflow-inbox.md). Do not enable a mail sender merely
+by treating audit events as a delivery queue.
+
 Production deploys use the immutable exact-SHA workflow in
 `docs/OPERATIONS/immutable-docker-home-release.md`; `/srv/akl/repo` is not a
 release source and must not be pulled, checked out, or switched during deploy.
@@ -155,10 +251,15 @@ local default Unix socket.
 
 ## Internal CI
 
-AKB uses internal Gitea as its primary Git source. The first Gitea Actions
-workflow is a shadow verification path only and cannot deploy AKB. Its runner
-isolation, required evidence before promotion, and rollback are documented in
-`docs/OPERATIONS/gitea-actions-shadow-ci.md`.
+AKB uses internal Gitea as its primary Git source. The normal Gitea Actions
+workflow is verification-only. A separate manually approved production
+workflow can trigger the existing immutable host release through a
+forced-command SSH identity after successful CI for the exact current `main`
+SHA. Its setup and rollback are documented in
+`docs/OPERATIONS/gitea-production-deploy.md`. Runner isolation and shadow-CI
+evidence are in `docs/OPERATIONS/gitea-actions-shadow-ci.md`; digest pinning,
+untrusted PR isolation, cache retention and monitoring are in
+`docs/OPERATIONS/akb-gitea-ci-runner.md`.
 
 ## Configuration
 
@@ -169,11 +270,19 @@ for compatibility. Production values belong outside Git, for example in
 When configuration changes, update `.env.example`, this document, and the
 specific deployment document.
 
+Document-grounded chat requests use
+`AKL_WEB_RAG_ASSISTANT_TIMEOUT_MS` (default `45000`). When the bounded timeout
+expires, the web bridge fails the turn explicitly instead of leaving the chat
+indefinitely in a sending state. Live STRATOS tools retain their independent,
+shorter Director Copilot timeout.
+
 ### Director Copilot activation
 
-Director Copilot V2 is the only AKB federation path. It is pinned to wire
-contract `director-copilot-2`, revision `2.0.3`, and is enabled only when all
-three governed sources and the dedicated service identity are configured:
+Director Copilot V2 is the only AKB federation path. The current release
+candidate is pinned to wire contract `director-copilot-2`, revision `2.0.4`,
+and may be promoted only with the matching STRATOS revision. It is enabled only
+when all three governed sources and the dedicated service identity are
+configured:
 
 ```text
 AKL_DIRECTOR_COPILOT_ENABLED=false
@@ -192,11 +301,6 @@ AKL_DIRECTOR_COPILOT_BUDGET_BASE_URL=http://stratos-api:4000
 AKL_DIRECTOR_COPILOT_PROJECTFLOW_BASE_URL=http://projectflow-api:4010
 AKL_DIRECTOR_COPILOT_ARCHFLOW_BASE_URL=http://stratos-api:4000
 ```
-
-AIIP is not an active Director Copilot source. ArchFlow owns need and idea
-intake data. Do not provision an AIIP audience, route-bound scope or base URL
-for this runtime. Separate legacy AIIP document-ingestion APIs remain isolated
-from Director Copilot until they are retired independently.
 
 V2 returns the user-visible live-data answer and writes
 `assistant.director_copilot_v2_returned`. A live-source failure never falls
@@ -271,7 +375,7 @@ the entrypoint copies it to a private in-container tmpfs before dropping
 privileges. When enabled, immutable release preflight requires an absolute,
 operator-owned, single-link regular file with exact mode `0600` before the
 build boundary. The identity must be exactly `svc-akb-director-copilot`; never
-reuse the actor, web-ingestion, RAG, AIIP or broad AKB policy credential. Keep
+reuse the actor, web-ingestion, RAG or broad AKB policy credential. Keep
 the feature disabled if either source URL, token audience, current actor
 projection or source PEP cannot be verified.
 
@@ -322,28 +426,15 @@ the fixed `service:akb` identity; integration-envelope actors are stored only
 as audit metadata. A missing endpoint or service credential fails governed
 writes closed.
 
-AIIP governed upload additionally requires
-`AKL_STRATOS_AIIP_AKB_RESOURCES_URL` and
-`AKB_AIIP_INGEST_SERVICE_TOKEN`. The latter is a separate central-call
-credential and production start rejects it when it equals
-`AKB_POLICY_SERVICE_TOKEN`. Allow only the exact route grant
-`aiip-document-service=aiip-upload`; do not add `authz`, document administration, or a
-wildcard route grant to that client. The AKB web bridge forwards the
-`aiip-document-service` transport bearer and a separate current actor bearer; Registry
-must receive both. Rotate the two static AKB tokens independently, update the
-external secret store, restart Registry, and verify readiness plus one denied
-missing-actor probe before accepting traffic. Never print either token in
-shell output, logs, manifests, or test reports.
-
 The downstream ingestion pipeline has a third, independent Keycloak boundary.
 Provision `svc-ingestion` with role `service_ingestion`, audience `akl-api`, and
 store its secret in `/srv/akl/env/svc-ingestion.client-secret` mode `0600`.
 `ingestion-service` obtains short-lived tokens through
 `AKL_INGESTION_REGISTRY_TOKEN_URL`; the secret file is mounted read-only only
 into that container. Registry must trust the client with exactly
-`authz|audit|documents-read|ingestion-status`. Do not add generic grants to
-`aiip-service`, share either client secret, or use an inbound AIIP bearer as a
-fallback. `/ready` must return HTTP `503` with Registry `not_ready` when this
+`authz|audit|documents-read|ingestion-status`. Do not share either client
+secret or use an inbound user bearer as a fallback. `/ready` must return HTTP
+`503` with Registry `not_ready` when this
 identity cannot be obtained; rotate the secret and recreate only the ingestion
 container before a bounded ingestion smoke.
 
@@ -522,34 +613,13 @@ Production base-path deployment publishes the API variants under
 `/health` and `/ready` probes on `chat.zeleznalady.cz`; both responses are
 uncached and do not require an interactive OIDC session.
 
-## AIIP Application API
+## RAG Registry Service Identity
 
-Provision `aiip-service` in the STRATOS Keycloak realm only after both public
-AIIP operations are deployed. Assign only `service_aiip`, add audience
-`akb-api`, keep the generated secret outside Git with mode `0600`, and do not
-print the secret or access token in deployment logs.
-
-Provision the internal RAG-to-Registry credential with the same idempotent
-helper before restarting RAG:
-
-```bash
-AIIP_CLIENT_ID=akb-rag-service \
-AIIP_ROLE=service_rag \
-AIIP_AUDIENCE=akl-api \
-AIIP_SECRET_FILE=/srv/akl/env/akb-rag-service.client-secret \
-SERVICE_CLIENT_NAME='AKB RAG to Registry' \
-./scripts/ensure_aiip_service_client.sh
-```
-
-The RAG container mounts this file read-only and exchanges it for short-lived
-Registry tokens. It does not receive the `aiip-service` secret.
-
-After deployment, verify a synthetic `internal` harmonization, an authorized
-tenant-scoped duplicate search, exact idempotent replay, a conflicting replay,
-and `restricted` rejection. Existing AIIP documents require reingestion so the
-new tenant/source identity fields reach Qdrant and OpenSearch. Detailed
-contract and acceptance behavior is in
-`docs/integration/AKB_AIIP_APPLICATION_API.md`.
+Provision `akb-rag-service` in the STRATOS Keycloak realm with only the
+`service_rag` role and `akl-api` audience. Keep the generated secret outside
+Git in a mode-`0600` host file. The RAG container mounts that file read-only
+and exchanges it for short-lived Registry tokens. Never print the secret or
+access token in deployment logs.
 
 ## Backup And Restore
 

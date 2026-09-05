@@ -1,12 +1,64 @@
 # AKB Security
 
+Use `docs/security/standalone-and-stratos-integration.md` for the portable
+security and integration guide, including the explicit unsupported status of
+autonomous production AKB, service identities, network flows and fail-closed
+outage behavior.
+
 AKB security is centralized in backend services. Browser clients and STRATOS
 host applications do not make authorization decisions for AKB documents.
 
 ## Authentication
 
 - Local development may use mock/dev auth.
-- Production and STRATOS integration use OIDC/SSO through the STRATOS realm.
+- Production uses the explicitly approved OIDC issuer. The default
+  `external_oidc` mode retains the existing Keycloak integration. The optional
+  `managed` mode consumes STRATOS discovery only after explicit issuer approval;
+  AKB never connects to LDAP or accepts directory passwords.
+- Interactive OIDC login terminates in a server-side AKB session. The browser
+  receives only an opaque 256-bit session selector in an `HttpOnly`, `Secure`,
+  `SameSite=Lax` cookie scoped to the AKB base path. Access and refresh tokens
+  are encrypted at rest on the server and are never stored in browser storage.
+- Only the signature-verified access token determines persistence:
+  `stratos_remember_device=true` and a valid `stratos_session_started_at`
+  allow at most 30 days idle and 90 days from the central session start.
+  AKB has no separate remember-device checkbox. A missing or invalid policy
+  on an otherwise valid external identity permits only a session cookie,
+  at most 8 hours idle and 24 hours absolute. Invalid token signature, issuer
+  or audience rejects login, rather than enabling a shorter fallback login.
+  Refresh, step-up `auth_time`, and entry into another application never extend
+  an existing absolute deadline. Identity is revalidated on the next active
+  request at most 15 minutes after its previous successful validation.
+- Without an AKB session, a protected page starts one normal Authorization
+  Code + PKCE redirect, without `prompt=login` or `max_age=0`. A valid central
+  session in the same browser/profile avoids another password form. Existing
+  AKB page-entry sessions use a silent central identity check. The short-lived
+  30-second AKB-only synchronization marker is signed, `HttpOnly`, bound to one
+  opaque server-session selector and used solely to complete this round trip. It is
+  not an identity token. Failed callbacks and logout require explicit retry;
+  there is no repeating automatic login loop. A successful central identity
+  change replaces and revokes the previous AKB session in that browser. An
+  expired or revoked session cannot be recreated by a late silent callback.
+- Cookie-authenticated state-changing API requests (`POST`, `PUT`, `PATCH`,
+  `DELETE`) require an exact `Origin` match with `AKL_WEB_PUBLIC_BASE_URL`.
+  Browser form navigations that omit `Origin` are accepted only when both an
+  exact-origin `Referer` and `Sec-Fetch-Site: same-origin` are present. A
+  browser-managed opaque `Origin: null` is accepted only by the login or
+  logout form when Fetch Metadata proves a same-origin top-level document
+  navigation.
+  Missing or foreign evidence fails with `SESSION_REQUEST_ORIGIN_FORBIDDEN`
+  before route handling. Audience-bound bearer-only service integrations do
+  not use the browser cookie and remain on their existing token boundary.
+- Local session revocation does not depend on issuer availability. Logout
+  then continues to its approved end-session endpoint when available.
+  Revoking one AKB session does not prove immediate logout of every other
+  application; that propagation needs joint acceptance. Selective device
+  revocation remains local to AKB. A restored browser session cookie cannot
+  override server expiry or revocation; closing a window is not logout.
+  Current STRATOS capabilities, scopes and Information Policy are still
+  evaluated on every relevant request and are not copied into the session as
+  durable authority. See [central SSO and managed identity](security/managed-identity.md)
+  and [ADR 0015](adr/0015-central-sso-and-managed-identity.md).
 - Server-to-server calls use service tokens or OIDC client credentials.
 - Service calls preserve `X-Request-ID` and `X-Correlation-ID`.
 - Web-to-Governance calls use the internal
@@ -27,29 +79,15 @@ host applications do not make authorization decisions for AKB documents.
   short-lived proof bound to the exact actor, action, document/version,
   correlation id and idempotency key. Caller tokens are never reused as
   Ingestion, LLM Gateway, or ingestion-to-Registry credentials.
-- A person submitting an AIIP idea may authorize only the first ingest of their
-  own exact, centrally registered AIIP document version without receiving a
-  general AKB ingest capability. Registry requires the matching AIIP external
-  reference, own-scope owner, immutable parent lineage and uploader identity;
-  other documents, users and ingestion actions remain under normal AKB
-  capability and scope checks.
 - The web backend uses the exact confidential transport
   `svc-akb-web-ingestion`/`service_akb_web_ingestion` for interactive Ingestion
   calls. It sends a Registry-issued proof and the bound subject; Ingestion
   confirms that proof through Registry with its own short-lived
   `svc-ingestion` bearer. The subject header becomes audit context only after
   exact proof confirmation and is never independently authoritative.
-- AIIP document transport uses only `aiip-document-service`, realm role
-  `service_aiip_document`, audience `akl-api`, and the `client_credentials`
-  grant. Registry gives this client exactly `aiip-upload`. AI assistance uses
-  the independent `aiip-service` identity with `service_aiip` and audience
-  `akb-api`; it has no Registry route grant. The public AKB bridge rejects a
-  client, role, audience, or service-account name from the other profile. AIIP
-  never sends `X-AKL-*` and never calls LLM Gateway, RAG, Qdrant, or OpenSearch
-  directly. Client secrets stay only in the host or CI secret store.
 - RAG uses the separate internal client `akb-rag-service`, role `service_rag`,
   and audience `akl-api` for Registry calls. Its secret is mounted read-only
-  only into RAG; the AIIP credential is not shared with RAG or Registry.
+  only into RAG and is not shared with another service.
 - A service role is not sufficient to establish machine identity. Registry and
   RAG require an allowlisted `azp`/`client_id` bound to the exact Keycloak
   `service-account-<client_id>` identity. Conflicting claims and untrusted
@@ -58,19 +96,20 @@ host applications do not make authorization decisions for AKB documents.
   `audit`, and `idempotency`.
 - `svc-ingestion` receives only `authz`, `audit`, `documents-read`, and the exact
   `ingestion-status` route. The latter reads authoritative attempt coordinates
-  and can update job/status only for an already selected AIIP version;
+  and can update job/status only for an already selected immutable version;
   `documents-read` returns only registered document/version metadata required
-  to verify the immutable source. `aiip-document-service` remains restricted
-  to `aiip-upload` and can never be reused by the pipeline on generic Registry
-  paths.
+  to verify the immutable source.
 - `svc-akb-web-ingestion` receives no Registry route grant. Ingestion Service
   accepts it only on the bounded job/read/cancel and web-transport readiness
   surface. A valid service token without a matching Registry proof is denied.
-- RAG separates user audience `akl-api` from AIIP service audience `akb-api`.
-  Generic RAG and all other end-user routes reject service identities and bind
-  the request subject to the verified user bearer. Only the two AIIP
-  integration routes accept exact `aiip-service` with `service_aiip`,
-  organization `org_stratos`, and classification `public` or `internal`.
+- RAG uses user audience `akl-api`. End-user routes reject service identities
+  and bind the request subject to the verified user bearer.
+
+The service-account names above describe the existing external OIDC runtime.
+Managed mode currently specifies the three separate Director clients and the
+Budget Controlled Rules reader only. The remaining worker identities require
+an agreed contract before a full managed production cutover; unknown services
+are denied, not mapped to a human user or given legacy credentials.
 
 ## Authorization
 
@@ -117,6 +156,16 @@ chat rule resolution requires `akb:chat` and reauthorizes every package source.
 The derived projection is evaluated from the fresh STRATOS access projection
 and exact package membership. It is never inferred from a role, prompt, tag, or
 client-supplied scope header in production.
+Registry list/search and metadata counts use the same employee projection as
+detail reads. Service identities do not receive this human employee exception.
+An unrelated document sharing a policy does not inherit a package member's
+access decision.
+
+Within a workflow request only, repeated identical policy checks may reuse a
+successful response keyed by the policy endpoint, credential hash, operation,
+capability, scope and full binding/hash. This memo is discarded when the
+request ends, never reused by another request, and never caches transport or
+validation errors. A new request always obtains a fresh policy decision.
 
 Director Copilot semantic resolution uses an immutable local SSP snapshot.
 Only code-reviewed bindings can map an imported concept to a known STRATOS
@@ -391,19 +440,41 @@ storage through a read-only mount and writes only to a separate disposable
 rendition cache. Returned bytes must have a valid PDF signature and remain
 private with `no-store`; source content is never written to application logs.
 
-AIIP documents marked with `Tajné` in `metadata.aiip.sensitivity`,
-`metadata.aiip.input_data_sensitivity`, or
-`metadata.aiip.output_data_sensitivity` are rejected by the standard AKB
-external document upsert until a separate classified boundary is explicitly
-approved.
+## Container Runtime Boundary
 
-AIIP application API processing accepts only `public` and `internal`.
-`restricted` and `confidential` requests are rejected at the web boundary
-before RAG or model invocation. Duplicate retrieval also enforces `tenant_id`,
-`external_system=STRATOS_AIIP`, the classification ceiling, and Registry
-document authorization.
+The production Registry, RAG, LLM Gateway and Governance containers run as the
+unprivileged `akb` user. Their root filesystems are read-only, Linux
+capabilities are dropped, `no-new-privileges` is enabled and the only generic
+writable path is an in-memory `/tmp`. Runtime secrets remain read-only mounts
+owned by the same numeric service identity. A service that needs durable state
+must use its declared database, object-storage or named-volume boundary; it
+must not write into the image filesystem.
+
+All release-managed service images use the exact `AKL_IMAGE_TAG` selected by
+the immutable release. Infrastructure images are pinned to an explicit
+version rather than `latest`. These controls complement application authorization;
+they do not replace capability, scope or Information Policy checks.
 
 ## Audit
+
+Document approval is bound to an exact version and a snapshot of source files,
+metadata, policy and active responsibilities. A new source or changed binding
+requires fresh approval. The approver must be the assigned person or a verified
+member of the assigned group, with current workflow-write and document-publish
+authority. Service identities and the submitter of an explicit review cannot
+approve it. Assignment is not an authorization grant. The document and exact
+version policy are rechecked when deciding and publishing; publication cannot
+be bypassed through generic task closure or document status patching.
+
+Personal task/document lists filter by verified subject/group membership and
+fresh document authorization before counting or pagination. `akb:read_document`
+opens personal work only; `akb:manage_document` is needed for the team view.
+Neither navigation visibility nor an assignment grants decision authority.
+Exact-version fields and task actions retain their own policy checks.
+Review comments
+are authorized workflow data, not audit metadata. Audit events retain only
+technical review/document/version/assignment coordinates and decision types;
+they do not include comments, document content, session values or credentials.
 
 AKB records audit events for document changes, workflow decisions, assistant
 queries, answer/no-answer events, source opening, and citation opening. Audit
@@ -425,8 +496,7 @@ For service-written events, Registry always stores the verified caller subject
 as `actor_id`; a payload actor is only `reported_actor_id` metadata, and the
 server-derived `service_client_id` overwrites any supplied value. Idempotency
 reserve and complete are likewise caller-bound. Cross-client namespaces are
-denied except for the explicit `akb-rag-service=aiip-service` delegation used
-by the AIIP bridge.
+denied except for explicitly configured least-privilege delegations.
 
 Audit CSV export is generated in the browser only from events already returned
 by the authorized Registry audit endpoint and filtered in the current view. It

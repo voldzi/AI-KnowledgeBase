@@ -28,13 +28,14 @@ describe("document workflow", () => {
         email: "jana@example.test",
         username: "jnovak",
         enabled: true,
-        groups: ["/Sekce IT/Architektura"],
+        groups: ["/Sekce IT/Architektura", "admins"],
       },
     ], "user-123", "cs");
 
     assert.equal(subjects.find((subject) => subject.id === "user-123")?.name, "Jana Nováková");
     assert.equal(subjects.find((subject) => subject.id === "/Sekce IT/Architektura")?.name, "Architektura");
     assert.equal(subjects.find((subject) => subject.id === "/Sekce IT/Architektura")?.type, "organization");
+    assert.equal(subjects.find((subject) => subject.id === "admins")?.type, "group");
   });
 
   it("persists controlled participants as Registry assignments", () => {

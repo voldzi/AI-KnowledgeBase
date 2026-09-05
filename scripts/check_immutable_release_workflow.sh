@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 scripts=(
+  infra/ci/gitea-runner/host/akb-gitea-deploy-gateway.sh
   scripts/backup_registry_release.sh
   scripts/bootstrap_docker_home_target.sh
   scripts/check_registry_writable_primary.sh

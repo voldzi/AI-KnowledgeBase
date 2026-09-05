@@ -26,6 +26,9 @@ out/
 dist/
 build/
 
+# Generated handover PDF/ZIP artifacts; canonical sources live in docs/.
+/output/
+
 # OS / IDE
 .idea/
 .vscode/

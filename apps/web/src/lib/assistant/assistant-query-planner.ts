@@ -5,17 +5,36 @@ import {
   assistantReportExportFormats,
   type AssistantReportRequest
 } from "./assistant-report-request";
+import {
+  resolveAssistantUserGoal,
+  type AssistantUserGoal,
+} from "./user-goal";
+import type { DocumentKnowledgeIntent } from "./document-knowledge-intent";
 
 import type { AssistantToolName, AssistantToolRouteReason } from "./assistant-tool-router";
 
-export const ASSISTANT_QUERY_PLAN_VERSION = "2026-06-23";
+export const ASSISTANT_QUERY_PLAN_VERSION = "2026-08-28";
 export const ASSISTANT_REPORT_ARTIFACT_CONTRACT_VERSION = "report.v2";
 
 export type AssistantQueryIntent =
+  | "personal_workflow"
   | "document_metadata_report"
   | "document_list"
   | "controlled_rule_answer"
   | "grounded_answer"
+  | "explanation"
+  | "comparison"
+  | "diagnosis"
+  | "recommendation"
+  | "scenario_analysis"
+  | "procedure_lookup"
+  | "resource_location"
+  | "support_channel"
+  | "owner_lookup"
+  | "responsibility_lookup"
+  | "deadline_lookup"
+  | "obligation_lookup"
+  | "policy_lookup"
   | "structured_report"
   | "obligation_table";
 
@@ -24,6 +43,7 @@ export type AssistantPlannedOutputKind = "answer" | "table" | "registry_report";
 export interface AssistantQueryPlan {
   plan_id: string;
   version: typeof ASSISTANT_QUERY_PLAN_VERSION;
+  goal: AssistantUserGoal;
   intent: AssistantQueryIntent;
   tool: AssistantToolName;
   reason: AssistantToolRouteReason;
@@ -48,6 +68,7 @@ export interface AssistantQueryPlan {
   retrieval: {
     registry_report_kind: RegistryReportKind | null;
     topics: string[];
+    document_knowledge_intent: DocumentKnowledgeIntent;
   };
 }
 
@@ -60,9 +81,11 @@ export function buildAssistantQueryPlan(input: {
   obligationOutput: boolean;
   registryReportKind: RegistryReportKind | null;
   registryTopics: string[];
+  documentKnowledgeIntent?: DocumentKnowledgeIntent;
   reportRequest?: AssistantReportRequest | null;
 }): AssistantQueryPlan {
-  const intent = queryIntentFor(input);
+  const goal = resolveAssistantUserGoal(input.message).goal;
+  const intent = queryIntentFor(input, goal);
   const outputKind = outputKindFor(input.tool, intent, input.structuredOutput);
   const requiredColumns = requiredColumnsFor(input.language, intent, input.reportRequest ?? null);
   return {
@@ -71,12 +94,14 @@ export function buildAssistantQueryPlan(input: {
       input.language,
       input.tool,
       input.reason,
+      goal,
       intent,
       input.registryReportKind ?? "",
       input.registryTopics.join(","),
       normalizePlanMessage(input.message)
     ].join("|")).slice(0, 16)}`,
     version: ASSISTANT_QUERY_PLAN_VERSION,
+    goal,
     intent,
     tool: input.tool,
     reason: input.reason,
@@ -92,15 +117,16 @@ export function buildAssistantQueryPlan(input: {
       preferred_export_formats: assistantReportExportFormats(input.reportRequest ?? null)
     },
     quality_gates: {
-      citations_required: input.tool !== "registry_document_report",
+      citations_required: input.tool !== "registry_document_report" && input.tool !== "workflow_workspace",
       row_citations_required: input.tool === "rag_document_answer" && input.structuredOutput,
       min_columns: input.structuredOutput || input.tool === "registry_document_report" ? Math.min(Math.max(requiredColumns.length, 2), 8) : null,
       min_informative_cells_per_row: input.structuredOutput ? 2 : null,
-      registry_metadata_without_chunk_citations_allowed: input.tool === "registry_document_report"
+      registry_metadata_without_chunk_citations_allowed: input.tool === "registry_document_report" || input.tool === "workflow_workspace"
     },
     retrieval: {
       registry_report_kind: input.registryReportKind,
-      topics: input.registryTopics
+      topics: input.registryTopics,
+      document_knowledge_intent: input.documentKnowledgeIntent ?? "general",
     }
   };
 }
@@ -110,8 +136,10 @@ function queryIntentFor(input: {
   structuredOutput: boolean;
   obligationOutput: boolean;
   registryReportKind: RegistryReportKind | null;
+  documentKnowledgeIntent?: DocumentKnowledgeIntent;
   reportRequest?: AssistantReportRequest | null;
-}): AssistantQueryIntent {
+}, goal: AssistantUserGoal): AssistantQueryIntent {
+  if (input.tool === "workflow_workspace") return "personal_workflow";
   if (input.tool === "registry_document_report") {
     return input.registryReportKind === "document_list" ? "document_list" : "document_metadata_report";
   }
@@ -124,6 +152,19 @@ function queryIntentFor(input: {
   if (input.structuredOutput) {
     return "structured_report";
   }
+  if (input.documentKnowledgeIntent === "procedure") return "procedure_lookup";
+  if (input.documentKnowledgeIntent === "resource") return "resource_location";
+  if (input.documentKnowledgeIntent === "support_channel") return "support_channel";
+  if (input.documentKnowledgeIntent === "owner") return "owner_lookup";
+  if (input.documentKnowledgeIntent === "responsibility") return "responsibility_lookup";
+  if (input.documentKnowledgeIntent === "deadline") return "deadline_lookup";
+  if (input.documentKnowledgeIntent === "obligation") return "obligation_lookup";
+  if (input.documentKnowledgeIntent === "policy") return "policy_lookup";
+  if (goal === "explain") return "explanation";
+  if (goal === "compare") return "comparison";
+  if (goal === "diagnose") return "diagnosis";
+  if (goal === "recommend") return "recommendation";
+  if (goal === "scenario") return "scenario_analysis";
   return "grounded_answer";
 }
 

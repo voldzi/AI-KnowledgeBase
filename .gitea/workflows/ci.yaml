@@ -1,30 +1,130 @@
-name: AKB shadow CI
+name: AKB CI
 
-# Verification-only internal CI. It never receives production secrets, builds a
-# production release, or connects to docker.home.cz.
+# Verification-only trusted CI. It never receives production secrets, builds a
+# production release, or connects to docker.home.cz. Pull requests do not run
+# here automatically because this runner has the host Docker socket.
 on:
   push:
     branches:
       - main
-      - "codex/**"
-  pull_request:
   workflow_dispatch:
+    inputs:
+      approved_sha:
+        description: Full reviewed commit SHA selected for the trusted runner
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
 
 env:
   AKB_CI_CACHE_ROOT: /cache/akb-ci
+  AKB_CI_PYTHON_ENV_ROOT: /tmp/akb-ci/python-envs
+  DOCKER_CONFIG: /tmp/akb-docker-config
+  NPM_CONFIG_CACHE: /cache/akb-ci/npm
+  NPM_CONFIG_UPDATE_NOTIFIER: "false"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
   PIP_CACHE_DIR: /cache/akb-ci/pip
   PLAYWRIGHT_BROWSERS_PATH: /cache/akb-ci/playwright
   PNPM_STORE_DIR: /cache/akb-ci/pnpm-store
 
 jobs:
-  standards:
-    name: Repository standards
-    runs-on: akb-gitea-light
+  trusted-candidate:
+    name: Trusted candidate approval
+    runs-on: akb-gitea-ci
+    timeout-minutes: 5
     steps:
-      - name: Check out repository
+      - name: Verify trusted execution boundary
+        env:
+          APPROVED_SHA: ${{ inputs.approved_sha }}
+          CANDIDATE_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [[ "${EVENT_NAME}" == "push" ]]; then
+            exit 0
+          fi
+          [[ "${EVENT_NAME}" == "workflow_dispatch" ]] || {
+            printf 'Unsupported trusted CI event: %s\n' "${EVENT_NAME}" >&2
+            exit 1
+          }
+          [[ "${APPROVED_SHA}" =~ ^[0-9a-f]{40}$ ]] || {
+            printf 'approved_sha must be a full lowercase Git SHA.\n' >&2
+            exit 1
+          }
+          [[ "${APPROVED_SHA}" == "${CANDIDATE_SHA}" ]] || {
+            printf 'The reviewed SHA does not match the dispatched ref.\n' >&2
+            exit 1
+          }
+
+  impact:
+    name: Runtime impact plan
+    runs-on: akb-gitea-ci
+    needs: trusted-candidate
+    timeout-minutes: 5
+    outputs:
+      web: ${{ steps.plan.outputs.web }}
+      registry_api: ${{ steps.plan.outputs.registry_api }}
+      ingestion_service: ${{ steps.plan.outputs.ingestion_service }}
+      rag_retrieval_service: ${{ steps.plan.outputs.rag_retrieval_service }}
+      llm_gateway_service: ${{ steps.plan.outputs.llm_gateway_service }}
+      evaluation_service: ${{ steps.plan.outputs.evaluation_service }}
+      governance_service: ${{ steps.plan.outputs.governance_service }}
+      compose: ${{ steps.plan.outputs.compose }}
+      immutable_release: ${{ steps.plan.outputs.immutable_release }}
+    steps:
+      - name: Check out reviewed history
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
+      - name: Select affected verification jobs
+        id: plan
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          base_sha=""
+          if [[ "${EVENT_NAME}" == "push" ]]; then
+            base_sha="$(git rev-parse "${HEAD_SHA}^" 2>/dev/null || true)"
+          else
+            git fetch origin main --quiet
+            base_sha="$(git merge-base "${HEAD_SHA}" origin/main 2>/dev/null || true)"
+          fi
+          if [[ ! "${base_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+            # A missing comparison base is uncertain and selects every check.
+            printf '%s\n' pyproject.toml > changed-paths.txt
+          else
+            git diff --name-only "${base_sha}" "${HEAD_SHA}" -- > changed-paths.txt
+          fi
+          python3 scripts/ci/affected_components.py \
+            changed-paths.txt --github-output "${GITHUB_OUTPUT}"
+      - name: Reject invalid production Dockerfiles before expensive checks
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/check_production_build_inputs.py \
+            --paths-file changed-paths.txt \
+            --source-date-epoch "$(git show -s --format=%ct HEAD)"
+
+  standards:
+    name: Repository standards
+    runs-on: akb-gitea-ci
+    needs: trusted-candidate
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        env:
+          GITEA_TOKEN: ${{ gitea.token }}
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "${{ github.server_url }}/${{ github.repository }}.git"
+          git -c http.extraheader="Authorization: token ${GITEA_TOKEN}" fetch --quiet origin \
+            '+refs/heads/*:refs/remotes/origin/*' --tags
+          git checkout --detach "${{ github.sha }}"
+          [[ "$(git rev-parse HEAD)" == "${{ github.sha }}" ]]
       - name: Verify repository contracts
         run: |
           set -euo pipefail
@@ -32,7 +132,25 @@ jobs:
           ruby scripts/generate_openapi_index.rb --check
           python3 -m json.tool openapi/openapi.json >/dev/null
           python3 scripts/check_embedding_shadow_profiles.py
-          npx --yes @redocly/cli lint openapi/openapi.json
+          python3 tests/test_gitea_ci_operations.py
+          python3 tests/test_gitea_production_deploy.py
+          python3 tests/test_ci_affected_components.py
+          python3 tests/test_ci_cached_python_env.py
+          python3 tests/test_production_build_inputs.py
+          python3 tests/test_clean_pilot_ci_attestation.py
+          python3 tests/test_clean_pilot_c4_registry.py
+          python3 tests/test_clean_pilot_c5.py
+          for service in \
+            registry_api \
+            ingestion_service \
+            rag_retrieval_service \
+            llm_gateway_service \
+            evaluation_service \
+            governance_service; do
+            python3 scripts/ci/ensure_cached_python_test_env.py \
+              --validate-only --service "${service}"
+          done
+          npx --yes --prefer-offline @redocly/cli@2.51.1 lint openapi/openapi.json
       - name: Scan committed history for secrets
         run: |
           set -euo pipefail
@@ -52,11 +170,77 @@ jobs:
             tar -xzf "${tmp_dir}/${archive}" -C "${cache_root}" gitleaks
             chmod 0755 "${binary}"
           fi
-          "${binary}" git . --config gitleaks.toml --redact --no-banner
+          # Verbose findings retain the rule, file, and commit while `--redact`
+          # prevents the matched value from entering the CI log.
+          "${binary}" git . --config gitleaks.toml --redact --no-banner --verbose
+
+  clean-pilot-phase-a:
+    name: Clean Pilot Phase A evidence
+    runs-on: akb-gitea-ci
+    needs: trusted-candidate
+    timeout-minutes: 15
+    steps:
+      - name: Check out exact reviewed SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - name: Verify closed evidence and disposable bootstrap
+        env:
+          EXPECTED_REPOSITORY: AKB/ai-knowledgebase
+          ACTUAL_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          [[ "${ACTUAL_REPOSITORY}" == "${EXPECTED_REPOSITORY}" ]] || {
+            printf 'Phase A repository drift: expected %s, got %s\n' "${EXPECTED_REPOSITORY}" "${ACTUAL_REPOSITORY}" >&2
+            exit 1
+          }
+          python3 scripts/ci/check_clean_pilot_phase_a.py | tee phase-a-digests.txt
+          python3 scripts/ci/check_clean_pilot_c5.py | tee -a phase-a-digests.txt
+          python3 -m venv .phase-a-venv
+          . .phase-a-venv/bin/activate
+          python -m pip install pytest==9.1.1
+          python -m pytest -q tests/test_clean_pilot_disposable_store.py tests/test_clean_pilot_stack_rehearsal.py
+          python tests/test_clean_pilot_c5.py
+          python -m pytest -q tests/test_standalone_chat_keycloak.py tests/test_managed_identity_preflight.py
+          pnpm --dir apps/web install --frozen-lockfile --store-dir "$PNPM_STORE_DIR"
+          pnpm --dir apps/web exec tsx --test tests/access-projection-v2-shadow.test.ts
+          printf '%s\n' "${{ github.sha }}" > exact-reviewed-sha.txt
+      - name: Publish resolver input
+        id: publish-phase-a-evidence
+        # act_runner 0.2.11 needs the Gitea-compatible v4 action. Pin the
+        # reviewed source commit so the public Actions REST API sees the upload.
+        uses: ChristopherHX/gitea-upload-artifact@81f940d004763f986ba3582c007fd842dd5cb0d7
+        with:
+          name: akb-clean-pilot-phase-a-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            evidence/clean-pilot-epoch-1/phase-a/*.json
+            phase-a-digests.txt
+            exact-reviewed-sha.txt
+      - name: Verify resolver input is server-visible
+        env:
+          GITEA_TOKEN: ${{ gitea.token }}
+          AKB_GITEA_RUN_ATTEMPT: ${{ gitea.run_attempt }}
+          AKB_ARTIFACT_ID: ${{ steps.publish-phase-a-evidence.outputs.artifact-id }}
+        run: |
+          python3 scripts/ci/verify_gitea_action_artifact.py \
+            --api-url "${{ github.api_url }}" \
+            --repository "${{ github.repository }}" \
+            --run-id "${{ github.run_id }}" \
+            --run-attempt "${AKB_GITEA_RUN_ATTEMPT:-1}" \
+            --commit "${{ github.sha }}" \
+            --ref "${{ github.ref }}" \
+            --event "${{ github.event_name }}" \
+            --artifact-id "${AKB_ARTIFACT_ID}" \
+            --artifact-name "akb-clean-pilot-phase-a-${{ github.sha }}"
 
   immutable-release:
     name: Immutable release contract
-    runs-on: stratos-gitea-ci-tools
+    runs-on: akb-gitea-ci
+    needs: [trusted-candidate, impact]
+    if: ${{ needs.impact.outputs.immutable_release == 'true' }}
+    timeout-minutes: 20
     defaults:
       run:
         shell: bash
@@ -77,51 +261,35 @@ jobs:
           # The contract test deliberately injects SIGKILL at release boundaries.
           # Run it directly in the dedicated repo-scoped Docker executor so its
           # fake Docker boundary remains visible to the same shell process.
-          apt-get update -qq
-          apt-get install -y -qq --no-install-recommends shellcheck ca-certificates curl
-          rm -rf /var/lib/apt/lists/*
-          compose_plugin_dir="/usr/local/lib/docker/cli-plugins"
-          compose_plugin="${compose_plugin_dir}/docker-compose"
-          mkdir -p "${compose_plugin_dir}"
-          curl -fsSL --retry 3 \
-            https://github.com/docker/compose/releases/download/v2.39.2/docker-compose-linux-x86_64 \
-            -o "${compose_plugin}"
-          printf '%s  %s\n' \
-            a55a8cd4ef103aac282812554e531aac8df7e914a287ee81e14d695556a22902 \
-            "${compose_plugin}" | sha256sum -c -
-          chmod 0755 "${compose_plugin}"
-          mkdir -p /usr/libexec/docker/cli-plugins
-          cp "${compose_plugin}" /usr/libexec/docker/cli-plugins/docker-compose
-          docker_bin="$(command -v docker)"
-          mv "${docker_bin}" "${docker_bin}.real"
-          printf '%s\n' \
-            '#!/usr/bin/env bash' \
-            'set -euo pipefail' \
-            'if [[ "${1-}" == compose ]]; then' \
-            '  shift' \
-            '  exec /usr/local/lib/docker/cli-plugins/docker-compose "$@"' \
-            'fi' \
-            'exec "$(dirname "$0")/docker.real" "$@"' >"${docker_bin}"
-          chmod 0755 "${docker_bin}"
+          shellcheck --version >/dev/null
+          install -d -m 0755 "${DOCKER_CONFIG}"
           docker compose version >/dev/null
+          unset DOCKER_CONFIG
           setpriv --reuid=1001 --regid=107 --clear-groups \
-            bash scripts/check_immutable_release_workflow.sh
+            env HOME=/home/akbci bash scripts/check_immutable_release_workflow.sh
 
   web:
     name: Web
-    runs-on: akb-gitea-light
+    runs-on: akb-gitea-ci
+    needs: [trusted-candidate, impact]
+    if: ${{ needs.impact.outputs.web == 'true' }}
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: apps/web
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
       - name: Install dependencies
         run: |
           pnpm --version
           pnpm install --frozen-lockfile --store-dir "$PNPM_STORE_DIR"
       - name: Validate, test, and build
         run: |
+          mkdir -p "$AKB_CI_CACHE_ROOT/next/web" .next
+          ln -sfn "$AKB_CI_CACHE_ROOT/next/web" .next/cache
           pnpm semantic-registry:check
           pnpm typecheck
           pnpm test
@@ -133,60 +301,224 @@ jobs:
           pnpm exec playwright install chromium
           pnpm test:e2e
 
-  python-services:
-    name: Python / ${{ matrix.service }}
-    runs-on: akb-gitea-light
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - service: registry-api
-            working-directory: services/registry-api
-            install-command: python3 -m pip install -e ".[test]"
-          - service: ingestion-service
-            working-directory: services/ingestion-service
-            install-command: python3 -m pip install -r requirements.txt
-          - service: rag-retrieval-service
-            working-directory: services/rag-retrieval-service
-            install-command: python3 -m pip install -r requirements.txt
-          - service: llm-gateway-service
-            working-directory: services/llm-gateway-service
-            install-command: python3 -m pip install -r requirements.txt
-          - service: evaluation-service
-            working-directory: services/evaluation-service
-            install-command: python3 -m pip install -r requirements.txt
-          - service: governance-service
-            working-directory: services/governance-service
-            install-command: python3 -m pip install -r requirements.txt
+  registry-api:
+    name: Python / registry-api
+    runs-on: akb-gitea-ci
+    needs: [trusted-candidate, impact]
+    if: ${{ needs.impact.outputs.registry_api == 'true' }}
+    timeout-minutes: 15
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-      - name: Install dependencies and test
-        working-directory: ${{ matrix.working-directory }}
+        with:
+          ref: ${{ github.sha }}
+      - name: Restore locked dependencies and test
         env:
-          PYTHONPATH: .
+          PYTHONPATH: services/registry-api
         run: |
-          python3 -m venv .venv
-          . .venv/bin/activate
-          python -m pip install --upgrade pip
-          ${{ matrix.install-command }}
-          python -m pytest
+          set -euo pipefail
+          python_env="$(python3 scripts/ci/ensure_cached_python_test_env.py --service registry_api)"
+          trap 'rm -rf "${python_env}"' EXIT
+          "${python_env}/bin/python" -m pytest services/registry-api/tests
+
+  ingestion-service:
+    name: Python / ingestion-service
+    runs-on: akb-gitea-ci
+    needs: [trusted-candidate, impact]
+    if: ${{ needs.impact.outputs.ingestion_service == 'true' }}
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - name: Restore locked dependencies and test
+        env:
+          PYTHONPATH: services/ingestion-service
+        run: |
+          set -euo pipefail
+          python_env="$(python3 scripts/ci/ensure_cached_python_test_env.py --service ingestion_service)"
+          trap 'rm -rf "${python_env}"' EXIT
+          "${python_env}/bin/python" -m pytest services/ingestion-service/tests
+
+  rag-retrieval-service:
+    name: Python / rag-retrieval-service
+    runs-on: akb-gitea-ci
+    needs: [trusted-candidate, impact]
+    if: ${{ needs.impact.outputs.rag_retrieval_service == 'true' }}
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - name: Restore locked dependencies and test
+        env:
+          PYTHONPATH: services/rag-retrieval-service
+        run: |
+          set -euo pipefail
+          python_env="$(python3 scripts/ci/ensure_cached_python_test_env.py --service rag_retrieval_service)"
+          trap 'rm -rf "${python_env}"' EXIT
+          "${python_env}/bin/python" -m pytest services/rag-retrieval-service/tests
+
+  llm-gateway-service:
+    name: Python / llm-gateway-service
+    runs-on: akb-gitea-ci
+    needs: [trusted-candidate, impact]
+    if: ${{ needs.impact.outputs.llm_gateway_service == 'true' }}
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - name: Restore locked dependencies and test
+        env:
+          PYTHONPATH: services/llm-gateway-service
+        run: |
+          set -euo pipefail
+          python_env="$(python3 scripts/ci/ensure_cached_python_test_env.py --service llm_gateway_service)"
+          trap 'rm -rf "${python_env}"' EXIT
+          "${python_env}/bin/python" -m pytest services/llm-gateway-service/tests
+
+  evaluation-service:
+    name: Python / evaluation-service
+    runs-on: akb-gitea-ci
+    needs: [trusted-candidate, impact]
+    if: ${{ needs.impact.outputs.evaluation_service == 'true' }}
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - name: Restore locked dependencies and test
+        env:
+          PYTHONPATH: services/evaluation-service
+        run: |
+          set -euo pipefail
+          python_env="$(python3 scripts/ci/ensure_cached_python_test_env.py --service evaluation_service)"
+          trap 'rm -rf "${python_env}"' EXIT
+          "${python_env}/bin/python" -m pytest services/evaluation-service/tests
+
+  governance-service:
+    name: Python / governance-service
+    runs-on: akb-gitea-ci
+    needs: [trusted-candidate, impact]
+    if: ${{ needs.impact.outputs.governance_service == 'true' }}
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - name: Restore locked dependencies and test
+        env:
+          PYTHONPATH: services/governance-service
+        run: |
+          set -euo pipefail
+          python_env="$(python3 scripts/ci/ensure_cached_python_test_env.py --service governance_service)"
+          trap 'rm -rf "${python_env}"' EXIT
+          "${python_env}/bin/python" -m pytest services/governance-service/tests
 
   compose:
     name: Docker Compose configuration
-    runs-on: akb-gitea-light
+    runs-on: akb-gitea-ci
+    needs: [trusted-candidate, impact]
+    if: ${{ needs.impact.outputs.compose == 'true' }}
+    timeout-minutes: 10
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
       - name: Validate supported runtime configurations
         run: |
           set -euo pipefail
+          install -d -m 0755 "${DOCKER_CONFIG}"
           docker compose --env-file .env.example \
             -f infra/docker-compose/docker-compose.dev.yml config >/tmp/akb-compose-dev.yml
           docker compose --env-file .env.local-prod.example \
             -f infra/docker-compose/docker-compose.dev.yml \
             -f infra/docker-compose/docker-compose.local-prod.yml config >/tmp/akb-compose-local-prod.yml
           AKB_POLICY_SERVICE_TOKEN=dummy-akb-policy-service-token \
-          AKB_AIIP_INGEST_SERVICE_TOKEN=dummy-aiip-ingest-service-token \
-          docker compose --env-file infra/docker-compose/docker-home.env.example \
-            -f infra/docker-compose/docker-compose.docker-home.yml config >/tmp/akb-compose-docker-home.yml
+          bash scripts/check_docker_home_compose_render.sh
+
+  persist-same-sha-ci-evidence:
+    name: Persist same-SHA CI evidence
+    runs-on: akb-gitea-ci
+    needs: [trusted-candidate, impact, standards, clean-pilot-phase-a, immutable-release, web, registry-api, ingestion-service, rag-retrieval-service, llm-gateway-service, evaluation-service, governance-service, compose]
+    if: ${{ always() }}
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Check out exact verified SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - name: Verify required and impact-selected jobs
+        env:
+          AKB_CI_TRUSTED_CANDIDATE_RESULT: ${{ needs['trusted-candidate'].result }}
+          AKB_CI_IMPACT_RESULT: ${{ needs.impact.result }}
+          AKB_CI_STANDARDS_RESULT: ${{ needs.standards.result }}
+          AKB_CI_CLEAN_PILOT_PHASE_A_RESULT: ${{ needs['clean-pilot-phase-a'].result }}
+          AKB_CI_SELECT_IMMUTABLE_RELEASE: ${{ needs.impact.outputs.immutable_release }}
+          AKB_CI_IMMUTABLE_RELEASE_RESULT: ${{ needs['immutable-release'].result }}
+          AKB_CI_SELECT_WEB: ${{ needs.impact.outputs.web }}
+          AKB_CI_WEB_RESULT: ${{ needs.web.result }}
+          AKB_CI_SELECT_REGISTRY_API: ${{ needs.impact.outputs.registry_api }}
+          AKB_CI_REGISTRY_API_RESULT: ${{ needs['registry-api'].result }}
+          AKB_CI_SELECT_INGESTION_SERVICE: ${{ needs.impact.outputs.ingestion_service }}
+          AKB_CI_INGESTION_SERVICE_RESULT: ${{ needs['ingestion-service'].result }}
+          AKB_CI_SELECT_RAG_RETRIEVAL_SERVICE: ${{ needs.impact.outputs.rag_retrieval_service }}
+          AKB_CI_RAG_RETRIEVAL_SERVICE_RESULT: ${{ needs['rag-retrieval-service'].result }}
+          AKB_CI_SELECT_LLM_GATEWAY_SERVICE: ${{ needs.impact.outputs.llm_gateway_service }}
+          AKB_CI_LLM_GATEWAY_SERVICE_RESULT: ${{ needs['llm-gateway-service'].result }}
+          AKB_CI_SELECT_EVALUATION_SERVICE: ${{ needs.impact.outputs.evaluation_service }}
+          AKB_CI_EVALUATION_SERVICE_RESULT: ${{ needs['evaluation-service'].result }}
+          AKB_CI_SELECT_GOVERNANCE_SERVICE: ${{ needs.impact.outputs.governance_service }}
+          AKB_CI_GOVERNANCE_SERVICE_RESULT: ${{ needs['governance-service'].result }}
+          AKB_CI_SELECT_COMPOSE: ${{ needs.impact.outputs.compose }}
+          AKB_CI_COMPOSE_RESULT: ${{ needs.compose.result }}
+        run: python3 scripts/ci/check_same_sha_ci_gate.py
+      - name: Create closed same-SHA attestation
+        env:
+          AKB_GITEA_RUN_ATTEMPT: ${{ gitea.run_attempt }}
+        run: |
+          set -euo pipefail
+          rm -rf same-sha-ci-evidence
+          run_attempt="${AKB_GITEA_RUN_ATTEMPT:-1}"
+          python3 scripts/ci/write_same_sha_ci_evidence.py \
+            --commit "${{ github.sha }}" \
+            --ref "${{ github.ref }}" \
+            --event "${{ github.event_name }}" \
+            --run-id "${{ github.run_id }}" \
+            --run-attempt "$run_attempt" \
+            --output same-sha-ci-evidence/akb-gitea-ci-evidence.json
+          test "$(find same-sha-ci-evidence -maxdepth 1 -type f | wc -l | tr -d ' ')" = "1"
+      - name: Publish single-file same-SHA attestation
+        id: publish-same-sha-evidence
+        uses: ChristopherHX/gitea-upload-artifact@81f940d004763f986ba3582c007fd842dd5cb0d7
+        with:
+          name: akb-gitea-ci-evidence-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 30
+          path: same-sha-ci-evidence/akb-gitea-ci-evidence.json
+      - name: Verify same-SHA attestation is server-visible
+        env:
+          GITEA_TOKEN: ${{ gitea.token }}
+          AKB_GITEA_RUN_ATTEMPT: ${{ gitea.run_attempt }}
+          AKB_ARTIFACT_ID: ${{ steps.publish-same-sha-evidence.outputs.artifact-id }}
+        run: |
+          python3 scripts/ci/verify_gitea_action_artifact.py \
+            --api-url "${{ github.api_url }}" \
+            --repository "${{ github.repository }}" \
+            --run-id "${{ github.run_id }}" \
+            --run-attempt "${AKB_GITEA_RUN_ATTEMPT:-1}" \
+            --commit "${{ github.sha }}" \
+            --ref "${{ github.ref }}" \
+            --event "${{ github.event_name }}" \
+            --artifact-id "${AKB_ARTIFACT_ID}" \
+            --artifact-name "akb-gitea-ci-evidence-${{ github.sha }}"

@@ -16,6 +16,7 @@ import {
   CommandCenterTrigger,
   GlobalTopbar,
   GlobalTopbarBreadcrumb,
+  STRATOS_APP_DIRECTORY,
   TopbarStatusGroup,
   WorkspaceSidebarTriggerButton,
   type TopbarStatusIndicatorTone,
@@ -23,6 +24,7 @@ import {
 
 import { withAppBasePath } from "@/lib/app-url";
 import type { AklLanguage } from "@/lib/i18n";
+import { applyAkbStratosAppsVisibility } from "@/lib/stratos-app-switcher";
 
 export interface AklTopbarUserProfile {
   name: string;
@@ -183,11 +185,13 @@ export function ProjectTopbar({
   return (
     <GlobalTopbar
       currentAppId="akb"
-      appAvailability={buildStratosAppsAvailabilityFromAccessProjection(applicationAccess)}
+      appAvailability={applyAkbStratosAppsVisibility(
+        buildStratosAppsAvailabilityFromAccessProjection(applicationAccess),
+        STRATOS_APP_DIRECTORY.map(({ id }) => id),
+      )}
       appUrls={{
         "budget-contract": process.env.NEXT_PUBLIC_STRATOS_HOME_URL,
         projectflow: process.env.NEXT_PUBLIC_PROJECTFLOW_URL,
-        "security-preflight": process.env.NEXT_PUBLIC_SECURITY_PREFLIGHT_URL,
         archflow: process.env.NEXT_PUBLIC_ARCHFLOW_URL,
       }}
       mobileBehavior={{
@@ -262,7 +266,7 @@ export function ProjectTopbar({
       ) : undefined}
       status={
         <TopbarStatusGroup
-          label={healthLabel}
+          label={language === "cs" ? "Stav systému" : "System status"}
           ariaLive="polite"
           items={[
             {

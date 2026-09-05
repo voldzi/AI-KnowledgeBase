@@ -33,6 +33,7 @@ export interface DirectorCopilotV2EvidenceGate {
 }
 
 const MAX_EVIDENCE_ISSUES = 64;
+const CURRENT_SOURCE_FRESHNESS_LIMIT_MS = 7 * 24 * 60 * 60 * 1_000;
 
 export function evaluateDirectorCopilotV2Evidence(input: {
   plan: DirectorCopilotV2Plan;
@@ -44,7 +45,10 @@ export function evaluateDirectorCopilotV2Evidence(input: {
   let supportedClaims = 0;
 
   for (const outcome of input.outcomes) {
-    if (outcome.status === "unavailable" && input.plan.query_state.operation === "count") {
+    const node = input.plan.nodes.find((candidate) => candidate.node_id === outcome.node_id)
+      ?? input.plan.nodes.find((candidate) => candidate.application === outcome.application);
+    const queryState = node?.query_state ?? input.plan.query_state;
+    if (outcome.status === "unavailable" && queryState.operation === "count") {
       checkedClaims += 1;
       addIssue(
         issues,
@@ -58,7 +62,6 @@ export function evaluateDirectorCopilotV2Evidence(input: {
       continue;
     }
     const manifest = input.catalog.byTool.get(outcome.tool_id);
-    const node = input.plan.nodes.find((candidate) => candidate.application === outcome.application);
     if (!manifest || !node?.request) {
       addIssue(issues, "LIVE_DATA_EVIDENCE_MANIFEST_MISSING", "error", outcome.application);
       continue;
@@ -67,6 +70,14 @@ export function evaluateDirectorCopilotV2Evidence(input: {
     checkedClaims += 1;
     if (outcome.source_version && outcome.as_of && outcome.generated_at) {
       supportedClaims += 1;
+      if (currentSourceIsStale(queryState, outcome.as_of, input.plan.created_at)) {
+        addIssue(
+          issues,
+          "LIVE_DATA_SOURCE_STALE",
+          "warning",
+          outcome.application,
+        );
+      }
     } else {
       addIssue(issues, "LIVE_DATA_EVIDENCE_SOURCE_METADATA_MISSING", "error", outcome.application);
     }
@@ -144,10 +155,10 @@ export function evaluateDirectorCopilotV2Evidence(input: {
     }
 
     verifyOperationEvidence({
-      state: input.plan.query_state,
+      state: queryState,
       outcome,
-      supportsSortMetric: input.plan.query_state.sort
-        ? manifest.metrics.some((metric) => metric.key === input.plan.query_state.sort?.metric)
+      supportsSortMetric: queryState.sort
+        ? manifest.metrics.some((metric) => metric.key === queryState.sort?.metric)
         : false,
       issues,
       addChecked: () => { checkedClaims += 1; },
@@ -169,6 +180,19 @@ export function evaluateDirectorCopilotV2Evidence(input: {
     )),
     issues: issues.slice(0, MAX_EVIDENCE_ISSUES),
   };
+}
+
+function currentSourceIsStale(
+  state: ConversationQueryState,
+  asOf: string,
+  createdAt: string,
+): boolean {
+  if (state.period.type !== "current") return false;
+  const sourceTime = Date.parse(asOf);
+  const planTime = Date.parse(createdAt);
+  return Number.isFinite(sourceTime)
+    && Number.isFinite(planTime)
+    && planTime - sourceTime > CURRENT_SOURCE_FRESHNESS_LIMIT_MS;
 }
 
 function verifyOperationEvidence(input: {

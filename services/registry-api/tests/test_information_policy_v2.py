@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from app.information_policy import (
     InformationPolicyBinding,
     anonymous_public_eligible,
@@ -230,6 +232,86 @@ def test_central_organization_scope_with_id_allows_document_version(client) -> N
     )
 
     assert response.status_code == 201, response.text
+
+
+def test_organization_reader_can_read_published_source_without_authoring_rights(
+    client,
+    db_session,
+) -> None:
+    document = create_document(client, information_policy=policy()).json()
+    version_response = client.post(
+        f"/api/v1/documents/{document['document_id']}/versions",
+        headers=v2_headers(
+            subject="user_owner",
+            capabilities="akb:upload,akb:manage_document",
+            scopes="organization:org_stratos",
+        ),
+        json={
+            "version_label": "1.0",
+            "source_file_uri": "s3://akl-documents/policy-v2/organization.pdf",
+            "file_hash": f"sha256:{'f' * 64}",
+        },
+    )
+    assert version_response.status_code == 201, version_response.text
+    version_id = version_response.json()["document_version_id"]
+    stored_document = db_session.get(Document, document["document_id"])
+    stored_version = db_session.get(DocumentVersion, version_id)
+    stored_document.status = "valid"
+    stored_version.status = "valid"
+    db_session.commit()
+    reader = v2_headers(
+        subject="user_director",
+        capabilities="akb:access,akb:chat,akb:read_document",
+        scopes="organization:org_stratos",
+    )
+    document_path = f"/api/v1/documents/{document['document_id']}"
+    assert client.get(document_path, headers=reader).status_code == 200
+    exact_version = client.get(f"{document_path}/versions/{version_id}", headers=reader)
+    assert exact_version.status_code == 200, exact_version.text
+    assert exact_version.json()["document_version_id"] == version_id
+
+    coordinates = {
+        "subject_id": "user_director",
+        "action": "rag.query",
+        "candidate_document_ids": [document["document_id"]],
+        "candidate_policy_hashes": {document["document_id"]: [document["policy_hash"]]},
+        "candidate_document_versions": {document["document_id"]: [version_id]},
+    }
+    filtered = client.post("/api/v1/authz/filter-documents", headers=reader, json=coordinates)
+    assert filtered.status_code == 200, filtered.text
+    assert filtered.json()["allowed_document_version_ids"] == {
+        document["document_id"]: [version_id]
+    }
+    assert client.patch(document_path, headers=reader, json={"title": "Denied edit"}).status_code == 403
+    assert client.post(f"{document_path}/versions/{version_id}/publish", headers=reader).status_code == 403
+    assert client.get("/api/v1/audit/events", headers=reader).status_code == 403
+
+    stored_version.status = "draft"
+    db_session.commit()
+    unpublished = client.post("/api/v1/authz/filter-documents", headers=reader, json=coordinates)
+    assert unpublished.status_code == 200, unpublished.text
+    assert unpublished.json()["allowed_document_ids"] == []
+    assert unpublished.json()["denied_document_ids"] == [document["document_id"]]
+
+
+@pytest.mark.parametrize("restriction", ["scope_missing", "other_organization", "recipient", "unit"])
+def test_organization_read_profile_preserves_narrower_document_boundaries(client, restriction) -> None:
+    binding = policy()
+    if restriction == "recipient":
+        binding["audience"]["recipientSubjectIds"] = ["user_owner"]
+    if restriction == "unit":
+        binding = policy(scope_type="organization_unit", scope_ids=["restricted_unit"])
+    created = create_document(client, information_policy=binding)
+    assert created.status_code == 201, created.text
+    reader = v2_headers(
+        subject="user_director",
+        capabilities="akb:access,akb:chat,akb:read_document",
+        scopes="organization:org_stratos" if restriction != "scope_missing" else "budget_scope:budget:it",
+    )
+    if restriction == "other_organization":
+        reader["X-STRATOS-Organization-ID"] = "org_other"
+    response = client.get(f"/api/v1/documents/{created.json()['document_id']}", headers=reader)
+    assert response.status_code == 403, response.text
 
 
 def test_authoring_filter_allows_exact_draft_version_only_for_document_manager(

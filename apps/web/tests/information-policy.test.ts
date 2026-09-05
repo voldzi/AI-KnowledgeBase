@@ -3,7 +3,6 @@ import { describe, it } from "node:test";
 
 import {
   parseInformationPolicy,
-  parseIntegrationEnvelope,
   parseStratosBudgetIntegrationEnvelope,
   policyHash
 } from "../src/lib/stratos/information-policy";
@@ -57,56 +56,6 @@ describe("STRATOS Information Policy V2", () => {
     );
   });
 
-  it("preserves the Registry-issued policy hash for central governance verification", () => {
-    const parsed = parseInformationPolicy(policy());
-    const authoritativePolicyHash = `sha256:${"f".repeat(64)}`;
-    const envelope = {
-      schemaVersion: "stratos-integration-envelope-1",
-      organizationId: "org_stratos",
-      sourceSystem: "STRATOS_AIIP",
-      externalRef: "aiip:idea:idea-123:requirement-card",
-      actor: { type: "person", subjectId: "subject-aiip-123" },
-      sourceResource: {
-        governedResourceId: "gres-aiip-idea-123",
-        application: "AIIP",
-        resourceType: "idea",
-        resourceId: "idea-123",
-        sourceVersion: "idea-123-v1",
-        scope: { type: "organization", id: "org_stratos" }
-      },
-      correlationId: "corr-12345678",
-      idempotencyKey: "idem-12345678",
-      policyBindingId: parsed.policyBindingId,
-      policyVersion: parsed.policyVersion,
-      policyHash: authoritativePolicyHash,
-      classification: {
-        handlingClass: parsed.handlingClass,
-        legalClassification: "NONE",
-        tlp: null,
-        pap: null
-      },
-      payload: {
-        operation: "document_upload",
-        entityType: "InnovationRequest",
-        entityId: "idea-123",
-        sourceDocumentId: "/ideas/idea-123/documents/source-1",
-        sha256: `sha256:${"a".repeat(64)}`
-      }
-    };
-    const parsedEnvelope = parseIntegrationEnvelope(envelope, parsed);
-    assert.equal(parsedEnvelope?.policyHash, authoritativePolicyHash);
-    assert.equal(parsedEnvelope?.externalRef, "aiip:idea:idea-123:requirement-card");
-    assert.equal(parsedEnvelope?.sourceResource.resourceId, "idea-123");
-    assert.notEqual(parsedEnvelope?.externalRef, parsedEnvelope?.sourceResource.resourceId);
-    assert.throws(() => parseIntegrationEnvelope({ ...envelope, policyHash: "sha256:not-a-digest" }, parsed));
-    assert.throws(() => parseIntegrationEnvelope({ ...envelope, actor: { ...envelope.actor, delegated: true } }, parsed));
-    assert.throws(() => parseIntegrationEnvelope({ ...envelope, payload: { ...envelope.payload, metadata: {} } }, parsed));
-    assert.throws(() => parseIntegrationEnvelope({
-      ...envelope,
-      classification: { ...envelope.classification, legacy: "internal" }
-    }, parsed));
-  });
-
   it("accepts only a canonical, contract-bound STRATOS_BUDGET envelope and budget scope", () => {
     const parsedPolicy = parseInformationPolicy(policy());
     const canonicalHash = policyHash(parsedPolicy);
@@ -146,7 +95,7 @@ describe("STRATOS Information Policy V2", () => {
     assert.equal(parsedEnvelope.policyHash, canonicalHash);
 
     assert.throws(() => parseStratosBudgetIntegrationEnvelope(
-      { ...envelope, sourceResource: { application: "AIIP" } },
+      { ...envelope, unsupportedField: true },
       parsedPolicy,
       governanceScope,
     ));

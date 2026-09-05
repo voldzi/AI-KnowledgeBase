@@ -1,227 +1,14 @@
 {
   "schema_version": "director-copilot-2",
-  "contract_revision": "2.0.3",
+  "contract_revision": "2.0.4",
   "manifests": [
     {
       "schema_version": "director-copilot-2",
-      "contract_revision": "2.0.3",
-      "tool_id": "aiip.idea_portfolio_overview.v1",
-      "owner": "AIIP",
-      "audience": "aiip-api",
-      "schema_revision": "aiip-idea-portfolio-overview-1.0.1",
-      "metrics": [
-        {
-          "key": "idea.display_name",
-          "value_type": "text",
-          "description": "Zobrazený název podnětu."
-        },
-        {
-          "key": "aiip.idea.count",
-          "value_type": "number",
-          "description": "Počet autorizovaně viditelných podnětů v dané skupině."
-        },
-        {
-          "key": "aiip.idea.pipeline_status",
-          "value_type": "text",
-          "description": "Aktuální stav podnětu v řízeném AIIP workflow."
-        },
-        {
-          "key": "aiip.idea.category",
-          "value_type": "text",
-          "description": "Kanonická kategorie podnětu."
-        },
-        {
-          "key": "aiip.idea.value_score",
-          "value_type": "number",
-          "description": "Celkové rozhodovací skóre uložené v AIIP."
-        },
-        {
-          "key": "aiip.idea.risk_manageability_score",
-          "value_type": "number",
-          "description": "Skóre zvládnutelnosti bezpečnostního rizika, nikoliv odhad LLM."
-        },
-        {
-          "key": "aiip.idea.expected_benefit",
-          "value_type": "text",
-          "description": "Strukturovaný očekávaný přínos podnětu."
-        },
-        {
-          "key": "aiip.idea.review_status",
-          "value_type": "text",
-          "description": "Stav posledního evidovaného posouzení."
-        },
-        {
-          "key": "aiip.idea.approval_status",
-          "value_type": "text",
-          "description": "Odvozený stav schválení podle kanonického workflow."
-        },
-        {
-          "key": "aiip.idea.similar_visible_count",
-          "value_type": "number",
-          "description": "Počet deterministicky podobných a současně autorizovaně viditelných podnětů."
-        },
-        {
-          "key": "aiip.idea.archflow_handoff_status",
-          "value_type": "text",
-          "description": "Stav předání schváleného podnětu do ArchFlow."
-        },
-        {
-          "key": "aiip.idea.archflow_handoff_count",
-          "value_type": "number",
-          "description": "Počet autorizovaných podnětů předaných do ArchFlow."
-        }
-      ],
-      "entity_types": [
-        "organization",
-        "organization_unit",
-        "idea"
-      ],
-      "canonical_id_prefixes": [
-        {
-          "entity_type": "organization",
-          "prefix": "stratos:aiip-aggregate:",
-          "aggregate": true
-        },
-        {
-          "entity_type": "organization_unit",
-          "prefix": "stratos:aiip-aggregate:",
-          "aggregate": true
-        },
-        {
-          "entity_type": "idea",
-          "prefix": "stratos:idea:",
-          "aggregate": false
-        }
-      ],
-      "relationships": [
-        {
-          "key": "aiip.idea.archflow_need",
-          "source_entity_type": "idea",
-          "target_entity_type": "need",
-          "target_canonical_id_prefix": "stratos:need:",
-          "cardinality": "zero_or_one",
-          "derivation": "direct",
-          "location": {
-            "kind": "link",
-            "key": "aiip.idea.archflow_need"
-          }
-        }
-      ],
-      "link_keys": [
-        {
-          "key": "aiip.idea.archflow_need",
-          "target_entity_type": "need",
-          "target_canonical_id_prefix": "stratos:need:",
-          "max_items": 1
-        }
-      ],
-      "periods": [
-        "fiscal_year",
-        "interval"
-      ],
-      "granularities": [
-        "organization",
-        "organization_unit",
-        "item"
-      ],
-      "group_by": [
-        "organization_unit",
-        "category",
-        "pipeline_status",
-        "approval_status"
-      ],
-      "scenarios": [],
-      "capability_requirements": {
-        "all_of": [
-          "aiip:access"
-        ],
-        "any_of": [
-          "aiip:read_own",
-          "aiip:read_unit",
-          "aiip:read_organization"
-        ],
-        "conditional": [
-          {
-            "when": {
-              "scope_types": [
-                "own"
-              ],
-              "granularities": [
-                "item"
-              ]
-            },
-            "all_of": [
-              "aiip:read_own"
-            ],
-            "any_of": []
-          },
-          {
-            "when": {
-              "scope_types": [
-                "organization_unit"
-              ],
-              "granularities": [
-                "organization_unit",
-                "item"
-              ]
-            },
-            "all_of": [],
-            "any_of": [
-              "aiip:read_unit",
-              "aiip:read_organization"
-            ]
-          },
-          {
-            "when": {
-              "scope_types": [
-                "organization"
-              ],
-              "granularities": [
-                "organization",
-                "organization_unit",
-                "item"
-              ]
-            },
-            "all_of": [
-              "aiip:read_organization"
-            ],
-            "any_of": []
-          }
-        ]
-      },
-      "supported_scope_types": [
-        "own",
-        "organization",
-        "organization_unit",
-        "project",
-        "document",
-        "recipient_set"
-      ],
-      "timeout_ms": 5000,
-      "limits": {
-        "max_items": 100,
-        "max_response_bytes": 262144,
-        "max_candidate_count": 100000
-      },
-      "pagination": "cursor",
-      "reason_codes": [
-        "AIIP_SCOPE_NOT_COVERED",
-        "AIIP_INFORMATION_POLICY_DENIED",
-        "AIIP_ENTITY_AMBIGUOUS",
-        "AIIP_NO_DATA",
-        "AIIP_DOMAIN_TOOL_UNAVAILABLE"
-      ],
-      "input_schema_ref": "director-copilot-2-request.schema.json",
-      "output_schema_ref": "director-copilot-2-response.schema.json",
-      "error_schema_ref": "director-copilot-2-error.schema.json"
-    },
-    {
-      "schema_version": "director-copilot-2",
-      "contract_revision": "2.0.3",
+      "contract_revision": "2.0.4",
       "tool_id": "archflow.need_portfolio_overview.v1",
       "owner": "ARCHFLOW",
       "audience": "archflow-api",
-      "schema_revision": "archflow-need-portfolio-overview-1.0.1",
+      "schema_revision": "archflow-need-portfolio-overview-1.0.2",
       "metrics": [
         {
           "key": "archflow.need.display_name",
@@ -262,11 +49,6 @@
           "key": "archflow.need.source_system",
           "value_type": "text",
           "description": "Zdrojový systém potřeby."
-        },
-        {
-          "key": "archflow.need.source_idea_id",
-          "value_type": "text",
-          "description": "Kanonické ID původního AIIP podnětu."
         },
         {
           "key": "archflow.need.linked_project_id",
@@ -362,18 +144,6 @@
       ],
       "relationships": [
         {
-          "key": "archflow.need.source_idea",
-          "source_entity_type": "need",
-          "target_entity_type": "idea",
-          "target_canonical_id_prefix": "stratos:idea:",
-          "cardinality": "zero_or_one",
-          "derivation": "direct",
-          "location": {
-            "kind": "link",
-            "key": "archflow.need.source_idea"
-          }
-        },
-        {
           "key": "archflow.need.linked_project",
           "source_entity_type": "need",
           "target_entity_type": "project",
@@ -387,12 +157,6 @@
         }
       ],
       "link_keys": [
-        {
-          "key": "archflow.need.source_idea",
-          "target_entity_type": "idea",
-          "target_canonical_id_prefix": "stratos:idea:",
-          "max_items": 1
-        },
         {
           "key": "archflow.need.linked_project",
           "target_entity_type": "project",
@@ -502,7 +266,7 @@
     },
     {
       "schema_version": "director-copilot-2",
-      "contract_revision": "2.0.3",
+      "contract_revision": "2.0.4",
       "tool_id": "budget.organization_financial_summary.v1",
       "owner": "BUDGET",
       "audience": "budget-api",
@@ -696,7 +460,7 @@
     },
     {
       "schema_version": "director-copilot-2",
-      "contract_revision": "2.0.3",
+      "contract_revision": "2.0.4",
       "tool_id": "budget.project_financial_snapshot.v1",
       "owner": "BUDGET",
       "audience": "budget-api",
@@ -798,11 +562,11 @@
     },
     {
       "schema_version": "director-copilot-2",
-      "contract_revision": "2.0.3",
+      "contract_revision": "2.0.4",
       "tool_id": "projectflow.portfolio_delivery_overview.v1",
       "owner": "PROJECTFLOW",
       "audience": "projectflow-api",
-      "schema_revision": "projectflow-portfolio-delivery-overview-1.0.2",
+      "schema_revision": "projectflow-portfolio-delivery-overview-1.0.3",
       "metrics": [
         {
           "key": "organization.display_name",
@@ -1029,6 +793,8 @@
         "PROJECTFLOW_CAPABILITY_DENIED",
         "PROJECTFLOW_ENTITY_FILTER_UNSUPPORTED",
         "PROJECTFLOW_ORGANIZATION_UNIT_MAPPING_MISSING",
+        "PROJECTFLOW_NO_PROJECTS_IN_SCOPE",
+        "PROJECTFLOW_PORTFOLIO_UNASSIGNED",
         "PROJECTFLOW_NO_DATA",
         "PROJECTFLOW_DOMAIN_TOOL_UNAVAILABLE"
       ],

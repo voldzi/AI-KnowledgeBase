@@ -172,6 +172,24 @@ obecného dokumentového RAG. Pokud zákon existuje pouze jako uložený dokumen
 ale nebyl převeden do právního balíčku, citovaně vytěžen a schválen gestorem,
 chat vrátí bezpečný stav bez odpovědi.
 
+Uzavřené zákonné klíče smějí být publikovány pouze z balíčku typu `law` nebo
+`implementing_regulation`. Pokus interního balíčku tvrdit zákonný klíč je integritní chyba,
+nikoli pravidlo s nižší autoritou. Pokud broad/statutory dotazu chybí jeden ze
+dvou povinných zákonných klíčů, chat vrátí
+`REQUIRED_STATUTORY_RULE_COVERAGE_MISSING` a nevydá neúplný seznam jako úplný
+zákonný výsledek. Výslovný dotaz pouze na interní postup tím není blokován.
+
+Výslovně uvedený zdroj je závaznou součástí dotazu. Formulace „dle zákona“
+vybere pouze zákony a prováděcí předpisy, zatímco „dle interní směrnice“ vybere
+jen ověřené interní směrnice a pokyny. Dotaz, který požaduje oba zdroje, vrátí
+oddělenou zákonnou a interní část. Pořadí podle autority se uplatňuje až uvnitř
+požadovaného zdrojového rozsahu a nesmí výslovný požadavek uživatele přepsat.
+
+Kombinovaný dotaz nemusí obsahovat zkratku VZMR. Pokud uživatel výslovně žádá
+limity podle zákona i interní směrnice, odpověď vždy skládá samostatnou zákonnou
+a interní část. Není-li datum v dotazu uvedeno, rozhodné datum se určuje podle
+kalendářního dne v časové zóně `Europe/Prague`, nikoli podle UTC.
+
 Veřejné zakázky používají uzavřený katalog `normative_key`. Známé aliasy jsou
 před porovnáním kanonizované, takže například oddělené klíče pro dodávky a
 služby sdílejí zákonný klíč VZMR. Balíček nelze nově vyhlásit jako platný,

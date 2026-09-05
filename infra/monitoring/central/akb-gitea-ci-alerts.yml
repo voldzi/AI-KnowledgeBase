@@ -1,0 +1,95 @@
+groups:
+  - name: akb-gitea-ci
+    rules:
+      - alert: AkbGiteaCiMetricsMissing
+        expr: absent(akb_gitea_ci_metrics_collection_success{repository="AKB/ai-knowledgebase"})
+        for: 5m
+        labels:
+          severity: warning
+          service: akb-ci
+        annotations:
+          summary: "Chybí metriky AKB Gitea CI"
+          description: "VM125 neposlala nejméně pět minut technické metriky AKB runneru."
+
+      - alert: AkbGiteaCiMetricsStale
+        expr: >-
+          time() - akb_gitea_ci_metrics_collection_timestamp_seconds{repository="AKB/ai-knowledgebase"} > 300
+        for: 5m
+        labels:
+          severity: warning
+          service: akb-ci
+        annotations:
+          summary: "Metriky AKB Gitea CI se neaktualizují"
+          description: "Textfile collector obsahuje více než pět minut starý vzorek AKB runneru."
+
+      - alert: AkbGiteaCiRunnerServiceDown
+        expr: akb_gitea_ci_runner_service_active{repository="AKB/ai-knowledgebase"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          service: akb-ci
+        annotations:
+          summary: "Služba AKB Gitea runneru neběží"
+          description: "Systemd služba stratos-gitea-ci-runner.service na VM125 není aktivní."
+
+      - alert: AkbGiteaCiRunnerDisabled
+        expr: akb_gitea_ci_runner_service_enabled{repository="AKB/ai-knowledgebase"} == 0
+        for: 15m
+        labels:
+          severity: warning
+          service: akb-ci
+        annotations:
+          summary: "AKB Gitea runner není povolen po startu"
+          description: "Systemd služba AKB runneru není ve stavu enabled."
+
+      - alert: AkbGiteaCiRunnerOffline
+        expr: akb_gitea_ci_runner_online{repository="AKB/ai-knowledgebase",runner_id="6"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          service: akb-ci
+        annotations:
+          summary: "AKB Gitea runner je offline"
+          description: "Repo-scoped runner ID 6 není v Gitea online."
+
+      - alert: AkbGiteaCiMainNotVerified
+        expr: akb_gitea_ci_main_last_success_matches_head{repository="AKB/ai-knowledgebase"} == 0
+        for: 30m
+        labels:
+          severity: warning
+          service: akb-ci
+        annotations:
+          summary: "Aktuální AKB main nemá úspěšný CI běh"
+          description: "Poslední úspěšný main SHA neodpovídá aktuálnímu SHA větve main."
+
+      - alert: AkbGiteaCiCacheLimitExceeded
+        expr: akb_gitea_ci_cache_bytes{repository="AKB/ai-knowledgebase"} > 10737418240
+        for: 30m
+        labels:
+          severity: warning
+          service: akb-ci
+        annotations:
+          summary: "AKB CI cache překročila 10 GB"
+          description: "Retence AKB cache neudržela nastavený maximální objem."
+
+      - alert: AkbGiteaCiDiskSpaceLow
+        expr: >-
+          akb_gitea_ci_filesystem_available_bytes{repository="AKB/ai-knowledgebase"} < 21474836480
+          and akb_gitea_ci_filesystem_available_bytes{repository="AKB/ai-knowledgebase"} >= 10737418240
+        for: 15m
+        labels:
+          severity: warning
+          service: akb-ci
+        annotations:
+          summary: "VM125 má méně než 20 GB volného místa"
+          description: "Je potřeba naplánovat bezpečnou údržbu build cache mimo běžící CI."
+
+      - alert: AkbGiteaCiDiskSpaceCritical
+        expr: akb_gitea_ci_filesystem_available_bytes{repository="AKB/ai-knowledgebase"} < 10737418240
+        for: 5m
+        labels:
+          severity: critical
+          service: akb-ci
+        annotations:
+          summary: "VM125 má kriticky málo volného místa"
+          description: "Na filesystému AKB CI zbývá méně než 10 GB."

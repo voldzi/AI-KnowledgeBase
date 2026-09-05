@@ -4,7 +4,7 @@ import {
   authenticateStratosDocumentServiceJsonRequest,
   requireStratosDocumentSourceAllowed,
   type StratosDocumentServicePrincipal,
-} from "@/lib/aiip/application-api";
+} from "@/lib/stratos/document-service-auth";
 import {
   getStratosActorRequestContext,
   requireStratosActorSubjectMatch,

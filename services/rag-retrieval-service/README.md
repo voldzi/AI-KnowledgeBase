@@ -64,11 +64,6 @@ STRATOS extractions:
 - `GET /api/v1/stratos/extractions/{extraction_id}`
 - `POST /api/v1/stratos/extractions/{extraction_id}/feedback`
 
-AIIP application integration (internal behind the AKB web bridge):
-
-- `POST /api/v1/integrations/aiip/harmonize`
-- `POST /api/v1/integrations/aiip/duplicates/search`
-
 OpenAPI specifikace je v `openapi.yaml`.
 
 ## Hlavni tok
@@ -114,9 +109,7 @@ Zkopirujte `.env.example` a nastavte hodnoty podle prostredi.
 | `AKL_AUTH_MODE` | `disabled` | `disabled`, `mock`, `bearer`, nebo `oidc`. |
 | `AKL_SERVICE_TOKEN` | prazdne | Token pro prichozi `bearer` auth. |
 | `AKL_RAG_USER_OIDC_AUDIENCE` | podle `AKL_OIDC_AUDIENCE` | Audience pro ověřené uživatelské RAG tokeny; produkčně `akl-api`. |
-| `AKL_RAG_AIIP_OIDC_AUDIENCE` | prázdné | Oddělená audience pouze pro AIIP integration routes; produkčně `akb-api`. |
 | `AKL_TRUSTED_SERVICE_CLIENT_IDS` | prázdné | Allowlist přesných OIDC service client ids. |
-| `AKL_RAG_AIIP_SERVICE_CLIENT_IDS` | prázdné | Podmnožina trusted clients povolená výhradně na AIIP integration routes. |
 | `AKL_UPSTREAM_BEARER_TOKEN` | prazdne | Fallback token pro volani Registry API a LLM Gateway, kdyz neni caller token. |
 | `AKL_SERVICE_ACCOUNT_SUBJECT` | `svc-rag` | Fallback service subject pro dev/service-token volani. |
 | `AKL_SERVICE_ACCOUNT_ROLES` | `service_rag` | Fallback service role pro dev/service-token volani. |
@@ -140,8 +133,11 @@ Zkopirujte `.env.example` a nastavte hodnoty podle prostredi.
 | `AKL_LLM_GATEWAY_TOKEN` | prázdné | Samostatný bearer token pouze pro LLM Gateway. |
 | `AKL_LLM_GATEWAY_AUDIENCE` | `llm-gateway-service` | Audience posílaná se service identitou `svc-rag`. |
 | `AKL_RAG_NO_ANSWER_MIN_SCORE` | `0.35` | Minimalni rerank score pro odpoved. |
-| `AKL_RAG_MAX_CONTEXT_CHARS` | `12000` | Maximalni velikost kontextu pro LLM. |
-| `AKL_RAG_ANSWER_MAX_TOKENS` | `512` | Maximalni delka generovane odpovedi posilana do LLM Gateway. |
+| `AKL_RAG_MAX_CONTEXT_CHARS` | `20000` | Maximalni velikost autorizovaneho dokumentoveho kontextu pro LLM. |
+| `AKL_RAG_ANSWER_MAX_TOKENS` | `768` | Maximalni delka generovane odpovedi posilana do LLM Gateway. |
+| `AKL_ASSISTANT_HISTORY_MAX_USER_MESSAGES` | `12` | Nejvyssi pocet predchozich uzivatelskych otazek pro relevantni navazani. |
+| `AKL_ASSISTANT_HISTORY_MAX_MESSAGE_CHARS` | `800` | Limit jedne historicke uzivatelske otazky. |
+| `AKL_ASSISTANT_HISTORY_MAX_CHARS` | `6000` | Celkovy limit historickych uzivatelskych otazek pro skladani odpovedi. |
 | `AKL_RAG_REQUIRE_CITATIONS` | `true` | Vynuti citace u odpovedi. |
 | `AKL_RAG_ENABLE_RERANKING` | `true` | Zapne/vypne lexical reranking. |
 | `AKL_RAG_AUTHZ_MODE` | `dev` | `dev` pouzije lokalni authz filtr, `registry` pouzije Registry API klienta. |
@@ -189,16 +185,12 @@ docker run --rm -p 8080:8080 --env-file .env.example akl-rag-retrieval-service
 
 - Produkce nesmi pouzivat mock auth ani mock dependency klienty.
 - LLM nikdy nedostane chunky, ktere neprosly Registry authz filtrem.
-- V `AKL_AUTH_MODE=oidc` služba ověří podpis a issuer a rozlišuje audience:
-  uživatel `akl-api`, AIIP service `akb-api`. Generic RAG a ostatní user routes
-  odmítnou každou service identitu; subject v RAG payloadu se musí přesně
-  shodovat s ověřeným uživatelským bearerem. Jedinou výjimkou jsou dvě AIIP
-  integration routes, které vyžadují exact `aiip-service`, roli
-  `service_aiip`, organizaci `org_stratos` a klasifikaci `public` nebo
-  `internal`.
+- V `AKL_AUTH_MODE=oidc` služba ověří podpis, issuer a uživatelskou audience
+  `akl-api`. Uživatelské RAG routy odmítnou každou service identitu a subject
+  v RAG payloadu se musí přesně shodovat s ověřeným uživatelským bearerem.
 - Produkce používá samostatný `akb-rag-service` client-credentials token pro
   Registry authz, audit a idempotenci. Registry audit proto uloží jako
-  `actor_id` skutečný subject RAG služby; původní uživatel/AIIP actor je pouze
+  `actor_id` skutečný subject RAG služby; původní uživatel je pouze
   `reported_actor_id` metadata. LLM Gateway vždy používá vlastní service
   credential.
 - RAG ignoruje dynamicka opravneni z JWT a `X-STRATOS-*` hlavicek; Registry API je enforcement bod a nacita projekci nebo vola centralni STRATOS policy decision.

@@ -95,12 +95,69 @@ backend tool. The router is intentionally small and auditable:
   Retrieval Service, including structured reports that interpret cited chunks,
   for example "vytvoř sestavu z obsahu smlouvy".
 
+For ordinary employee questions, the document route includes a deterministic
+Document Knowledge intent layer. It recognizes classes of work rather than
+hard-coded complete questions:
+
+- procedure and how-to requests;
+- form, template, file, or other resource location;
+- documented support and incident-reporting channels;
+- application overview, installation/infrastructure, security, operations and
+  manuals, independently of similarly named live business sources;
+- owner, approver, contact, responsibility, deadline, obligation, and policy
+  lookup.
+
+The selected intent activates an existing citation-bound answer mode such as
+`find_procedure`, `find_owner`, `find_responsibility`, `extract_deadlines`,
+`extract_obligations`, or `normative_with_citations`. A browser request with
+the generic `ask` mode therefore uses the server-selected mode; an API client
+that explicitly requests another valid specialized mode remains compatible.
+The intent state is bounded, persisted with conversation continuity, and may be
+inherited only by a referential follow-up. A new self-contained topic starts a
+fresh document intent.
+
+`application-documentation-intent.ts` separates requests such as "Jak funguje
+ProjectFlow?" and "Jak nainstaluji Budget?" from live portfolio and financial
+queries. An explicit new documentation topic clears inherited financial entity
+state. A short referential follow-up can retain the documentation topic; a new
+live-data question cannot inherit it. A PDF manual lookup is a resource request,
+not a request to generate a report. Application documentation avoids unrelated
+SSP ambiguity and generic IT-support hints.
+
+Explicit compound questions with independently identifiable clauses can request
+both paths, for example "Popiš infrastrukturu AKB a kolik akcí má plán na rok
+2025?". The live clause goes to Director Copilot; the document clause goes to
+authorized RAG in parallel. The existing mixed-evidence composer preserves
+separate evidence, partial/unavailable states and history reauthorization. A
+document answer never fills a missing live number. This is bounded deterministic
+routing, not proof that every possible compound formulation is understood;
+ambiguous questions still require clarification or insufficient-source handling.
+
 The router does not expose technical tool names in the user-facing answer and
 does not send registry routing metadata into the RAG prompt. For RAG calls it
 adds an internal `assistant_query_plan` to the assistant context; for structured
 answers it also adds a bounded `answer_format_instruction`, requiring meaningful
 multi-column tables and source-supported obligation rows when the user asks for
 obligations.
+
+Task-oriented document routes add bounded retrieval-only synonym hints. These
+hints cover generic document vocabulary, Czech inflection, domain vocabulary
+present in the question, and safe unambiguous equivalents from the complete
+local SSP snapshot. Shared or generic SSP labels are excluded, while app-source
+routing still requires a separately approved binding. The hints improve hybrid
+retrieval but are excluded from answer generation and persisted history, so they
+cannot be quoted as evidence or silently become part of the user's question.
+Task routes retrieve a slightly wider bounded candidate set before reranking.
+Authorization, current-version filtering, Information Policy, no-answer
+behavior, and citation validation remain unchanged.
+
+The answer instruction for a task route is equally fail-closed: AKB must not
+invent a form, URL, contact, owner, deadline, or support channel. For example,
+"Kde mám napsat problém s IT?" searches authorized manuals and procedures; it
+does not assume that a Service Desk exists. If the corpus does not contain a
+precise citable answer, the assistant returns insufficient source coverage.
+Vague troubleshooting requests without a documented task intent continue to
+use clarification questions.
 
 Inside the RAG Retrieval Service, employee-chat retrieval and answer composition
 must keep different inputs. The embedding/retrieval query is built only from the
@@ -117,9 +174,13 @@ It records:
 
 - `plan_id` and `version`;
 - the selected intent such as `grounded_answer`, `structured_report`,
-  `obligation_table`, `document_metadata_report`, or `document_list`;
+  `obligation_table`, `procedure_lookup`, `resource_location`,
+  `support_channel`, `owner_lookup`, `responsibility_lookup`,
+  `deadline_lookup`, `obligation_lookup`, `policy_lookup`,
+  `document_metadata_report`, or `document_list`;
 - the planned output kind (`answer`, `table`, or `registry_report`);
 - registry topics and report kind when Registry metadata is used;
+- the document-knowledge intent used by RAG retrieval and answer composition;
 - quality gates, including whether citations and row-level citations are
   required.
 
@@ -346,7 +407,10 @@ returned, the UI does not submit the question again. It polls the existing
 Registry conversation for the exact newly persisted user/assistant turn and
 replaces the pending bubble when that turn appears. This prevents duplicate
 LLM work and keeps a completed answer visible without requiring a manual page
-reload.
+reload. An explicit HTTP timeout or upstream error is terminal for that turn:
+the UI shows a bounded human-readable failure immediately and does not add a
+second history-recovery wait after the server has confirmed that no answer was
+completed.
 
 Questions about effective public-procurement limits, duties, evidence,
 exceptions and approvals use the Registry controlled-rule catalog before
@@ -356,7 +420,55 @@ only rules that are effective for the requested date, verified by the gestor,
 precedence engine. A matching conflict or missing rule fails closed with no
 replacement amount. Every returned rule retains its exact document-version
 and chunk citation, and follow-up questions keep the same governed domain and
-date without treating conversation context as authorization.
+date without treating conversation context as authorization. Explicit domain
+signals always take precedence over inherited conversation state: a procurement
+question after an ArchFlow, Budget, or ProjectFlow answer uses the controlled-rule
+catalog, while a different legal topic such as NIS2 clears both the inherited
+live-source route and the procurement route and uses authorized document RAG.
+Document RAG applies the same boundary to retrieval history. A short referential
+follow-up such as `A co zákon?` keeps the preceding user questions, while a
+self-contained question with no meaningful topic overlap starts a fresh retrieval
+context. Assistant answers are never reused as authority. This prevents an earlier
+project, budget, procurement or legal topic from diluting retrieval for a new
+question while preserving natural follow-up dialogue.
+For a referential legal follow-up, retrieval also reuses the latest recognized
+canonical legal source from the bounded, authorized user-question history. This
+retrieval-only hint is not passed to answer generation, and a self-contained
+question about another topic cannot inherit it.
+The retrieval query for that follow-up is compact and starts with the canonical
+source and the latest matching legal question. It may add neutral names of the
+requested legal concepts (for example warning, notification, interim report and
+final report), but never deadlines, amounts or other answer facts. This keeps
+the relevant provision rankable even when shadow reranking preserves lexical
+order, without weakening the no-answer threshold or seeding the generated answer.
+The same follow-up retrieval is limited to document versions cited by the
+latest available assistant answer after Registry has reauthorized every
+citation. A changed or revoked source therefore fails closed; an explicit new
+legal or STRATOS domain topic starts a fresh retrieval scope.
+
+A missing document source returns a normal fail-closed `no_answer` response.
+
+Metadata questions are parsed independently from document content questions.
+Natural Czech filters such as `platné interní směrnice` constrain the Registry
+request by status, classification and document type inside the caller's
+already-authorized scope. A combined request such as `kolik ... a které` returns
+the bounded list and its count; it does not fall back to an unfiltered inventory.
+These filters can only narrow Registry authorization.
+
+For document questions that explicitly request several facets (for example
+obligations, deadlines and sanctions), retrieval raises the bounded context
+budget and allows more chunks from an exact document. The answer composer must
+address every requested facet or explicitly state that the authorized evidence
+does not establish it. A deterministic post-composition check adds
+`ANSWER_FACET_COVERAGE_INCOMPLETE`, lowers high confidence to medium and names
+the missing facets instead of silently presenting an incomplete answer.
+
+AKB does not advertise a Service Desk handoff while no governed Service Desk
+integration is available. An operational incident receives neutral follow-up
+questions about the affected system, symptoms and scope; a failed legal,
+contractual or knowledge lookup never invents an unavailable escalation path.
+Regulatory uses of `incident`, such as NIS2 reporting duties or deadlines,
+remain document questions.
 
 The chat path authorizes every package source with `akb:chat` and the same
 fresh Information Policy decision used for RAG. The default employee profile

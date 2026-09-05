@@ -34,7 +34,11 @@ export function createApiClients(options: ApiClientFactoryOptions = {}): ApiClie
   return {
     registry: new ProductionRegistryClient(config.serviceBaseUrls.registry, options.fetcher),
     ingestion: new ProductionIngestionClient(config.serviceBaseUrls.ingestion, options.fetcher),
-    rag: new ProductionRagClient(config.serviceBaseUrls.rag, options.fetcher),
+    rag: new ProductionRagClient(
+      config.serviceBaseUrls.rag,
+      options.fetcher,
+      config.ragAssistantTimeoutMs,
+    ),
     governance: new ProductionGovernanceClient(
       config.serviceBaseUrls.governance,
       config.governanceTransport?.serviceToken,

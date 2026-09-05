@@ -1,0 +1,79 @@
+{
+  "schemaVersion": "akb-clean-pilot-c5-retired-identity-cleanup-1",
+  "repository": "AKB/ai-knowledgebase",
+  "epochId": "clean-pilot-epoch-1",
+  "gate": "C5",
+  "authority": "SOURCE_ONLY",
+  "productionMutationAuthorized": false,
+  "decisions": [
+    {
+      "id": "stratos-akl-adapter",
+      "kind": "service_client",
+      "decision": "RETIRE",
+      "replacementOwner": "AKB Registry integration owner",
+      "replacementIdentity": "stratos-akb-service",
+      "replacementBoundary": "akl-api audience plus exact stratos-budget-upload route grant",
+      "removedActiveSources": [
+        "infra/keycloak/realm-stratos.json",
+        "infra/keycloak/README.md",
+        "docs/deployment/docker-home-cz.md",
+        "docs/deployment/stratos-public-routing-and-docker-home.md"
+      ],
+      "tombstonedSources": [],
+      "negativeAssertions": [
+        "clean Keycloak bootstrap does not create the client",
+        "Registry trusted-client and route-grant configuration does not contain the client",
+        "a bearer identifying this service client is denied on every Registry route"
+      ]
+    },
+    {
+      "id": "service_governance",
+      "kind": "realm_role",
+      "decision": "RETIRE",
+      "replacementOwner": "AKB governance-service owner and STRATOS Access Governance owner",
+      "replacementIdentity": "isolated governance-service bearer plus access-projection capabilities for human users",
+      "replacementBoundary": "server-side AKL_SERVICE_TOKEN; human authorization through current capabilities and Information Policy",
+      "removedActiveSources": [
+        "infra/keycloak/realm-stratos.json",
+        "infra/keycloak/realm-akl.json",
+        "services/registry-api/app/permissions.py",
+        "services/registry-api/app/api.py",
+        "apps/web/src/lib/auth/authorization.ts",
+        "apps/web/src/features/admin/admin-skeleton.tsx",
+        "infra/keycloak/README.md",
+        "docs/CONTRACTS/06_SECURITY_AUTHZ_MODEL.md"
+      ],
+      "tombstonedSources": [
+        "contracts/stratos/access-governance/v1/keycloak-baseline.json#deprecatedRealmRoles/akl_service_governance"
+      ],
+      "negativeAssertions": [
+        "clean Keycloak bootstrap does not create the role",
+        "Registry role mapping grants no action or classification elevation",
+        "web and admin role lists cannot authorize or assign the role"
+      ]
+    },
+    {
+      "id": "service_llm_gateway",
+      "kind": "realm_role",
+      "decision": "RETIRE",
+      "replacementOwner": "AKB LLM Gateway owner",
+      "replacementIdentity": "isolated llm-gateway-service bearer",
+      "replacementBoundary": "server-side AKL_SERVICE_TOKEN; callers restricted to service_ingestion and service_rag",
+      "removedActiveSources": [
+        "infra/keycloak/realm-stratos.json",
+        "infra/keycloak/realm-akl.json",
+        "services/registry-api/app/permissions.py",
+        "infra/keycloak/README.md",
+        "docs/CONTRACTS/06_SECURITY_AUTHZ_MODEL.md"
+      ],
+      "tombstonedSources": [
+        "contracts/stratos/access-governance/v1/keycloak-baseline.json#deprecatedRealmRoles/akl_service_llm_gateway"
+      ],
+      "negativeAssertions": [
+        "clean Keycloak bootstrap does not create the role",
+        "Registry role mapping grants no action or classification elevation",
+        "LLM Gateway accepts only its isolated bearer boundary and approved caller roles"
+      ]
+    }
+  ]
+}

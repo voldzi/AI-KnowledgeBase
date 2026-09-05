@@ -286,7 +286,7 @@ async def test_exact_resolver_scopes_before_retrieval_and_skips_embedding() -> N
     assert run.response.retrieval_diagnostics["stage_timings_ms"]["parent_expansion"] == 0.0
 
 
-def test_deterministic_evidence_accepts_claim_supported_by_document_title() -> None:
+def test_document_title_is_not_proof_of_a_factual_statement() -> None:
     settings = load_settings(
         {
             "AKL_RAG_EVIDENCE_GATE_MODE": "enforce",
@@ -310,9 +310,9 @@ def test_deterministic_evidence_accepts_claim_supported_by_document_title() -> N
 
     verified = EvidenceGate(settings).verify(answer, [chunk])
 
-    assert verified.evidence_status == "supported"
-    assert verified.confidence == "high"
-    assert verified.claims[0]["supported"] is True
+    assert verified.evidence_status == "unsupported"
+    assert verified.confidence == "insufficient_source"
+    assert all(claim["supported"] is False for claim in verified.claims)
 
 
 @pytest.mark.asyncio
@@ -684,16 +684,13 @@ def test_evidence_gate_removes_unsupported_secondary_claim() -> None:
 
 def test_model_evidence_contract_rejects_unknown_chunk_and_omitted_claim() -> None:
     chunk = _chunk("chunk_a", "doc_a", "Gestor dokumentu schvaluje výjimku ze směrnice.")
-    assessment = _model_assessment(
-        '{"claims":[{"claim":"Gestor schvaluje výjimku.","claim_type":"main",'
-        '"chunk_ids":["unknown"],"quoted_support":"Gestor dokumentu"}]}',
-        [chunk],
-        answer="Gestor schvaluje výjimku. Ředitel schvaluje všechny nákupy.",
-    )
-
-    assert assessment.status == "unsupported"
-    assert assessment.unsupported_main_claim is True
-    assert all(not bool(item["supported"]) for item in assessment.claims)
+    with pytest.raises(ValueError):
+        _model_assessment(
+            '{"claims":[{"claim":"Gestor schvaluje výjimku.","claim_type":"main",'
+            '"chunk_ids":["unknown"],"quoted_support":"Gestor dokumentu","supported":true}]}',
+            [chunk],
+            answer="Gestor schvaluje výjimku. Ředitel schvaluje všechny nákupy.",
+        )
 
 
 def test_registry_authorization_precedes_cross_encoder(monkeypatch) -> None:

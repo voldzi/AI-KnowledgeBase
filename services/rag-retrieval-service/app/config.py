@@ -144,9 +144,7 @@ class Settings:
     oidc_audience: str | None
     oidc_jwks_url: str | None
     oidc_user_audience: str | None
-    oidc_aiip_audience: str | None
     trusted_service_client_ids: tuple[str, ...]
-    aiip_service_client_ids: tuple[str, ...]
 
     registry_client_mode: str
     retriever_mode: str
@@ -212,6 +210,9 @@ class Settings:
     max_context_chars: int
     source_context_window: int
     answer_max_tokens: int
+    assistant_history_max_user_messages: int
+    assistant_history_max_message_chars: int
+    assistant_history_max_chars: int
     hybrid_dense_weight: float
     no_answer_min_score: float
     confidence_high_threshold: float
@@ -224,6 +225,8 @@ class Settings:
     high_quality_min_context_chunks: int
     mock_chat_response: str | None
     mock_registry_denied_document_ids: tuple[str, ...]
+    identity_mode: str = "external_oidc"
+    managed_identity_issuer: str | None = None
 
 
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:
@@ -231,14 +234,19 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
 
     env_name = _get(source, "AKL_ENV", "development").strip().lower()
     auth_mode = _get(source, "AKL_AUTH_MODE", "disabled").strip().lower()
+    identity_mode = _get(source, "AKL_IDENTITY_MODE", "external_oidc")
+    if identity_mode not in {"external_oidc", "managed"}:
+        raise ConfigError("Invalid AKL_IDENTITY_MODE")
+    if identity_mode == "managed":
+        from app.managed_identity import approved_issuer
+        approved_issuer(source.get("AKL_OIDC_ISSUER"), source.get("AKL_MANAGED_IDENTITY_ISSUER"))
+        if auth_mode != "oidc" or source.get("AKL_RAG_USER_OIDC_AUDIENCE") != "akl-api":
+            raise ConfigError("Managed RAG requires OIDC and akl-api user audience")
     service_token = source.get("AKL_SERVICE_TOKEN") or None
     dependency_mode = _get(source, "AKL_RAG_DEPENDENCY_MODE", "mock").strip().lower()
     authz_mode = _get(source, "AKL_RAG_AUTHZ_MODE", "dev").strip().lower()
     trusted_service_client_ids = _parse_csv(
         _get(source, "AKL_TRUSTED_SERVICE_CLIENT_IDS", "")
-    )
-    aiip_service_client_ids = _parse_csv(
-        _get(source, "AKL_RAG_AIIP_SERVICE_CLIENT_IDS", "")
     )
     oidc_user_audience = _parse_optional_str(
         _get(
@@ -246,9 +254,6 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
             "AKL_RAG_USER_OIDC_AUDIENCE",
             _get(source, "AKL_OIDC_AUDIENCE", ""),
         )
-    )
-    oidc_aiip_audience = _parse_optional_str(
-        _get(source, "AKL_RAG_AIIP_OIDC_AUDIENCE", "")
     )
 
     if auth_mode not in AUTH_MODES:
@@ -266,12 +271,6 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
 
     if fulltext_mode not in FULLTEXT_MODES:
         raise ConfigError("AKL_RAG_FULLTEXT_MODE must be one of: qdrant, opensearch")
-    unknown_aiip_clients = set(aiip_service_client_ids).difference(trusted_service_client_ids)
-    if unknown_aiip_clients:
-        raise ConfigError(
-            "AKL_RAG_AIIP_SERVICE_CLIENT_IDS must be a subset of AKL_TRUSTED_SERVICE_CLIENT_IDS"
-        )
-
     try:
         request_timeout_seconds = float(_get(source, "AKL_RAG_REQUEST_TIMEOUT_SECONDS", "30"))
         retry_attempts = int(_get(source, "AKL_RAG_RETRY_ATTEMPTS", "2"))
@@ -280,9 +279,18 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         retrieval_candidate_limit = int(
             _get(source, "AKL_RAG_RETRIEVAL_CANDIDATE_LIMIT", str(max(24, default_max_chunks * 3)))
         )
-        max_context_chars = int(_get(source, "AKL_RAG_MAX_CONTEXT_CHARS", "12000"))
+        max_context_chars = int(_get(source, "AKL_RAG_MAX_CONTEXT_CHARS", "20000"))
         source_context_window = int(_get(source, "AKL_RAG_SOURCE_CONTEXT_WINDOW", "1"))
-        answer_max_tokens = int(_get(source, "AKL_RAG_ANSWER_MAX_TOKENS", "512"))
+        answer_max_tokens = int(_get(source, "AKL_RAG_ANSWER_MAX_TOKENS", "1536"))
+        assistant_history_max_user_messages = int(
+            _get(source, "AKL_ASSISTANT_HISTORY_MAX_USER_MESSAGES", "12")
+        )
+        assistant_history_max_message_chars = int(
+            _get(source, "AKL_ASSISTANT_HISTORY_MAX_MESSAGE_CHARS", "800")
+        )
+        assistant_history_max_chars = int(
+            _get(source, "AKL_ASSISTANT_HISTORY_MAX_CHARS", "6000")
+        )
         hybrid_dense_weight = float(_get(source, "AKL_RAG_HYBRID_DENSE_WEIGHT", "0.35"))
         no_answer_min_score = float(_get(source, "AKL_RAG_NO_ANSWER_MIN_SCORE", "0.35"))
         confidence_high_threshold = float(_get(source, "AKL_RAG_CONFIDENCE_HIGH_THRESHOLD", "0.75"))
@@ -328,6 +336,12 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         raise ConfigError("AKL_RAG_SOURCE_CONTEXT_WINDOW must be between 0 and 5")
     if answer_max_tokens <= 0:
         raise ConfigError("AKL_RAG_ANSWER_MAX_TOKENS must be greater than zero")
+    if not 1 <= assistant_history_max_user_messages <= 24:
+        raise ConfigError("AKL_ASSISTANT_HISTORY_MAX_USER_MESSAGES must be between 1 and 24")
+    if not 200 <= assistant_history_max_message_chars <= 2000:
+        raise ConfigError("AKL_ASSISTANT_HISTORY_MAX_MESSAGE_CHARS must be between 200 and 2000")
+    if not 500 <= assistant_history_max_chars <= 12000:
+        raise ConfigError("AKL_ASSISTANT_HISTORY_MAX_CHARS must be between 500 and 12000")
     if not 0 <= hybrid_dense_weight <= 1:
         raise ConfigError("AKL_RAG_HYBRID_DENSE_WEIGHT must be between 0 and 1")
     if not 0 <= no_answer_min_score <= 1:
@@ -462,20 +476,11 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
             raise ConfigError("Production RAG requires AKL_AUTH_MODE=oidc for user delegation")
         if auth_mode == "oidc" and not all(
             source.get(name)
-            for name in ("AKL_OIDC_ISSUER", "AKL_OIDC_AUDIENCE", "AKL_OIDC_JWKS_URL")
+            for name in (("AKL_OIDC_ISSUER", "AKL_OIDC_AUDIENCE") if identity_mode == "managed" else ("AKL_OIDC_ISSUER", "AKL_OIDC_AUDIENCE", "AKL_OIDC_JWKS_URL"))
         ):
             raise ConfigError("Production OIDC requires issuer, audience, and JWKS URL")
-        if not source.get("AKL_RAG_USER_OIDC_AUDIENCE") or not source.get(
-            "AKL_RAG_AIIP_OIDC_AUDIENCE"
-        ):
-            raise ConfigError(
-                "Production OIDC requires AKL_RAG_USER_OIDC_AUDIENCE and "
-                "AKL_RAG_AIIP_OIDC_AUDIENCE"
-            )
-        if not trusted_service_client_ids:
-            raise ConfigError("Production OIDC requires AKL_TRUSTED_SERVICE_CLIENT_IDS")
-        if not aiip_service_client_ids:
-            raise ConfigError("Production requires AKL_RAG_AIIP_SERVICE_CLIENT_IDS")
+        if not source.get("AKL_RAG_USER_OIDC_AUDIENCE"):
+            raise ConfigError("Production OIDC requires AKL_RAG_USER_OIDC_AUDIENCE")
         if fulltext_mode == "opensearch":
             if not opensearch_base_url.startswith("https://"):
                 raise ConfigError("Production OpenSearch must use HTTPS")
@@ -500,6 +505,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         env=env_name,
         log_level=_get(source, "AKL_LOG_LEVEL", "INFO").upper(),
         auth_mode=auth_mode,
+        identity_mode=identity_mode,
+        managed_identity_issuer=source.get("AKL_MANAGED_IDENTITY_ISSUER") or None,
         service_token=service_token,
         upstream_bearer_token=source.get("AKL_UPSTREAM_BEARER_TOKEN") or None,
         service_account_subject=_get(source, "AKL_SERVICE_ACCOUNT_SUBJECT", "svc-rag"),
@@ -512,9 +519,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         oidc_audience=source.get("AKL_OIDC_AUDIENCE") or None,
         oidc_jwks_url=source.get("AKL_OIDC_JWKS_URL") or None,
         oidc_user_audience=oidc_user_audience,
-        oidc_aiip_audience=oidc_aiip_audience,
         trusted_service_client_ids=trusted_service_client_ids,
-        aiip_service_client_ids=aiip_service_client_ids,
         registry_client_mode=registry_client_mode,
         retriever_mode=retriever_mode,
         fulltext_mode=fulltext_mode,
@@ -596,6 +601,9 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         max_context_chars=max_context_chars,
         source_context_window=source_context_window,
         answer_max_tokens=answer_max_tokens,
+        assistant_history_max_user_messages=assistant_history_max_user_messages,
+        assistant_history_max_message_chars=assistant_history_max_message_chars,
+        assistant_history_max_chars=assistant_history_max_chars,
         hybrid_dense_weight=hybrid_dense_weight,
         no_answer_min_score=no_answer_min_score,
         confidence_high_threshold=confidence_high_threshold,

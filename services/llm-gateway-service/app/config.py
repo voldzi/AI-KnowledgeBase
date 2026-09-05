@@ -125,6 +125,7 @@ class Settings:
 
     rate_limit_enabled: bool
     rate_limit_per_minute: int
+    rate_limit_max_identities: int
 
     mock_chat_response: str
     mock_embedding_dimensions: int
@@ -202,6 +203,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         ollama_endpoint_timeout_seconds = float(_get(source, "AKL_OLLAMA_ENDPOINT_TIMEOUT_SECONDS", "3"))
         model_pull_timeout_seconds = float(_get(source, "AKL_LLM_MODEL_PULL_TIMEOUT_SECONDS", "1800"))
         rate_limit_per_minute = int(_get(source, "AKL_RATE_LIMIT_PER_MINUTE", "120"))
+        rate_limit_max_identities = int(_get(source, "AKL_RATE_LIMIT_MAX_IDENTITIES", "4096"))
         mock_embedding_dimensions = int(_get(source, "AKL_MOCK_EMBEDDING_DIMENSIONS", "8"))
         default_max_tokens = int(_get(source, "AKL_LLM_DEFAULT_MAX_TOKENS", "512"))
         default_embedding_dimensions = _parse_optional_int(
@@ -222,6 +224,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         raise ConfigError("AKL_LLM_MODEL_PULL_TIMEOUT_SECONDS must be greater than zero")
     if rate_limit_per_minute <= 0:
         raise ConfigError("AKL_RATE_LIMIT_PER_MINUTE must be greater than zero")
+    if rate_limit_max_identities <= 0:
+        raise ConfigError("AKL_RATE_LIMIT_MAX_IDENTITIES must be greater than zero")
     if mock_embedding_dimensions <= 0:
         raise ConfigError("AKL_MOCK_EMBEDDING_DIMENSIONS must be greater than zero")
     if default_max_tokens <= 0:
@@ -261,6 +265,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         retry_backoff_seconds=retry_backoff_seconds,
         rate_limit_enabled=_parse_bool(_get(source, "AKL_RATE_LIMIT_ENABLED", "false")),
         rate_limit_per_minute=rate_limit_per_minute,
+        rate_limit_max_identities=rate_limit_max_identities,
         mock_chat_response=_get(
             source,
             "AKL_MOCK_CHAT_RESPONSE",

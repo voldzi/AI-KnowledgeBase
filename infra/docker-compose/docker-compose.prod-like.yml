@@ -132,7 +132,7 @@ services:
     logging: *json-logging
 
   qdrant:
-    image: ${QDRANT_IMAGE:-qdrant/qdrant:1.18.2}
+    image: ${QDRANT_IMAGE:-qdrant/qdrant@sha256:75eab8c4ba42096724fdcfde8b4de0b5713d529dde32f285a1f86fdcb2c9e50c}
     restart: unless-stopped
     volumes:
       - qdrant-data:/qdrant/storage

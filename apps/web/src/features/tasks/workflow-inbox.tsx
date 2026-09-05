@@ -3,7 +3,6 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
-  AlertTriangle,
   ArrowUpRight,
   Ban,
   CheckCircle2,
@@ -11,6 +10,8 @@ import {
   FileCheck2,
   FilterX,
   TimerOff,
+  RotateCcw,
+  UserPlus,
 } from "lucide-react";
 import {
   DirectoryPersonPicker as PersonPicker,
@@ -48,6 +49,7 @@ import {
   type WorkflowTaskStatus,
 } from "./workflow-task-model";
 import { workflowTaskPresentation } from "./workflow-task-presentation";
+import { documentReviewError } from "@/lib/documents/review-errors";
 
 interface WorkflowInboxProps {
   documents: Document[];
@@ -56,6 +58,9 @@ interface WorkflowInboxProps {
   registryTasks?: RegistryWorkflowTask[];
   authorization: AuthorizationHint;
   nowIso: string;
+  compact?: boolean;
+  title?: string;
+  serverFiltered?: boolean;
 }
 
 type FilterValue<T extends string> = "all" | T;
@@ -104,6 +109,9 @@ const taskCopy = {
     publishVisible: "Publikační akce jsou v této relaci povolené.",
     publishHidden: "Publikační akce nejsou pro tuto relaci dostupné.",
     noResults: "Žádné úkoly neodpovídají filtrům.",
+    readOnly: "K tomuto úkolu nyní nemáte oprávnění rozhodnout.",
+    submittedComment: "Poznámka při předání",
+    returnedComment: "Připomínka schvalovatele",
     checklistTitle: "Kontrolní body",
     checklistSource: "Ověřit zdroj a metadata.",
     checklistOwner: "Potvrdit vlastníka a gestor unit.",
@@ -176,6 +184,9 @@ const taskCopy = {
     publishVisible: "Publication actions are allowed in this session.",
     publishHidden: "Publication actions are not available for this session.",
     noResults: "No tasks match the filters.",
+    readOnly: "You are not currently authorized to decide this task.",
+    submittedComment: "Submission note",
+    returnedComment: "Reviewer comment",
     checklistTitle: "Checklist",
     checklistSource: "Verify source and metadata.",
     checklistOwner: "Confirm owner and gestor unit.",
@@ -259,6 +270,9 @@ export function WorkflowInbox({
   registryTasks,
   authorization,
   nowIso,
+  compact = false,
+  title,
+  serverFiltered = false,
 }: WorkflowInboxProps) {
   const { language } = useLanguage();
   const searchParams = useSearchParams();
@@ -271,8 +285,9 @@ export function WorkflowInbox({
         auditEvents,
         registryTasks,
         nowIso,
+        preserveRegistryOrder: serverFiltered,
       }),
-    [documents, jobs, auditEvents, registryTasks, nowIso],
+    [documents, jobs, auditEvents, registryTasks, nowIso, serverFiltered],
   );
   const [query, setQuery] = useState(() => searchParams.get("q") ?? "");
   const [priority, setPriority] =
@@ -287,7 +302,7 @@ export function WorkflowInbox({
     searchParams.get("task") ?? tasks[0]?.id ?? null,
   );
 
-  const filteredTasks = tasks.filter((task) => {
+  const filteredTasks = serverFiltered ? tasks : tasks.filter((task) => {
     const normalizedQuery = query.trim().toLowerCase();
     const presentation = workflowTaskPresentation(task, language);
     const matchesQuery =
@@ -321,13 +336,15 @@ export function WorkflowInbox({
   );
   const tasksReturnTo = useMemo(() => {
     const params = new URLSearchParams();
+    if (searchParams.get("view")) params.set("view", searchParams.get("view")!);
+    if (searchParams.get("page")) params.set("page", searchParams.get("page")!);
     if (query.trim()) params.set("q", query.trim());
     if (priority !== "all") params.set("priority", priority);
     if (status !== "all") params.set("status", status);
     if (kind !== "all") params.set("kind", kind);
     if (selectedTask) params.set("task", selectedTask.id);
     return buildReturnTarget("/tasks", params);
-  }, [kind, priority, query, selectedTask, status]);
+  }, [kind, priority, query, searchParams, selectedTask, status]);
 
   function clearFilters() {
     setQuery("");
@@ -338,7 +355,7 @@ export function WorkflowInbox({
 
   return (
     <div className="stack">
-      <section className="grid grid--metrics" aria-label={copy.metricsLabel}>
+      {!compact ? <section className="grid grid--metrics" aria-label={copy.metricsLabel}>
         <MetricCard
           detail={copy.openTasksDetail}
           icon={ClipboardList}
@@ -366,19 +383,18 @@ export function WorkflowInbox({
           label={copy.reviewQueue}
           value={String(reviewTasks.length)}
         />
-      </section>
+      </section> : null}
 
       <section className="panel">
         <div className="panel__header">
-          <h2>{copy.inboxTitle}</h2>
+          <h2>{title ?? copy.inboxTitle}</h2>
           <StatusBadge
             value="info"
             label={`${filteredTasks.length} ${copy.resultCount}`}
           />
         </div>
         <div className="panel__body stack">
-          <p className="muted task-inbox-lead">{copy.inboxDescription}</p>
-          <div className="task-toolbar">
+          {!serverFiltered ? <div className="task-toolbar">
             <StratosSearchBox
               id="workflow-inbox-search"
               label={copy.searchPlaceholder}
@@ -432,7 +448,7 @@ export function WorkflowInbox({
               <FilterX size={16} aria-hidden="true" />
               {copy.clear}
             </StratosButton>
-          </div>
+          </div> : null}
         </div>
       </section>
 
@@ -567,7 +583,11 @@ function TaskDetail({
     );
   }
 
-  const actions = actionsForTask(task);
+  const actions = actionsForTask(task).filter((action) =>
+    action === "approve" || action === "publish"
+      ? authorization.can_publish
+      : authorization.can_update || (task.kind === "review" && authorization.can_publish),
+  );
   const presentation = workflowTaskPresentation(task, language);
 
   async function submitAction(action: RegistryWorkflowTaskAction) {
@@ -585,7 +605,7 @@ function TaskDetail({
         task_kind: task.kind,
       },
     };
-    if (assigneeId.trim()) {
+    if (action === "assign" && assigneeId.trim()) {
       payload.assignee_id = assigneeId.trim();
     }
 
@@ -603,7 +623,7 @@ function TaskDetail({
         },
       );
       if (!response.ok) {
-        throw new Error(await readWorkflowActionError(response));
+        throw new Error(await readWorkflowActionError(response, language));
       }
       setFeedback({ tone: "success", message: copy.actionSaved });
       setComment("");
@@ -651,7 +671,10 @@ function TaskDetail({
             label={copy.document}
             value={task.document_title ?? copy.notSpecified}
           />
+          {task.version_label ? <TaskField label={copy.version} value={task.version_label} /> : null}
         </div>
+        {task.submission_comment ? <TaskField label={copy.submittedComment} value={task.submission_comment} /> : null}
+        {task.decision_comment ? <TaskField label={copy.returnedComment} value={task.decision_comment} /> : null}
         {presentation.technicalOwner || task.document_version_id || task.job_id ? (
           <details className="technical-details technical-details--compact">
             <summary>{copy.technicalDetails}</summary>
@@ -678,13 +701,13 @@ function TaskDetail({
           </details>
         ) : null}
         <div className="task-actions">
-          <StratosButtonLink
+          {task.kind !== "audit" || authorization.can_read_audit ? <StratosButtonLink
             tone="primary"
             href={withDocumentReturnContext(task.href, returnTo, "tasks")}
           >
             {presentation.actionLabel}
             <ArrowUpRight size={15} aria-hidden="true" />
-          </StratosButtonLink>
+          </StratosButtonLink> : null}
           {task.secondary_href ? (
             <StratosButtonLink
               href={withDocumentReturnContext(task.secondary_href, returnTo, "tasks")}
@@ -694,12 +717,11 @@ function TaskDetail({
             </StratosButtonLink>
           ) : null}
         </div>
-        {task.registry_task_id ? (
+        {task.registry_task_id && actions.length > 0 ? (
           <div className="task-action-panel">
             <div className="task-action-panel__header">
               <div>
                 <strong>{copy.actionPanelTitle}</strong>
-                <span>{copy.actionPanelDetail}</span>
               </div>
             </div>
             <div className="form-grid">
@@ -712,9 +734,10 @@ function TaskDetail({
                   value={comment}
                   onChange={(event) => setComment(event.target.value)}
                   placeholder={copy.commentPlaceholder}
+                  maxLength={1000}
                 />
               </div>
-              <div className="field">
+              {actions.includes("assign") ? <div className="field">
                 <label>{copy.assignee}</label>
                 <WorkflowAssigneePicker
                   key={task.id}
@@ -732,7 +755,7 @@ function TaskDetail({
                     setAssigneeId("");
                   }}
                 />
-              </div>
+              </div> : null}
             </div>
             <div className="task-action-buttons">
               {actions.map((action) => (
@@ -752,6 +775,7 @@ function TaskDetail({
                     void submitAction(action);
                   }}
                 >
+                  {action === "request_changes" ? <RotateCcw size={16} aria-hidden="true" /> : action === "assign" ? <UserPlus size={16} aria-hidden="true" /> : <CheckCircle2 size={16} aria-hidden="true" />}
                   {workflowActionLabel(action, copy)}
                 </StratosButton>
               ))}
@@ -766,28 +790,8 @@ function TaskDetail({
             ) : null}
           </div>
         ) : (
-          <p className="muted">{copy.noRegistryAction}</p>
+          <p className="muted">{task.registry_task_id ? copy.readOnly : copy.noRegistryAction}</p>
         )}
-        <div className="notice">
-          <strong>{copy.permissions}: </strong>
-          {authorization.can_publish ? copy.publishVisible : copy.publishHidden}
-        </div>
-        <div className="task-checklist">
-          <strong>{copy.checklistTitle}</strong>
-          <span>
-            <CheckCircle2 size={15} aria-hidden="true" />
-            {copy.checklistSource}
-          </span>
-          <span>
-            <CheckCircle2 size={15} aria-hidden="true" />
-            {copy.checklistOwner}
-          </span>
-          <span>
-            <AlertTriangle size={15} aria-hidden="true" />
-            {copy.checklistAudit}
-          </span>
-        </div>
-        <p className="muted">{copy.implementationNote}</p>
       </div>
     </aside>
   );
@@ -930,13 +934,7 @@ function statusTone(status: WorkflowTaskStatus) {
 }
 
 function actionsForTask(task: WorkflowTask): RegistryWorkflowTaskAction[] {
-  if (task.kind === "review" || task.kind === "governance") {
-    return ["assign", "request_changes", "approve", "resolve"];
-  }
-  if (task.kind === "draft") {
-    return ["assign", "request_changes", "resolve"];
-  }
-  return ["assign", "resolve"];
+  return task.allowed_actions ?? [];
 }
 
 function taskPriority(value: string | null): FilterValue<WorkflowTaskPriority> {
@@ -977,9 +975,9 @@ function workflowActionLabel(
   return copy.resolve;
 }
 
-async function readWorkflowActionError(response: Response): Promise<string> {
+async function readWorkflowActionError(response: Response, language: AklLanguage = "cs"): Promise<string> {
   const payload = (await response.json().catch(() => null)) as {
-    error?: { message?: string };
+    error?: { code?: string };
   } | null;
-  return payload?.error?.message ?? `HTTP ${response.status}`;
+  return documentReviewError(payload?.error?.code, response.status, language);
 }

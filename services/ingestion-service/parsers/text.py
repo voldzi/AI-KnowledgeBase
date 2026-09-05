@@ -25,17 +25,24 @@ class TextParser(DocumentParser):
         return source.mime_type in TEXT_MIME_TYPES or filename.endswith((".csv", ".json", ".txt", ".md", ".markdown", ".xml"))
 
     def parse(self, source: SourceObject, *, parser_profile: str) -> ParserResult:
-        return parse_text(source.content, parser_name=self.name, parser_profile=parser_profile)
+        is_markdown = source.filename.lower().endswith((".md", ".markdown")) or source.mime_type in {
+            "text/markdown", "text/x-markdown", "application/markdown",
+        }
+        return parse_text(source.content, parser_name=self.name, parser_profile=parser_profile, markdown=is_markdown)
 
 
-def parse_text(content: bytes, *, parser_name: str, parser_profile: str) -> ParserResult:
+def parse_text(content: bytes, *, parser_name: str, parser_profile: str, markdown: bool = False) -> ParserResult:
     try:
         text = content.decode("utf-8")
     except UnicodeDecodeError:
         text = content.decode("latin-1", errors="replace")
 
-    blocks = blocks_from_text(text)
-    pages = max(1, text.count("\f") + 1)
+    if markdown:
+        from parsers.markdown import markdown_blocks
+        blocks = markdown_blocks(text)
+    else:
+        blocks = blocks_from_text(text)
+    pages = 0 if markdown else max(1, text.count("\f") + 1)
     warnings = []
     if not blocks:
         warnings.append(("NO_TEXT_EXTRACTED", "Parser did not extract readable text."))
@@ -44,8 +51,12 @@ def parse_text(content: bytes, *, parser_name: str, parser_profile: str) -> Pars
         parser_name=parser_name,
         blocks=blocks,
         pages_processed=pages,
-        tables_detected=_estimate_tables(text),
+        tables_detected=sum(block.block_type == "table" for block in blocks) if markdown else _estimate_tables(text),
         warnings=warnings,
+        metadata={
+            "page_mapping": "unavailable",
+            "capabilities": ["non_paginated_text", "section_citations"],
+        } if markdown else {},
     )
 
 

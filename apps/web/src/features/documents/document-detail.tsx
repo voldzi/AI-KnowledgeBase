@@ -53,8 +53,10 @@ import {
 import { withAppBasePath } from "@/lib/app-url";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import {
+  documentCitationHref,
   documentDetailHref,
   documentReturnLabel,
+  requestedDocumentPage,
   resolveDocumentReturnNavigation,
 } from "@/lib/navigation/document-navigation";
 import type {
@@ -82,6 +84,9 @@ import type {
 } from "@/lib/types";
 import { documentTypeLabel, formatDate, formatDateTime } from "@/lib/format";
 import { accessAuditToneForSeverity } from "@/features/audit/access-audit-items";
+import { DocumentReviewPanel } from "./document-review-panel";
+import { latestDocumentVersion, selectedDocumentVersion } from "@/lib/documents/review-version";
+import { documentReviewError } from "@/lib/documents/review-errors";
 import {
   documentInformationPolicyDetails,
   versionInformationPolicyDetails,
@@ -94,12 +99,14 @@ interface DocumentDetailProps {
   authorization: AuthorizationHint;
   assignments?: DocumentAssignment[];
   workflowTasks?: RegistryWorkflowTask[];
+  workflowAvailable?: boolean;
   auditEvents?: AuditEvent[];
   publication?: DocumentPublication | null;
   controlledDomain?: string | null;
   controlledPackages?: ControlledDocumentPackage[];
   controlledRules?: ControlledRule[];
   controlledDataAvailable?: boolean;
+  unavailableSections?: string[];
 }
 
 interface AssignmentFormRow {
@@ -298,7 +305,7 @@ const detailCopy = {
     sourceContextPlaceholder: "Vyberte citovaný úsek v panelu Zdroj a AKB otevře přesný kontext.",
     openSourceContext: "Otevřít citaci",
     openingSourceContext: "Otevírám",
-    sourceContextError: "Citaci se nepodařilo otevřít.",
+    sourceContextError: "Citovaný úsek se nepodařilo načíst. Ověřte zdroj v náhledu příslušné verze dokumentu.",
     chunk: "Úsek",
     page: "Strana",
     section: "Sekce",
@@ -570,7 +577,7 @@ const detailCopy = {
     sourceContextPlaceholder: "Select a cited segment in the Source panel and AKB opens the exact context.",
     openSourceContext: "Open citation",
     openingSourceContext: "Opening",
-    sourceContextError: "Citation could not be opened.",
+    sourceContextError: "The cited passage could not be loaded. Check the source in the preview of the referenced document version.",
     chunk: "Segment",
     page: "Page",
     section: "Section",
@@ -773,12 +780,14 @@ export function DocumentDetail({
   authorization,
   assignments = [],
   workflowTasks = [],
+  workflowAvailable = true,
   auditEvents = [],
   publication,
   controlledDomain = null,
   controlledPackages = [],
   controlledRules = [],
   controlledDataAvailable = true,
+  unavailableSections = [],
 }: DocumentDetailProps) {
   const { language } = useLanguage();
   const router = useRouter();
@@ -813,7 +822,8 @@ export function DocumentDetail({
   const [assignmentRows, setAssignmentRows] = useState<AssignmentFormRow[]>(() =>
     assignmentRowsFrom(assignments.length > 0 ? assignments : document.assignments ?? [], document.document_id)
   );
-  const currentVersion = versions.find((version) => version.status === "valid") ?? versions[0];
+  const currentVersion = selectedDocumentVersion(versions, searchParams.get("version"));
+  const workflowVersion = latestDocumentVersion(versions);
   const versionPolicy = versionInformationPolicyDetails(currentVersion, publication);
   const documentPolicy = documentInformationPolicyDetails(document);
   const [activeTab, setActiveTab] = useState<DetailTab>(() => tabFromSearchParams(searchParams.get("tab")) ?? "overview");
@@ -847,6 +857,7 @@ export function DocumentDetail({
   const [sourceContext, setSourceContext] = useState<SourceContext | null>(null);
   const [sourceContextFeedback, setSourceContextFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [openingSourceChunkId, setOpeningSourceChunkId] = useState<string | null>(null);
+  const sourceContextRequest = useRef<AbortController | null>(null);
   const [sourceOpen, setSourceOpen] = useState<DocumentSourceOpenDecision | null>(null);
   const [sourceOpenAction, setSourceOpenAction] = useState(false);
   const [sourceOpenFeedback, setSourceOpenFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
@@ -855,6 +866,13 @@ export function DocumentDetail({
   const [insightsFeedback, setInsightsFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [controlledBusy, setControlledBusy] = useState<string | null>(null);
   const [controlledFeedback, setControlledFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
+  useEffect(() => {
+    setSourceContext(null);
+    setSourceContextFeedback(null);
+    setOpeningSourceChunkId(null);
+    loadedRequestedChunkRef.current = null;
+    return () => sourceContextRequest.current?.abort();
+  }, [document.document_id, currentVersion?.document_version_id]);
   const priorityActions = useMemo(
     () => priorityActionsFor(document, currentVersion, relatedJobs, copy),
     [copy, currentVersion, document, relatedJobs]
@@ -867,9 +885,9 @@ export function DocumentDetail({
       : null;
   const canPublishCurrentVersion = Boolean(
     authorization.can_publish &&
-      currentVersion &&
-      document.status === "approved" &&
-      !["valid", "superseded", "archived", "cancelled"].includes(currentVersion.status)
+      workflowVersion?.status === "approved" &&
+      ["approved", "valid"].includes(document.status) &&
+      workflowAvailable
   );
   const canArchiveCurrentVersion = Boolean(authorization.can_publish && currentVersion?.status === "valid");
   const ownerLabel = documentOwnerLabel(
@@ -948,7 +966,7 @@ export function DocumentDetail({
             : "Changes, completeness, compliance and conflicts.",
         icon: ClipboardCheck,
         state:
-          governanceResult || ["approved", "valid"].includes(document.status)
+          governanceResult || ["approved", "valid"].includes(workflowVersion?.status ?? "")
             ? "done"
             : "pending",
       },
@@ -960,7 +978,7 @@ export function DocumentDetail({
             ? "Odpovědnosti, rozhodnutí a platné vydání."
             : "Responsibilities, decision and valid release.",
         icon: ShieldCheck,
-        state: document.status === "valid" ? "done" : "pending",
+        state: workflowVersion?.status === "valid" ? "done" : "pending",
       },
     ],
     [
@@ -975,6 +993,7 @@ export function DocumentDetail({
       processingComplete,
       proposedRuleCount,
       verifiedRuleCount,
+      workflowVersion,
     ],
   );
   const completedGuidedSteps = guidedSteps.filter((step) => step.state === "done").length;
@@ -998,18 +1017,20 @@ export function DocumentDetail({
   }, [searchParams]);
 
   async function submitVersionAction(action: "publish" | "archive") {
-    if (!currentVersion || workflowAction) {
+    const actionVersion = action === "publish" ? workflowVersion : currentVersion;
+    if (!actionVersion || workflowAction) {
       return;
     }
     setWorkflowAction(action);
     setWorkflowFeedback(null);
     try {
       const response = await fetch(
-        withAppBasePath(`/api/documents/${encodeURIComponent(document.document_id)}/versions/${encodeURIComponent(currentVersion.document_version_id)}/${action}`),
+        withAppBasePath(`/api/documents/${encodeURIComponent(document.document_id)}/versions/${encodeURIComponent(actionVersion.document_version_id)}/${action}`),
         { method: "POST" }
       );
       if (!response.ok) {
-        throw new Error(await readDocumentWorkflowError(response));
+        const body = await response.json().catch(() => null) as { error?: { code?: string } } | null;
+        throw new Error(documentReviewError(body?.error?.code, response.status, language));
       }
       setWorkflowFeedback({ tone: "success", message: copy.workflowActionSaved });
       router.refresh();
@@ -1142,27 +1163,35 @@ export function DocumentDetail({
   }
 
   async function openDocumentChunkContext(chunkId: string) {
-    if (openingSourceChunkId) {
-      return;
-    }
-
+    sourceContextRequest.current?.abort();
+    const controller = new AbortController();
+    sourceContextRequest.current = controller;
     setOpeningSourceChunkId(chunkId);
+    setSourceContext(null);
     setSourceContextFeedback(null);
     try {
       const response = await fetch(
         withAppBasePath(`/api/documents/${encodeURIComponent(document.document_id)}/source-context?chunk_id=${encodeURIComponent(chunkId)}`),
-        { method: "GET" }
+        { method: "GET", cache: "no-store", signal: controller.signal }
       );
       if (!response.ok) {
         throw new Error(await readDocumentWorkflowError(response));
       }
       const payload = (await response.json()) as { source_context: SourceContext };
+      if (controller.signal.aborted) return;
+      if (payload.source_context.document_id !== document.document_id
+        || payload.source_context.document_version_id !== currentVersion?.document_version_id
+        || payload.source_context.chunk_id !== chunkId) {
+        throw new Error("Citation version mismatch");
+      }
       setSourceContext(payload.source_context);
-    } catch (error) {
-      const suffix = error instanceof Error && error.message ? ` ${error.message}` : "";
-      setSourceContextFeedback({ tone: "error", message: `${copy.sourceContextError}${suffix}` });
+    } catch {
+      if (controller.signal.aborted) return;
+      setSourceContextFeedback({ tone: "error", message: copy.sourceContextError });
     } finally {
-      setOpeningSourceChunkId(null);
+      if (sourceContextRequest.current === controller) {
+        setOpeningSourceChunkId(null);
+      }
     }
   }
 
@@ -1311,6 +1340,9 @@ export function DocumentDetail({
         <ArrowLeft size={16} aria-hidden="true" />
         {documentReturnLabel(returnNavigation.origin, language)}
       </StratosButtonLink>
+      {unavailableSections.length > 0 ? <div className="notice notice--warning" role="status">
+        {language === "cs" ? "Část údajů o zpracování, schvalování nebo auditu nyní není dostupná. Chybějící údaje nejsou potvrzením dokončené kontroly." : "Some processing, review or audit information is unavailable. Missing information does not confirm a completed check."}
+      </div> : null}
 
       <section className="panel">
         <div className="panel__body grid grid--two">
@@ -1599,7 +1631,7 @@ export function DocumentDetail({
                   {sourceContextFeedback.message}
                 </p>
               ) : null}
-              <DocumentNativePreview copy={copy} sourceContext={sourceContext} sourceOpen={sourceOpen} />
+              <DocumentNativePreview copy={copy} sourceContext={sourceContext} sourceOpen={sourceOpen} requestedPage={requestedDocumentPage(searchParams.get("page"))} />
             </div>
           </div>
           <aside className="panel">
@@ -1812,6 +1844,12 @@ export function DocumentDetail({
 
       {activeTab === "workflow" ? (
         <div className="stack">
+          <DocumentReviewPanel
+            document={document} version={workflowVersion}
+            assignments={assignments.length > 0 ? assignments : document.assignments ?? []}
+            tasks={workflowTasks} authorization={authorization}
+            unavailable={!workflowAvailable}
+          />
           <section>
             <div className="panel">
               <div className="panel__header">
@@ -1835,14 +1873,14 @@ export function DocumentDetail({
                   {
                     label: copy.workflowReview,
                     detail: copy.workflowReviewDetail,
-                    done: ["review", "approved", "valid"].includes(document.status)
+                    done: ["review", "approved", "valid"].includes(workflowVersion?.status ?? "")
                   },
                   {
                     label: copy.workflowApproved,
                     detail: copy.workflowApprovedDetail,
-                    done: ["approved", "valid"].includes(document.status)
+                    done: ["approved", "valid"].includes(workflowVersion?.status ?? "")
                   },
-                  { label: copy.workflowPublish, detail: copy.workflowPublishDetail, done: document.status === "valid" },
+                  { label: copy.workflowPublish, detail: copy.workflowPublishDetail, done: workflowVersion?.status === "valid" },
                   {
                     label: copy.workflowArchive,
                     detail: copy.workflowArchiveDetail,
@@ -2031,7 +2069,9 @@ export function DocumentDetail({
                 <h2>{copy.publishGateTitle}</h2>
                 <p>
                   {authorization.can_publish
-                    ? document.status === "valid"
+                    ? canPublishCurrentVersion
+                      ? copy.publishGateReady
+                      : document.status === "valid"
                       ? copy.publishGatePublished
                       : document.status === "archived"
                       ? copy.publishGateArchived
@@ -2054,7 +2094,7 @@ export function DocumentDetail({
                       void submitVersionAction("publish");
                     }}
                   >
-                    {workflowAction === "publish" ? copy.publishing : copy.publishApproved}
+                    {workflowAction === "publish" ? copy.publishing : `${copy.publishApproved}${workflowVersion ? ` ${workflowVersion.version_label}` : ""}`}
                   </button>
                   <button
                     className="button"
@@ -2559,12 +2599,7 @@ function ControlledRuleCard({
   ]
     .filter(Boolean)
     .join(" · ");
-  const citationHref = documentDetailHref({
-    documentId: citation.document_id,
-    params: {
-      tab: "viewer",
-      chunk_id: citation.chunk_id,
-    },
+  const citationHref = documentCitationHref(citation, {
     returnTo,
     origin: "document",
   });
@@ -3113,11 +3148,13 @@ function GovernanceList({ title, items }: { title: string; items: string[] }) {
 function DocumentNativePreview({
   copy,
   sourceContext,
-  sourceOpen
+  sourceOpen,
+  requestedPage,
 }: {
   copy: Record<string, string>;
   sourceContext: SourceContext | null;
   sourceOpen: DocumentSourceOpenDecision | null;
+  requestedPage?: number;
 }) {
   const [preview, setPreview] = useState<{ status: "idle" | "loading" | "ready" | "error"; text: string; truncated: boolean }>({
     status: "idle",
@@ -3247,7 +3284,7 @@ function DocumentNativePreview({
               textHighlight: copy.nativePreviewPdfTextHighlight,
               bbox: copy.nativePreviewPdfBbox
             }}
-            pageNumber={sourceContext?.location.page_number ?? 1}
+            pageNumber={sourceContext?.location.page_number ?? requestedPage ?? 1}
             sourceUrl={withAppBasePath(previewUrl)}
           />
           <PdfCitationLocator copy={copy} sourceContext={sourceContext} />
@@ -3265,7 +3302,7 @@ function DocumentNativePreview({
             textHighlight: copy.nativePreviewPdfTextHighlight,
             bbox: copy.nativePreviewPdfBbox
           }}
-          pageNumber={sourceContext?.location.page_number ?? 1}
+          pageNumber={sourceContext?.location.page_number ?? requestedPage ?? 1}
           sourceUrl={withAppBasePath(sourceRenditionUrl)}
         />
       ) : null}
@@ -4240,9 +4277,7 @@ function governanceChangeTone(impact: string): GovernanceIssueTone {
 }
 
 function governanceCitationHref(citation: GovernanceCitation, returnTo: string): string {
-  return documentDetailHref({
-    documentId: citation.document_id,
-    params: { tab: "viewer", chunk_id: citation.chunk_id },
+  return documentCitationHref(citation, {
     returnTo,
     origin: "document",
   });

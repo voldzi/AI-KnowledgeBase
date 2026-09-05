@@ -31,7 +31,7 @@ def test_default_file_limit_covers_trusted_budget_upload_boundary(tmp_path) -> N
         }
     )
 
-    assert settings.max_file_bytes == 128 * 1024 * 1024
+    assert settings.max_file_bytes == 100 * 1024 * 1024
 
 
 def test_ready_returns_503_when_registry_service_identity_is_unavailable(
@@ -139,15 +139,6 @@ def test_registry_service_secret_file_and_ingestion_client_boundary(tmp_path) ->
 
     settings = load_settings(base)
     assert settings.registry_service_client_secret == "registry-secret"
-
-    with pytest.raises(ConfigError, match="not aiip-service"):
-        load_settings(
-            {
-                **base,
-                "AKL_REGISTRY_SERVICE_CLIENT_ID": "aiip-service",
-            }
-        )
-
 
 def test_production_registry_service_identity_must_match_ingestion_identity(tmp_path) -> None:
     secret_file = tmp_path / "svc-ingestion-client-secret"

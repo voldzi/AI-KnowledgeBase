@@ -51,6 +51,7 @@ def configure_telemetry(app: FastAPI, *, service_name: str, service_version: str
         from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
+        from app.safe_telemetry import SafeSpanExporter
     except ImportError as exc:
         logger.warning("otel_instrumentation_unavailable reason=%s", exc.__class__.__name__)
         return
@@ -60,7 +61,7 @@ def configure_telemetry(app: FastAPI, *, service_name: str, service_version: str
             _resource_attributes(service_name, service_version)
         )
         provider = TracerProvider(resource=resource)
-        provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+        provider.add_span_processor(BatchSpanProcessor(SafeSpanExporter(OTLPSpanExporter())))
         try:
             trace.set_tracer_provider(provider)
         except Exception as exc:  # pragma: no cover - defensive for reused test processes
@@ -82,4 +83,4 @@ def configure_telemetry(app: FastAPI, *, service_name: str, service_version: str
         HTTPXClientInstrumentor().instrument()
         _configured = True
 
-    FastAPIInstrumentor.instrument_app(app, excluded_urls="/health,/ready")
+    FastAPIInstrumentor.instrument_app(app, excluded_urls="/health,/ready,/api/v1/internal/web-sessions")

@@ -92,89 +92,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/integrations/aiip-upload/external-documents/upsert:
-    post:
-      summary: Upsert Aiip External Document
-      operationId: upsert_aiip_external_document_api_v1_integrations_aiip_upload_external_documents_upsert_post
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AiipExternalDocumentUpsertRequest'
-        required: true
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AiipExternalDocumentUpsertResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/integrations/aiip-upload/documents/{document_id}/versions:
-    put:
-      summary: Upsert Aiip Document Version
-      operationId: upsert_aiip_document_version_api_v1_integrations_aiip_upload_documents__document_id__versions_put
-      parameters:
-      - name: document_id
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Document Id
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AiipDocumentVersionCreate'
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AiipDocumentVersionCreateResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v1/integrations/aiip-upload/external-documents/{external_document_id}/current:
-    patch:
-      summary: Update Aiip External Document Current
-      operationId: update_aiip_external_document_current_api_v1_integrations_aiip_upload_external_documents__external_document_id__current_patch
-      parameters:
-      - name: external_document_id
-        in: path
-        required: true
-        schema:
-          type: string
-          title: External Document Id
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AiipExternalDocumentCurrentUpdateRequest'
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AiipExternalDocumentCurrentUpdateResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
   /api/v1/integrations/stratos-budget-upload/external-documents/upsert:
     post:
       summary: Upsert Stratos Budget External Document
@@ -541,18 +458,6 @@ paths:
           type: boolean
           default: false
           title: Include Inactive
-      - name: consumer_view
-        in: query
-        required: false
-        description: >-
-          Returns the user-authorized decision view used by AKB chat: verified
-          profile revision 3 rules registered in the closed normative catalog.
-          Blocking catalog, citation or precedence warnings produce no rules.
-          It cannot be combined with include_inactive=true.
-        schema:
-          type: boolean
-          default: false
-          title: Consumer View
       responses:
         '200':
           description: Successful Response
@@ -647,8 +552,10 @@ paths:
         required: false
         schema:
           type: boolean
+          description: False requires document update or version publication permission; ordinary readers receive only verified rules.
           default: true
           title: Approved Only
+        description: False requires document update or version publication permission; ordinary readers receive only verified rules.
       - name: include_inactive
         in: query
         required: false
@@ -656,6 +563,13 @@ paths:
           type: boolean
           default: false
           title: Include Inactive
+      - name: consumer_view
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+          title: Consumer View
       responses:
         '200':
           description: Successful Response
@@ -663,6 +577,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ControlledRuleListResponse'
+        '403':
+          description: The subject cannot review unverified rules or inactive packages
         '422':
           description: Validation Error
           content:
@@ -1939,6 +1855,7 @@ paths:
   /api/v1/workflow/tasks:
     get:
       summary: List Workflow Tasks
+      description: Return an authorized page and exact authorized total; candidates are processed in bounded batches.
       operationId: list_workflow_tasks_api_v1_workflow_tasks_get
       parameters:
       - name: status
@@ -1981,6 +1898,13 @@ paths:
           - type: string
           - type: 'null'
           title: Owner Id
+      - name: assigned_to_me
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+          title: Assigned To Me
       - name: include_resolved
         in: query
         required: false
@@ -1988,6 +1912,15 @@ paths:
           type: boolean
           default: false
           title: Include Resolved
+      - name: q
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Q
       - name: limit
         in: query
         required: false
@@ -2868,6 +2801,545 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/internal/web-sessions:
+    post:
+      tags:
+      - Web sessions
+      summary: Create Web Session
+      operationId: create_web_session_api_v1_internal_web_sessions_post
+      parameters:
+      - name: X-AKB-Session-Timestamp
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Akb-Session-Timestamp
+      - name: X-AKB-Session-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Akb-Session-Signature
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebSessionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                session_id_hash:
+                  pattern: ^[0-9a-f]{64}$
+                  title: Session Id Hash
+                  type: string
+                subject_id:
+                  maxLength: 160
+                  minLength: 1
+                  title: Subject Id
+                  type: string
+                issuer:
+                  maxLength: 512
+                  minLength: 1
+                  title: Issuer
+                  type: string
+                client_id:
+                  maxLength: 160
+                  minLength: 1
+                  title: Client Id
+                  type: string
+                keycloak_session_id:
+                  anyOf:
+                  - maxLength: 160
+                    type: string
+                  - type: 'null'
+                  title: Keycloak Session Id
+                encrypted_payload:
+                  maxLength: 65536
+                  minLength: 40
+                  title: Encrypted Payload
+                  type: string
+                persistent:
+                  default: false
+                  title: Persistent
+                  type: boolean
+                identity_validated_at:
+                  format: date-time
+                  title: Identity Validated At
+                  type: string
+                last_seen_at:
+                  format: date-time
+                  title: Last Seen At
+                  type: string
+                idle_expires_at:
+                  format: date-time
+                  title: Idle Expires At
+                  type: string
+                absolute_expires_at:
+                  format: date-time
+                  title: Absolute Expires At
+                  type: string
+              required:
+              - session_id_hash
+              - subject_id
+              - issuer
+              - client_id
+              - encrypted_payload
+              - identity_validated_at
+              - last_seen_at
+              - idle_expires_at
+              - absolute_expires_at
+              title: WebSessionWrite
+              type: object
+  /api/v1/internal/web-sessions/{session_id_hash}:
+    get:
+      tags:
+      - Web sessions
+      summary: Get Web Session
+      operationId: get_web_session_api_v1_internal_web_sessions__session_id_hash__get
+      parameters:
+      - name: session_id_hash
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Session Id Hash
+      - name: X-AKB-Session-Timestamp
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Akb-Session-Timestamp
+      - name: X-AKB-Session-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Akb-Session-Signature
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebSessionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      tags:
+      - Web sessions
+      summary: Update Web Session
+      operationId: update_web_session_api_v1_internal_web_sessions__session_id_hash__patch
+      parameters:
+      - name: session_id_hash
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Session Id Hash
+      - name: X-AKB-Session-Timestamp
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Akb-Session-Timestamp
+      - name: X-AKB-Session-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Akb-Session-Signature
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebSessionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+        '409':
+          description: Expired, revoked or concurrently changed session; token and
+            policy rotation require expected_updated_at.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              additionalProperties: false
+              properties:
+                expected_updated_at:
+                  anyOf:
+                  - format: date-time
+                    type: string
+                  - type: 'null'
+                  title: Expected Updated At
+                encrypted_payload:
+                  anyOf:
+                  - maxLength: 65536
+                    minLength: 40
+                    type: string
+                  - type: 'null'
+                  title: Encrypted Payload
+                identity_validated_at:
+                  anyOf:
+                  - format: date-time
+                    type: string
+                  - type: 'null'
+                  title: Identity Validated At
+                last_seen_at:
+                  anyOf:
+                  - format: date-time
+                    type: string
+                  - type: 'null'
+                  title: Last Seen At
+                idle_expires_at:
+                  anyOf:
+                  - format: date-time
+                    type: string
+                  - type: 'null'
+                  title: Idle Expires At
+                absolute_expires_at:
+                  anyOf:
+                  - format: date-time
+                    type: string
+                  - type: 'null'
+                  title: Absolute Expires At
+                persistent:
+                  anyOf:
+                  - type: boolean
+                  - type: 'null'
+                  title: Persistent
+                revoked_reason:
+                  anyOf:
+                  - maxLength: 80
+                    type: string
+                  - type: 'null'
+                  title: Revoked Reason
+              title: WebSessionPatch
+              type: object
+    delete:
+      tags:
+      - Web sessions
+      summary: Revoke Web Session
+      operationId: revoke_web_session_api_v1_internal_web_sessions__session_id_hash__delete
+      parameters:
+      - name: session_id_hash
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Session Id Hash
+      - name: X-AKB-Session-Timestamp
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Akb-Session-Timestamp
+      - name: X-AKB-Session-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Akb-Session-Signature
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/internal/web-sessions/subjects/{subject_id}/sessions:
+    get:
+      tags:
+      - Web sessions
+      summary: List Subject Sessions
+      operationId: list_subject_sessions_api_v1_internal_web_sessions_subjects__subject_id__sessions_get
+      parameters:
+      - name: subject_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Subject Id
+      - name: X-AKB-Session-Timestamp
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Akb-Session-Timestamp
+      - name: X-AKB-Session-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Akb-Session-Signature
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WebSessionResponse'
+                title: Response List Subject Sessions Api V1 Internal Web Sessions
+                  Subjects  Subject Id  Sessions Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/internal/web-sessions/subjects/{subject_id}/all:
+    delete:
+      tags:
+      - Web sessions
+      summary: Revoke Subject Sessions
+      operationId: revoke_subject_sessions_api_v1_internal_web_sessions_subjects__subject_id__all_delete
+      parameters:
+      - name: subject_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Subject Id
+      - name: X-AKB-Session-Timestamp
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Akb-Session-Timestamp
+      - name: X-AKB-Session-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Akb-Session-Signature
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/internal/web-sessions/subjects/{subject_id}/sessions/{session_id}:
+    delete:
+      tags:
+      - Web sessions
+      summary: Revoke Subject Session
+      operationId: revoke_subject_session_api_v1_internal_web_sessions_subjects__subject_id__sessions__session_id__delete
+      parameters:
+      - name: subject_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Subject Id
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Session Id
+      - name: X-AKB-Session-Timestamp
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Akb-Session-Timestamp
+      - name: X-AKB-Session-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Akb-Session-Signature
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/documents/{document_id}/versions/{version_id}/submit-review:
+    post:
+      summary: Submit Document Review
+      operationId: submit_document_review_api_v1_documents__document_id__versions__version_id__submit_review_post
+      parameters:
+      - name: document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Document Id
+      - name: version_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Version Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DocumentReviewRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowTaskResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/workflow/documents:
+    get:
+      summary: List Personal Workflow Documents
+      operationId: list_personal_workflow_documents_api_v1_workflow_documents_get
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 200
+          minimum: 1
+          default: 100
+          title: Limit
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
+      - name: q
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            maxLength: 200
+          - type: 'null'
+          title: Q
+      - name: assignment
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - enum:
+            - managed
+            - approver
+            type: string
+          - type: 'null'
+          title: Assignment
+      - name: version_status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - $ref: '#/components/schemas/DocumentStatus'
+          - type: 'null'
+          title: Version Status
+      - name: deadline
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - enum:
+            - attention
+            - expired
+            - review
+            - missing
+            type: string
+          - type: 'null'
+          title: Deadline
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowDocumentListResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/internal/director-copilot/audit:
+    post:
+      tags:
+      - Internal Director audit
+      summary: Write Director Audit
+      operationId: write_director_audit_api_v1_internal_director_copilot_audit_post
+      parameters:
+      - name: X-AKB-Session-Timestamp
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Akb-Session-Timestamp
+      - name: X-AKB-Session-Signature
+        in: header
+        required: true
+        schema:
+          type: string
+          title: X-Akb-Session-Signature
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DirectorAuditWrite'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+                title: Response Write Director Audit Api V1 Internal Director Copilot
+                  Audit Post
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
     AccessPolicyCreate:
@@ -2956,677 +3428,6 @@ components:
       - audit.write
       - admin.manage
       title: Action
-    AiipDocumentFileCreate:
-      properties:
-        filename:
-          type: string
-          maxLength: 300
-          minLength: 1
-          title: Filename
-        mime_type:
-          type: string
-          maxLength: 160
-          minLength: 1
-          title: Mime Type
-        size_bytes:
-          type: integer
-          minimum: 1.0
-          title: Size Bytes
-        sha256:
-          type: string
-          pattern: ^sha256:[a-f0-9]{64}$
-          title: Sha256
-        intake_receipt:
-          anyOf:
-          - type: string
-            maxLength: 16384
-            minLength: 32
-          - type: 'null'
-          title: Intake Receipt
-      additionalProperties: false
-      type: object
-      required:
-      - filename
-      - mime_type
-      - size_bytes
-      - sha256
-      title: AiipDocumentFileCreate
-    AiipDocumentVersionCreate:
-      properties:
-        version_label:
-          type: string
-          maxLength: 80
-          minLength: 1
-          title: Version Label
-        valid_from:
-          anyOf:
-          - type: string
-            format: date
-          - type: 'null'
-          title: Valid From
-        valid_to:
-          anyOf:
-          - type: string
-            format: date
-          - type: 'null'
-          title: Valid To
-        source_file_uri:
-          type: string
-          maxLength: 1024
-          minLength: 1
-          title: Source File Uri
-        source_location:
-          $ref: '#/components/schemas/AiipSourceLocation'
-        file_hash:
-          type: string
-          pattern: ^sha256:[a-f0-9]{64}$
-          title: File Hash
-        change_summary:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Change Summary
-        information_policy:
-          $ref: '#/components/schemas/InformationPolicyBinding'
-        integration_envelope:
-          $ref: '#/components/schemas/AiipUploadIntegrationEnvelope'
-        governance_scope:
-          $ref: '#/components/schemas/GovernanceScope'
-        file:
-          $ref: '#/components/schemas/AiipDocumentFileCreate'
-      additionalProperties: false
-      type: object
-      required:
-      - version_label
-      - source_file_uri
-      - source_location
-      - file_hash
-      - information_policy
-      - integration_envelope
-      - governance_scope
-      - file
-      title: AiipDocumentVersionCreate
-    AiipDocumentVersionCreateResponse:
-      properties:
-        version:
-          $ref: '#/components/schemas/DocumentVersionResponse'
-        external_document:
-          $ref: '#/components/schemas/ExternalDocumentResponse'
-        created:
-          type: boolean
-          title: Created
-        governance_confirmation:
-          $ref: '#/components/schemas/AiipGovernanceConfirmation'
-      additionalProperties: false
-      type: object
-      required:
-      - version
-      - external_document
-      - created
-      - governance_confirmation
-      title: AiipDocumentVersionCreateResponse
-    AiipExternalDocumentCurrentUpdateRequest:
-      properties:
-        document_id:
-          type: string
-          maxLength: 64
-          minLength: 1
-          title: Document Id
-        expected_current_document_version_id:
-          anyOf:
-          - type: string
-            maxLength: 64
-            minLength: 1
-          - type: 'null'
-          title: Expected Current Document Version Id
-        document_version_id:
-          type: string
-          maxLength: 64
-          minLength: 1
-          title: Document Version Id
-        file_id:
-          type: string
-          maxLength: 64
-          minLength: 1
-          title: File Id
-        ingestion_job_id:
-          anyOf:
-          - type: string
-            maxLength: 128
-            minLength: 1
-          - type: 'null'
-          title: Ingestion Job Id
-        ingestion_status:
-          type: string
-          enum:
-          - REGISTERED
-          - VERSION_CREATED
-          - UPLOADING
-          - INGESTING
-          - INDEXED
-          - FAILED
-          - PERMISSION_DENIED
-          - STALE
-          title: Ingestion Status
-        information_policy:
-          $ref: '#/components/schemas/InformationPolicyBinding'
-        integration_envelope:
-          $ref: '#/components/schemas/AiipUploadIntegrationEnvelope'
-        governance_scope:
-          $ref: '#/components/schemas/GovernanceScope'
-      additionalProperties: false
-      type: object
-      required:
-      - document_id
-      - document_version_id
-      - file_id
-      - ingestion_status
-      - information_policy
-      - integration_envelope
-      - governance_scope
-      title: AiipExternalDocumentCurrentUpdateRequest
-    AiipExternalDocumentCurrentUpdateResponse:
-      properties:
-        external_document:
-          $ref: '#/components/schemas/ExternalDocumentResponse'
-        updated:
-          type: boolean
-          title: Updated
-        governance_confirmation:
-          $ref: '#/components/schemas/AiipGovernanceConfirmation'
-      additionalProperties: false
-      type: object
-      required:
-      - external_document
-      - updated
-      - governance_confirmation
-      title: AiipExternalDocumentCurrentUpdateResponse
-    AiipExternalDocumentUpsertRequest:
-      properties:
-        tenant_id:
-          type: string
-          const: org_stratos
-          title: Tenant Id
-        external_system:
-          type: string
-          const: STRATOS_AIIP
-          title: External System
-        external_ref:
-          type: string
-          maxLength: 240
-          minLength: 1
-          title: External Ref
-        entity_type:
-          type: string
-          enum:
-          - InnovationRequest
-          - InnovationRequestImport
-          title: Entity Type
-        entity_id:
-          type: string
-          maxLength: 128
-          minLength: 1
-          title: Entity Id
-        document_type:
-          type: string
-          enum:
-          - ai_intake
-          - ai_requirement_card
-          - ai_security_appendix
-          - ai_governance_evidence
-          - knowledge_base_article
-          - project_documentation
-          - attachment
-          - other
-          title: Document Type
-        title:
-          type: string
-          maxLength: 300
-          minLength: 1
-          title: Title
-        classification:
-          $ref: '#/components/schemas/Classification'
-        information_policy:
-          $ref: '#/components/schemas/InformationPolicyBinding'
-        integration_envelope:
-          $ref: '#/components/schemas/AiipUploadIntegrationEnvelope'
-        governance_scope:
-          $ref: '#/components/schemas/GovernanceScope'
-        tags:
-          items:
-            type: string
-          type: array
-          title: Tags
-        source_location:
-          $ref: '#/components/schemas/AiipSourceLocation'
-        citation_base_url:
-          anyOf:
-          - type: string
-            maxLength: 512
-          - type: 'null'
-          title: Citation Base Url
-        preview_url:
-          anyOf:
-          - type: string
-            maxLength: 2048
-          - type: 'null'
-          title: Preview Url
-      additionalProperties: false
-      type: object
-      required:
-      - tenant_id
-      - external_system
-      - external_ref
-      - entity_type
-      - entity_id
-      - document_type
-      - title
-      - classification
-      - information_policy
-      - integration_envelope
-      - governance_scope
-      - source_location
-      title: AiipExternalDocumentUpsertRequest
-      description: Narrow server-to-server contract for the AIIP document upload preflight.
-    AiipExternalDocumentUpsertResponse:
-      properties:
-        external_document:
-          $ref: '#/components/schemas/ExternalDocumentRefResponse'
-        document:
-          $ref: '#/components/schemas/DocumentResponse'
-        created:
-          type: boolean
-          title: Created
-          default: false
-        governance_confirmation:
-          $ref: '#/components/schemas/AiipGovernanceConfirmation'
-      additionalProperties: false
-      type: object
-      required:
-      - external_document
-      - document
-      - governance_confirmation
-      title: AiipExternalDocumentUpsertResponse
-    AiipGovernanceConfirmation:
-      properties:
-        parent_source_resource:
-          $ref: '#/components/schemas/AiipGovernanceParentSourceResource'
-        governed_resource:
-          $ref: '#/components/schemas/AiipGovernedResourceConfirmation'
-        document_policy_binding_id:
-          type: string
-          minLength: 1
-          title: Document Policy Binding Id
-        document_policy_version:
-          type: string
-          const: information-policy-2.0.0
-          title: Document Policy Version
-        document_policy_hash:
-          type: string
-          pattern: ^sha256:[a-f0-9]{64}$
-          title: Document Policy Hash
-        actor_subject_id:
-          type: string
-          minLength: 1
-          title: Actor Subject Id
-        correlation_id:
-          type: string
-          minLength: 8
-          title: Correlation Id
-        idempotency_key:
-          type: string
-          minLength: 8
-          title: Idempotency Key
-      additionalProperties: false
-      type: object
-      required:
-      - parent_source_resource
-      - governed_resource
-      - document_policy_binding_id
-      - document_policy_version
-      - document_policy_hash
-      - actor_subject_id
-      - correlation_id
-      - idempotency_key
-      title: AiipGovernanceConfirmation
-    AiipGovernanceEffectivePolicy:
-      properties:
-        policy_binding_id:
-          type: string
-          minLength: 1
-          title: Policy Binding Id
-        policy_version:
-          type: string
-          const: information-policy-2.0.0
-          title: Policy Version
-        policy_hash:
-          type: string
-          pattern: ^sha256:[a-f0-9]{64}$
-          title: Policy Hash
-        originator_id:
-          anyOf:
-          - type: string
-          - type: 'null'
-          title: Originator Id
-        issued_at:
-          anyOf:
-          - type: string
-            format: date-time
-          - type: 'null'
-          title: Issued At
-        review_at:
-          anyOf:
-          - type: string
-            format: date-time
-          - type: 'null'
-          title: Review At
-      additionalProperties: false
-      type: object
-      required:
-      - policy_binding_id
-      - policy_version
-      - policy_hash
-      - originator_id
-      - issued_at
-      - review_at
-      title: AiipGovernanceEffectivePolicy
-    AiipGovernanceParentSourceResource:
-      properties:
-        governed_resource_id:
-          type: string
-          minLength: 1
-          title: Governed Resource Id
-        application:
-          type: string
-          const: AIIP
-          title: Application
-        resource_type:
-          type: string
-          const: idea
-          title: Resource Type
-        resource_id:
-          type: string
-          minLength: 1
-          title: Resource Id
-        source_version:
-          type: string
-          minLength: 1
-          title: Source Version
-        scope:
-          additionalProperties: true
-          type: object
-      additionalProperties: false
-      type: object
-      required:
-      - governed_resource_id
-      - application
-      - resource_type
-      - resource_id
-      - source_version
-      - scope
-      title: AiipGovernanceParentSourceResource
-    AiipGovernedResourceConfirmation:
-      properties:
-        id:
-          type: string
-          minLength: 1
-          title: Id
-        application:
-          type: string
-          const: AKB
-          title: Application
-        resource_type:
-          type: string
-          enum:
-          - document
-          - document-version
-          title: Resource Type
-        resource_id:
-          type: string
-          minLength: 1
-          title: Resource Id
-        source_version:
-          type: string
-          minLength: 1
-          title: Source Version
-        parent_id:
-          type: string
-          minLength: 1
-          title: Parent Id
-        scope:
-          additionalProperties: true
-          type: object
-        policy_assignment:
-          type: string
-          const: INHERITED
-          title: Policy Assignment
-        explicit_policy_binding_id:
-          type: 'null'
-          title: Explicit Policy Binding Id
-        inherited_from_resource_id:
-          type: string
-          minLength: 1
-          title: Inherited From Resource Id
-        effective_policy:
-          $ref: '#/components/schemas/AiipGovernanceEffectivePolicy'
-        registered_by_subject_id:
-          type: string
-          minLength: 1
-          title: Registered By Subject Id
-        confirmed_by_subject_id:
-          type: string
-          minLength: 1
-          title: Confirmed By Subject Id
-      additionalProperties: false
-      type: object
-      required:
-      - id
-      - application
-      - resource_type
-      - resource_id
-      - source_version
-      - parent_id
-      - scope
-      - policy_assignment
-      - explicit_policy_binding_id
-      - inherited_from_resource_id
-      - effective_policy
-      - registered_by_subject_id
-      - confirmed_by_subject_id
-      title: AiipGovernedResourceConfirmation
-    AiipSourceLocation:
-      properties:
-        kind:
-          $ref: '#/components/schemas/SourceLocationKind'
-        uri:
-          anyOf:
-          - type: string
-            maxLength: 2048
-          - type: 'null'
-          title: Uri
-        file_name:
-          anyOf:
-          - type: string
-            maxLength: 300
-          - type: 'null'
-          title: File Name
-        content_type:
-          anyOf:
-          - type: string
-            maxLength: 160
-          - type: 'null'
-          title: Content Type
-        sha256:
-          type: string
-          pattern: ^sha256:[a-f0-9]{64}$
-          title: Sha256
-        storage_ref:
-          anyOf:
-          - type: string
-            maxLength: 1024
-          - type: 'null'
-          title: Storage Ref
-        captured_at:
-          anyOf:
-          - type: string
-            format: date-time
-          - type: 'null'
-          title: Captured At
-        display_url:
-          anyOf:
-          - type: string
-            maxLength: 2048
-          - type: 'null'
-          title: Display Url
-        repository:
-          anyOf:
-          - type: string
-            maxLength: 200
-          - type: 'null'
-          title: Repository
-        path:
-          type: string
-          maxLength: 1024
-          minLength: 1
-          title: Path
-        version:
-          anyOf:
-          - type: string
-            maxLength: 160
-          - type: 'null'
-          title: Version
-        stratos_budget_upload:
-          anyOf:
-          - additionalProperties: true
-            type: object
-          - type: 'null'
-          title: Stratos Budget Upload
-      additionalProperties: false
-      type: object
-      required:
-      - kind
-      - sha256
-      - path
-      title: AiipSourceLocation
-    AiipUploadActor:
-      properties:
-        type:
-          type: string
-          const: person
-          title: Type
-        subjectId:
-          type: string
-          minLength: 1
-          title: Subjectid
-      additionalProperties: false
-      type: object
-      required:
-      - type
-      - subjectId
-      title: AiipUploadActor
-    AiipUploadEnvelopePayload:
-      properties:
-        operation:
-          type: string
-          const: document_upload
-          title: Operation
-        entityType:
-          type: string
-          enum:
-          - InnovationRequest
-          - InnovationRequestImport
-          title: Entitytype
-        entityId:
-          type: string
-          maxLength: 160
-          minLength: 1
-          title: Entityid
-        sourceDocumentId:
-          type: string
-          maxLength: 1024
-          minLength: 1
-          title: Sourcedocumentid
-        sha256:
-          type: string
-          pattern: ^sha256:[a-f0-9]{64}$
-          title: Sha256
-      additionalProperties: false
-      type: object
-      required:
-      - operation
-      - entityType
-      - entityId
-      - sourceDocumentId
-      - sha256
-      title: AiipUploadEnvelopePayload
-    AiipUploadIntegrationEnvelope:
-      properties:
-        schemaVersion:
-          type: string
-          const: stratos-integration-envelope-1
-          title: Schemaversion
-        organizationId:
-          type: string
-          const: org_stratos
-          title: Organizationid
-        sourceSystem:
-          type: string
-          const: STRATOS_AIIP
-          title: Sourcesystem
-        externalRef:
-          type: string
-          maxLength: 300
-          minLength: 1
-          title: Externalref
-        actor:
-          $ref: '#/components/schemas/AiipUploadActor'
-        sourceResource:
-          $ref: '#/components/schemas/IntegrationSourceResource'
-        correlationId:
-          type: string
-          maxLength: 200
-          minLength: 8
-          title: Correlationid
-        idempotencyKey:
-          type: string
-          maxLength: 200
-          minLength: 8
-          title: Idempotencykey
-        policyBindingId:
-          type: string
-          minLength: 8
-          title: Policybindingid
-        policyVersion:
-          type: string
-          const: information-policy-2.0.0
-          title: Policyversion
-        policyHash:
-          type: string
-          pattern: ^sha256:[a-f0-9]{64}$
-          title: Policyhash
-        classification:
-          $ref: '#/components/schemas/IntegrationClassification'
-        payload:
-          $ref: '#/components/schemas/AiipUploadEnvelopePayload'
-      additionalProperties: false
-      type: object
-      required:
-      - schemaVersion
-      - organizationId
-      - sourceSystem
-      - externalRef
-      - actor
-      - sourceResource
-      - correlationId
-      - idempotencyKey
-      - policyBindingId
-      - policyVersion
-      - policyHash
-      - classification
-      - payload
-      title: AiipUploadIntegrationEnvelope
-      description: Exact immutable lineage envelope accepted by the dedicated AIIP
-        route.
     AnalystCaseCreate:
       properties:
         title:
@@ -7591,7 +7392,6 @@ components:
       - STRATOS_BUDGET
       - STRATOS_PROJECTFLOW
       - STRATOS_ARCHFLOW
-      - STRATOS_AIIP
       - STRATOS_PROCESSFORGE
       - STRATOS_EXECUTIVE
       - STRATOS_PLATFORM
@@ -7960,7 +7760,6 @@ components:
         sourceSystem:
           type: string
           enum:
-          - STRATOS_AIIP
           - STRATOS_ARCHFLOW
           - STRATOS_BUDGET
           - STRATOS_PROJECTFLOW
@@ -7974,10 +7773,6 @@ components:
           title: Externalref
         actor:
           $ref: '#/components/schemas/IntegrationActor'
-        sourceResource:
-          anyOf:
-          - $ref: '#/components/schemas/IntegrationSourceResource'
-          - type: 'null'
         correlationId:
           type: string
           maxLength: 200
@@ -8171,43 +7966,6 @@ components:
       - record_id
       - expires_at
       title: IntegrationIdempotencyReserveResponse
-    IntegrationSourceResource:
-      properties:
-        governedResourceId:
-          type: string
-          maxLength: 160
-          minLength: 1
-          title: Governedresourceid
-        application:
-          type: string
-          const: AIIP
-          title: Application
-        resourceType:
-          type: string
-          const: idea
-          title: Resourcetype
-        resourceId:
-          type: string
-          maxLength: 160
-          minLength: 1
-          title: Resourceid
-        sourceVersion:
-          type: string
-          maxLength: 160
-          minLength: 1
-          title: Sourceversion
-        scope:
-          $ref: '#/components/schemas/IntegrationGovernanceScope'
-      additionalProperties: false
-      type: object
-      required:
-      - governedResourceId
-      - application
-      - resourceType
-      - resourceId
-      - sourceVersion
-      - scope
-      title: IntegrationSourceResource
     IntelligenceDocumentCoordinate:
       properties:
         document_id:
@@ -9422,6 +9180,96 @@ components:
       - msg
       - type
       title: ValidationError
+    WebSessionResponse:
+      properties:
+        session_id_hash:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+          title: Session Id Hash
+        subject_id:
+          type: string
+          maxLength: 160
+          minLength: 1
+          title: Subject Id
+        issuer:
+          type: string
+          maxLength: 512
+          minLength: 1
+          title: Issuer
+        client_id:
+          type: string
+          maxLength: 160
+          minLength: 1
+          title: Client Id
+        keycloak_session_id:
+          anyOf:
+          - type: string
+            maxLength: 160
+          - type: 'null'
+          title: Keycloak Session Id
+        encrypted_payload:
+          type: string
+          maxLength: 65536
+          minLength: 40
+          title: Encrypted Payload
+        persistent:
+          type: boolean
+          title: Persistent
+          default: false
+        identity_validated_at:
+          type: string
+          format: date-time
+          title: Identity Validated At
+        last_seen_at:
+          type: string
+          format: date-time
+          title: Last Seen At
+        idle_expires_at:
+          type: string
+          format: date-time
+          title: Idle Expires At
+        absolute_expires_at:
+          type: string
+          format: date-time
+          title: Absolute Expires At
+        session_id:
+          type: string
+          title: Session Id
+        revoked_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Revoked At
+        revoked_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Revoked Reason
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      additionalProperties: false
+      type: object
+      required:
+      - session_id_hash
+      - subject_id
+      - issuer
+      - client_id
+      - encrypted_payload
+      - identity_validated_at
+      - last_seen_at
+      - idle_expires_at
+      - absolute_expires_at
+      - session_id
+      - created_at
+      - updated_at
+      title: WebSessionResponse
     WorkflowTaskAction:
       type: string
       enum:
@@ -9478,6 +9326,10 @@ components:
         offset:
           type: integer
           title: Offset
+        total:
+          type: integer
+          title: Total
+          default: 0
       type: object
       required:
       - items
@@ -9575,6 +9427,15 @@ components:
           type: string
           format: date-time
           title: Updated At
+        allowed_actions:
+          items:
+            $ref: '#/components/schemas/WorkflowTaskAction'
+          type: array
+          title: Allowed Actions
+        assigned_to_me:
+          type: boolean
+          title: Assigned To Me
+          default: false
       type: object
       required:
       - task_id
@@ -9607,6 +9468,178 @@ components:
       - resolved
       - cancelled
       title: WorkflowTaskStatus
+    DocumentReviewRequest:
+      properties:
+        comment:
+          anyOf:
+          - type: string
+            maxLength: 1000
+          - type: 'null'
+          title: Comment
+      additionalProperties: false
+      type: object
+      title: DocumentReviewRequest
+    WorkflowDocumentResponse:
+      properties:
+        document_id:
+          type: string
+          title: Document Id
+        title:
+          type: string
+          title: Title
+        document_type:
+          $ref: '#/components/schemas/DocumentType'
+        status:
+          $ref: '#/components/schemas/DocumentStatus'
+        assignment_roles:
+          items:
+            $ref: '#/components/schemas/DocumentAssignmentRole'
+          type: array
+          title: Assignment Roles
+        document_version_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Document Version Id
+        version_label:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Version Label
+        version_status:
+          anyOf:
+          - $ref: '#/components/schemas/DocumentStatus'
+          - type: 'null'
+        valid_from:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Valid From
+        valid_to:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Valid To
+        published_version_label:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Published Version Label
+        published_valid_to:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Published Valid To
+        review_due_on:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Review Due On
+        review_date_invalid:
+          type: boolean
+          title: Review Date Invalid
+          default: false
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+      type: object
+      required:
+      - document_id
+      - title
+      - document_type
+      - status
+      - assignment_roles
+      - document_version_id
+      - version_label
+      - version_status
+      - valid_from
+      - valid_to
+      - published_version_label
+      - published_valid_to
+      - review_due_on
+      - updated_at
+      title: WorkflowDocumentResponse
+    WorkflowDocumentListResponse:
+      properties:
+        items:
+          items:
+            $ref: '#/components/schemas/WorkflowDocumentResponse'
+          type: array
+          title: Items
+        total:
+          type: integer
+          title: Total
+        limit:
+          type: integer
+          title: Limit
+        offset:
+          type: integer
+          title: Offset
+      type: object
+      required:
+      - items
+      - total
+      - limit
+      - offset
+      title: WorkflowDocumentListResponse
+    DirectorAuditWrite:
+      properties:
+        actor_id:
+          type: string
+          format: uuid
+          title: Actor Id
+        event_type:
+          type: string
+          enum:
+          - assistant.director_copilot_v2_returned
+          - assistant.director_copilot_v2_failed
+          title: Event Type
+        resource_type:
+          type: string
+          const: assistant_conversation
+          title: Resource Type
+        resource_id:
+          type: string
+          pattern: ^[A-Za-z0-9_.:-]{1,160}$
+          title: Resource Id
+        severity:
+          type: string
+          enum:
+          - info
+          - warning
+          - error
+          title: Severity
+        correlation_id:
+          anyOf:
+          - type: string
+            pattern: ^[A-Za-z0-9_.:-]{1,160}$
+          - type: 'null'
+          title: Correlation Id
+        metadata:
+          additionalProperties:
+            anyOf:
+            - type: string
+            - type: integer
+            - type: number
+            - type: boolean
+            - type: 'null'
+          type: object
+          title: Metadata
+      additionalProperties: false
+      type: object
+      required:
+      - actor_id
+      - event_type
+      - resource_type
+      - resource_id
+      - severity
+      - metadata
+      title: DirectorAuditWrite
   securitySchemes:
     akbPublicDeliveryToken:
       type: apiKey

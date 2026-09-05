@@ -13,10 +13,29 @@ export interface ControlledRuleIntent {
   validOn: string | null;
 }
 
+export function currentControlledRuleDate(now = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Prague",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "";
+  return `${value("year")}-${value("month")}-${value("day")}`;
+}
+
+type ControlledRuleSourceScope = "statutory" | "internal" | "combined";
+
 const PUBLIC_PROCUREMENT_RE = /(?:veřejn(?:á|é|ých|ou)\s+zakáz|verejn(?:a|e|ych|ou)\s+zakaz|\bvzmr\b|zadáván(?:í|i)\s+zakáz|zadavani\s+zakaz|průzkum\s+trhu|pruzkum\s+trhu|elektronick\w*\s+tržišt|elektronick\w*\s+trzist|profil\w*\s+zadavatele|registr\w*\s+smluv|přím\w*\s+nákup|prim\w*\s+nakup|public\s+procurement)/i;
 const CONTROLLED_RULE_QUESTION_RE = /(?:limit|částk|castk|hran(?:ice|ičn)|do\s+kolika|od\s+kolika|kolik|povinnost|požad|pozad|musí|musi|stanov|uprav|obsah|schvaluj|výjimk|vyjimk|nabídk|nabidk|doklad|lhůt|lhut|postup|pravidl|režim|rezim|zákon|zakon|legislativ|právn|pravn)/i;
 const LEGAL_SOURCE_RE = /(?:zákon|zakon|zákonn|zakonn|legislativ|právn|pravn)/i;
-const INTERNAL_SOURCE_RE = /(?:směrnic|smernic|intern\w*\s+pravidl|vnitřn|vnitrn)/i;
+const INTERNAL_SOURCE_RE = /(?:směrnic|smernic|intern\w*(?:\s+(?:pravidl|limit|postup|směrnic|smernic))?|vnitřn|vnitrn)/i;
+const EXPLICIT_NON_PROCUREMENT_LEGAL_TOPIC_RE = /(?:\bnis\s*2?\b|\bnis2\b|kybernetick\w*\s+bezpečnost|\bgdpr\b|ochran\w*\s+osobn\w*\s+údaj|\bai\s+act\b|akt\w*\s+o\s+uměl\w*\s+inteligenc)/i;
+const INTERNAL_RULE_SOURCE_TYPES = new Set<ControlledRule["source_type"]>([
+  "internal_directive",
+  "internal_instruction",
+]);
 
 const CONSUMER_BLOCKING_WARNINGS = new Set([
   "POTENTIAL_RULE_CONFLICT_REQUIRES_GESTOR_REVIEW",
@@ -52,6 +71,7 @@ const VZMR_STATUTORY_RULE_KEYS = [
   "public_procurement.vzmr.supplies_services.threshold",
   "public_procurement.vzmr.works.threshold",
 ] as const;
+const VZMR_STATUTORY_RULE_KEY_SET = new Set<string>(VZMR_STATUTORY_RULE_KEYS);
 const VZMR_SUPPLEMENTAL_RULE_KEYS = [
   "public_procurement.internal_category_1.upper_threshold",
   "public_procurement.direct_purchase.threshold",
@@ -76,6 +96,7 @@ const CZECH_STOP_WORDS = new Set([
 export function controlledRuleIntentFromMessage(
   message: string,
   context: Record<string, unknown> = {},
+  now = new Date(),
 ): ControlledRuleIntent | null {
   const contextDomain = contextString(
     context,
@@ -84,15 +105,20 @@ export function controlledRuleIntentFromMessage(
   );
   const continuingControlledRules =
     contextString(context, "answer_source") === "controlled_rules"
-    && contextDomain === CONTROLLED_RULE_DOMAIN_PUBLIC_PROCUREMENT;
+    && contextDomain === CONTROLLED_RULE_DOMAIN_PUBLIC_PROCUREMENT
+    && !hasExplicitNonProcurementLegalTopic(message);
   const hasDomain = PUBLIC_PROCUREMENT_RE.test(message) || continuingControlledRules;
   if (!hasDomain || !CONTROLLED_RULE_QUESTION_RE.test(message)) {
     return null;
   }
   return {
     domain: CONTROLLED_RULE_DOMAIN_PUBLIC_PROCUREMENT,
-    validOn: explicitValidOn(message) ?? contextString(context, "controlled_rule_valid_on"),
+    validOn: explicitValidOn(message, now) ?? contextString(context, "controlled_rule_valid_on"),
   };
+}
+
+export function hasExplicitNonProcurementLegalTopic(message: string): boolean {
+  return EXPLICIT_NON_PROCUREMENT_LEGAL_TOPIC_RE.test(message);
 }
 
 export function buildControlledRuleAssistantResponse(input: {
@@ -102,6 +128,7 @@ export function buildControlledRuleAssistantResponse(input: {
   language: ResponseLanguage;
   result: ControlledRuleList;
 }): AssistantChatResponse {
+  const sourceScope = controlledRuleSourceScope(input.message);
   const blockingWarnings = input.result.warnings.filter((warning) =>
     CONSUMER_BLOCKING_WARNINGS.has(warning)
   );
@@ -128,17 +155,21 @@ export function buildControlledRuleAssistantResponse(input: {
   const eligible = input.result.rules.filter(
     (rule) => rule.consumer_eligible
       && ["accepted", "edited"].includes(rule.verification_status)
-      && ["authoritative", "supplemental"].includes(rule.precedence_status),
+      && ["authoritative", "supplemental"].includes(rule.precedence_status)
+      && ruleMatchesNormativeAuthority(rule)
+      && ruleMatchesSourceScope(rule, sourceScope),
   );
   const matchingConflicts = rankedRules(input.message, input.result.rules.filter(
-    (rule) => rule.precedence_status === "conflict",
+    (rule) => rule.precedence_status === "conflict"
+      && ruleMatchesSourceScope(rule, sourceScope),
   ));
-  const matching = selectMatchingRules(input.message, eligible);
+  const matching = selectMatchingRules(input.message, eligible, sourceScope);
   const baseContext = {
     ...input.context,
     answer_source: "controlled_rules",
     controlled_rule_domain: input.result.domain,
     controlled_rule_valid_on: input.result.valid_on,
+    controlled_rule_source_scope: sourceScope,
   };
 
   if (matchingConflicts.length > 0) {
@@ -154,6 +185,40 @@ export function buildControlledRuleAssistantResponse(input: {
       missingInformation: input.language === "en"
         ? "No unambiguous governed rule is available."
         : "Není k dispozici jednoznačné ověřené pravidlo.",
+    });
+  }
+
+  const requiredStatutoryKeys = requiredStatutoryKeysForQuestion(
+    input.message,
+    sourceScope,
+  );
+  const availableStatutoryKeys = new Set(
+    eligible
+      .filter(isStatutoryRule)
+      .map((rule) => rule.proposal.normative_key),
+  );
+  const missingStatutoryKeys = [...requiredStatutoryKeys].filter(
+    (key) => !availableStatutoryKeys.has(key),
+  );
+  if (missingStatutoryKeys.length > 0) {
+    return emptyResponse({
+      conversationId: input.conversationId,
+      language: input.language,
+      context: {
+        ...baseContext,
+        controlled_rule_missing_statutory_keys: missingStatutoryKeys,
+      },
+      confidence: "insufficient_source",
+      warnings: [
+        ...input.result.warnings,
+        "REQUIRED_STATUTORY_RULE_COVERAGE_MISSING",
+      ],
+      message: input.language === "en"
+        ? "The authoritative statutory rules required for this question are not complete for the selected date. Internal rules were not used as a substitute."
+        : "Pro vybrané datum není úplná sada závazných zákonných pravidel potřebná pro tento dotaz. Interní pravidla jsem nepoužil jako náhradu.",
+      missingInformation: input.language === "en"
+        ? "One or more required statutory rules are missing."
+        : "Chybí jedno nebo více požadovaných zákonných pravidel.",
     });
   }
 
@@ -174,7 +239,13 @@ export function buildControlledRuleAssistantResponse(input: {
   }
 
   const citations = matching.map((item) => citationForRule(item.rule, input.result));
-  const answer = controlledRuleAnswerText(matching.map((item) => item.rule), input.result, input.language);
+  const answer = controlledRuleAnswerText(
+    matching.map((item) => item.rule),
+    input.result,
+    input.language,
+    sourceScope,
+    input.message,
+  );
   return {
     response_type: "answer",
     conversation_id: input.conversationId ?? `conv_controlled_${crypto.randomUUID().replaceAll("-", "")}`,
@@ -213,26 +284,46 @@ function rankedRules(message: string, rules: ControlledRule[]) {
     .sort((left, right) => right.score - left.score || right.rule.authority_rank - left.rule.authority_rank);
 }
 
-function selectMatchingRules(message: string, rules: ControlledRule[]) {
+function selectMatchingRules(
+  message: string,
+  rules: ControlledRule[],
+  sourceScope: ControlledRuleSourceScope,
+) {
   const preferredKeys = targetedNormativeKeys(message);
   const normalizedMessage = normalized(message);
-  const allLimits = /\b(?:vsechny|prehled|seznam)\b/.test(normalizedMessage)
+  const allLimits = /\b(?:jake|ktere|vsechny|prehled|seznam)\b/.test(normalizedMessage)
     && /\b(?:limit|castk|hranic)\w*\b/.test(normalizedMessage);
   const candidates = preferredKeys.size > 0
     ? rules.filter((rule) => preferredKeys.has(rule.proposal.normative_key))
     : allLimits
       ? rules.filter((rule) => rule.proposal.category === "financial_limit")
       : rules;
-  const ranked = rankedRules(message, candidates);
-  if (allLimits) return ranked.slice(0, 10);
+  const ranked = uniqueRankedRules(rankedRules(message, candidates));
+  const sourceOrdered = sourceScope === "combined"
+    ? [
+        ...ranked.filter((item) => isStatutoryRule(item.rule)),
+        ...ranked.filter((item) => !isStatutoryRule(item.rule)),
+      ]
+    : ranked;
+  if (allLimits) return sourceOrdered.slice(0, sourceScope === "combined" ? 14 : 10);
   if (preferredKeys.size > 0) {
-    const limit = isBroadVzmrOverview(message) ? 14 : 4;
-    return ranked.slice(0, Math.min(preferredKeys.size, limit));
+    const limit = isBroadVzmrOverview(message) || isTransactionalVzmrAssessment(message) ? 14 : 4;
+    return sourceOrdered.slice(0, Math.min(preferredKeys.size, limit));
   }
-  const topScore = ranked[0]?.score ?? 0;
-  return ranked
+  const topScore = sourceOrdered[0]?.score ?? 0;
+  return sourceOrdered
     .filter((item) => item.score >= Math.max(4, Math.ceil(topScore * 0.65)))
     .slice(0, 4);
+}
+
+function uniqueRankedRules<T extends { rule: ControlledRule }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = item.rule.proposal.normative_key;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function targetedNormativeKeys(message: string) {
@@ -240,6 +331,7 @@ function targetedNormativeKeys(message: string) {
   const keys = new Set<string>();
   const asksForLaw = LEGAL_SOURCE_RE.test(message);
   const asksForInternalRule = INTERNAL_SOURCE_RE.test(message);
+  const asksForBroadLimits = isBroadLimitOverview(message);
   if (/pruzkum\w*\s+trh/.test(value)) {
     keys.add("public_procurement.market_research.threshold");
     if (/nabid|dodavatel|kolik/.test(value)) {
@@ -280,7 +372,8 @@ function targetedNormativeKeys(message: string) {
     keys.add("public_procurement.internal_category_1.upper_threshold");
   }
   const broadVzmrOverview = isBroadVzmrOverview(message);
-  if ((/\bvzmr\b/.test(value) && !asksForInternalRule) || asksForLaw) {
+  const namesVzmrInFull = /verejn\w*\s+zakaz\w*\s+maleh\w*\s+rozsah/.test(value);
+  if (((/\bvzmr\b/.test(value) || namesVzmrInFull) && !asksForInternalRule) || asksForLaw) {
     const asksForWorks = /stavebn/.test(value);
     const asksForSuppliesOrServices = /dodav|sluzb/.test(value);
     if (asksForWorks) {
@@ -293,7 +386,25 @@ function targetedNormativeKeys(message: string) {
       for (const key of VZMR_STATUTORY_RULE_KEYS) keys.add(key);
     }
   }
-  if (broadVzmrOverview && !asksForLaw) {
+  if (isTransactionalVzmrAssessment(message)) {
+    if (/stavebn/.test(value)) {
+      keys.add("public_procurement.vzmr.works.threshold");
+    } else {
+      keys.add("public_procurement.vzmr.supplies_services.threshold");
+    }
+  }
+  if (isTransactionalVzmrAssessment(message) && /krok|postup|smernic|intern/.test(value)) {
+    keys.add("public_procurement.market_research.threshold");
+    keys.add("public_procurement.supplier_quotes.minimum_count");
+    keys.add("public_procurement.marketplace.threshold");
+    keys.add("public_procurement.central_evidence.threshold");
+    keys.add("public_procurement.contract.written_form.threshold");
+    keys.add("public_procurement.approval.workflow");
+    keys.add("public_procurement.documentation.required");
+  }
+  if ((broadVzmrOverview && !asksForLaw)
+    || (asksForInternalRule && /\bvzmr\b/.test(value))
+    || (asksForLaw && asksForInternalRule && asksForBroadLimits)) {
     for (const key of VZMR_SUPPLEMENTAL_RULE_KEYS) keys.add(key);
   }
   if (/vyjim/.test(value)) keys.add("public_procurement.exception.conditions");
@@ -301,6 +412,12 @@ function targetedNormativeKeys(message: string) {
     keys.add("public_procurement.documentation.required");
   }
   return keys;
+}
+
+function isBroadLimitOverview(message: string): boolean {
+  const value = normalized(message);
+  return /\b(?:jake|ktere|vsechny|prehled|seznam)\b/.test(value)
+    && /\b(?:limit|castk|hranic)\w*\b/.test(value);
 }
 
 function isBroadVzmrOverview(message: string): boolean {
@@ -342,10 +459,14 @@ function controlledRuleAnswerText(
   rules: ControlledRule[],
   result: ControlledRuleList,
   language: ResponseLanguage,
+  sourceScope: ControlledRuleSourceScope,
+  message: string,
 ) {
   const statutoryRules = rules.filter(isStatutoryRule);
   const internalRules = rules.filter((rule) => !isStatutoryRule(rule));
   const sections: string[] = [];
+  const assessment = controlledRuleScenarioAssessment(rules, message, language);
+  if (assessment) sections.push(assessment, "");
   if (statutoryRules.length > 0) {
     sections.push(
       language === "en"
@@ -357,9 +478,13 @@ function controlledRuleAnswerText(
   if (internalRules.length > 0) {
     if (sections.length > 0) sections.push("");
     sections.push(
-      language === "en"
-        ? "Supplementary internal rules:"
-        : "Doplňující interní pravidla:",
+      sourceScope === "internal"
+        ? language === "en"
+          ? `Internal rules effective on ${result.valid_on}:`
+          : `Interní pravidla účinná k ${formatDate(result.valid_on, language)}:`
+        : language === "en"
+          ? "Supplementary internal rules:"
+          : "Doplňující interní pravidla:",
       ...internalRules.map((rule) => controlledRuleLine(rule, language)),
     );
   }
@@ -380,8 +505,42 @@ function controlledRuleLine(rule: ControlledRule, language: ResponseLanguage) {
 
 function isStatutoryRule(rule: ControlledRule) {
   return rule.source_type === "law"
-    || rule.source_type === "implementing_regulation"
-    || rule.precedence_status === "authoritative";
+    || rule.source_type === "implementing_regulation";
+}
+
+function ruleMatchesNormativeAuthority(rule: ControlledRule): boolean {
+  if (!VZMR_STATUTORY_RULE_KEY_SET.has(rule.proposal.normative_key)) return true;
+  return isStatutoryRule(rule);
+}
+
+function requiredStatutoryKeysForQuestion(
+  message: string,
+  sourceScope: ControlledRuleSourceScope,
+): Set<string> {
+  if (sourceScope === "internal") return new Set();
+  return new Set(
+    [...targetedNormativeKeys(message)].filter((key) =>
+      VZMR_STATUTORY_RULE_KEY_SET.has(key)
+    ),
+  );
+}
+
+function controlledRuleSourceScope(message: string): ControlledRuleSourceScope {
+  const asksForLaw = LEGAL_SOURCE_RE.test(message);
+  const asksForInternalRule = INTERNAL_SOURCE_RE.test(message);
+  if (asksForInternalRule && isTransactionalVzmrAssessment(message)) return "combined";
+  if (asksForLaw && !asksForInternalRule) return "statutory";
+  if (asksForInternalRule && !asksForLaw) return "internal";
+  return "combined";
+}
+
+function ruleMatchesSourceScope(
+  rule: ControlledRule,
+  sourceScope: ControlledRuleSourceScope,
+): boolean {
+  if (sourceScope === "statutory") return isStatutoryRule(rule);
+  if (sourceScope === "internal") return INTERNAL_RULE_SOURCE_TYPES.has(rule.source_type);
+  return true;
 }
 
 function controlledRuleFollowUps(rules: ControlledRule[], language: ResponseLanguage) {
@@ -505,7 +664,7 @@ function emptyResponse(input: {
   };
 }
 
-function explicitValidOn(message: string) {
+function explicitValidOn(message: string, now: Date) {
   const iso = message.match(/\b(20\d{2})-(0[1-9]|1[0-2])-([0-2]\d|3[01])\b/);
   if (iso) return iso[0];
   const czech = message.match(/\b([0-2]?\d|3[01])\.\s*(0?\d|1[0-2])\.\s*(20\d{2})\b/);
@@ -513,7 +672,62 @@ function explicitValidOn(message: string) {
     return `${czech[3]}-${String(Number(czech[2])).padStart(2, "0")}-${String(Number(czech[1])).padStart(2, "0")}`;
   }
   const year = message.match(/(?:v\s+roce|pro\s+rok|k\s+roku)\s+(20\d{2})\b/i);
-  return year ? `${year[1]}-12-31` : null;
+  if (!year) return null;
+  const currentDate = currentControlledRuleDate(now);
+  return year[1] === currentDate.slice(0, 4) ? currentDate : `${year[1]}-12-31`;
+}
+
+function isTransactionalVzmrAssessment(message: string): boolean {
+  const value = normalized(message);
+  return /\bvzmr\b|verejn\w*\s+zakaz\w*\s+maleh\w*\s+rozsah/.test(value)
+    && /(?:\d|milion|tisic)/.test(value)
+    && /(?:nakup|dodav|sluzb|stavebn|porizeni|zakazk)/.test(value);
+}
+
+function controlledRuleScenarioAssessment(
+  rules: ControlledRule[],
+  message: string,
+  language: ResponseLanguage,
+): string | null {
+  if (language !== "cs") return null;
+  const amount = monetaryAmountFromMessage(message);
+  if (amount === null) return null;
+  const query = normalized(message);
+  const key = /stavebn/.test(query)
+    ? "public_procurement.vzmr.works.threshold"
+    : /dodav|sluzb|nakup|porizeni/.test(query)
+      ? "public_procurement.vzmr.supplies_services.threshold"
+      : null;
+  if (!key) return null;
+  const threshold = rules.find((rule) => (
+    rule.proposal.normative_key === key
+    && isStatutoryRule(rule)
+    && typeof rule.proposal.value === "number"
+  ));
+  if (!threshold || typeof threshold.proposal.value !== "number") return null;
+  const amountText = new Intl.NumberFormat("cs-CZ", { maximumFractionDigits: 2 }).format(amount);
+  const thresholdText = new Intl.NumberFormat("cs-CZ", { maximumFractionDigits: 2 }).format(
+    threshold.proposal.value,
+  );
+  const category = key.endsWith("works.threshold") ? "stavební práce" : "dodávky a služby";
+  const comparison = amount <= threshold.proposal.value
+    ? `nepřekračuje zákonný limit ${thresholdText} Kč a z hlediska tohoto limitu spadá do VZMR`
+    : `překračuje zákonný limit ${thresholdText} Kč a z hlediska tohoto limitu nespadá do VZMR`;
+  return `**Posouzení uvedené hodnoty:** ${amountText} Kč pro ${category} ${comparison}. `
+    + "Jde o posouzení podle finančního limitu; konkrétní postup mohou ovlivnit další zákonné podmínky a výjimky.";
+}
+
+function monetaryAmountFromMessage(message: string): number | null {
+  const value = normalized(message).replaceAll("\u00a0", " ");
+  const match = value.match(/(\d[\d\s]*(?:[.,]\d+)?)\s*(milionu|miliony|milion|mil\.?|tisice|tisicu|tisic|tis\.?)?\s*kc\b/);
+  if (!match) return null;
+  const raw = match[1]!.replace(/\s+/g, "").replace(",", ".");
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return null;
+  const multiplier = match[2]?.startsWith("mil") ? 1_000_000
+    : match[2]?.startsWith("tis") ? 1_000
+    : 1;
+  return parsed * multiplier;
 }
 
 function meaningfulTokens(value: string) {

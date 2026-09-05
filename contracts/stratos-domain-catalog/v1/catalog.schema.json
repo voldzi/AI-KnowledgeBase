@@ -4,21 +4,39 @@
   "title": "STRATOS Domain Tool Catalog",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "catalog_id", "owner", "tools", "relationships"],
+  "required": [
+    "schema_version",
+    "catalog_id",
+    "owner",
+    "tools",
+    "relationships"
+  ],
   "properties": {
-    "schema_version": {"const": "stratos-domain-catalog-1"},
-    "catalog_id": {"type": "string", "pattern": "^[A-Za-z0-9._:-]+$", "maxLength": 160},
-    "owner": {"const": "STRATOS"},
+    "schema_version": {
+      "const": "stratos-domain-catalog-1"
+    },
+    "catalog_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._:-]+$",
+      "maxLength": 160
+    },
+    "owner": {
+      "const": "STRATOS"
+    },
     "tools": {
       "type": "array",
       "minItems": 1,
       "maxItems": 100,
-      "items": {"$ref": "#/$defs/tool"}
+      "items": {
+        "$ref": "#/$defs/tool"
+      }
     },
     "relationships": {
       "type": "array",
       "maxItems": 200,
-      "items": {"$ref": "#/$defs/relationship"}
+      "items": {
+        "$ref": "#/$defs/relationship"
+      }
     }
   },
   "$defs": {
@@ -31,11 +49,28 @@
     "metric": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["key", "value_type"],
+      "required": [
+        "key",
+        "value_type"
+      ],
       "properties": {
-        "key": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]+$", "maxLength": 160},
+        "key": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]+$",
+          "maxLength": 160
+        },
         "value_type": {
-          "enum": ["text", "number", "integer", "boolean", "date", "datetime", "currency", "percent", "duration_days"]
+          "enum": [
+            "text",
+            "number",
+            "integer",
+            "boolean",
+            "date",
+            "datetime",
+            "currency",
+            "percent",
+            "duration_days"
+          ]
         }
       }
     },
@@ -57,15 +92,41 @@
         "metrics"
       ],
       "properties": {
-        "tool_id": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]+\\.v[1-9][0-9]*$", "maxLength": 160},
-        "application": {"enum": ["budget", "projectflow", "archflow", "aiip", "akb"]},
-        "source_system": {"$ref": "#/$defs/identifier"},
-        "status": {"enum": ["connected", "contract_ready"]},
-        "contract_version": {"$ref": "#/$defs/identifier"},
+        "tool_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]+\\.v[1-9][0-9]*$",
+          "maxLength": 160
+        },
+        "application": {
+          "enum": [
+            "budget",
+            "projectflow",
+            "archflow",
+            "akb"
+          ]
+        },
+        "source_system": {
+          "$ref": "#/$defs/identifier"
+        },
+        "status": {
+          "enum": [
+            "connected",
+            "contract_ready"
+          ]
+        },
+        "contract_version": {
+          "$ref": "#/$defs/identifier"
+        },
         "access_capability": {
           "oneOf": [
-            {"type": "null"},
-            {"type": "string", "pattern": "^[a-z][a-z0-9_-]+:[a-z][a-z0-9_-]+$", "maxLength": 160}
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]+:[a-z][a-z0-9_-]+$",
+              "maxLength": 160
+            }
           ]
         },
         "read_capabilities": {
@@ -73,22 +134,38 @@
           "minItems": 1,
           "maxItems": 20,
           "uniqueItems": true,
-          "items": {"$ref": "#/$defs/identifier"}
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
         },
         "scope_types": {
           "type": "array",
           "minItems": 1,
           "maxItems": 20,
           "uniqueItems": true,
-          "items": {"$ref": "#/$defs/identifier"}
+          "items": {
+            "$ref": "#/$defs/identifier"
+          }
         },
-        "entity_type": {"$ref": "#/$defs/identifier"},
-        "canonical_id_prefix": {"type": "string", "pattern": "^[A-Za-z0-9._:-]+:$", "maxLength": 160},
-        "context_tag_prefix": {"type": "string", "pattern": "^[A-Za-z0-9._:-]+:$", "maxLength": 160},
+        "entity_type": {
+          "$ref": "#/$defs/identifier"
+        },
+        "canonical_id_prefix": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._:-]+:$",
+          "maxLength": 160
+        },
+        "context_tag_prefix": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._:-]+:$",
+          "maxLength": 160
+        },
         "metrics": {
           "type": "array",
           "maxItems": 100,
-          "items": {"$ref": "#/$defs/metric"}
+          "items": {
+            "$ref": "#/$defs/metric"
+          }
         }
       }
     },
@@ -104,17 +181,39 @@
         "target_canonical_id_prefix"
       ],
       "properties": {
-        "relationship_id": {"$ref": "#/$defs/identifier"},
-        "from_entity_type": {"$ref": "#/$defs/identifier"},
-        "to_entity_type": {"$ref": "#/$defs/identifier"},
-        "strategy": {"enum": ["shared_canonical_id", "context_tag", "declared_relation_fact"]},
-        "relation_metric": {
-          "oneOf": [
-            {"type": "null"},
-            {"type": "string", "pattern": "^[a-z][a-z0-9_.-]+$", "maxLength": 160}
+        "relationship_id": {
+          "$ref": "#/$defs/identifier"
+        },
+        "from_entity_type": {
+          "$ref": "#/$defs/identifier"
+        },
+        "to_entity_type": {
+          "$ref": "#/$defs/identifier"
+        },
+        "strategy": {
+          "enum": [
+            "shared_canonical_id",
+            "context_tag",
+            "declared_relation_fact"
           ]
         },
-        "target_canonical_id_prefix": {"type": "string", "pattern": "^[A-Za-z0-9._:-]+:$", "maxLength": 160}
+        "relation_metric": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_.-]+$",
+              "maxLength": 160
+            }
+          ]
+        },
+        "target_canonical_id_prefix": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._:-]+:$",
+          "maxLength": 160
+        }
       }
     }
   }

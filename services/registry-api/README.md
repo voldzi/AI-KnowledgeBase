@@ -64,11 +64,9 @@ ORM metadata. The migration is forward-only in production.
 | `AKL_STRATOS_POLICY_BINDINGS_URL` | Centrální registr Information Policy bindingů. |
 | `AKL_STRATOS_POLICY_DECISIONS_URL` | Centrální decision endpoint pro service-to-service operace. |
 | `AKL_STRATOS_INFORMATION_RESOURCES_URL` | Základní URL pro immutable `AKB/document` a `AKB/document_version` GovernedInformationResource. |
-| `AKL_STRATOS_AIIP_AKB_RESOURCES_URL` | Dedikovaný centrální endpoint pro přesnou AIIP→AKB lineage a fresh-actor autorizaci. |
 | `AKL_STRATOS_INFORMATION_PUBLICATIONS_URL` | Centrální lifecycle konkrétní immutable veřejné verze. |
 | `AKL_STRATOS_PUBLIC_DECISIONS_URL` | Anonymní fail-closed decision endpoint volaný při každém public read/download. |
 | `AKB_POLICY_SERVICE_TOKEN` | Dedikovaný runtime credential AKB; nesmí se logovat ani commitovat. |
-| `AKB_AIIP_INGEST_SERVICE_TOKEN` | Nezávislý credential pouze pro centrální AIIP→AKB registraci; v produkci se musí lišit od `AKB_POLICY_SERVICE_TOKEN`. |
 | `AKL_INGESTION_AUTHORIZATION_SECRET` | Lokální/test signing secret pro krátkodobé proofy; produkce používá pouze file variantu. |
 | `AKL_INGESTION_AUTHORIZATION_SECRET_FILE` | Produkční mode-`0600` signing secret file, dostupný jen Registry. |
 | `AKL_INGESTION_AUTHORIZATION_TTL_SECONDS` | Krátká platnost ingestion/Intelligence proofu; výchozí 60 sekund. |
@@ -79,12 +77,11 @@ ORM metadata. The migration is forward-only in production.
 Produkční start navíc odmítne chybějící STRATOS projection/policy endpointy,
 runtime credential, trusted service allowlist nebo route grants.
 
-Produkční minimum pro navazující AIIP ingestion je
+Produkční minimum pro navazující ingestion je
 `svc-ingestion=authz|audit|documents-read|ingestion-status`.
 `ingestion-status` mapuje pouze přesný write endpoint
-`/documents/{document_id}/external-references/current`; AIIP reference na něm
-smí změnit jen job/status pro už potvrzenou current verzi. `aiip-document-service`
-musí zůstat pouze na `aiip-upload`; `aiip-service` se do Registry nepřidává.
+`/documents/{document_id}/external-references/current`; reference na něm smí
+změnit jen job/status pro už potvrzenou current verzi.
 Interaktivní actor získává
 document/version/action proof přímo z Registry; `svc-ingestion` smí proof pouze
 potvrdit a technicky synchronizovat autoritativní attempt, nikdy si nesmí
@@ -109,10 +106,6 @@ GET    /api/v1/documents/readiness-report
 GET    /api/v1/documents/{document_id}
 PATCH  /api/v1/documents/{document_id}
 DELETE /api/v1/documents/{document_id}
-
-POST   /api/v1/integrations/aiip-upload/external-documents/upsert
-PUT    /api/v1/integrations/aiip-upload/documents/{document_id}/versions
-PATCH  /api/v1/integrations/aiip-upload/external-documents/{external_document_id}/current
 
 GET    /api/v1/documents/{document_id}/assignments
 PUT    /api/v1/documents/{document_id}/assignments
@@ -323,8 +316,7 @@ jako `reported_actor_id` a Registry serverově doplní skutečný
 
 Idempotency reserve/complete je caller-bound. Service client může spravovat
 vlastní namespace a pouze explicitní delegace z
-`AKL_SERVICE_CLIENT_DELEGATIONS`; očekávaná integrační delegace je
-`akb-rag-service=aiip-service`.
+`AKL_SERVICE_CLIENT_DELEGATIONS`.
 
 Audit list `GET /api/v1/audit/events` podporuje filtry `actor_id`, `event_type`, `resource_type`, `resource_id`, `limit` a `offset`. Web detail dokumentu je pouziva spolecne s metadaty udalosti pro filtrovany audit tab.
 

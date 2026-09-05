@@ -45,13 +45,31 @@ gate výchozí režim `enforce`; ostatní experimentální RAG V2 vrstvy zůstá
 ve výchozím stavu `off`.
 
 Evidence gate používá deterministický verifier, pokud není nastaven
-`AKL_RAG_EVIDENCE_VERIFIER_MODEL`. Při nastaveném interním modelu vyžaduje
-striktní claim JSON a server znovu ověřuje existenci chunk ID i doslovnou
-přítomnost `quoted_support`. Výpadek modelového verifieru v `enforce` končí
-no-answer. Do autorizovaného evidence envelope patří vedle textu také název
-dokumentu a cesta sekce. Přesná odpověď založená na názvu předpisu proto může
-projít verifikací bez oslabení chunkové autorizace. Nepodložené hlavní tvrzení
-končí standardním no-answer bez citací a bez `used_chunks`.
+`AKL_RAG_EVIDENCE_VERIFIER_MODEL`. Deterministický režim
+`deterministic-extractive-support-v2` přijímá pouze celé doslovné zdrojové
+výroky (s normalizací velikosti písmen a mezer), nikoli slovní podobnost.
+Název dokumentu a cesta sekce pomáhají orientaci, ale neprokazují věcný výrok.
+
+Pro syntézu a parafráze je potřeba kvalifikovaný interní modelový verifier.
+Jeho uzavřený JSON obsahuje pouze `claims`; každá položka má přesně `claim`,
+`claim_type`, `chunk_ids`, `quoted_support` a booleovské `supported`.
+Musí beze změny a ve stejném pořadí posoudit všechny výroky odpovědi, včetně
+krátkých. Server odmítá vynechané/přepsané výroky, neznámá pole, duplicitní
+JSON klíče a neznámá nebo duplicitní chunk ID. Kladné rozhodnutí vyžaduje
+doslovnou citaci z textu zdroje; kontrola čísel a vybraných polaritních výrazů
+je další konzervativní ochrana, nikoli náhrada sémantického hodnocení.
+Model musí posoudit také jednotky, podmínky, výjimky a vztahy mezi subjekty.
+
+Výpadek nebo neplatný výstup verifieru v `enforce` končí no-answer.
+Nepodložené hlavní tvrzení končí bez citací a bez `used_chunks`.
+Ověřovací model přebírá stejné policy bindingy, handling class a kumulované
+obligations jako model sestavující odpověď. Zákaz externího zpracování platí
+i při ověřování; žádný zdrojový text se neukládá do provozních metadat.
+
+Přechod z dřívějšího lexikálního verifieru mění akceptaci parafrází. Před
+nasazením je nutná nezávisle posouzená sada správných i chybných odpovědí a
+ověření zvoleného verifieru. Samotné `supported=true` není certifikací
+správnosti modelu. Neměnit režim na `off` jako řešení nedostatečné kvality.
 
 Evidence gate se uplatňuje také na běžný `/assistant/chat`. Copilot ředitele
 používá oddělenou deterministickou cestu: nejvýše tři autorizované smluvní

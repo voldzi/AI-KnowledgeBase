@@ -30,7 +30,7 @@ import {
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import { withAppBasePath } from "@/lib/app-url";
 import type { AuthorizationHint, Classification, Document, DocumentListPage, DocumentStatus, DocumentType } from "@/lib/types";
-import { documentStatusLabel, documentTypeLabel, formatDateTime } from "@/lib/format";
+import { classificationLabel, documentStatusLabel, documentTypeLabel, formatDateTime } from "@/lib/format";
 import { DOCUMENT_TYPE_CATALOG } from "@/lib/documents/document-workflow";
 import { buildReturnTarget, documentDetailHref } from "@/lib/navigation/document-navigation";
 
@@ -70,7 +70,7 @@ const registryCopy = {
     restrictedView: "Omezené zdroje",
     archiveView: "Archiv",
     totalDocuments: "Dokumenty",
-    totalDocumentsDetail: "v registru",
+    totalDocumentsDetail: "podle vašich oprávnění",
     validDocuments: "Platné",
     validDocumentsDetail: "publikované zdroje",
     reviewDocuments: "K revizi",
@@ -126,7 +126,7 @@ const registryCopy = {
     restrictedView: "Restricted sources",
     archiveView: "Archive",
     totalDocuments: "Documents",
-    totalDocumentsDetail: "in registry",
+    totalDocumentsDetail: "within your access",
     validDocuments: "Valid",
     validDocumentsDetail: "published sources",
     reviewDocuments: "Review",
@@ -183,7 +183,7 @@ export function DocumentRegistry({ initialPage, authorization }: DocumentRegistr
   const [loadFailed, setLoadFailed] = useState(false);
   const [reloadNonce, setReloadNonce] = useState(0);
   const initialRequestSkipped = useRef(false);
-  const documents = page.items;
+  const documents = loading || loadFailed ? [] : page.items;
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
   const selectedDocument = selectedDocumentIds.length === 1
     ? documents.find((document) => document.document_id === selectedDocumentIds[0]) ?? null
@@ -226,9 +226,13 @@ export function DocumentRegistry({ initialPage, authorization }: DocumentRegistr
       ) return;
     }
     const controller = new AbortController();
+    let active = true;
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    setLoading(true);
+    setLoadFailed(false);
+    setSelectedDocumentIds([]);
     const timer = window.setTimeout(() => {
-      setLoading(true);
-      setLoadFailed(false);
+      deadline = setTimeout(() => controller.abort(), 20_000);
       const params = new URLSearchParams({
         limit: String(REGISTRY_PAGE_SIZE),
         offset: String(pageIndex * REGISTRY_PAGE_SIZE),
@@ -240,6 +244,7 @@ export function DocumentRegistry({ initialPage, authorization }: DocumentRegistr
       fetch(withAppBasePath(`/api/documents?${params.toString()}`), {
         credentials: "same-origin",
         headers: { Accept: "application/json" },
+        cache: "no-store",
         signal: controller.signal,
       })
         .then(async (response) => {
@@ -247,6 +252,10 @@ export function DocumentRegistry({ initialPage, authorization }: DocumentRegistr
           return response.json() as Promise<DocumentListPage>;
         })
         .then((nextPage) => {
+          if (!active) return;
+          if (!Array.isArray(nextPage?.items) || !Number.isSafeInteger(nextPage.total) || nextPage.total < 0 || !nextPage.summary) {
+            throw new Error("Invalid document page");
+          }
           if (nextPage.total > 0 && pageIndex * REGISTRY_PAGE_SIZE >= nextPage.total) {
             setPageIndex(Math.max(0, Math.ceil(nextPage.total / REGISTRY_PAGE_SIZE) - 1));
             return;
@@ -254,17 +263,18 @@ export function DocumentRegistry({ initialPage, authorization }: DocumentRegistr
           setPage(nextPage);
           setSelectedDocumentIds([]);
         })
-        .catch((error) => {
-          if (!(error instanceof DOMException && error.name === "AbortError")) {
-            setLoadFailed(true);
-          }
+        .catch(() => {
+          if (active) setLoadFailed(true);
         })
         .finally(() => {
-          if (!controller.signal.aborted) setLoading(false);
+          clearTimeout(deadline);
+          if (active) setLoading(false);
         });
     }, query.trim() ? 250 : 0);
     return () => {
+      active = false;
       window.clearTimeout(timer);
+      clearTimeout(deadline);
       controller.abort();
     };
   }, [effectiveClassifications, effectiveStatuses, pageIndex, query, reloadNonce, types]);
@@ -388,27 +398,27 @@ export function DocumentRegistry({ initialPage, authorization }: DocumentRegistr
       <section className="grid grid--metrics" aria-label={copy.summaryTitle}>
         <MetricCard
           label={copy.totalDocuments}
-          value={String(page.summary.total_documents)}
+          value={loading || loadFailed ? "..." : String(page.summary.total_documents)}
           detail={copy.totalDocumentsDetail}
           icon={FileSearch}
         />
         <MetricCard
           label={copy.validDocuments}
-          value={String(metrics.valid)}
+          value={loading || loadFailed ? "..." : String(metrics.valid)}
           detail={copy.validDocumentsDetail}
           icon={CheckCircle2}
           tone="success"
         />
         <MetricCard
           label={copy.reviewDocuments}
-          value={String(metrics.review)}
+          value={loading || loadFailed ? "..." : String(metrics.review)}
           detail={copy.reviewDocumentsDetail}
           icon={SlidersHorizontal}
           tone="attention"
         />
         <MetricCard
           label={copy.restrictedDocuments}
-          value={String(metrics.restricted)}
+          value={loading || loadFailed ? "..." : String(metrics.restricted)}
           detail={copy.restrictedDocumentsDetail}
           icon={ShieldAlert}
           tone={metrics.restricted > 0 ? "danger" : "default"}
@@ -558,7 +568,7 @@ export function DocumentRegistry({ initialPage, authorization }: DocumentRegistr
           <div className="registry-result-bar">
             <span>
               <Filter size={15} aria-hidden="true" />
-              {copy.showing} {page.items.length} {copy.of} {page.total}
+              {loading ? copy.loading : loadFailed ? "" : `${copy.showing} ${page.items.length} ${copy.of} ${page.total}`}
               {selectedDocumentIds.length > 0 ? ` · ${selectedDocumentIds.length} ${copy.selected}` : ""}
             </span>
           </div>
@@ -573,7 +583,7 @@ export function DocumentRegistry({ initialPage, authorization }: DocumentRegistr
           ) : null}
 
           <div aria-busy={loading}>
-            <StratosDataTable
+            {loading ? <div className="notice" role="status"><span className="dashboard-loading__indicator" aria-hidden="true" />{copy.loading}</div> : loadFailed ? null : <StratosDataTable
               rows={documents}
               columns={columns}
               getRowId={(document) => document.document_id}
@@ -587,12 +597,12 @@ export function DocumentRegistry({ initialPage, authorization }: DocumentRegistr
                 </span>
               }
               aria-label={copy.title}
-            />
+            />}
           </div>
           <nav className="registry-pagination" aria-label={copy.page}>
             <StratosButton
               type="button"
-              disabled={loading || pageIndex === 0}
+              disabled={loading || loadFailed || pageIndex === 0}
               onClick={() => setPageIndex((value) => Math.max(0, value - 1))}
             >
               {copy.previousPage}
@@ -600,11 +610,11 @@ export function DocumentRegistry({ initialPage, authorization }: DocumentRegistr
             <span aria-live="polite">
               {loading
                 ? copy.loading
-                : `${copy.page} ${pageIndex + 1} ${copy.of} ${Math.max(1, Math.ceil(page.total / REGISTRY_PAGE_SIZE))}`}
+                : loadFailed ? "" : `${copy.page} ${pageIndex + 1} ${copy.of} ${Math.max(1, Math.ceil(page.total / REGISTRY_PAGE_SIZE))}`}
             </span>
             <StratosButton
               type="button"
-              disabled={loading || (pageIndex + 1) * REGISTRY_PAGE_SIZE >= page.total}
+              disabled={loading || loadFailed || (pageIndex + 1) * REGISTRY_PAGE_SIZE >= page.total}
               onClick={() => setPageIndex((value) => value + 1)}
             >
               {copy.nextPage}
@@ -646,19 +656,6 @@ function registryViewClassifications(
 ): Classification[] {
   if (selected.length > 0) return selected;
   return view === "restricted" ? ["restricted", "confidential"] : [];
-}
-
-function classificationLabel(
-  value: Classification,
-  language: AklLanguage,
-): string {
-  const labels: Record<Classification, [string, string]> = {
-    public: ["Veřejné", "Public"],
-    internal: ["Interní", "Internal"],
-    restricted: ["Omezené", "Restricted"],
-    confidential: ["Důvěrné", "Confidential"],
-  };
-  return labels[value][language === "en" ? 1 : 0];
 }
 
 function documentOwnerLabel(document: Document, language: AklLanguage): string {

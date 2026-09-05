@@ -36,13 +36,13 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
         except Exception:
             latency_ms = round((perf_counter() - start) * 1000, 2)
-            logging.getLogger("akl.registry").exception(
+            logging.getLogger("akl.registry").error(
                 "request failed",
                 extra={
                     "request_id": request_id,
                     "correlation_id": correlation_id,
                     "method": request.method,
-                    "path": request.url.path,
+                    "path": _safe_path(request),
                     "latency_ms": latency_ms,
                 },
             )
@@ -58,7 +58,7 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
                 "request_id": request_id,
                 "correlation_id": correlation_id,
                 "method": request.method,
-                "path": request.url.path,
+                "path": _safe_path(request),
                 "status_code": response.status_code,
                 "latency_ms": latency_ms,
             },
@@ -66,3 +66,9 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
         response.headers["X-Request-ID"] = request_id
         response.headers["X-Correlation-ID"] = correlation_id
         return response
+
+
+def _safe_path(request: Request) -> str:
+    if request.url.path.startswith("/api/v1/internal/web-sessions"):
+        return "/api/v1/internal/web-sessions"
+    return getattr(request.scope.get("route"), "path", "/unmatched")

@@ -34,6 +34,10 @@ import type {
   DocumentReadinessReport,
   DocumentReadinessReportOptions,
   DocumentVersion,
+  DocumentReviewRequest,
+  WorkflowDocument,
+  WorkflowDocumentListOptions,
+  WorkflowPage,
   IntelligenceScopeAuthorizationRequest,
   IntelligenceScopeAuthorizationResponse,
   ProfileSettingsBundle,
@@ -56,8 +60,13 @@ import type {
   AssistantConversationPatchRequest,
   AssistantConversationShareReplaceRequest,
 } from "@/lib/types";
-import { canUseAdminSurface } from "@/lib/auth/authorization";
+import {
+  canUseAdminSurface,
+  canReadTeamTasks,
+  constrainAuthorizationHintsToContext,
+} from "@/lib/auth/authorization";
 import { ApiClientError } from "@/lib/types";
+import { approvesDocument, documentDeadlines, managesDocument, urgentDeadline, workflowToday } from "@/features/tasks/document-deadlines";
 
 import {
   cloneMock,
@@ -718,11 +727,14 @@ export class MockRegistryClient implements RegistryApiClient {
   async getAuthorizationHints(
     context: ApiRequestContext,
   ): Promise<AuthorizationHint> {
-    return cloneMock({
-      ...mockAuthorization,
-      can_manage_admin: canUseAdminSurface(context),
-      can_publish: mockAuthorization.can_publish || canUseAdminSurface(context),
-    });
+    return cloneMock(
+      constrainAuthorizationHintsToContext(context, {
+        ...mockAuthorization,
+        can_manage_admin: canUseAdminSurface(context),
+        can_publish: mockAuthorization.can_publish || canUseAdminSurface(context)
+          || (context.roles ?? []).some((role) => ["reviewer", "akl_reviewer", "document_manager", "akl_document_manager"].includes(role)),
+      }),
+    );
   }
 
   async authorizeDocument(
@@ -897,7 +909,7 @@ export class MockRegistryClient implements RegistryApiClient {
   }
 
   async listWorkflowTasks(
-    _context: ApiRequestContext,
+    context: ApiRequestContext,
     options: WorkflowTaskListOptions = {},
   ): Promise<RegistryWorkflowTask[]> {
     const now = new Date().toISOString();
@@ -905,8 +917,8 @@ export class MockRegistryClient implements RegistryApiClient {
     for (const document of this.documents) {
       const draftAssignment = assignmentFor(document, ["owner", "gestor"]);
       const reviewAssignment = assignmentFor(document, [
-        "reviewer",
         "approver",
+        "reviewer",
         "gestor",
         "owner",
       ]);
@@ -915,7 +927,9 @@ export class MockRegistryClient implements RegistryApiClient {
         "gestor",
         "owner",
       ]);
-      if (document.status === "review") {
+      if (document.status === "review" && ![...this.workflowTaskOverrides.values()].some((task) =>
+        task.document_id === document.document_id && task.metadata.review_snapshot && ["open", "waiting", "blocked"].includes(task.status)
+      )) {
         generatedTasks.push({
           task_id: `task_review_${document.document_id}`,
           source_key: `document-review:${document.document_id}`,
@@ -938,7 +952,8 @@ export class MockRegistryClient implements RegistryApiClient {
           role: assignmentRoleLabel(reviewAssignment) ?? "Owner / gestor",
           document_id: document.document_id,
           document_title: document.title,
-          document_version_id: null,
+          document_version_id: this.versions.filter((version) => version.document_id === document.document_id)
+            .sort((left, right) => right.created_at.localeCompare(left.created_at))[0]?.document_version_id ?? null,
           audit_event_id: null,
           job_id: null,
           due_at: document.updated_at,
@@ -951,7 +966,9 @@ export class MockRegistryClient implements RegistryApiClient {
           updated_at: now,
         });
       }
-      if (document.status === "draft") {
+      if (document.status === "draft" && ![...this.workflowTaskOverrides.values()].some((task) =>
+        task.document_id === document.document_id && task.metadata.review_task_id && ["open", "waiting", "blocked"].includes(task.status)
+      )) {
         generatedTasks.push({
           task_id: `task_draft_${document.document_id}`,
           source_key: `document-draft:${document.document_id}`,
@@ -1022,9 +1039,110 @@ export class MockRegistryClient implements RegistryApiClient {
     const tasks = generatedTasks.map(
       (task) => this.workflowTaskOverrides.get(task.task_id) ?? task,
     );
+    for (const task of this.workflowTaskOverrides.values()) {
+      if (!tasks.some((item) => item.task_id === task.task_id)) tasks.push(task);
+    }
+    const authorization = await this.getAuthorizationHints(context);
+    const visible = tasks.map((task): RegistryWorkflowTask => {
+      const mine = task.metadata.assignment_subject_type === "group"
+        ? (context.groups ?? []).includes(task.owner_id ?? "") : task.owner_id === context.subjectId;
+      const active = ["open", "waiting", "blocked"].includes(task.status);
+      return { ...task, assigned_to_me: mine, allowed_actions: active
+        ? task.kind === "review"
+          ? mine && authorization.can_publish && task.document_version_id && task.metadata.submitted_by !== context.subjectId ? ["approve", "request_changes"] : []
+          : authorization.can_update ? ["assign", "resolve", ...(task.kind === "draft" ? ["request_changes" as const] : [])] : []
+        : [],
+      };
+    }).filter((task) => workflowTaskMatchesOptions(task, options)
+      && (!(options.assignedToMe || !canReadTeamTasks(context)) || task.assigned_to_me));
     return cloneMock(
-      tasks.filter((task) => workflowTaskMatchesOptions(task, options)),
+      visible.slice(options.offset ?? 0, options.limit === undefined ? undefined : (options.offset ?? 0) + options.limit),
     );
+  }
+
+  async listWorkflowTaskPage(context: ApiRequestContext, options: WorkflowTaskListOptions = {}): Promise<WorkflowPage<RegistryWorkflowTask>> {
+    const items = await this.listWorkflowTasks(context, { ...options, limit: undefined, offset: undefined });
+    const limit = options.limit ?? 25;
+    const offset = options.offset ?? 0;
+    return { items: items.slice(offset, offset + limit), total: items.length, limit, offset };
+  }
+
+  async listWorkflowDocumentPage(context: ApiRequestContext, options: WorkflowDocumentListOptions = {}): Promise<WorkflowPage<WorkflowDocument>> {
+    const today = workflowToday(new Date().toISOString());
+    const query = options.query?.trim().toLowerCase();
+    const items = (await this.listWorkflowDocuments(context)).filter((document) => {
+      const dates = documentDeadlines(document, today);
+      return (!query || `${document.title} ${document.document_id}`.toLowerCase().includes(query))
+        && (!options.assignment || (options.assignment === "managed" ? managesDocument(document) : approvesDocument(document)))
+        && (!options.versionStatus || document.version_status === options.versionStatus)
+        && (!options.deadline || (options.deadline === "attention" ? urgentDeadline(dates)
+          : options.deadline === "expired" ? dates.includes("expired")
+            : options.deadline === "review" ? dates.some((value) => ["review_overdue", "review_soon", "review_invalid"].includes(value))
+              : dates.some((value) => ["review_missing", "review_invalid"].includes(value))));
+    }).sort((left, right) => left.title.localeCompare(right.title) || left.document_id.localeCompare(right.document_id));
+    const limit = options.limit ?? 25;
+    const offset = options.offset ?? 0;
+    return { items: items.slice(offset, offset + limit), total: items.length, limit, offset };
+  }
+
+  async listWorkflowDocuments(context: ApiRequestContext): Promise<WorkflowDocument[]> {
+    const items: WorkflowDocument[] = [];
+    for (const document of this.documents) {
+      const roles = new Set((document.assignments ?? []).filter((item) => item.active && (
+        item.subject_type === "user" ? item.subject_id === context.subjectId
+          : item.subject_type === "group" && (context.groups ?? []).includes(item.subject_id)
+      )).map((item) => item.role));
+      if (document.owner_id === context.subjectId) roles.add("owner");
+      if (roles.size === 0) continue;
+      const versions = this.versions.filter((version) => version.document_id === document.document_id)
+        .sort((left, right) => right.created_at.localeCompare(left.created_at));
+      const latest = versions[0];
+      const published = versions.find((version) => version.status === "valid");
+      const rawReviewDate = document.metadata?.review_due_on;
+      const reviewDate = typeof rawReviewDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(rawReviewDate) && Number.isFinite(Date.parse(rawReviewDate)) ? rawReviewDate : null;
+      items.push({ document_id: document.document_id, title: document.title, document_type: document.document_type,
+        status: document.status, assignment_roles: [...roles], document_version_id: latest?.document_version_id ?? null,
+        version_label: latest?.version_label ?? null, version_status: latest?.status ?? null,
+        valid_from: latest?.valid_from ?? null, valid_to: latest?.valid_to ?? null,
+        published_version_label: published?.version_label ?? null, published_valid_to: published?.valid_to ?? null,
+        review_due_on: reviewDate, review_date_invalid: Boolean(rawReviewDate && !reviewDate), updated_at: document.updated_at,
+      });
+    }
+    return cloneMock(items);
+  }
+
+  async submitDocumentReview(documentId: string, versionId: string, request: DocumentReviewRequest, context: ApiRequestContext): Promise<RegistryWorkflowTask> {
+    const document = this.documents.find((item) => item.document_id === documentId);
+    const version = this.versions.find((item) => item.document_id === documentId && item.document_version_id === versionId);
+    const authorization = await this.getAuthorizationHints(context);
+    if (!document || !version) throw new ApiClientError("Source not found", 404, "NOT_FOUND", "mock-trace");
+    if (!authorization.can_update) throw new ApiClientError("Not permitted", 403, "FORBIDDEN", "mock-trace");
+    const approver = assignmentFor(document, ["approver", "reviewer"]);
+    if (!approver || !["user", "group"].includes(approver.subject_type)) throw new ApiClientError("Assign an approver", 409, "review_assignee_required", "mock-trace");
+    if (!version.valid_from || !version.file_hash || !version.source_file_uri) throw new ApiClientError("Complete the source", 409, "review_source_incomplete", "mock-trace");
+    if (!["draft", "review", "approved"].includes(version.status)) throw new ApiClientError("Not an unpublished version", 409, "review_version_not_eligible", "mock-trace");
+    const existing = [...this.workflowTaskOverrides.values()].find((task) => task.document_version_id === versionId
+      && task.kind === "review" && task.metadata.review_snapshot && ["open", "waiting", "blocked"].includes(task.status));
+    if (existing) return cloneMock(existing);
+    const now = new Date().toISOString();
+    for (const task of this.workflowTaskOverrides.values()) {
+      if (task.document_id === documentId && ["review", "draft"].includes(task.kind) && ["open", "waiting", "blocked"].includes(task.status)) {
+        task.status = task.kind === "review" ? "cancelled" : "resolved";
+        task.resolved_at = now;
+      }
+    }
+    version.status = "review";
+    if (document.status !== "valid") document.status = "review";
+    const task: RegistryWorkflowTask = { task_id: `task_${randomUUID()}`, source_key: null, kind: "review", priority: "medium", status: "open",
+      title: "Document review required", description: "Review the exact submitted version before approval.", source: "Document review submission",
+      owner_id: approver.subject_id, owner_label: assignmentLabel(approver) ?? "", role: approver.role,
+      document_id: documentId, document_title: document.title, document_version_id: versionId, audit_event_id: null, job_id: null,
+      due_at: new Date(Date.now() + (approver.sla_days ?? 5) * 86400000).toISOString(), resolved_at: null,
+      metadata: { review_snapshot: "mock-review", submitted_by: context.subjectId, version_label: version.version_label, submission_comment: request.comment ?? null, ...assignmentTaskMetadata(approver) },
+      created_at: now, updated_at: now, allowed_actions: [], assigned_to_me: approver.subject_id === context.subjectId,
+    };
+    this.workflowTaskOverrides.set(task.task_id, task);
+    return cloneMock(task);
   }
 
   async applyWorkflowTaskAction(
@@ -1044,16 +1162,22 @@ export class MockRegistryClient implements RegistryApiClient {
       );
     }
 
+    if (task.metadata.review_snapshot && !task.allowed_actions?.includes(request.action)) {
+      throw new ApiClientError("Not permitted", 403, "review_assignee_required", "mock-trace");
+    }
+
     const now = new Date().toISOString();
     const resolvesTask = ["approve", "publish", "archive", "resolve"].includes(
       request.action,
-    );
+    ) || Boolean(task.metadata.review_snapshot && request.action === "request_changes");
     const document = task.document_id
       ? this.documents.find(
           (candidate) => candidate.document_id === task.document_id,
         )
       : undefined;
-    const latestVersion = task.document_id
+    const latestVersion = task.document_version_id
+      ? this.versions.find((item) => item.document_version_id === task.document_version_id)
+      : task.document_id
       ? this.versions
           .filter((candidate) => candidate.document_id === task.document_id)
           .sort((left, right) =>
@@ -1062,19 +1186,31 @@ export class MockRegistryClient implements RegistryApiClient {
       : undefined;
 
     if (request.action === "approve" && document && task.kind === "review") {
-      document.status = "approved";
+      if (document.status !== "valid") document.status = "approved";
       if (latestVersion && ["draft", "review"].includes(latestVersion.status)) {
         latestVersion.status = "approved";
       }
     }
     if (
       request.action === "request_changes" &&
-      document &&
-      ["review", "approved"].includes(document.status)
+      document
     ) {
-      document.status = "draft";
-      if (latestVersion?.status === "approved") {
+      if (["review", "approved"].includes(document.status)) document.status = "draft";
+      if (latestVersion && ["approved", "review"].includes(latestVersion.status)) {
         latestVersion.status = "draft";
+      }
+      if (task.metadata.review_snapshot) {
+        const owner = assignmentFor(document, ["gestor", "owner"]);
+        const returnedTask: RegistryWorkflowTask = {
+          ...task, task_id: `task_${randomUUID()}`, kind: "draft", status: "open", resolved_at: null,
+          title: "Document changes requested", description: "Review feedback before submitting a new review.",
+          source: "Document review decision", owner_id: owner?.subject_id ?? document.owner_id ?? null,
+          owner_label: assignmentLabel(owner) ?? document.owner, role: owner?.role ?? "Document manager",
+          metadata: { review_task_id: task.task_id, last_comment: request.comment ?? null,
+            version_label: latestVersion?.version_label, ...assignmentTaskMetadata(owner) },
+          created_at: now, updated_at: now, allowed_actions: [], assigned_to_me: false,
+        };
+        this.workflowTaskOverrides.set(returnedTask.task_id, returnedTask);
       }
     }
     if (request.action === "publish" && document && latestVersion) {
@@ -1808,6 +1944,8 @@ function workflowTaskMatchesOptions(
   task: RegistryWorkflowTask,
   options: WorkflowTaskListOptions,
 ): boolean {
+  if (options.query && ![task.title, task.document_title, task.description, task.owner_label]
+    .join(" ").toLowerCase().includes(options.query.trim().toLowerCase())) return false;
   if (
     !options.includeResolved &&
     !["open", "waiting", "blocked"].includes(task.status)
@@ -1900,6 +2038,7 @@ function assignmentTaskMetadata(
   return {
     assignment_id: assignment.assignment_id,
     assignment_role: assignment.role,
+    assignment_subject_type: assignment.subject_type,
     sla_days: assignment.sla_days,
     escalation_subject_id: assignment.escalation_subject_id,
     escalated: false,

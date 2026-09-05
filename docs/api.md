@@ -6,22 +6,14 @@ The repository-level machine-readable API contract is:
 openapi/openapi.json
 ```
 
-The versioned public AIIP application fragment is:
-
-```text
-openapi/aiip-application-api.v1.json
-```
-
 The active Director Copilot contract is pinned under:
 
 ```text
 contracts/director-copilot/v2/
 ```
 
-V2 revision `2.0.3` dynamically validates the active source manifests for
-Budget, ProjectFlow and ArchFlow. The immutable bundle still carries the
-retired AIIP manifest for byte-level contract compatibility, but AKB neither
-loads nor calls it.
+V2 revision `2.0.4` dynamically validates the active source manifests for
+Budget, ProjectFlow and ArchFlow.
 Every target uses a separate single-audience service token and the independent
 current actor bearer. The shared request includes period, entity filters,
 granularity, grouping, scenario, `as_of`, cursor and limit. The assistant
@@ -36,7 +28,8 @@ contract. AKB sends an independent service bearer and current actor bearer;
 each source reloads the actor's STRATOS access projection and applies its own
 PEP. See `docs/integration/DIRECTOR_COPILOT_V2_IMPLEMENTATION.md`.
 
-The web `POST /api/assistant/chat` bridge resolves a versioned semantic
+The web `POST /api/assistant/chat` bridge first recognizes explicit current
+personal-workspace requests. Other requests resolve a versioned semantic
 `ConversationQueryState` and typed Director Copilot intent before the document
 assistant router. The state carries only bounded query semantics such as
 source, metric, period, operation (`summary`, `list`, `count`, `rank`),
@@ -49,9 +42,12 @@ Need and idea-intake questions use ArchFlow through
 `archflow.need_portfolio_overview.v1`. Each response is limited to
 source-authorized facts, source timestamps and safe deep links.
 
-Budget action, purchase and plan-line questions request `item` granularity with
-`budget_item` grouping. Count answers use the source-provided authorized
-`candidate_count`; ranking is presented only over a complete comparable result.
+Budget planned-action and purchase questions request `item` granularity with
+`procurement_action` grouping; explicitly requested budget lines retain
+`budget_item` grouping. Count answers require complete cursor traversal,
+unique authorized items matching `candidate_count` and verified per-item count
+facts. The candidate count alone is not an answer. Ranking is presented only
+over a complete comparable result.
 An aggregate response to an item request is rejected with
 `LIVE_DATA_ENTITY_TYPE_MISMATCH` and is never relabeled as an action.
 Before rendering, AKB validates source metadata, candidate completeness,
@@ -76,6 +72,55 @@ same Registry conversation. A failed history write leaves the answer visible
 with `CONVERSATION_HISTORY_NOT_PERSISTED`; it is never presented as silently
 saved.
 
+Explicit personal-workspace requests use `answer_source=akb_workflow` and
+`workflow_workspace` context instead of fabricated document citations. The
+bridge reads at most five assigned open tasks, pending reviews or managed
+documents through the existing Registry workflow APIs. It validates the
+requested page, uses its authorized `total` and revalidates the current access
+projection before responding. It does not approve, publish or modify records.
+Unknown filters are not silently dropped into a personal-workspace answer.
+Errors and changed access never become an empty queue or document-RAG fallback.
+The response is `no-store`. History receives only a neutral refresh receipt,
+not personal queue titles, IDs or counts; shared conversation history therefore
+cannot replay another person's private work overview. A new explicit question
+always loads the current viewer's authorized records.
+
+Browser authentication uses an opaque server-side AKB session. The browser
+can inspect and revoke its own trusted-device sessions through:
+
+```text
+GET /api/auth/sessions
+DELETE /api/auth/sessions
+```
+
+The delete operation accepts either one session id or an explicit request to
+revoke all sessions belonging to the current subject. It requires an
+authenticated session and an exact same-origin request. These browser routes
+never return OIDC access tokens, refresh tokens, encrypted token payloads, or
+the opaque session cookie value. The backing Registry routes are internal,
+HMAC-authenticated service routes and are not a public integration contract.
+
+`GET /api/auth/login` starts one normal code + PKCE transaction when no
+attempt/logout guard is present; `POST /api/auth/login` explicitly retries
+after an error or logout. Both ignore a browser-supplied remember-device
+choice. The callback independently validates the access token and ID token
+including nonce, then derives cookie lifetime from the verified central
+access-token policy. Auth/session responses are `no-store`.
+
+Registry session creation/rotation schemas are published in the OpenAPI
+contract. Token or policy rotation requires `expected_updated_at`; a stale
+compare-and-swap returns 409. A patch cannot extend absolute expiry, upgrade
+a nonpersistent session or revive an expired/revoked session. For managed
+Director calls only, `POST /api/v1/internal/director-copilot/audit` accepts a
+bounded metadata schema authenticated by the existing internal AKB BFF HMAC
+boundary. Director domain tokens receive no Registry audit grant. This
+endpoint is unavailable in external OIDC mode. It accepts no tokens, document
+text, prompts, answers or quoted passages.
+
+See [central SSO and managed identity](security/managed-identity.md) for
+identity modes, managed token claims, exact audiences, route grants and
+activation gates. Domain and Controlled Rules contracts do not change.
+
 It is generated by `scripts/generate_openapi_index.rb` from service-local
 OpenAPI files and the Next.js web API route tree. See `openapi/README.md`.
 
@@ -91,14 +136,11 @@ missing or hash-inconsistent summary is not accepted as Director Copilot
 evidence.
 
 Policy-bearing document and version writes also register immutable central
-`GovernedInformationResource` coordinates. Normal writes use a verified user
-bearer or the dedicated `AKB_POLICY_SERVICE_TOKEN`, which resolves to the fixed
-`service:akb` identity and AKB namespace. AIIP does not use that broad service
-path: its dedicated upload contract requires the exact `aiip-service`
-transport, a separate current actor bearer, and an exact central confirmation
-made with the independent `AKB_AIIP_INGEST_SERVICE_TOKEN`. An invalid
-credential, inactive scope, unregistered source or binding, stale lineage, or
-missing capability aborts the complete write.
+`GovernedInformationResource` coordinates. Writes use a verified user bearer
+or the dedicated `AKB_POLICY_SERVICE_TOKEN`, which resolves to the fixed
+`service:akb` identity and AKB namespace. An invalid credential, inactive
+scope, unregistered source or binding, stale lineage, or missing capability
+aborts the complete write.
 
 ## API Surfaces
 
@@ -191,6 +233,14 @@ widens the caller's document access. The complete hierarchy and historical
 contract are in `docs/ARCHITECTURE/temporal-controlled-documentation.md`; the
 Budget handoff is in `docs/integration/AKB_CONTROLLED_RULES_BUDGET_API.md`.
 
+The ordinary reader view always requests approved rules. Requesting
+`approved_only=false` directly from Registry requires document-update or
+version-publication permission; otherwise Registry returns
+`403 controlled_rule_review_forbidden`. `include_inactive=true` independently
+requires document-update permission. The web bridge derives these options from
+fresh authorization hints and ignores attempts by readers to widen them. This
+does not change the separate closed Budget consumer contract.
+
 Interactive Governance operations use the internal Governance service bearer
 in `Authorization` and the independently current person bearer in
 `X-STRATOS-Actor-Authorization`. Registry and RAG validate the actor token and
@@ -229,57 +279,6 @@ storage URI, content extraction, chunk, embedding, prompt, answer, or RAG
 field.
 
 Service-level summaries remain in `docs/api/`.
-
-AIIP uses the purpose-built server-to-server bridge operations
-`POST /api/integrations/aiip/v1/harmonize` and
-`POST /api/integrations/aiip/v1/duplicates/search`. The exact identity,
-idempotency, error, model fallback, tenant filtering, audit, and retention
-contract is documented in `docs/integration/AKB_AIIP_APPLICATION_API.md`.
-
-Governed AIIP document ingestion uses the browser-safe upload bridge and these
-internal Registry operations:
-
-```text
-POST  /api/v1/integrations/aiip-upload/external-documents/upsert
-PUT   /api/v1/integrations/aiip-upload/documents/{document_id}/versions
-PATCH /api/v1/integrations/aiip-upload/external-documents/{external_document_id}/current
-```
-
-They are not general integration endpoints. They accept only the
-`aiip-document-service=aiip-upload` route grant plus an independent
-`X-AIIP-Actor-Authorization` bearer, reject arbitrary metadata/owner fields,
-and return `governance_confirmation` containing the exact source and derived
-resource lineage. Details are in ADR 0008 and
-`docs/integration/STRATOS_EXTERNAL_DOCUMENTS_API.md`.
-
-The public machine contract models the corresponding web bridge as three
-operation-specific APIs rather than `GenericJson`:
-
-```text
-POST /api/stratos/upload/preflight
-PUT  /api/stratos/upload/sessions/{sessionId}/content
-POST /api/stratos/upload/sessions/{sessionId}/confirm
-```
-
-Preflight and confirm require both the `Authorization: Bearer <aiip-service>`
-transport credential and the independent
-`X-AIIP-Actor-Authorization: Bearer <current-person>` header. Their JSON bodies,
-Information Policy, AIIP-only integration envelope and successful responses
-are closed schemas; unknown fields are rejected. Preflight returns the opaque
-`X-AKL-Upload-Token` only inside its exact `required_headers` object. Content is
-a binary `PUT` authenticated by that header and accompanied by the exact
-`X-AKL-Content-SHA256`; HTTP `201` returns a required opaque
-`upload_receipt`. Confirm requires both `upload_token` and `upload_receipt`
-plus all signed file, policy, scope, and envelope fields. Both successful JSON
-operations return a closed, authoritative `governance_confirmation` schema.
-Its discriminated `scope` uses only the active coordinate: `ownerSubjectId` for
-`own`, or `id` for every other scope type. Mutually exclusive coordinates are
-omitted rather than serialized as `null`.
-
-`STRATOS_AIIP` is rejected by the generic external-document, version, and
-current-pointer write routes. Document-level synchronization outside the
-dedicated family is status-only for a current version already selected by the
-dedicated compare-and-swap operation; it cannot create or select AIIP lineage.
 
 Ingestion jobs accept an optional `extraction_profile` and return a `quality`
 block in job reports. The quality block records the parser/engine, pages with
@@ -374,12 +373,22 @@ router keeps technical routing metadata out of user-facing answers and only
 adds a bounded `answer_format_instruction` when a RAG answer needs a meaningful
 multi-column table or obligation report.
 
+The document route also classifies general employee tasks such as finding a
+procedure, form, support channel, owner, responsibility, deadline, obligation,
+or policy. Generic browser `ask` requests use the server-selected specialized
+answer mode. Bounded synonym hints are added to retrieval only, never to answer
+evidence or persisted conversation text. A referential follow-up may inherit
+the task class; a self-contained new question does not. The route never invents
+a form, link, contact, deadline, owner, or support channel when authorized
+citable documents do not provide one.
+
 Returned assistant responses include an internal enterprise envelope in
 `current_context` (`assistant_contract_version`, `assistant_tool`,
 `assistant_tool_reason`, `assistant_query_plan`, `answer_source`, and
 report/request flags). `assistant_query_plan` records the selected intent,
 backend tool, expected output kind, registry topics, and quality gates such as
-row-level citation requirements. STRATOS UI clients should treat these fields as
+row-level citation requirements. Its retrieval section also records the
+bounded `document_knowledge_intent`. STRATOS UI clients should treat these fields as
 machine-readable state for continuation, diagnostics, and audit context, not as
 text to render to end users.
 
@@ -436,6 +445,11 @@ the caller's authorized document set. The private web bridge
 `GET /akb/api/documents` accepts the corresponding user-facing query parameters
 and never caches a response.
 
+The employee-directive projection applies consistently to lists, metadata
+summaries and detail reads. It adds only policy-approved exact sources of
+effective employee packages, not general organization access. Counts represent
+the caller's authorized documents, not stored objects or versions.
+
 `/documents/readiness-report` is the pilot-readiness aggregate for the controlled
 document corpus. It uses the same permission-scoped filters and returns counts
 for ready, review-required, and blocked documents plus issue buckets for missing
@@ -444,6 +458,45 @@ validity/source hashes, duplicate source hashes, ingestion failures, and
 extraction/OCR quality review signals. Registry derives this report from
 metadata and version records only; content extraction and RAG remain owned by
 Ingestion/RAG services.
+
+### Personal document work and approval
+
+`GET /api/v1/workflow/documents` returns documents owned by the current subject
+or actively assigned to that person/group. It includes the latest authorized
+version, published-version expiry, `review_due_on`, role and status. It accepts
+bounded `limit`/`offset`, `q` (at most 200 characters),
+`assignment=managed|approver`, `version_status`, and
+`deadline=attention|expired|review|missing`, not an arbitrary subject.
+Authorization precedes pagination and `total` counts only authorized results.
+Ordinary document pages authorize exact versions only for their displayed rows;
+version-dependent filters authorize candidate versions before filtering/counting.
+
+`GET /api/v1/workflow/tasks?assigned_to_me=true` returns the current subject's
+personal queue, including verified group assignments. Read-only users cannot
+opt out of personal filtering using `assigned_to_me=false`; the team view needs
+document-management authority. `q` searches task/document metadata (at most
+200 characters), alongside existing status, kind and priority filters.
+The response includes `total`, `limit` and `offset`;
+each task includes `assigned_to_me` and server-derived `allowed_actions`. These
+are UI hints, never a substitute for authorization of a subsequent action.
+GET does not synchronize or mutate tasks. Derived-task maintenance and SLA
+escalation run in a separate Registry background cycle.
+
+`POST /api/v1/documents/{document_id}/versions/{version_id}/submit-review`
+accepts only an optional `comment` (at most 1,000 characters). It submits the
+latest unpublished version to its active approver/reviewer person or group.
+The same unchanged active submission is idempotent. Changing the source,
+metadata, files, policy or assignments requires a new review. It returns the
+persisted `WorkflowTaskResponse`; it never grants access or publishes content.
+The browser bridge is `/api/documents/{documentId}/versions/{versionId}/submit-review`
+under the configured web base path, with same-origin write protection.
+
+`POST /api/v1/workflow/tasks/{task_id}/actions` checks current authority and the
+exact submitted version. `approve` and `request_changes` close that review;
+requesting changes creates one task for the gestor. The submitter cannot decide
+their own explicit review. Publication checks the latest approval snapshot
+again through the existing publication endpoint. No database migration or
+service identity change is needed. See [workflow lifecycle](ui/workflow-inbox.md).
 
 Registry API also owns persisted assistant conversation history. RAG appends
 turns through the compatibility persistence endpoint and the AKB web BFF reads

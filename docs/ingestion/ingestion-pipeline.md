@@ -8,12 +8,12 @@ Tento dokument popisuje implementovaný tok `services/ingestion-service`.
 2. Služba uloží `IngestionJob` do lokálního job/report store.
 3. Pipeline získá krátkodobý OIDC token vlastního Registry clientu
    `svc-ingestion` a zavolá Registry API authz check pro `document.ingest`.
-   Inbound AIIP/user subject je pouze `subject_id` rozhodnutí; jeho bearer se
+   Inbound user subject je pouze `subject_id` rozhodnutí; jeho bearer se
    nepřeposílá.
 4. Pipeline pod stejnou vlastní service identity načte metadata dokumentu a
    verze přes Registry API.
 5. Object storage klient načte zdrojový soubor.
-6. Parser router zvolí HTML/HTM/XHTML, XLSX/XLSM, PPTX, TXT/MD/CSV/JSON/XML, PDF nebo DOCX parser. HTML parser extrahuje nadpisy jako sekce a přeskakuje skripty/styly; XLSX parser extrahuje řádky listů jako tabulkové bloky (oddělovač `|`), s opakováním hlavičky v pokračovacích blocích; PPTX parser extrahuje slidy jako stránky s titulkem slidu jako sekcí, včetně tabulek a poznámek lektora; text parser bezpečně indexuje i strukturované textové zdroje CSV, JSON a XML.
+6. Parser router zvolí HTML/HTM/XHTML, XLSX/XLSM, PPTX, TXT/MD/CSV/JSON/XML, PDF nebo DOCX parser. Volitelný Docling adaptér může běžet v režimu `shadow`, `prefer` nebo `enforce`; výchozí `off` zachovává původní cestu. GraniteDocling se používá jen pro PDF. HTML parser extrahuje nadpisy jako sekce a přeskakuje skripty/styly; XLSX parser extrahuje řádky listů jako tabulkové bloky (oddělovač `|`), s opakováním hlavičky v pokračovacích blocích; PPTX parser extrahuje slidy jako stránky s titulkem slidu jako sekcí, včetně tabulek a poznámek lektora; text parser bezpečně indexuje i strukturované textové zdroje CSV, JSON a XML.
 7. OCR fallback se použije při selhání parseru nebo nízkém množství extrahovaného textu. Podporované providery jsou `sidecar`, `tesseract` pro obrázky a `ocrmypdf` pro PDF. OCR výstup ukládá metadata parser enginu, jazyka, počtu stran s textem, prázdných stran a kvality.
 8. Pipeline vytvoří `quality` report s `quality_score`, `quality_tier` a `requires_review`; nízká kvalita OCR přidá varování `LOW_OCR_QUALITY` nebo `OCR_EMPTY_PAGES`.
 9. Logical chunker vytvoří `DocumentChunk` objekty s citovatelnými metadaty včetně parser/OCR quality evidence.
@@ -21,12 +21,43 @@ Tento dokument popisuje implementovaný tok `services/ingestion-service`.
 11. Embedding klient pošle normalizované texty na LLM Gateway `/api/v1/embeddings` jako service identity `svc-ingestion`, s audience `llm-gateway-service`, rolí `service_ingestion` a samostatným gateway tokenem. Caller OIDC token se do gateway nepřeposílá. Dávky (`AKL_INGESTION_EMBEDDING_BATCH_SIZE`, default 32) běží paralelně s omezenou souběžností (`AKL_INGESTION_EMBEDDING_CONCURRENCY`, obecný default 2). Produkční docker-home profil používá konzervativní `AKL_INGESTION_EMBEDDING_CONCURRENCY=1`, aby re-index netlačil na jednu Ollama instanci více paralelními embedding požadavky. Pořadí vektorů je zachováno.
 12. Indexer uloží chunk payloady podle `AKL_INGESTION_INDEXER_MODE`: do Qdrantu pro vektorové vyhledávání a volitelně do OpenSearch pro fulltext. Entity typy, hodnoty a páry typ-hodnota se promítají také do top-level payload polí `entity_types`, `entity_values` a `entity_pairs`.
 13. Služba přes úzký `ingestion-status` route grant synchronizuje pouze job id a
-    `INGESTING`, `INDEXED` nebo `FAILED` pro přesnou verzi, kterou dedikovaný
-    AIIP confirm už nastavil jako current. Pointer, file, URI a lineage změnit
+    `INGESTING`, `INDEXED` nebo `FAILED` pro přesnou verzi, kterou řízený intake
+    už nastavil jako current. Pointer, file, URI a lineage změnit
     nesmí.
 14. Služba uloží `IngestionReport` a pod vlastní Registry service identity
     auditně zapíše start/completed/failed; inbound actor zůstává v payloadu jako
     neautoritativní reported actor.
+
+## Struktura aplikační dokumentace
+
+- Markdown se parsuje přes CommonMark s tabulkami a front matter. Zachovává
+  hierarchii nadpisů, celé řádky tabulek a znakové rozsahy originálu. HTML
+  se nespouští a odkazy se nestahují. YAML front matter nemůže určit publikaci,
+  schválení ani Information Policy; ty pocházejí výhradně z Registry.
+- DOCX zachovává pořadí odstavců a tabulek v těle dokumentu, stylové nadpisy
+  a prázdné buňky. Obrázky, textová pole, sledované změny a vnořené tabulky
+  vyžadují kontrolu vykresleného zdroje. Jejich `requires_review` nezanikne
+  pouze proto, že je ostatního textu dostatek.
+- XLSX zachovává prázdné buňky, aby se hodnota nepřiřadila k jiné hlavičce.
+  Tabulkové pokračování opakuje hlavičku a nedělí jednotlivé řádky.
+- Markdown a DOCX bez renderované mapy mají `page_number=null` a počet
+  zjištěných fyzických stran `pages_processed=0`. Hodnocení textové kvality
+  používá jeden logický dokument, nikoli vymyšlenou stranu 1. Citace se
+  opírají o sekci a znakový rozsah; u DOCX je rozsah v extrahovaném textu.
+  Nulový počet známých stran sám neznamená nekvalitní nebo prázdný text.
+- Kvalita extrakce není důkaz věcné správnosti, úplnosti obrázků ani platnosti
+  dokumentu. Návrhy infrastruktury a autorské vzory se nesmějí vydávat za
+  ověřené nastavení konkrétní instalace.
+
+## Docling a GraniteDocling
+
+Řízené režimy, lokální modelový balík, bezpečnostní omezení, akceptační metriky
+a postup přechodu jsou popsány v [Docling a GraniteDocling](docling-granite.md).
+
+Změna parseru sama nepřepíše existující index. Již vložené dokumenty je
+nutné po ověření releasu řízeně znovu zpracovat přes existující ingestion
+workflow s přesnou verzí a hashem zdroje. Nevytvářet duplicitní dokumenty,
+neobcházet antivirovou kontrolu, revizi ani publikaci.
 
 ## Integrační Body
 

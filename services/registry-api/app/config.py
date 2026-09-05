@@ -30,6 +30,11 @@ def parse_service_client_mapping(
     return {caller: frozenset(values) for caller, values in mapping.items()}
 
 
+# Kept only for rolling upgrades: stale production configuration must not
+# re-enable a retired integration route.
+_RETIRED_SERVICE_ROUTES = frozenset({"aiip-upload"})
+
+
 class Settings(BaseSettings):
     service_name: str = "registry-api"
     service_version: str = Field(default="dev", alias="AKL_SERVICE_VERSION")
@@ -37,6 +42,8 @@ class Settings(BaseSettings):
         default="development", alias="AKL_ENV"
     )
     auth_mode: Literal["mock", "oidc"] = Field(default="mock", alias="AKL_AUTH_MODE")
+    identity_mode: Literal["external_oidc", "managed"] = Field(default="external_oidc", alias="AKL_IDENTITY_MODE")
+    managed_identity_issuer: str | None = Field(default=None, alias="AKL_MANAGED_IDENTITY_ISSUER")
     database_url: str = Field(
         default="sqlite+pysqlite:///./registry.db", alias="AKL_DATABASE_URL"
     )
@@ -57,6 +64,12 @@ class Settings(BaseSettings):
     service_client_route_grants: str = Field(
         default="", alias="AKL_SERVICE_CLIENT_ROUTE_GRANTS"
     )
+    web_session_store_secret: str | None = Field(
+        default=None, alias="AKL_WEB_SESSION_STORE_SECRET"
+    )
+    web_session_store_secret_file: str | None = Field(
+        default=None, alias="AKL_WEB_SESSION_STORE_SECRET_FILE"
+    )
 
     stratos_auth_me_url: str | None = Field(default=None, alias="AKL_STRATOS_AUTH_ME_URL")
     stratos_policy_bindings_url: str | None = Field(
@@ -71,9 +84,6 @@ class Settings(BaseSettings):
     stratos_information_resources_url: str | None = Field(
         default=None, alias="AKL_STRATOS_INFORMATION_RESOURCES_URL"
     )
-    stratos_aiip_akb_resources_url: str | None = Field(
-        default=None, alias="AKL_STRATOS_AIIP_AKB_RESOURCES_URL"
-    )
     stratos_budget_akb_resources_url: str | None = Field(
         default=None, alias="AKL_STRATOS_BUDGET_AKB_RESOURCES_URL"
     )
@@ -85,9 +95,6 @@ class Settings(BaseSettings):
     )
     stratos_policy_service_token: str | None = Field(
         default=None, alias="AKB_POLICY_SERVICE_TOKEN"
-    )
-    stratos_aiip_ingest_service_token: str | None = Field(
-        default=None, alias="AKB_AIIP_INGEST_SERVICE_TOKEN"
     )
     public_delivery_internal_token: str | None = Field(
         default=None, alias="AKL_PUBLIC_DELIVERY_INTERNAL_TOKEN"
@@ -113,6 +120,12 @@ class Settings(BaseSettings):
     assistant_purge_enabled: bool = Field(
         default=False,
         alias="AKL_ASSISTANT_PURGE_ENABLED",
+    )
+    workflow_maintenance_enabled: bool = Field(
+        default=True, alias="AKL_WORKFLOW_MAINTENANCE_ENABLED",
+    )
+    workflow_maintenance_interval_seconds: int = Field(
+        default=60, ge=15, le=3600, alias="AKL_WORKFLOW_MAINTENANCE_INTERVAL_SECONDS",
     )
     assistant_purge_interval_seconds: int = Field(
         default=3600,
@@ -234,10 +247,14 @@ class Settings(BaseSettings):
 
     @property
     def service_route_grants(self) -> dict[str, frozenset[str]]:
-        return parse_service_client_mapping(
+        parsed = parse_service_client_mapping(
             self.service_client_route_grants,
             variable_name="AKL_SERVICE_CLIENT_ROUTE_GRANTS",
         )
+        return {
+            client_id: frozenset(route for route in routes if route not in _RETIRED_SERVICE_ROUTES)
+            for client_id, routes in parsed.items()
+        }
 
     @property
     def ingestion_authorization_signing_secret(self) -> str:
@@ -258,6 +275,25 @@ class Settings(BaseSettings):
             return "akb-development-ingestion-authorization-secret-v1"
         raise ValueError("Ingestion authorization signing secret is unavailable")
 
+    @property
+    def web_session_store_signing_secret(self) -> str:
+        if self.web_session_store_secret:
+            return self.web_session_store_secret
+        if self.web_session_store_secret_file:
+            try:
+                value = Path(self.web_session_store_secret_file).read_text(
+                    encoding="utf-8"
+                ).strip()
+            except OSError as exc:
+                raise ValueError(
+                    "AKL_WEB_SESSION_STORE_SECRET_FILE could not be read"
+                ) from exc
+            if value:
+                return value
+        if self.env != "production":
+            return "akb-development-web-session-store-secret-v1"
+        raise ValueError("Web session store signing secret is unavailable")
+
     @model_validator(mode="after")
     def validate_security_mode(self) -> "Settings":
         if self.env == "production" and self.auth_mode == "mock":
@@ -269,12 +305,25 @@ class Settings(BaseSettings):
                 for name, value in {
                     "AKL_OIDC_ISSUER": self.oidc_issuer,
                     "AKL_OIDC_AUDIENCE": self.oidc_audience,
-                    "AKL_OIDC_JWKS_URL": self.oidc_jwks_url,
+                    **({"AKL_OIDC_JWKS_URL": self.oidc_jwks_url} if self.identity_mode != "managed" else {}),
                 }.items()
                 if not value
             ]
             if missing:
                 raise ValueError(f"OIDC auth mode requires: {', '.join(missing)}")
+
+        if self.identity_mode == "managed":
+            from app.managed_identity import approved_issuer
+            approved_issuer(self.oidc_issuer, self.managed_identity_issuer)
+            if self.auth_mode != "oidc" or self.oidc_audience != "akl-api" or self.stratos_access_cache_ttl_seconds != 0:
+                raise ValueError("Managed identity requires OIDC, akl-api and uncached access projection")
+            from urllib.parse import urlsplit
+            projection = urlsplit(self.stratos_auth_me_url or "")
+            if projection.scheme != "https" or not projection.hostname or projection.username or projection.password or projection.query or projection.fragment:
+                raise ValueError("Managed identity requires an approved HTTPS access projection endpoint")
+            grants = self.service_route_grants.get("svc-budget-controlled-rules", frozenset())
+            if grants and grants != frozenset({"controlled-rules-read"}):
+                raise ValueError("Managed Budget rules identity must have only the controlled-rules-read route")
 
         trusted_service_clients = self.trusted_service_clients
         service_delegations = self.service_namespace_delegations
@@ -318,7 +367,6 @@ class Settings(BaseSettings):
                 "access-admin-write",
                 "profile-read",
                 "profile-write",
-                "aiip-upload",
                 "stratos-budget-upload",
                 "controlled-rules-read",
                 "ingestion-status",
@@ -331,6 +379,15 @@ class Settings(BaseSettings):
             )
 
         if self.env == "production":
+            if bool(self.web_session_store_secret) == bool(
+                self.web_session_store_secret_file
+            ):
+                raise ValueError(
+                    "Production Registry requires exactly one of "
+                    "AKL_WEB_SESSION_STORE_SECRET or AKL_WEB_SESSION_STORE_SECRET_FILE"
+                )
+            if len(self.web_session_store_signing_secret) < 32:
+                raise ValueError("The web session store signing secret must contain at least 32 characters")
             if bool(self.ingestion_authorization_secret) == bool(
                 self.ingestion_authorization_secret_file
             ):
@@ -366,12 +423,6 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "Production svc-ingestion grants must be exactly "
                     "authz|audit|documents-read|ingestion-status"
-                )
-            if route_grants.get("aiip-document-service") != frozenset(
-                {"aiip-upload"}
-            ):
-                raise ValueError(
-                    "Production aiip-document-service grant must be exactly aiip-upload"
                 )
             if "stratos-akb-service" not in trusted_service_clients:
                 raise ValueError(
@@ -436,12 +487,10 @@ class Settings(BaseSettings):
                     "AKL_STRATOS_POLICY_DECISIONS_URL": self.stratos_policy_decisions_url,
                     "AKL_STRATOS_SERVICE_POLICY_BINDING_ID": self.stratos_service_policy_binding_id,
                     "AKL_STRATOS_INFORMATION_RESOURCES_URL": self.stratos_information_resources_url,
-                    "AKL_STRATOS_AIIP_AKB_RESOURCES_URL": self.stratos_aiip_akb_resources_url,
                     "AKL_STRATOS_BUDGET_AKB_RESOURCES_URL": self.stratos_budget_akb_resources_url,
                     "AKL_STRATOS_INFORMATION_PUBLICATIONS_URL": self.stratos_information_publications_url,
                     "AKL_STRATOS_PUBLIC_DECISIONS_URL": self.stratos_public_decisions_url,
                     "AKB_POLICY_SERVICE_TOKEN": self.stratos_policy_service_token,
-                    "AKB_AIIP_INGEST_SERVICE_TOKEN": self.stratos_aiip_ingest_service_token,
                     "AKL_PUBLIC_DELIVERY_INTERNAL_TOKEN": self.public_delivery_internal_token,
                 }.items()
                 if not value
@@ -454,11 +503,6 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "AKL_PUBLIC_DELIVERY_INTERNAL_TOKEN must contain at least 32 characters in production"
                 )
-            if self.stratos_aiip_ingest_service_token == self.stratos_policy_service_token:
-                raise ValueError(
-                    "AKB_AIIP_INGEST_SERVICE_TOKEN must be distinct from AKB_POLICY_SERVICE_TOKEN"
-                )
-
         return self
 
 

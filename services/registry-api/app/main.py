@@ -11,6 +11,9 @@ from app.database import create_schema
 from app.errors import register_exception_handlers
 from app.middleware import CorrelationIdMiddleware
 from app.telemetry import configure_telemetry
+from app.session_api import router as session_router
+from app.director_audit_api import router as director_audit_router
+from app.workflow_maintenance import workflow_maintenance_loop
 
 
 @asynccontextmanager
@@ -19,6 +22,10 @@ async def lifespan(_: FastAPI):
     if settings.auto_create_schema:
         create_schema()
     purge_task: asyncio.Task[None] | None = None
+    workflow_task = (
+        asyncio.create_task(workflow_maintenance_loop(settings), name="workflow-maintenance")
+        if settings.workflow_maintenance_enabled else None
+    )
     if settings.assistant_purge_enabled:
         purge_task = asyncio.create_task(
             assistant_purge_loop(settings),
@@ -27,10 +34,11 @@ async def lifespan(_: FastAPI):
     try:
         yield
     finally:
-        if purge_task:
-            purge_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await purge_task
+        for task in (purge_task, workflow_task):
+            if task:
+                task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await task
 
 
 def create_app() -> FastAPI:
@@ -51,6 +59,8 @@ def create_app() -> FastAPI:
     configure_telemetry(app, service_name=settings.service_name, service_version=settings.service_version)
     app.include_router(health_router)
     app.include_router(router)
+    app.include_router(session_router)
+    app.include_router(director_audit_router)
     return app
 
 

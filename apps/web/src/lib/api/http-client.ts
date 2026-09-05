@@ -16,6 +16,7 @@ export interface JsonRequestOptions {
   context: ApiRequestContext;
   fetcher?: AklFetch;
   extraHeaders?: Record<string, string>;
+  timeoutMs?: number;
 }
 
 function isApiErrorBody(value: unknown): value is ApiErrorBody {
@@ -67,16 +68,29 @@ export async function requestJson<T>(options: JsonRequestOptions): Promise<T> {
     headers.set(name, value);
   }
 
-  const response = await (options.fetcher ?? fetch)(url, {
-    method: options.method ?? "GET",
-    headers,
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
-    cache: "no-store"
-  });
+  const signal = options.timeoutMs ? AbortSignal.timeout(options.timeoutMs) : undefined;
+  let response: Response;
+  let payload: unknown;
+  try {
+    response = await (options.fetcher ?? fetch)(url, {
+      method: options.method ?? "GET", headers,
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      cache: "no-store", signal,
+    });
+    const contentType = response.headers.get("content-type") ?? "";
+    payload = contentType.includes("application/json") ? await response.json() : undefined;
+    if (response.ok && response.status !== 204 && payload === undefined) throw new SyntaxError("Invalid API response");
+  } catch (error) {
+    const timedOut = signal?.aborted || (error instanceof Error && ["TimeoutError", "AbortError"].includes(error.name));
+    const code = timedOut ? "UPSTREAM_TIMEOUT" : error instanceof SyntaxError ? "UPSTREAM_INVALID_RESPONSE" : "UPSTREAM_UNAVAILABLE";
+    const status = timedOut ? 504 : code === "UPSTREAM_INVALID_RESPONSE" ? 502 : 503;
+    logIntegrationEvent({ level: "error", service: options.service, operation: options.operation, status,
+      latencyMs: Math.round(performance.now() - startedAt), requestId: context.requestId,
+      correlationId: context.correlationId, errorCode: code });
+    throw new ApiClientError("The service could not complete the request", status, code, context.correlationId);
+  }
 
   const latencyMs = Math.round(performance.now() - startedAt);
-  const contentType = response.headers.get("content-type") ?? "";
-  const payload = contentType.includes("application/json") ? await response.json() : undefined;
 
   if (!response.ok) {
     const code = isApiErrorBody(payload) ? payload.error.code : "UPSTREAM_ERROR";

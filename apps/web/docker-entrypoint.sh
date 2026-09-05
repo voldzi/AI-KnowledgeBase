@@ -42,6 +42,16 @@ install_secret \
   "${AKL_WEB_INGESTION_CLIENT_SECRET_SOURCE_FILE:-}" \
   "${AKL_WEB_INGESTION_CLIENT_SECRET_FILE:-}"
 
+install_secret \
+  "web session encryption" \
+  "${AKL_WEB_SESSION_ENCRYPTION_KEY_SOURCE_FILE:-}" \
+  "${AKL_WEB_SESSION_ENCRYPTION_KEY_FILE:-}"
+
+install_secret \
+  "web session store" \
+  "${AKL_WEB_SESSION_STORE_SECRET_SOURCE_FILE:-}" \
+  "${AKL_WEB_SESSION_STORE_SECRET_FILE:-}"
+
 if [ "${AKL_OBJECT_STORAGE_MODE:-local}" = "s3" ]; then
   install_secret \
     "S3 access key id" \
@@ -54,14 +64,38 @@ if [ "${AKL_OBJECT_STORAGE_MODE:-local}" = "s3" ]; then
 fi
 
 if [ "${AKL_DIRECTOR_COPILOT_ENABLED:-false}" = "true" ]; then
-  if [ -z "${AKL_DIRECTOR_COPILOT_CLIENT_SECRET_SOURCE_FILE:-}" ] || [ -z "${AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE:-}" ]; then
-    echo "director copilot client secret paths are not configured" >&2
-    exit 1
+  if [ "${AKL_IDENTITY_MODE:-external_oidc}" = "managed" ]; then
+    for domain in BUDGET PROJECTFLOW ARCHFLOW; do
+      source_name="AKL_DIRECTOR_COPILOT_${domain}_CLIENT_SECRET_SOURCE_FILE"
+      runtime_name="AKL_DIRECTOR_COPILOT_${domain}_CLIENT_SECRET_FILE"
+      source_file="$(printenv "$source_name" || true)"
+      runtime_file="$(printenv "$runtime_name" || true)"
+      if [ -z "$source_file" ] || [ -z "$runtime_file" ]; then
+        echo "managed director copilot secret paths are not configured" >&2
+        exit 1
+      fi
+      install_secret "managed director copilot $domain" "$source_file" "$runtime_file"
+    done
+  else
+    if [ -z "${AKL_DIRECTOR_COPILOT_CLIENT_SECRET_SOURCE_FILE:-}" ] || [ -z "${AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE:-}" ]; then
+      echo "director copilot client secret paths are not configured" >&2
+      exit 1
+    fi
+    install_secret \
+      "director copilot" \
+      "${AKL_DIRECTOR_COPILOT_CLIENT_SECRET_SOURCE_FILE:-}" \
+      "${AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE:-}"
   fi
-  install_secret \
-    "director copilot" \
-    "${AKL_DIRECTOR_COPILOT_CLIENT_SECRET_SOURCE_FILE:-}" \
-    "${AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE:-}"
 fi
 
-exec su-exec nextjs "$@"
+if [ "$#" -eq 0 ]; then
+  echo "web command is not configured" >&2
+  exit 1
+fi
+target_command="$(command -v "$1" || true)"
+if [ -z "$target_command" ]; then
+  echo "web command is not available" >&2
+  exit 1
+fi
+shift
+exec su -s "$target_command" nextjs -- "$@"

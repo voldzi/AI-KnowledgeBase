@@ -127,10 +127,10 @@ def test_registry_client_uses_cached_rag_service_identity(monkeypatch) -> None:
     monkeypatch.setattr(registry_client_module, "request_json_with_retry", fake_request_json_with_retry)
     client = HttpRegistryClient(settings)
     auth_context = AuthContext(
-        subject_id="service-account-aiip-service",
-        roles=("service_aiip",),
+        subject_id="service-account-calling-service",
+        roles=("service_calling",),
         groups=(),
-        bearer_token="aiip-public-token",
+        bearer_token="calling-service-token",
         service_identity=True,
     )
 
@@ -143,8 +143,8 @@ def test_registry_client_uses_cached_rag_service_identity(monkeypatch) -> None:
     )
     asyncio.run(
         client.reserve_idempotency(
-            client_id="aiip-service",
-            operation="harmonize",
+            client_id="calling-service",
+            operation="authorized-query",
             idempotency_key="idem-contract-1",
             input_hash="a" * 64,
             auth_context=auth_context,
@@ -161,3 +161,51 @@ def test_registry_client_uses_cached_rag_service_identity(monkeypatch) -> None:
     assert "capabilities" not in registry_calls[0]["json_body"]
     assert registry_calls[0]["json_body"]["subject_id"] == "rag-service-keycloak-uuid"
     assert registry_calls[0]["json_body"]["subject_id"] != auth_context.subject_id
+
+
+def test_registry_client_fetches_reauthorized_conversation_history(monkeypatch) -> None:
+    settings = load_settings(
+        {
+            "AKL_ENV": "test",
+            "AKL_AUTH_MODE": "oidc",
+            "AKL_RAG_DEPENDENCY_MODE": "mock",
+            "AKL_REGISTRY_BASE_URL": "http://registry-api:8000/api/v1",
+        }
+    )
+    calls: list[dict[str, object]] = []
+
+    async def fake_request_json_with_retry(**kwargs):
+        calls.append(kwargs)
+        return {"conversation_id": "conv-1", "messages": []}
+
+    monkeypatch.setattr(
+        registry_client_module,
+        "request_json_with_retry",
+        fake_request_json_with_retry,
+    )
+    client = HttpRegistryClient(settings)
+    auth_context = AuthContext(
+        subject_id="user-1",
+        roles=("reader",),
+        groups=(),
+        bearer_token="user-token",
+    )
+
+    result = asyncio.run(
+        client.fetch_conversation(
+            conversation_id="conv-1",
+            auth_context=auth_context,
+        )
+    )
+
+    assert result == {"conversation_id": "conv-1", "messages": []}
+    assert calls == [
+        {
+            "dependency": "registry-api",
+            "settings": settings,
+            "method": "GET",
+            "url": "http://registry-api:8000/api/v1/assistant/conversation-history/conv-1",
+            "auth_context": auth_context,
+            "prefer_upstream_token": True,
+        }
+    ]

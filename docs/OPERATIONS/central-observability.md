@@ -46,6 +46,7 @@ tokens or signed URLs as custom span attributes.
 
 - Dashboard: `infra/monitoring/central/akb-overview.json`
 - Alerts: `infra/monitoring/central/akb-alerts.yml`
+- AKB Gitea CI alerts: `infra/monitoring/central/akb-gitea-ci-alerts.yml`
 - Production OTLP settings: `infra/docker-compose/docker-compose.docker-home.yml`
 
 The central Grafana datasource UIDs are `obs-prometheus`, `obs-tempo` and

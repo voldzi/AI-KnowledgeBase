@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { hasAllowedSessionRequestOrigin } from "@/lib/auth/csrf";
 import {
   chatProfileRedirectPath,
   isChatProfileApiPath,
@@ -7,6 +8,38 @@ import {
 } from "@/lib/web-profile";
 
 export function proxy(request: NextRequest) {
+  const requestMetadata = {
+    method: request.method,
+    pathname: request.nextUrl.pathname,
+    origin: request.headers.get("origin"),
+    referer: request.headers.get("referer"),
+    secFetchSite: request.headers.get("sec-fetch-site"),
+    secFetchMode: request.headers.get("sec-fetch-mode"),
+    secFetchDest: request.headers.get("sec-fetch-dest"),
+    hasServerSession: request.cookies.has("akl_session"),
+  };
+  if (
+    !hasAllowedSessionRequestOrigin(
+      requestMetadata,
+      process.env.AKL_WEB_PUBLIC_BASE_URL,
+    )
+  ) {
+    return NextResponse.json(
+      {
+        error: {
+          code: "SESSION_REQUEST_ORIGIN_FORBIDDEN",
+          message: "The state-changing session request origin is not allowed.",
+        },
+      },
+      {
+        status: 403,
+        headers: {
+          "cache-control": "no-store, max-age=0",
+        },
+      },
+    );
+  }
+
   if (process.env.AKL_WEB_PROFILE !== "chat") {
     return NextResponse.next();
   }

@@ -45,58 +45,6 @@ def _external_payload(**overrides):
     return payload
 
 
-def _aiip_payload(**overrides):
-    payload = _external_payload(
-        tenant_id="tenant_aiip_default",
-        external_system="STRATOS_AIIP",
-        external_ref="aiip:idea:idea_123:requirement-card",
-        entity_type="InnovationRequest",
-        entity_id="idea_123",
-        document_type="ai_requirement_card",
-        title="AI pozadavek: Automatizace vyhodnoceni formularu",
-        classification="internal",
-        owner={
-            "user_id": "usr_analyst",
-            "display_name": "AIIP analyst",
-        },
-        gestor_unit="Analyticke centrum",
-        tags=[
-            "aiip",
-            "aiip-idea:idea_123",
-            "aiip-stage:NOVY_PODNET",
-            "aiip-document-type:requirement_card",
-        ],
-        metadata={
-            "aiip": {
-                "idea_id": "idea_123",
-                "import_job_id": "import_456",
-                "source_document_id": "srcdoc_789",
-                "schema_version": "AIIP-DOCX-1.0",
-                "document_type": "requirement_card",
-                "lifecycle_stage": "NOVY_PODNET",
-                "category": "Administrativa",
-                "ai_capability_type": "RAG",
-                "environment_recommendation": "Hybrid",
-                "input_data_sensitivity": "Interni",
-                "output_data_sensitivity": "Interni",
-            }
-        },
-        source_location={
-            "kind": "uploaded_file",
-            "file_name": "AI_pozadavek_02_Karta_pozadavku_import.docx",
-            "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "sha256": "d" * 64,
-            "repository": "AIIP",
-            "path": "/ideas/idea_123/documents/srcdoc_789",
-            "version": "1",
-        },
-        akb_source_uri="s3://akl-documents/aiip/ideas/idea_123/requirement-card.docx",
-        preview_url="https://ip.zeleznalady.cz/ideas/idea_123",
-    )
-    payload.update(overrides)
-    return payload
-
-
 def test_external_document_upsert_creates_registry_document(client, admin_headers):
     response = client.post("/api/v1/external-documents/upsert", headers=admin_headers, json=_external_payload())
 
@@ -192,37 +140,6 @@ def test_external_document_upsert_is_idempotent(client, admin_headers):
     listing = client.get("/api/v1/documents", headers=admin_headers)
     assert listing.status_code == 200
     assert len(listing.json()["items"]) == 1
-
-
-def test_generic_aiip_external_document_upsert_requires_dedicated_route(client, admin_headers):
-    response = client.post(
-        "/api/v1/external-documents/upsert",
-        headers=admin_headers,
-        json=_aiip_payload(),
-    )
-
-    assert response.status_code == 409, response.text
-    assert response.json()["error"]["code"] == "aiip_upload_dedicated_route_required"
-
-
-def test_aiip_document_with_secret_sensitivity_is_rejected(client, admin_headers):
-    response = client.post(
-        "/api/v1/external-documents/upsert",
-        headers=admin_headers,
-        json=_aiip_payload(
-            external_ref="aiip:idea:idea_123:data-security-appendix",
-            document_type="ai_security_appendix",
-            metadata={
-                "aiip": {
-                    "idea_id": "idea_123",
-                    "document_type": "data_security_appendix",
-                    "input_data_sensitivity": "Tajné",
-                }
-            },
-        ),
-    )
-
-    assert response.status_code == 422
 
 
 def test_document_metadata_summary_filters_external_context(client, admin_headers):

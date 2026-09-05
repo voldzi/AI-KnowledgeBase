@@ -38,6 +38,7 @@ export const DIRECTOR_COPILOT_V2_SNAPSHOT_VERSION =
   "director-copilot-v2-analysis-snapshot-1" as const;
 
 export interface DirectorCopilotV2SourceOutcome {
+  node_id?: string;
   application: ActiveDirectorCopilotV2Application;
   tool_id: DirectorCopilotV2ToolId;
   schema_revision: string;
@@ -106,7 +107,6 @@ export async function orchestrateDirectorCopilotV2(input: {
   const outcomes = await Promise.all(
     plan.nodes.map((node) => executeNode(
       node,
-      plan.query_state.operation,
       input.context,
       input.catalog,
       input.client,
@@ -131,6 +131,7 @@ export async function orchestrateDirectorCopilotV2(input: {
     plan.query_state,
     outcomes,
     input.catalog,
+    plan.nodes,
   );
   const snapshotBase = {
     schema_version: DIRECTOR_COPILOT_V2_SNAPSHOT_VERSION,
@@ -171,11 +172,11 @@ export async function orchestrateDirectorCopilotV2(input: {
 
 async function executeNode(
   node: DirectorCopilotV2PlanNode,
-  operation: ConversationQueryState["operation"],
   context: ApiRequestContext,
   catalog: DirectorCopilotV2ManifestCatalog,
   client: V2Executor,
 ): Promise<DirectorCopilotV2SourceOutcome> {
+  const operation = node.query_state.operation;
   const startedAt = performance.now();
   if (node.planning_error_code) {
     return unavailableOutcome(
@@ -186,6 +187,7 @@ async function executeNode(
   }
   if (!node.access.authorized || !node.request) {
     return {
+      node_id: node.node_id,
       application: node.application,
       tool_id: node.tool_id,
       schema_revision: node.schema_revision,
@@ -329,6 +331,7 @@ function mergeResponses(
           ? "no_data"
           : "complete";
   return {
+    node_id: node.node_id,
     application: node.application,
     tool_id: node.tool_id,
     schema_revision: node.schema_revision,
@@ -479,6 +482,7 @@ function unavailableOutcome(
   latencyMs = 0,
 ): DirectorCopilotV2SourceOutcome {
   return {
+    node_id: node.node_id,
     application: node.application,
     tool_id: node.tool_id,
     schema_revision: node.schema_revision,

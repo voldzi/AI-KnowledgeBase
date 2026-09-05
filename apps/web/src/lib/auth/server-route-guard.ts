@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { NextResponse } from "next/server";
 
 import {
+  canAccessWorkspaceRouteForContext,
   canUseAdminSurface,
   canUseEmployeeChat,
   canUseIntelligence,
@@ -17,6 +18,14 @@ type PageAccess = "employee_chat" | "knowledge_workspace" | "intelligence" | "ad
 
 function employeeChatPath(): string {
   return getAklConfig().webProfile === "chat" ? "/" : "/chat";
+}
+
+function workspaceFallbackPath(context: ApiRequestContext): string {
+  if (getAklConfig().webProfile === "chat") {
+    return canUseEmployeeChat(context) ? "/" : "/help";
+  }
+  const candidates = ["/chat", "/documents", "/dashboard", "/admin", "/help"];
+  return candidates.find((href) => canAccessWorkspaceRouteForContext(context, href)) ?? "/help";
 }
 
 export function requirePageAccess(context: ApiRequestContext, access: PageAccess): void {
@@ -33,6 +42,13 @@ export function requirePageAccess(context: ApiRequestContext, access: PageAccess
     return;
   }
   redirect(employeeChatPath());
+}
+
+export function requireWorkspaceRouteAccess(context: ApiRequestContext, href: string): void {
+  if (canAccessWorkspaceRouteForContext(context, href)) {
+    return;
+  }
+  redirect(workspaceFallbackPath(context));
 }
 
 export function redirectEmployeeChatOnly(context: ApiRequestContext): void {

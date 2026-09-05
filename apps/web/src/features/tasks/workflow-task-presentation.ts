@@ -11,9 +11,18 @@ const titles: Record<string, Translation> = {
   "Document processing failed": ["Zpracování dokumentu selhalo", "Document processing failed"],
   "Document processed with warnings": ["Dokument byl zpracován s upozorněními", "Document processed with warnings"],
   "Document processing in progress": ["Dokument se právě zpracovává", "Document processing in progress"],
+  "Document changes requested": ["Dokument byl vrácen k úpravě", "Document changes requested"],
 };
 
 const descriptions: Record<string, Translation> = {
+  "Review the exact submitted version before approval.": [
+    "K rozhodnutí je předána uvedená verze dokumentu.",
+    "The listed document version is awaiting a decision.",
+  ],
+  "Review feedback before submitting a new review.": [
+    "Dokument čeká na zapracování připomínek a nové předání ke schválení.",
+    "The document is awaiting changes and resubmission for review.",
+  ],
   "Review metadata, source context, access classification and publication readiness.": [
     "Ověřte údaje dokumentu, původ zdroje, přístupovou klasifikaci a připravenost ke zveřejnění.",
     "Review metadata, source context, access classification and publication readiness.",
@@ -45,6 +54,8 @@ const descriptions: Record<string, Translation> = {
 };
 
 const sources: Record<string, Translation> = {
+  "Document review submission": ["Předání ke schválení", "Document review submission"],
+  "Document review decision": ["Rozhodnutí schvalovatele", "Document review decision"],
   "Registry document status": ["Stav dokumentu v registru", "Registry document status"],
   "Registry draft state": ["Rozpracovaný dokument", "Registry draft state"],
   "Document classification policy": ["Pravidla přístupu k dokumentu", "Document classification policy"],
@@ -53,6 +64,12 @@ const sources: Record<string, Translation> = {
 };
 
 const roles: Record<string, Translation> = {
+  approver: ["Schvalovatel", "Approver"],
+  reviewer: ["Posuzovatel", "Reviewer"],
+  gestor: ["Gestor", "Document owner"],
+  owner: ["Vlastník", "Owner"],
+  steward: ["Správce dokumentu", "Document steward"],
+  auditor: ["Auditor", "Auditor"],
   "Owner / gestor": ["Vlastník nebo gestor", "Owner / gestor"],
   "Document manager": ["Správce dokumentu", "Document manager"],
   "Governance / auditor": ["Gestor pravidel nebo auditor", "Governance / auditor"],

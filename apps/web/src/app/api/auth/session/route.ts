@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getAklConfig } from "@/lib/api/config";
-import { getOptionalServerOidcSession, getOptionalServerRequestContext } from "@/lib/api/server";
+import { getOptionalResolvedServerSession, getOptionalServerRequestContext } from "@/lib/api/server";
+import { SERVER_SESSION_COOKIE, serverSessionCookieOptions } from "@/lib/auth/server-session";
 import { canUseAdminSurface } from "@/lib/auth/authorization";
 import { openRolePreview, ROLE_PREVIEW_COOKIE, ROLE_PREVIEW_PROFILES } from "@/lib/auth/role-preview";
 
@@ -11,9 +12,12 @@ export async function GET(request: NextRequest) {
   const config = getAklConfig();
 
   if (config.authMode === "oidc") {
-    const session = await getOptionalServerOidcSession(request);
+    const resolved = await getOptionalResolvedServerSession(request);
+    const session = resolved?.oidc;
     if (!session) {
-      return NextResponse.json({ authenticated: false }, { status: 401 });
+      const response = NextResponse.json({ authenticated: false }, { status: 401, headers: { "cache-control": "no-store" } });
+      response.cookies.set(SERVER_SESSION_COOKIE, "", { ...serverSessionCookieOptions(config, false), maxAge: 0 });
+      return response;
     }
     const actualContext = await getOptionalServerRequestContext(request);
     if (!actualContext) {
@@ -21,7 +25,7 @@ export async function GET(request: NextRequest) {
     }
     const preview = openRolePreview(request.cookies.get(ROLE_PREVIEW_COOKIE)?.value, config);
     const activePreview = preview?.subjectId === session.subjectId && canUseAdminSurface(actualContext) ? preview : null;
-    return NextResponse.json({
+    const response = NextResponse.json({
       authenticated: true,
       user: {
         subjectId: session.subjectId,
@@ -41,7 +45,10 @@ export async function GET(request: NextRequest) {
         roles: activePreview?.roles ?? [],
         profiles: ROLE_PREVIEW_PROFILES
       }
-    });
+    }, { headers: { "cache-control": "no-store" } });
+    const selector = request.cookies.get(SERVER_SESSION_COOKIE)?.value;
+    if (selector && resolved) response.cookies.set(SERVER_SESSION_COOKIE, selector, serverSessionCookieOptions(config, resolved.persistent, resolved.absoluteExpiresAt));
+    return response;
   }
 
   const mockRoles = (process.env.AKL_WEB_DEV_ROLES ?? "admin,document_manager,reader")

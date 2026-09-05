@@ -1,23 +1,23 @@
 # Director Copilot V2 AKB implementation
 
-Status: production active; V1 retired in AKB
+Status: release candidate; V1 retired in AKB. Production promotion requires a
+matching STRATOS publication of revision `2.0.4`.
 
-Wire contract: `director-copilot-2`, revision `2.0.3`
+Wire contract: `director-copilot-2`, revision `2.0.4`
 
 ## Pinned upstream
 
-- STRATOS: `663e71820b93c5801a27f393eae63a24ba118745`
-- request SHA-256: `c4faf33dfecc59bba1e7ef28cd2bd315183ffb6583c9a6b4da4dae4e3829bdd5`
+- matching STRATOS revision: pending publication
+- request SHA-256: `72a41baa946ed277062c5a0ac1ff3ecf74d4ded1a9aa21760a892904e3a967fb`
 - response SHA-256: `22caad5e8dacfd9d3e0451f64c638e91c4d0deb649e091cf1e16fb12e8da51dd`
-- manifest SHA-256: `713d8b7d8a3a1b7873d244d4a244c3d08b1f43d0692669656100ba1454ff99a6`
+- manifest SHA-256: `34814ed3f064def2f48bd6142eb88a975d5d5e82ed684b511a42ba5b42b7f146`
 - error SHA-256: `99949d198294a947366cf099b2af7023979f538fadab8bbec48fffce8e9bdeab`
-- OpenAPI SHA-256: `9c94e2f75953511d17b178085ac57cf34594dd9f3cb2ed56799093611e8fb373`
-- manifest bundle SHA-256: `5f4428e6a77d1c41f7d804d23cdf9263c57b15a2643cbde080e1be3de1e95c78`
+- OpenAPI SHA-256: `e0010816b8f9e570af7d753dee42898f6ac9996f858e4b3bebc768e51006d5fc`
+- manifest bundle SHA-256: `6fdb2eee077998f7c17d2d6bd6b6ff6f6a6fd8f7cd7b37c1464f7e65eb07cb0a`
 
 The production build verifies these hashes and byte identity of runtime schema
-copies. The immutable `2.0.3` bundle still contains the retired AIIP manifest;
-AKB preserves those bytes for contract verification but excludes that manifest
-from the active runtime catalog.
+copies. Revision `2.0.4` contains only the active Budget, ProjectFlow and
+ArchFlow manifests.
 
 ## AKB behavior
 
@@ -79,8 +79,7 @@ The central access projection may identify the Budget application as either
 alias to the Budget domain. Unknown application ids remain unauthorized.
 
 ArchFlow is the single source for organizational needs and submitted ideas.
-AI-related needs and ideas are recognized only in the ArchFlow context; AKB
-does not retain a historical AIIP query route or replay old AIIP history.
+AI-related needs and ideas are recognized only in the ArchFlow context.
 
 ## Runtime control
 
@@ -185,6 +184,26 @@ inherits that source instead of asking again. Unknown or unsupported concepts
 must produce clarification, `no_data` or an explicit bounded failure; they
 must not be converted into invented live facts.
 
+The query plan also records the user's answer goal independently from source
+selection: `lookup`, `explain`, `compare`, `diagnose`, `recommend` or
+`scenario`. This dimension does not select a capability or widen a scope. An
+analytical financial goal requests the existing authorized plan, actual,
+forecast, commitments and variance facts, while a plain lookup remains narrow.
+For analytical live-data questions, AKB executes Director Copilot and
+permission-scoped document retrieval concurrently. The rendered answer keeps
+three explicit sections: verified live data, cited document guidance and the
+interpretation boundary. Documents never supply a missing current amount or
+status. Live facts alone never become an unsupported recommendation, causal
+claim or hypothetical scenario result.
+
+If one evidence class is missing, the remaining authorized evidence can still
+be shown with a visible limitation and confidence capped at `medium`. If both
+classes fail, AKB returns `insufficient_source` with a bounded clarification or
+follow-up. A live `no_data` result is never labelled high confidence and is
+never interpreted as zero. The mixed-evidence context persisted with the turn
+contains only the bounded goal and availability flags; citations and live
+source references retain their existing independent reauthorization paths.
+
 Cross-source granularity is resolved per application. In one joined
 need-project-finance question, ArchFlow returns needs, ProjectFlow returns
 projects and Budget returns project-level financial facts. AKB does not force
@@ -218,11 +237,11 @@ same normative meaning remain subject to precedence and conflict gates.
 
 ## Contract closure
 
-STRATOS revision `2.0.3` closes the ProjectFlow manifest mismatch. The pinned
-bundle now declares `PROJECTFLOW_ENTITY_FILTER_UNSUPPORTED`, and AKB accepts
-that code only for the exact ProjectFlow manifest in this revision. Unknown
-runtime revisions, hashes, tools, facts, links and reason codes continue to
-fail closed. Acceptance is valid only for matching STRATOS and AKB revisions.
+Revision `2.0.4` removes the retired source from the closed manifest catalog.
+The pinned bundle still declares `PROJECTFLOW_ENTITY_FILTER_UNSUPPORTED`, and
+AKB accepts that code only for the exact ProjectFlow manifest in this revision.
+Unknown runtime revisions, hashes, tools, facts, links and reason codes continue
+to fail closed. Acceptance is valid only for matching STRATOS and AKB revisions.
 
 ## Joint acceptance
 

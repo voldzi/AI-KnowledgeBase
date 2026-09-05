@@ -19,7 +19,8 @@ import { requestJson } from "../http-client";
 export class ProductionRagClient implements RagApiClient {
   constructor(
     private readonly baseUrl: string,
-    private readonly fetcher?: AklFetch
+    private readonly fetcher?: AklFetch,
+    private readonly assistantTimeoutMs = 45_000,
   ) {}
 
   query(request: RagQueryRequest, context: ApiRequestContext): Promise<RagAnswer> {
@@ -31,7 +32,7 @@ export class ProductionRagClient implements RagApiClient {
       method: "POST",
       body: request,
       context,
-      fetcher: this.fetcher
+      fetcher: this.fetcher,
     });
   }
 
@@ -68,7 +69,8 @@ export class ProductionRagClient implements RagApiClient {
       method: "POST",
       body: request,
       context,
-      fetcher: this.fetcher
+      fetcher: this.fetcher,
+      timeoutMs: this.assistantTimeoutMs,
     });
   }
 
@@ -81,7 +83,8 @@ export class ProductionRagClient implements RagApiClient {
       method: "POST",
       body: request,
       context,
-      fetcher: this.fetcher
+      fetcher: this.fetcher,
+      timeoutMs: this.assistantTimeoutMs,
     });
   }
 

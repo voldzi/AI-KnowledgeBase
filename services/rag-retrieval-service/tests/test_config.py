@@ -12,8 +12,12 @@ def test_load_settings_defaults_to_mock_clients_for_development() -> None:
     assert settings.registry_client_mode == "mock"
     assert settings.retriever_mode == "mock"
     assert settings.llm_client_mode == "mock"
-    assert settings.answer_max_tokens == 512
+    assert settings.max_context_chars == 20000
+    assert settings.answer_max_tokens == 1536
     assert settings.source_context_window == 1
+    assert settings.assistant_history_max_user_messages == 12
+    assert settings.assistant_history_max_message_chars == 800
+    assert settings.assistant_history_max_chars == 6000
 
 
 def test_production_rejects_mock_clients() -> None:
@@ -36,22 +40,22 @@ def _production_env() -> dict[str, str]:
         "AKL_OIDC_AUDIENCE": "akl-api",
         "AKL_OIDC_JWKS_URL": "https://login.example/realms/stratos/certs",
         "AKL_RAG_USER_OIDC_AUDIENCE": "akl-api",
-        "AKL_RAG_AIIP_OIDC_AUDIENCE": "akb-api",
-        "AKL_TRUSTED_SERVICE_CLIENT_IDS": "aiip-service,akb-rag-service",
-        "AKL_RAG_AIIP_SERVICE_CLIENT_IDS": "aiip-service",
+        "AKL_TRUSTED_SERVICE_CLIENT_IDS": "akb-rag-service",
         "AKL_RAG_DEPENDENCY_MODE": "http",
         "AKL_RAG_AUTHZ_MODE": "registry",
     }
 
 
-def test_production_requires_service_and_per_caller_audience_allowlists() -> None:
+def test_production_allows_no_trusted_service_clients() -> None:
     values = _production_env()
     values["AKL_TRUSTED_SERVICE_CLIENT_IDS"] = ""
-    with pytest.raises(ConfigError, match="AKL_TRUSTED_SERVICE_CLIENT_IDS"):
-        load_settings(values)
+    settings = load_settings(values)
+    assert settings.trusted_service_client_ids == ()
 
+
+def test_production_requires_user_audience_allowlist() -> None:
     values = _production_env()
-    values["AKL_RAG_AIIP_OIDC_AUDIENCE"] = ""
+    values["AKL_RAG_USER_OIDC_AUDIENCE"] = ""
     with pytest.raises(ConfigError, match="AKL_RAG_USER_OIDC_AUDIENCE"):
         load_settings(values)
 
@@ -69,6 +73,19 @@ def test_invalid_answer_max_tokens_is_rejected() -> None:
 def test_invalid_source_context_window_is_rejected() -> None:
     with pytest.raises(ConfigError, match="AKL_RAG_SOURCE_CONTEXT_WINDOW"):
         load_settings({"AKL_RAG_SOURCE_CONTEXT_WINDOW": "6"})
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("AKL_ASSISTANT_HISTORY_MAX_USER_MESSAGES", "25"),
+        ("AKL_ASSISTANT_HISTORY_MAX_MESSAGE_CHARS", "100"),
+        ("AKL_ASSISTANT_HISTORY_MAX_CHARS", "12001"),
+    ],
+)
+def test_invalid_assistant_history_bounds_are_rejected(key: str, value: str) -> None:
+    with pytest.raises(ConfigError, match=key):
+        load_settings({key: value})
 
 
 def test_current_http_profile_uses_explicit_akl_env_names(tmp_path) -> None:

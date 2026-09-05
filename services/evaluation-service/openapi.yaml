@@ -1473,6 +1473,7 @@ components:
     QualityGateResult:
       properties:
         status:
+          description: Any execution error fails the gate. A passed exploratory gate is not release evidence unless all required checks are eligible and passed.
           type: string
           enum:
           - passed

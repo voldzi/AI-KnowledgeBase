@@ -100,6 +100,20 @@ curl http://localhost:8090/ready
 | `AKL_INGESTION_RENDITION_ENGINE_REVISION` | Revize převodníku zahrnutá do cache identity. |
 | `AKL_INGESTION_DEFAULT_EXTRACTION_PROFILE` | Výchozí auditovatelný profil vytěžení dokumentu. |
 | `AKL_INGESTION_PDF_ENGINE` | `auto`, `pymupdf`, nebo `pypdf`; `auto` preferuje layout-aware PyMuPDF a vrací se na `pypdf`. |
+| `AKL_INGESTION_DOCLING_MODE` | `off`, `shadow`, `prefer`, nebo fail-closed `enforce`; výchozí `off` nemění dosavadní parser. |
+| `AKL_INGESTION_DOCLING_PIPELINE` | `standard`, nebo `granite`; GraniteDocling se používá pro PDF, ostatní podporované formáty zpracuje standardní Docling. |
+| `AKL_INGESTION_DOCLING_DEVICE` | `auto`, `cpu`, `cuda`, `mps`, nebo `mlx`; pro headless Mac test použijte `cpu`, pro interaktivní Apple Silicon `mlx`. |
+| `AKL_INGESTION_DOCLING_EXECUTION_MODE` | `local` pro vývoj nebo `uds` pro izolovaný produkční worker; produkce vyžaduje `uds`. |
+| `AKL_INGESTION_DOCLING_SOCKET_PATH` | Absolutní cesta k privátnímu Unix socketu; produkční kontrakt používá `/run/akb-docling/worker.sock`. |
+| `AKL_INGESTION_DOCLING_ARTIFACTS_PATH` | Read-only lokální modelový balík. Produkční aktivace jej vyžaduje. |
+| `AKL_INGESTION_DOCLING_ARTIFACTS_SHA256` | Kanonický SHA-256 obsahu modelového balíku; neshoda skončí fail-closed. |
+| `AKL_INGESTION_DOCLING_DOCUMENT_TIMEOUT_SECONDS` | Interní časový rozpočet Docling pipeline. |
+| `AKL_INGESTION_DOCLING_WORKER_TIMEOUT_SECONDS` | Tvrdý limit samostatného procesu; musí být alespoň jako interní limit dokumentu. |
+| `AKL_INGESTION_DOCLING_HEALTH_TIMEOUT_SECONDS` | Krátký timeout health/readiness volání izolovaného workeru. |
+| `AKL_INGESTION_DOCLING_QUEUE_TIMEOUT_SECONDS` | Nejdelší čekání na omezenou kapacitu Docling workeru. |
+| `AKL_INGESTION_DOCLING_MAX_OUTPUT_BYTES` | Maximální velikost privátní uzavřené odpovědi workeru. |
+| `AKL_INGESTION_DOCLING_MAX_CONCURRENCY` | Současné Docling převody; výchozí bezpečná hodnota je `1`. |
+| `AKL_INGESTION_DOCLING_MAX_PAGES` | Maximální počet stran předaných Docling pipeline. |
 | `AKL_INGESTION_EMBEDDING_CLIENT_MODE` | `http` nebo `mock`. |
 | `AKL_LLM_GATEWAY_BASE_URL` | Base URL LLM Gateway. |
 | `AKL_LLM_GATEWAY_TOKEN` | Audience-bound service token pouze pro LLM Gateway. |
@@ -112,7 +126,7 @@ curl http://localhost:8090/ready
 | `AKL_INGESTION_JOB_STORE_PATH` | Lokální adresář pro job/report JSON záznamy. |
 | `AKL_INGESTION_PROCESS_JOBS_INLINE` | `true` zpracuje job v requestu; `false` pouze uloží queued job pro budoucí worker. |
 
-`AKL_ENV=production` odmítne start s `AKL_AUTH_MODE=disabled`, `AKL_AUTH_MODE=mock`, mock Registry klientem, mock object storage, mock embedding klientem nebo mock indexerem. Odmítne také chybějící/neúplnou Registry client-credentials trojici, client id jiné než vlastní service subject a pokus použít `aiip-service` jako ingestion transport.
+`AKL_ENV=production` odmítne start s `AKL_AUTH_MODE=disabled`, `AKL_AUTH_MODE=mock`, mock Registry klientem, mock object storage, mock embedding klientem nebo mock indexerem. Odmítne také chybějící nebo neúplnou Registry client-credentials trojici a client id jiné než vlastní service subject.
 
 V `AKL_AUTH_MODE=oidc` služba ověří podpis, issuer, audience a přesnou strojovou
 identitu. Interaktivní job create/read/cancel přijímá jen
@@ -190,6 +204,55 @@ Nativní parsery:
 - TXT/MD přes plain-text parser,
 - PDF přes layout-aware PyMuPDF v režimu `AKL_INGESTION_PDF_ENGINE=auto|pymupdf`, s fallbackem na `pypdf`,
 - DOCX přes `python-docx`.
+
+Volitelná strukturální vrstva Docling 2.124.0 je feature-gated a nativní parsery
+neodstraňuje. `shadow` zachová nativní výsledek jako autoritativní a uloží pouze
+obsahově bezpečné srovnávací metriky. `prefer` použije Docling a při jeho selhání
+se transparentně, ale auditovatelně vrátí k nativnímu parseru. `enforce` žádný
+fallback nepovolí. GraniteDocling používá model
+`ibm-granite/granite-docling-258M` pouze pro PDF; DOCX, XLSX, PPTX, HTML a další
+podporované formáty zůstávají na standardním Docling pipeline.
+
+Volitelný produkční Linux/amd64 image instaluje jediný kombinovaný
+`requirements-docling.c4.lock`. Apple Silicon kvalifikace používá oddělený
+`requirements-docling-macos.c4.lock`. Všechny balíčky mají přesnou verzi a
+SHA-256; instalace nepovoluje zdrojový build, neuzamčenou instalaci ani
+dynamické řešení verzí.
+
+Linux profil používá zúženou sadu `docling-slim` modulů pro podporované AKB
+formáty a lokální modely. OCR je explicitně svázané se systémovým Tesseractem
+a jazyky `AKL_INGESTION_OCR_LANGUAGE`; automatický RapidOCR backend není
+součástí obrazu. Produkce používá samostatný `docling-worker` ze stejného
+immutable ingestion image. Worker nemá síť, service credentials, databázové ani
+dokumentové volume a s ingestion službou komunikuje pouze přes privátní Unix
+socket. Host nastaví `AKL_INGESTION_DOCLING_ARTIFACTS_SOURCE_DIR` na neměnný
+adresář modelů; pouze worker jej připojí jako
+`/opt/docling-artifacts:ro`. Digest se ověřuje při startu workeru, v readiness,
+u každé odpovědi a v produkčním release gate.
+
+Docling zachovává typ bloku, hierarchii sekcí, tabulky, stránky a bounding boxy.
+Do chunk metadata se ukládá verze parseru, pipeline, modelový digest, hash
+strukturálního výsledku a výkonnostní metriky. Celý Docling JSON se do logu,
+auditu ani chunk metadata nekopíruje.
+
+Každý skutečný Docling převod běží v samostatném ukončitelném procesu uvnitř
+izolovaného workeru. Privátní dočasné soubory jsou odstraněny po převodu,
+worker má tvrdý timeout, omezení CPU/RAM/PID a kapacitu přesně jedna úloha.
+Režim `shadow` při selhání nemění autoritativní nativní výsledek ani jeho stav;
+diagnostika zůstane pouze v obsahově bezpečných metadatech. Produkční ověření
+provádí skutečný převod syntetického PDF přes tentýž Unix socket.
+
+Lokální příprava a obsahově bezpečný smoke test:
+
+```bash
+./scripts/setup_docling_local.sh
+data/docling-venv/bin/python scripts/docling_local_smoke.py \
+  --artifacts data/docling-models --pipeline granite --device mlx dokument.pdf
+```
+
+Pro headless macOS runner bez přístupu k Metal použijte `--device cpu`. Podrobný
+rollout, akceptační prahy a bezpečnostní hranice jsou v
+`docs/ingestion/docling-granite.md`.
 
 Ingestion report obsahuje `quality` blok s použitým `extraction_profile`, parserem,
 počtem stran s textem, prázdnými stranami, délkou extrahovaného textu, detekovanými
@@ -350,7 +413,7 @@ Služba přes Registry API volá:
 - `PATCH /api/v1/documents/{document_id}/external-references/current` (attempt CAS/status-only)
 - `POST /api/v1/audit/events`
 
-Všechny uvedené cesty používají vlastní `svc-ingestion` bearer. Osobní/AIIP
+Všechny uvedené cesty používají vlastní `svc-ingestion` bearer. Osobní
 caller bearer se neobjeví v Ingestion ani generic Registry transportu. `/ready`
 je samo autentizované a vrátí HTTP `503` s `registry=not_ready`, pokud nelze
 získat nebo použít vlastní Registry service identity. Deploy používá interní
@@ -360,9 +423,10 @@ Technické logy obsahují ID jobu, dokumentu/verze, počty chunků, status a lat
 
 ## Limity
 
-- Výchozí limit ingestion služby je 128 MiB. Vstupní rozhraní mohou použít
-  nižší limit; běžný AKB webový upload zůstává omezen na 50 MiB, zatímco
-  důvěryhodné STRATOS Budget rozhraní přijímá až 128 MiB.
+- Výchozí limit ingestion služby je 100 MiB, shodný s maximem povinné
+  antivirové kontroly. Vstupní rozhraní mohou použít nižší limit; běžný AKB
+  webový upload zůstává omezen na 50 MiB, zatímco důvěryhodné STRATOS Budget
+  rozhraní přijímá nejvýše 100 MiB.
 - Výchozí cílová velikost chunku je 1400 znaků.
 - Výchozí maximální velikost chunku je 3000 znaků.
 - Výchozí maximální počet chunků na job je 5000.

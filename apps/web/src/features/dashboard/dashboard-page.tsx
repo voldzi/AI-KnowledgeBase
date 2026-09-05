@@ -3,7 +3,7 @@ import {
   getServerApiClients,
   getServerRequestContextForPath,
 } from "@/lib/api/server";
-import { redirectEmployeeChatOnly } from "@/lib/auth/server-route-guard";
+import { requireWorkspaceRouteAccess } from "@/lib/auth/server-route-guard";
 import {
   ApiClientError,
   type AuditEvent,
@@ -25,13 +25,18 @@ export async function DashboardPage({
 }: DashboardPageProps = {}) {
   const clients = getServerApiClients();
   const context = await getServerRequestContextForPath(returnTo);
-  redirectEmployeeChatOnly(context);
-  const documents = await clients.registry.listDocuments(context, { recentLimit: 12 });
+  requireWorkspaceRouteAccess(context, returnTo);
+
+  const documentsPromise = clients.registry.listDocuments(context, { recentLimit: 12 });
+  const auditEventsPromise = listVisibleAuditEvents(clients.registry.listAuditEvents(context));
+  const registryTasksPromise = listVisibleWorkflowTasks(clients.registry.listWorkflowTasks(context));
+  const authorizationPromise = clients.registry.getAuthorizationHints(context);
+  const documents = await documentsPromise;
   const [jobsResult, auditEventsResult, registryTasksResult, authorizationResult] = await Promise.allSettled([
     listVisibleIngestionJobs(clients, documents, context),
-    listVisibleAuditEvents(clients.registry.listAuditEvents(context)),
-    listVisibleWorkflowTasks(clients.registry.listWorkflowTasks(context)),
-    clients.registry.getAuthorizationHints(context)
+    auditEventsPromise,
+    registryTasksPromise,
+    authorizationPromise,
   ]);
   const unavailableSources = [
     jobsResult.status === "rejected" ? "processing" : null,

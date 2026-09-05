@@ -61,6 +61,11 @@ jobs:
       - name: Verify embedding shadow profiles
         run: python3 scripts/check_embedding_shadow_profiles.py
 
+      - name: Verify Gitea CI and production deployment controls
+        run: |
+          python3 tests/test_gitea_ci_operations.py
+          python3 tests/test_gitea_production_deploy.py
+
       - name: Lint OpenAPI
         run: npx --yes @redocly/cli lint openapi/openapi.json
 
@@ -284,7 +289,6 @@ jobs:
       - name: Validate docker.home.cz compose config
         run: |
           AKB_POLICY_SERVICE_TOKEN=dummy-akb-policy-service-token \
-          AKB_AIIP_INGEST_SERVICE_TOKEN=dummy-aiip-ingest-service-token \
           docker compose \
             --env-file infra/docker-compose/docker-home.env.example \
             -f infra/docker-compose/docker-compose.docker-home.yml \

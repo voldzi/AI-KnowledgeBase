@@ -8,6 +8,7 @@ import {
 } from "../src/lib/director-copilot/semantic-catalog";
 import {
   semanticRegistryMatches,
+  semanticRegistryRetrievalHintsForText,
   semanticRegistryStatus,
 } from "../src/lib/director-copilot/semantic-registry";
 
@@ -19,6 +20,7 @@ describe("local SSP semantic registry", () => {
     assert.match(status.snapshot_id, /^ssp-cz-[a-f0-9]{16}$/);
     assert.ok(status.concept_count >= 5_000);
     assert.equal(status.binding_count, 6);
+    assert.ok(status.retrieval_term_count >= 500);
     assert.match(status.content_sha256, /^[a-f0-9]{64}$/);
   });
 
@@ -47,5 +49,22 @@ describe("local SSP semantic registry", () => {
 
   it("does not activate a bound concept on a partial word", () => {
     assert.deepEqual(semanticRegistryMatches("projektant upravil vykres"), []);
+  });
+
+  it("uses unbound SSP synonyms only as bounded document retrieval hints", () => {
+    assert.ok(
+      semanticRegistryRetrievalHintsForText("Jaké jsou limity pro VZMR?")
+        .includes("Veřejná zakázka malého rozsahu"),
+    );
+    assert.ok(
+      semanticRegistryRetrievalHintsForText("Veřejné zakázky malého rozsahu")
+        .includes("VZMR"),
+    );
+    assert.deepEqual(semanticRegistryMatches("vzmr"), []);
+    assert.deepEqual(semanticSourcesForText(normalizeSemanticText("VZMR")), []);
+  });
+
+  it("does not expand an ambiguous generic SSP label", () => {
+    assert.deepEqual(semanticRegistryRetrievalHintsForText("projekt"), []);
   });
 });

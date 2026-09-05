@@ -4,7 +4,7 @@ import {
   registryReportKindFromMessage,
   type RegistryReportKind
 } from "@/lib/reporting/assistant-registry-report";
-import type { ResponseLanguage } from "@/lib/types";
+import type { AnswerMode, ResponseLanguage } from "@/lib/types";
 import {
   assistantReportColumnLabel,
   assistantReportRequestFromContext,
@@ -19,12 +19,19 @@ import {
   controlledRuleIntentFromMessage,
   type ControlledRuleIntent,
 } from "./controlled-rule-answer";
+import {
+  resolveDocumentKnowledgeIntent,
+  type DocumentKnowledgeIntentResolution,
+} from "./document-knowledge-intent";
+import { personalWorkflowIntent, type PersonalWorkflowIntent } from "./personal-workflow-intent";
 
-export type AssistantToolName = "controlled_rule_answer" | "registry_document_report" | "rag_document_answer";
+export type AssistantToolName = "controlled_rule_answer" | "registry_document_report" | "rag_document_answer" | "workflow_workspace";
 export type AssistantToolRouteReason =
+  | "personal_workflow_intent"
   | "controlled_rule_intent"
   | "registry_metadata_intent"
   | "rag_structured_output"
+  | "rag_document_task"
   | "rag_grounded_answer";
 
 export interface AssistantToolRoute {
@@ -38,7 +45,37 @@ export interface AssistantToolRoute {
   queryPlan: AssistantQueryPlan;
   reportRequest: AssistantReportRequest | null;
   controlledRuleIntent: ControlledRuleIntent | null;
+  personalWorkflow: PersonalWorkflowIntent | null;
+  documentKnowledge: DocumentKnowledgeIntentResolution;
+  answerMode: AnswerMode;
 }
+
+const ANSWER_MODES = new Set<AnswerMode>([
+  "ask",
+  "standard_answer",
+  "normative_with_citations",
+  "normative_answer_with_citations",
+  "retrieve_only",
+  "compare",
+  "compare_documents",
+  "summary",
+  "extract_obligations",
+  "extract_roles",
+  "extract_deadlines",
+  "extract_risks",
+  "find_procedure",
+  "find_owner",
+  "find_responsibility",
+  "create_checklist",
+  "create_faq",
+  "create_kb_article",
+  "find_conflicts",
+  "find_missing_metadata",
+  "explain_process",
+  "it_support_answer",
+  "manager_brief",
+  "audit_question",
+]);
 
 const STRUCTURED_OUTPUT_RE = /(sestav|report|tabulk|excel|xlsx|export|přehled|prehled|pdf|graf|diagram|vizualiz|chart|plot)/i;
 const OBLIGATION_OUTPUT_RE = /(povinnost|obligation)/i;
@@ -49,8 +86,19 @@ export function routeAssistantMessage(
   context: Record<string, unknown> = {}
 ): AssistantToolRoute {
   const reportRequest = assistantReportRequestFromContext(context);
-  const structuredOutput = Boolean(reportRequest) || STRUCTURED_OUTPUT_RE.test(message);
+  const documentKnowledge = resolveDocumentKnowledgeIntent(message, context);
+  const structuredOutput = Boolean(reportRequest)
+    || (documentKnowledge.intent !== "resource" && STRUCTURED_OUTPUT_RE.test(message));
   const obligationOutput = reportRequest?.template === "obligation_table" || OBLIGATION_OUTPUT_RE.test(message);
+  const personalWorkflow = personalWorkflowIntent(message);
+  if (personalWorkflow && !reportRequest) {
+    return withQueryPlan(message, language, {
+      tool: "workflow_workspace", reason: "personal_workflow_intent",
+      structuredOutput: false, obligationOutput: false, registryReportKind: null,
+      registryTopics: [], answerFormatInstruction: null, reportRequest: null,
+      controlledRuleIntent: null, personalWorkflow, documentKnowledge, answerMode: "ask",
+    });
+  }
   const controlledRuleIntent = controlledRuleIntentFromMessage(message, context);
   if (controlledRuleIntent) {
     return withQueryPlan(message, language, {
@@ -63,6 +111,9 @@ export function routeAssistantMessage(
       answerFormatInstruction: null,
       reportRequest: null,
       controlledRuleIntent,
+      personalWorkflow: null,
+      documentKnowledge,
+      answerMode: "normative_with_citations",
     });
   }
   if (isRegistryDocumentReportQuestion(message, context)) {
@@ -76,18 +127,34 @@ export function routeAssistantMessage(
       answerFormatInstruction: null,
       reportRequest,
       controlledRuleIntent: null,
+      personalWorkflow: null,
+      documentKnowledge,
+      answerMode: "it_support_answer",
     });
   }
   return withQueryPlan(message, language, {
     tool: "rag_document_answer",
-    reason: structuredOutput ? "rag_structured_output" : "rag_grounded_answer",
+    reason: structuredOutput
+      ? "rag_structured_output"
+      : documentKnowledge.taskOriented
+        ? "rag_document_task"
+        : "rag_grounded_answer",
     structuredOutput,
     obligationOutput,
     registryReportKind: null,
     registryTopics: [],
-    answerFormatInstruction: structuredOutput ? answerFormatInstruction(language, obligationOutput, reportRequest) : null,
+    answerFormatInstruction: ragAnswerFormatInstruction(
+      language,
+      structuredOutput,
+      obligationOutput,
+      reportRequest,
+      documentKnowledge,
+    ),
     reportRequest,
     controlledRuleIntent: null,
+    personalWorkflow: null,
+    documentKnowledge,
+    answerMode: documentKnowledge.answerMode,
   });
 }
 
@@ -103,23 +170,40 @@ export function routeAssistantMessageForRag(
   return {
     ...route,
     tool: "rag_document_answer",
-    reason: route.structuredOutput ? "rag_structured_output" : "rag_grounded_answer",
+    reason: route.structuredOutput
+      ? "rag_structured_output"
+      : route.documentKnowledge.taskOriented
+        ? "rag_document_task"
+        : "rag_grounded_answer",
     registryReportKind: null,
     registryTopics: [],
-    answerFormatInstruction: route.structuredOutput ? answerFormatInstruction(language, route.obligationOutput, route.reportRequest) : null,
+    answerFormatInstruction: ragAnswerFormatInstruction(
+      language,
+      route.structuredOutput,
+      route.obligationOutput,
+      route.reportRequest,
+      route.documentKnowledge,
+    ),
     queryPlan: buildAssistantQueryPlan({
       message,
       language,
       tool: "rag_document_answer",
-      reason: route.structuredOutput ? "rag_structured_output" : "rag_grounded_answer",
+      reason: route.structuredOutput
+        ? "rag_structured_output"
+        : route.documentKnowledge.taskOriented
+          ? "rag_document_task"
+          : "rag_grounded_answer",
       structuredOutput: route.structuredOutput,
       obligationOutput: route.obligationOutput,
       registryReportKind: null,
       registryTopics: [],
+      documentKnowledgeIntent: route.documentKnowledge.intent,
       reportRequest: route.reportRequest
     }),
     reportRequest: route.reportRequest,
-    controlledRuleIntent: null
+    controlledRuleIntent: null,
+    personalWorkflow: null,
+    answerMode: route.documentKnowledge.answerMode,
   };
 }
 
@@ -127,17 +211,41 @@ export function ragContextForAssistantRoute(
   context: Record<string, unknown>,
   route: AssistantToolRoute
 ): Record<string, unknown> {
-  if (!route.answerFormatInstruction) {
-    return {
-      ...context,
-      assistant_query_plan: route.queryPlan
-    };
-  }
-  return {
+  const routedContext: Record<string, unknown> = {
     ...context,
     assistant_query_plan: route.queryPlan,
-    answer_format_instruction: route.answerFormatInstruction
+    document_knowledge_state: {
+      version: route.documentKnowledge.version,
+      intent: route.documentKnowledge.intent,
+      answer_mode: route.documentKnowledge.answerMode,
+      task_oriented: route.documentKnowledge.taskOriented,
+      explicit: route.documentKnowledge.explicit,
+      inherited: route.documentKnowledge.inherited,
+      application_topic: route.documentKnowledge.applicationDocumentation?.topic ?? null,
+    },
+    document_retrieval_hints: route.documentKnowledge.retrievalHints,
   };
+  if (route.documentKnowledge.applicationDocumentation && !route.documentKnowledge.applicationDocumentation.liveMessage) {
+    routedContext.stratos_query_state = null;
+  }
+  if (route.answerFormatInstruction) {
+    routedContext.answer_format_instruction = route.answerFormatInstruction;
+  }
+  return routedContext;
+}
+
+export function answerModeForAssistantRequest(
+  route: AssistantToolRoute,
+  requestedMode: unknown,
+): AnswerMode {
+  if (
+    typeof requestedMode === "string"
+    && requestedMode !== "ask"
+    && ANSWER_MODES.has(requestedMode as AnswerMode)
+  ) {
+    return requestedMode as AnswerMode;
+  }
+  return route.answerMode;
 }
 
 function withQueryPlan(
@@ -156,12 +264,13 @@ function withQueryPlan(
       obligationOutput: route.obligationOutput,
       registryReportKind: route.registryReportKind,
       registryTopics: route.registryTopics,
+      documentKnowledgeIntent: route.documentKnowledge.intent,
       reportRequest: route.reportRequest
     })
   };
 }
 
-function answerFormatInstruction(
+function structuredAnswerFormatInstruction(
   language: ResponseLanguage,
   obligationOutput: boolean,
   reportRequest: AssistantReportRequest | null
@@ -188,6 +297,63 @@ function answerFormatInstruction(
     ? reportRequestInstruction(language, reportRequest)
     : "";
   return `${instruction}${obligationInstruction}${reportModeInstruction}`;
+}
+
+function ragAnswerFormatInstruction(
+  language: ResponseLanguage,
+  structuredOutput: boolean,
+  obligationOutput: boolean,
+  reportRequest: AssistantReportRequest | null,
+  documentKnowledge: DocumentKnowledgeIntentResolution,
+): string | null {
+  const instructions: string[] = [];
+  if (structuredOutput) {
+    instructions.push(structuredAnswerFormatInstruction(language, obligationOutput, reportRequest));
+  }
+  if (documentKnowledge.taskOriented) {
+    instructions.push(documentTaskInstruction(language, documentKnowledge.intent));
+  }
+  if (documentKnowledge.applicationDocumentation) {
+    instructions.push(language === "en"
+      ? "Separate the applications, environments and source revisions. Distinguish verified operation from proposed sizing, a pilot, a template or a future feature. Never turn an example or an unfilled placeholder into a real setting, guarantee, capacity, RPO or RTO. Answer every requested topic supported by the sources; explicitly identify missing evidence. Cite each factual part."
+      : "Odděl aplikace, prostředí a revize zdrojů. Rozliš ověřený provoz od návrhu dimenzování, pilotu, šablony nebo budoucí funkce. Příklad ani nevyplněný zástupný údaj nevydávej za skutečné nastavení, garanci, kapacitu, RPO či RTO. Odpověz na všechny požadované části podložené zdroji; chybějící podklad výslovně označ. Každou věcnou část dolož citací.");
+  }
+  return instructions.length ? instructions.join("\n\n") : null;
+}
+
+function documentTaskInstruction(
+  language: ResponseLanguage,
+  intent: DocumentKnowledgeIntentResolution["intent"],
+): string {
+  const common = language === "en"
+    ? "Use only authorized cited documents. Never invent a form, link, contact, owner, deadline, or support channel."
+    : "Použij pouze oprávněné citované dokumenty. Nikdy nevymýšlej formulář, odkaz, kontakt, vlastníka, termín ani kanál podpory.";
+  const instructions: Record<DocumentKnowledgeIntentResolution["intent"], string> = language === "en"
+    ? {
+        general: "Answer the question from cited evidence.",
+        application_documentation: "Explain the documented capabilities, prerequisites, security boundaries or operating procedure at the requested level of detail.",
+        procedure: "Give actionable ordered steps, prerequisites, responsible roles, and the next action when stated.",
+        resource: "Identify the exact resource and where to find it. Include a link or file name only when present in a citation.",
+        support_channel: "Identify the documented support channel and what information to provide. Do not assume a service desk exists.",
+        owner: "Name the responsible role or contact only when explicitly supported and distinguish owner from approver.",
+        responsibility: "Separate responsibilities by role and state unclear boundaries.",
+        deadline: "List the applicable deadline, trigger, and exceptions; do not infer missing dates.",
+        obligation: "List required actions, documents, prerequisites, and deadlines supported by sources.",
+        policy: "Explain the applicable rule, scope, effective version, and exceptions with citations.",
+      }
+    : {
+        general: "Odpověz na dotaz z citované evidence.",
+        application_documentation: "Vysvětli doložené funkce, předpoklady, bezpečnostní hranice nebo provozní postup v požadované podrobnosti.",
+        procedure: "Uveď proveditelné kroky v pořadí, podmínky, odpovědné role a další krok, pokud je zdroj stanoví.",
+        resource: "Urči přesný formulář nebo zdroj a kde jej najít. Odkaz či název souboru uveď jen tehdy, když je ve zdroji.",
+        support_channel: "Urči doložený kanál podpory a údaje potřebné k nahlášení. Nepředpokládej, že existuje Service Desk.",
+        owner: "Uveď odpovědnou roli nebo kontakt jen při výslovné opoře ve zdroji a odliš vlastníka od schvalovatele.",
+        responsibility: "Odděl odpovědnosti podle rolí a označ nejasné hranice.",
+        deadline: "Uveď platnou lhůtu, její spouštěcí událost a výjimky; chybějící termíny neodvozuj.",
+        obligation: "Uveď požadované úkony, doklady, podmínky a termíny podložené zdroji.",
+        policy: "Vysvětli použitelné pravidlo, rozsah, účinnou verzi a výjimky s citacemi.",
+      };
+  return `${common}\n${instructions[intent]}`;
 }
 
 function reportRequestInstruction(language: ResponseLanguage, request: AssistantReportRequest): string {

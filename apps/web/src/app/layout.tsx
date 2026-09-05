@@ -8,6 +8,9 @@ import { getOptionalServerRequestContext } from "@/lib/api/server";
 import "@voldzi/stratos-ui/styles.css";
 import "./globals.css";
 
+// The shell also wraps not-found pages; never prerender a build-time identity.
+export const dynamic = "force-dynamic";
+
 export function generateMetadata(): Metadata {
   const chatProfile = getAklConfig().webProfile === "chat";
   return {
@@ -21,6 +24,24 @@ export function generateMetadata(): Metadata {
           capable: true,
           statusBarStyle: "default",
           title: "AKB Chat",
+        }
+      : undefined,
+    icons: chatProfile
+      ? {
+          icon: [
+            {
+              url: "/icons/akb-chat-192.png",
+              sizes: "192x192",
+              type: "image/png",
+            },
+          ],
+          apple: [
+            {
+              url: "/icons/akb-chat-192.png",
+              sizes: "192x192",
+              type: "image/png",
+            },
+          ],
         }
       : undefined,
   };

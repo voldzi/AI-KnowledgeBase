@@ -5,7 +5,7 @@
 Document Intake is the single AKB-controlled binary entry point for documents
 uploaded by a person, submitted by a STRATOS application or collected from an
 approved internet source. It covers directives, policies, laws, contracts,
-project material, AIIP records and other allowlisted document formats.
+project material and other allowlisted document formats.
 
 It does not let a source application choose authorization, classification or
 publication. Those decisions remain in the current STRATOS access projection,
@@ -143,6 +143,6 @@ The release must prove:
 4. timeout, unavailable scanner and malformed response fail closed;
 5. direct Registry creation without receipt fails in required mode;
 6. direct ingestion of an unattested version fails before object read;
-7. controlled, AIIP and Budget upload paths all return the canonical content
+7. controlled and Budget upload paths both return the canonical content
    URL and preserve idempotency;
 8. logs and audit contain no binary, extracted text, token or receipt.

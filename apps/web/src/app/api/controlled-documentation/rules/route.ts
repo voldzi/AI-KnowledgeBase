@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getServerApiClients, getServerRequestContextForRequest } from "@/lib/api/server";
 import { requireApiAccess } from "@/lib/auth/server-route-guard";
+import { canReviewControlledDocumentation } from "@/lib/controlled-documentation/contract";
 import { controlledDocumentationBridgeError } from "../errors";
 
 export const dynamic = "force-dynamic";
@@ -23,15 +24,18 @@ export async function GET(request: NextRequest) {
         { status: 422 },
       );
     }
-    const result = await getServerApiClients().registry.listControlledRules(
+    const registry = getServerApiClients().registry;
+    const authorization = await registry.getAuthorizationHints(context);
+    const canReview = canReviewControlledDocumentation(authorization);
+    const result = await registry.listControlledRules(
       domain,
       context,
       {
         validOn: request.nextUrl.searchParams.get("valid_on") || undefined,
         approvedOnly:
-          request.nextUrl.searchParams.get("approved_only") !== "false",
+          !canReview || request.nextUrl.searchParams.get("approved_only") !== "false",
         includeInactive:
-          request.nextUrl.searchParams.get("include_inactive") === "true",
+          authorization.can_update && request.nextUrl.searchParams.get("include_inactive") === "true",
         consumerView:
           request.nextUrl.searchParams.get("consumer_view") === "true",
       },

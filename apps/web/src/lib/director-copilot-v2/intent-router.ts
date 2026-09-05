@@ -1,9 +1,12 @@
 import { resolveConversationQuery } from "@/lib/director-copilot/query-state";
+import { hasExplicitNonProcurementLegalTopic } from "@/lib/assistant/controlled-rule-answer";
+import { resolveApplicationDocumentationRequest } from "@/lib/assistant/application-documentation-intent";
 
 import type { DirectorCopilotIntent } from "./shared";
 
 const CONTRACT_SIGNAL = /(smlouv|contract|dodavatel|supplier|rizik|risk)/i;
 const DOCUMENT_SIGNAL = /(dokument|priloh|smernic|metodik|citac|soubor|pdf)/i;
+const CONTRACT_CONTENT_SIGNAL = /(?:co\s+(?:stanov|uvad|obsah).*smlouv|smlouv.*(?:stanov|uvad|obsah|cena|termin|plnen|zavazk|citac|zdroj|clanek)|podle\s+smlouv|ve\s+smlouv)/i;
 const ACCESS_SIGNAL = /(pristup|opravnen|access|permission)/i;
 const ACCESS_MUTATION_SIGNAL = /(pozad|zadat|pridel|pridej|nastav|zmen|odebr|zrus|schval|vytvor)/i;
 const ACCESS_OVERVIEW_SIGNAL = /(mam|mas|mame|mohu|muz|vidim|dostup|over|zkontrol|k jakym|jaky mam)/i;
@@ -15,11 +18,14 @@ export function classifyDirectorCopilotV2Intent(
   message: string,
   context: Record<string, unknown> = {},
 ): DirectorCopilotIntent | null {
-  const normalized = normalizeForIntent(message);
+  const documentation = resolveApplicationDocumentationRequest(message, context);
+  const normalized = normalizeForIntent(documentation?.liveMessage ?? message);
+  if (hasExplicitNonProcurementLegalTopic(message)) return null;
   const resolved = resolveConversationQuery({ message, context });
   if (!resolved.recognized) return null;
   const explicitProjectFlow = PROJECTFLOW_SIGNAL.test(normalized);
-  const documentQuestion = DOCUMENT_SIGNAL.test(normalized);
+  const documentQuestion = DOCUMENT_SIGNAL.test(normalized)
+    || CONTRACT_CONTENT_SIGNAL.test(normalized);
   const accessQuestion = ACCESS_SIGNAL.test(normalized);
   const accessMutation = accessQuestion && ACCESS_MUTATION_SIGNAL.test(normalized);
   const accessOverview = accessQuestion && ACCESS_OVERVIEW_SIGNAL.test(normalized);

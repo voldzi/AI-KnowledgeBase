@@ -1,0 +1,315 @@
+{
+  "schemaVersion": "stratos-clean-pilot-akb-identity-owner-confirmation-1",
+  "revision": "1.0.0",
+  "epochId": "clean-pilot-epoch-1",
+  "gate": "C5",
+  "repository": "AKB/ai-knowledgebase",
+  "ownerRole": "akb-owner",
+  "identityManifestRevision": "1.0.0",
+  "identityManifestSha256": "6646dec58428547ddb669ba25f0c98f52d28c8f8b6fd17e8963d1bd720004886",
+  "routeBindingContractRevision": "1.0.0",
+  "routeBindingContractSha256": "598b5bdf69025988445d97e8ee3f45afcc68787ab9c9fb2bf74c20116b88ea0d",
+  "submissionStatus": "DRAFT",
+  "authority": "SOURCE_ONLY",
+  "productionMutationAuthorized": false,
+  "resetAuthorized": false,
+  "deployAuthorized": false,
+  "unknownIdentityDecision": "STOP",
+  "serviceTokenAudiencePolicy": "EXACTLY_ONE_PER_TOKEN",
+  "routeScopePolicy": "EXACT_MATCH_REQUIRED",
+  "browserServiceTokenReuse": "PROHIBITED",
+  "browserRedirectBinding": "RUNTIME_EXACT_MATCH_REQUIRED",
+  "entries": [
+    {
+      "mode": "externalOidc",
+      "kind": "browser_client",
+      "id": "akl-web",
+      "ownerDecision": "PENDING_OWNER_DECISION",
+      "targetAudiences": ["akl-api", "stratos-access-api"],
+      "allowedScopes": ["openid", "profile", "email"],
+      "onMismatch": "STOP",
+      "rationaleCode": "OWNER_DECISION_REQUIRED"
+    },
+    {
+      "mode": "externalOidc",
+      "kind": "browser_client",
+      "id": "akb-chat-web",
+      "ownerDecision": "PENDING_OWNER_DECISION",
+      "targetAudiences": ["akl-api", "stratos-access-api"],
+      "allowedScopes": ["openid", "profile", "email"],
+      "onMismatch": "STOP",
+      "rationaleCode": "OWNER_DECISION_REQUIRED"
+    },
+    {
+      "mode": "externalOidc",
+      "kind": "resource_audience",
+      "id": "akl-api",
+      "ownerDecision": "PENDING_OWNER_DECISION",
+      "targetAudiences": ["akl-api"],
+      "allowedScopes": [],
+      "onMismatch": "STOP",
+      "rationaleCode": "OWNER_DECISION_REQUIRED"
+    },
+    {
+      "mode": "externalOidc",
+      "kind": "service_client",
+      "id": "stratos-akb-service",
+      "ownerDecision": "PENDING_OWNER_DECISION",
+      "targetAudiences": ["akl-api"],
+      "allowedScopes": ["service_ingestion"],
+      "onMismatch": "STOP",
+      "rationaleCode": "OWNER_DECISION_REQUIRED"
+    },
+    {
+      "mode": "externalOidc",
+      "kind": "service_client",
+      "id": "stratos-akl-adapter",
+      "ownerDecision": "PENDING_OWNER_DECISION",
+      "targetAudiences": ["akl-api"],
+      "allowedScopes": ["service_ingestion"],
+      "onMismatch": "STOP",
+      "rationaleCode": "OWNER_DECISION_REQUIRED"
+    },
+    {
+      "mode": "externalOidc",
+      "kind": "service_client",
+      "id": "svc-akb-director-copilot",
+      "ownerDecision": "PENDING_OWNER_DECISION",
+      "targetAudiences": ["akl-api", "budget-api", "projectflow-api", "archflow-api"],
+      "allowedScopes": ["director-copilot:read"],
+      "onMismatch": "STOP",
+      "rationaleCode": "OWNER_DECISION_REQUIRED"
+    },
+    {
+      "mode": "externalOidc",
+      "kind": "service_subject",
+      "id": "service:akb",
+      "ownerDecision": "PENDING_OWNER_DECISION",
+      "targetAudiences": [],
+      "allowedScopes": [
+        "akb:access",
+        "akb:chat",
+        "akb:upload",
+        "akb:read_document",
+        "akb:manage_document",
+        "akb:export",
+        "akb:read_audit",
+        "akb:assign_policy"
+      ],
+      "onMismatch": "STOP",
+      "rationaleCode": "OWNER_DECISION_REQUIRED"
+    },
+    {
+      "mode": "externalOidc",
+      "kind": "realm_role",
+      "id": "service_ingestion",
+      "ownerDecision": "PENDING_OWNER_DECISION",
+      "targetAudiences": [],
+      "allowedScopes": [],
+      "onMismatch": "STOP",
+      "rationaleCode": "OWNER_DECISION_REQUIRED"
+    },
+    {
+      "mode": "externalOidc",
+      "kind": "realm_role",
+      "id": "service_akb_web_ingestion",
+      "ownerDecision": "PENDING_OWNER_DECISION",
+      "targetAudiences": [],
+      "allowedScopes": [],
+      "onMismatch": "STOP",
+      "rationaleCode": "OWNER_DECISION_REQUIRED"
+    },
+    {
+      "mode": "externalOidc",
+      "kind": "realm_role",
+      "id": "service_evaluation",
+      "ownerDecision": "PENDING_OWNER_DECISION",
+      "targetAudiences": [],
+      "allowedScopes": [],
+      "onMismatch": "STOP",
+      "rationaleCode": "OWNER_DECISION_REQUIRED"
+    },
+    {
+      "mode": "externalOidc",
+      "kind": "realm_role",
+      "id": "service_governance",
+      "ownerDecision": "PENDING_OWNER_DECISION",
+      "targetAudiences": [],
+      "allowedScopes": [],
+      "onMismatch": "STOP",
+      "rationaleCode": "OWNER_DECISION_REQUIRED"
+    },
+    {
+      "mode": "externalOidc",
+      "kind": "realm_role",
+      "id": "service_llm_gateway",
+      "ownerDecision": "PENDING_OWNER_DECISION",
+      "targetAudiences": [],
+      "allowedScopes": [],
+      "onMismatch": "STOP",
+      "rationaleCode": "OWNER_DECISION_REQUIRED"
+    },
+    {
+      "mode": "externalOidc",
+      "kind": "realm_role",
+      "id": "service_rag",
+      "ownerDecision": "PENDING_OWNER_DECISION",
+      "targetAudiences": [],
+      "allowedScopes": [],
+      "onMismatch": "STOP",
+      "rationaleCode": "OWNER_DECISION_REQUIRED"
+    },
+    {
+      "mode": "managedOidc",
+      "kind": "browser_client",
+      "id": "akl-web",
+      "ownerDecision": "PENDING_OWNER_DECISION",
+      "targetAudiences": ["akl-api", "stratos-access-api"],
+      "allowedScopes": ["openid", "profile", "email"],
+      "onMismatch": "STOP",
+      "rationaleCode": "OWNER_DECISION_REQUIRED"
+    },
+    {
+      "mode": "managedOidc",
+      "kind": "browser_client",
+      "id": "akb-chat-web",
+      "ownerDecision": "PENDING_OWNER_DECISION",
+      "targetAudiences": ["akl-api", "stratos-access-api"],
+      "allowedScopes": ["openid", "profile", "email"],
+      "onMismatch": "STOP",
+      "rationaleCode": "OWNER_DECISION_REQUIRED"
+    },
+    {
+      "mode": "managedOidc",
+      "kind": "resource_audience",
+      "id": "akl-api",
+      "ownerDecision": "PENDING_OWNER_DECISION",
+      "targetAudiences": ["akl-api"],
+      "allowedScopes": [],
+      "onMismatch": "STOP",
+      "rationaleCode": "OWNER_DECISION_REQUIRED"
+    },
+    {
+      "mode": "managedOidc",
+      "kind": "service_client",
+      "id": "svc-akb-director-copilot-budget",
+      "ownerDecision": "PENDING_OWNER_DECISION",
+      "targetAudiences": ["budget-api"],
+      "allowedScopes": ["director-copilot:read"],
+      "onMismatch": "STOP",
+      "rationaleCode": "OWNER_DECISION_REQUIRED"
+    },
+    {
+      "mode": "managedOidc",
+      "kind": "service_client",
+      "id": "svc-akb-director-copilot-projectflow",
+      "ownerDecision": "PENDING_OWNER_DECISION",
+      "targetAudiences": ["projectflow-api"],
+      "allowedScopes": ["director-copilot:read"],
+      "onMismatch": "STOP",
+      "rationaleCode": "OWNER_DECISION_REQUIRED"
+    },
+    {
+      "mode": "managedOidc",
+      "kind": "service_client",
+      "id": "svc-akb-director-copilot-archflow",
+      "ownerDecision": "PENDING_OWNER_DECISION",
+      "targetAudiences": ["archflow-api"],
+      "allowedScopes": ["director-copilot:read"],
+      "onMismatch": "STOP",
+      "rationaleCode": "OWNER_DECISION_REQUIRED"
+    },
+    {
+      "mode": "managedOidc",
+      "kind": "service_subject",
+      "id": "service:akb",
+      "ownerDecision": "PENDING_OWNER_DECISION",
+      "targetAudiences": [],
+      "allowedScopes": [
+        "akb:access",
+        "akb:chat",
+        "akb:upload",
+        "akb:read_document",
+        "akb:manage_document",
+        "akb:export",
+        "akb:read_audit",
+        "akb:assign_policy"
+      ],
+      "onMismatch": "STOP",
+      "rationaleCode": "OWNER_DECISION_REQUIRED"
+    }
+  ],
+  "routeBindings": [
+    {
+      "mode": "externalOidc",
+      "clientId": "svc-akb-director-copilot",
+      "requestScope": "director-copilot-akl-api",
+      "targetAudience": "akl-api",
+      "tokenAudienceCardinality": "EXACTLY_ONE",
+      "ownerDecision": "PENDING_OWNER_DECISION",
+      "onMismatch": "STOP",
+      "rationaleCode": "OWNER_DECISION_REQUIRED"
+    },
+    {
+      "mode": "externalOidc",
+      "clientId": "svc-akb-director-copilot",
+      "requestScope": "director-copilot-budget-api",
+      "targetAudience": "budget-api",
+      "tokenAudienceCardinality": "EXACTLY_ONE",
+      "ownerDecision": "PENDING_OWNER_DECISION",
+      "onMismatch": "STOP",
+      "rationaleCode": "OWNER_DECISION_REQUIRED"
+    },
+    {
+      "mode": "externalOidc",
+      "clientId": "svc-akb-director-copilot",
+      "requestScope": "director-copilot-projectflow-api",
+      "targetAudience": "projectflow-api",
+      "tokenAudienceCardinality": "EXACTLY_ONE",
+      "ownerDecision": "PENDING_OWNER_DECISION",
+      "onMismatch": "STOP",
+      "rationaleCode": "OWNER_DECISION_REQUIRED"
+    },
+    {
+      "mode": "externalOidc",
+      "clientId": "svc-akb-director-copilot",
+      "requestScope": "director-copilot-archflow-api",
+      "targetAudience": "archflow-api",
+      "tokenAudienceCardinality": "EXACTLY_ONE",
+      "ownerDecision": "PENDING_OWNER_DECISION",
+      "onMismatch": "STOP",
+      "rationaleCode": "OWNER_DECISION_REQUIRED"
+    },
+    {
+      "mode": "managedOidc",
+      "clientId": "svc-akb-director-copilot-budget",
+      "requestScope": "director-copilot:read",
+      "targetAudience": "budget-api",
+      "tokenAudienceCardinality": "EXACTLY_ONE",
+      "ownerDecision": "PENDING_OWNER_DECISION",
+      "onMismatch": "STOP",
+      "rationaleCode": "OWNER_DECISION_REQUIRED"
+    },
+    {
+      "mode": "managedOidc",
+      "clientId": "svc-akb-director-copilot-projectflow",
+      "requestScope": "director-copilot:read",
+      "targetAudience": "projectflow-api",
+      "tokenAudienceCardinality": "EXACTLY_ONE",
+      "ownerDecision": "PENDING_OWNER_DECISION",
+      "onMismatch": "STOP",
+      "rationaleCode": "OWNER_DECISION_REQUIRED"
+    },
+    {
+      "mode": "managedOidc",
+      "clientId": "svc-akb-director-copilot-archflow",
+      "requestScope": "director-copilot:read",
+      "targetAudience": "archflow-api",
+      "tokenAudienceCardinality": "EXACTLY_ONE",
+      "ownerDecision": "PENDING_OWNER_DECISION",
+      "onMismatch": "STOP",
+      "rationaleCode": "OWNER_DECISION_REQUIRED"
+    }
+  ],
+  "reasonCode": "AKB_OWNER_DECISIONS_PENDING"
+}

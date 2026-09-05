@@ -1,10 +1,12 @@
 import "server-only";
 
 import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 
 import { getAklConfig, getDirectorCopilotConfig, type AklConfig } from "@/lib/api/config";
 
 import { DirectorCopilotTransportError } from "./transport-error";
+import { identityJson, isManagedIdentity, managedDiscovery, verifyManagedServiceToken } from "@/lib/auth/managed-oidc";
 
 const CLIENT_ID = "svc-akb-director-copilot";
 
@@ -46,6 +48,25 @@ export async function directorCopilotServiceToken(
       : "mock-director-copilot-service-token";
   }
   const transport = getDirectorCopilotConfig(config);
+  if (isManagedIdentity(config)) {
+    if (!transport.enabled || !target || target.audience === "akl-api") throw managedAuthError();
+    const client = transport.managedClients?.[target.audience];
+    if (!client || transport.managedIssuer !== config.oidc?.issuer) throw managedAuthError();
+    const credentialFingerprint = createHash("sha256").update(`${client.clientSecretFile ?? ""}|${client.clientSecret ?? ""}`).digest("hex");
+    const key = `${config.oidc!.issuer}|${client.clientId}|${target.audience}|${credentialFingerprint}`;
+    const cached = cachedTokens.get(key);
+    if (cached && cached.refreshAt > Date.now()) return cached.token;
+    let pending = pendingTokens.get(key);
+    if (!pending) {
+      pending = obtainManagedToken(config, key, target.audience, fetcher);
+      pendingTokens.set(key, pending);
+      const clear = () => pendingTokens.delete(key);
+      void pending.then(clear, clear);
+    }
+    const result = await pending;
+    cachedTokens.set(key, result);
+    return result.token;
+  }
   if (!transport.enabled || !transport.tokenUrl || transport.clientId !== CLIENT_ID) {
     throw new DirectorCopilotTransportError(
       "DIRECTOR_COPILOT_TRANSPORT_AUTH_UNAVAILABLE",
@@ -101,6 +122,7 @@ async function obtainToken(
         ...(target ? { scope: target.scope } : {}),
       }),
       cache: "no-store",
+      redirect: "error",
       signal: AbortSignal.timeout(5_000),
     });
   } catch {
@@ -134,6 +156,28 @@ async function obtainToken(
   const lifetimeMs = expiresIn * 1_000;
   const marginMs = Math.min(30_000, Math.max(1_000, lifetimeMs * 0.1));
   return { cacheKey, token, refreshAt: Date.now() + Math.max(0, lifetimeMs - marginMs) };
+}
+
+async function obtainManagedToken(config: AklConfig, cacheKey: string, audience: "budget-api" | "projectflow-api" | "archflow-api", fetcher: typeof fetch): Promise<CachedToken> {
+  try {
+    const client = getDirectorCopilotConfig(config).managedClients![audience];
+    const secret = client.clientSecretFile ? (await readFile(client.clientSecretFile, "utf8")).trim() : client.clientSecret;
+    if (!secret) throw managedAuthError();
+    const discovery = await managedDiscovery(config, fetcher);
+    const body = await identityJson(discovery.token_endpoint, {
+      method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ grant_type: "client_credentials", client_id: client.clientId, client_secret: secret, scope: "director-copilot:read" }),
+    }, fetcher);
+    if (typeof body.access_token !== "string" || typeof body.token_type !== "string" || body.token_type.toLowerCase() !== "bearer") throw managedAuthError();
+    const claims = await verifyManagedServiceToken(config, body.access_token, audience, client.clientId, fetcher);
+    return { cacheKey, token: body.access_token, refreshAt: claims.exp! * 1000 - 30_000 };
+  } catch {
+    throw managedAuthError();
+  }
+}
+
+function managedAuthError(): DirectorCopilotTransportError {
+  return new DirectorCopilotTransportError("DIRECTOR_COPILOT_TRANSPORT_AUTH_INVALID", "Managed Director Copilot service identity is unavailable or invalid.", "unavailable");
 }
 
 export function resetDirectorCopilotServiceTokenCacheForTests(): void {

@@ -510,20 +510,24 @@ button {
 
 .akb-chat-app {
   --akb-chat-source-resizer-track: 14px;
-  --akb-chat-source-track: var(--akb-chat-source-width, 340px);
+  --akb-chat-source-track: min(var(--akb-chat-source-width, 340px), 32%);
   --akb-chat-thread-resizer-track: 14px;
-  --akb-chat-thread-track: var(--akb-chat-thread-width, 268px);
+  --akb-chat-thread-track: min(var(--akb-chat-thread-width, 268px), 28%);
   display: grid;
   grid-template-columns:
     var(--akb-chat-thread-track)
     var(--akb-chat-thread-resizer-track)
-    minmax(420px, 1fr)
+    minmax(0, 1fr)
     var(--akb-chat-source-resizer-track)
     var(--akb-chat-source-track);
   grid-template-rows: minmax(0, 1fr);
   min-height: calc(100vh - 104px);
   overflow: hidden;
   row-gap: 14px;
+}
+
+.akb-chat-message .status-badge {
+  text-transform: none;
 }
 
 .akb-chat-app.is-threads-closed {
@@ -2176,6 +2180,7 @@ button {
 @media (max-width: 1320px) {
   .akb-chat-app {
     --akb-chat-source-resizer-track: 0px;
+    --akb-chat-thread-track: min(var(--akb-chat-thread-width, 268px), 45%);
     grid-template-columns:
       var(--akb-chat-thread-track)
       var(--akb-chat-thread-resizer-track)
@@ -2508,7 +2513,7 @@ button {
 
   .akb-chat-composer textarea {
     font-size: 16px;
-    max-height: 44px;
+    max-height: 120px;
     min-height: 40px;
     overflow-y: auto;
     padding: 9px 4px 6px;
@@ -2660,6 +2665,82 @@ button {
 
 .panel__body {
   padding: 18px;
+}
+
+.dashboard-loading {
+  display: grid;
+  gap: 1rem;
+}
+
+.dashboard-loading__status {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+  min-height: 7rem;
+  padding: 1.25rem;
+}
+
+.dashboard-loading__status h2,
+.dashboard-loading__status p {
+  margin: 0;
+}
+
+.dashboard-loading__status p {
+  color: var(--muted);
+  margin-top: 0.35rem;
+}
+
+.dashboard-loading__indicator {
+  animation: dashboard-loading-pulse 1.2s ease-in-out infinite;
+  background: var(--accent);
+  border-radius: 50%;
+  flex: 0 0 0.85rem;
+  height: 0.85rem;
+  width: 0.85rem;
+}
+
+.dashboard-loading__grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.dashboard-loading__placeholder {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  min-height: 10rem;
+}
+
+.dashboard-loading__placeholder--wide {
+  grid-column: 1 / -1;
+  min-height: 14rem;
+}
+
+@keyframes dashboard-loading-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-loading__indicator {
+    animation: none;
+  }
+}
+
+@media (max-width: 680px) {
+  .dashboard-loading__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-loading__placeholder--wide {
+    grid-column: auto;
+  }
 }
 
 .grid {
@@ -4667,6 +4748,140 @@ button {
   max-width: 940px;
 }
 
+.workflow-workspace, .workflow-workspace > *, .workflow-workspace .panel {
+  min-width: 0;
+}
+
+.workflow-workspace .workflow-workspace__heading {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.workflow-workspace__heading .icon-button {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.workflow-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  padding: 18px 0;
+  margin: 0;
+  border-block: 1px solid var(--border);
+}
+
+.workflow-summary dt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.workflow-summary dt svg { flex: 0 0 auto; }
+.workflow-summary dd { margin: 8px 0 0; font-size: 24px; font-weight: 700; }
+.workflow-deadline-list { display: grid; justify-items: start; gap: 6px; }
+.workflow-deadline-list .status-badge { white-space: normal; }
+
+.workflow-document-filters {
+  display: grid;
+  grid-template-columns: minmax(210px, 1.3fr) repeat(3, minmax(160px, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.workflow-filter-fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+.workspace-navigation-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  color: var(--color-text-primary, #18272d);
+  background: var(--color-surface-secondary, #eef5f6);
+  border-inline-start: 3px solid var(--color-primary, #11788a);
+}
+
+.workspace-navigation-status .dashboard-loading__indicator {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+}
+
+.workspace-error {
+  display: grid;
+  gap: 20px;
+  width: min(100%, 720px);
+  margin: 32px auto;
+  padding: 24px;
+  overflow-wrap: anywhere;
+}
+.workspace-error h1 { margin: 0; font-size: 28px; letter-spacing: 0; }
+.workspace-error p { margin: 0; }
+.workspace-error .inline-actions { flex-wrap: wrap; }
+
+.workflow-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  min-height: 44px;
+}
+
+.workflow-pagination .icon-button { width: 44px; height: 44px; flex: 0 0 44px; }
+.workflow-workspace .notice .dashboard-loading__indicator { flex: 0 0 20px; width: 20px; height: 20px; }
+
+.workflow-workspace .panel {
+  box-shadow: none;
+  border-radius: 0;
+}
+
+.workflow-workspace .cell-title > a {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.document-review-panel {
+  border-block: 1px solid var(--border);
+  padding: 20px 0;
+}
+
+.document-review-panel__heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.document-review-panel h2 { margin: 0; font-size: 20px; }
+.document-review-panel dl { margin: 0; }
+.document-review-panel dt { color: var(--muted); font-size: 13px; }
+.document-review-panel dd { margin: 6px 0 0; font-weight: 600; overflow-wrap: anywhere; }
+.document-review-panel textarea { min-height: 72px; max-width: 100%; resize: vertical; }
+
+@media (max-width: 1000px) {
+  .workflow-document-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 620px) {
+  .workflow-summary { grid-template-columns: 1fr; gap: 12px; }
+  .workflow-summary > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .workflow-summary dd { margin: 0; font-size: 20px; }
+  .workflow-document-filters { grid-template-columns: minmax(0, 1fr); }
+  .workflow-workspace .task-inbox-layout { grid-template-columns: minmax(0, 1fr); }
+  .workflow-workspace .task-detail { position: static; }
+}
+
 .task-toolbar {
   align-items: end;
   display: grid;
@@ -5659,7 +5874,6 @@ button {
     flex-wrap: wrap;
   }
 
-  .grid--metrics,
   .grid--three,
   .form-grid--two,
   .form-grid--three,
@@ -5669,6 +5883,11 @@ button {
   .assistant-suggestions,
   .clarification-grid {
     grid-template-columns: 1fr;
+  }
+
+  .grid--metrics {
+    gap: 10px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .registry-toolbar,
@@ -5771,30 +5990,23 @@ button {
 
 /* ─── Citation modal ──────────────────────────────────────────────────────── */
 
-.citation-backdrop {
-  background: rgba(17, 24, 39, 0.55);
-  display: grid;
-  inset: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
+.stratos-dialog-layer:has(> .citation-modal) {
   padding: 20px;
   place-items: center;
-  position: fixed;
-  z-index: 150;
+  /* The AKB mobile shell uses modal + 7 for its top bar. */
+  z-index: calc(var(--stratos-z-modal, 1000) + 20);
 }
 
-.citation-backdrop--sidebar {
-  background: rgba(17, 24, 39, 0.32);
+.stratos-dialog-layer:has(> .citation-modal--sidebar) {
   padding: 0;
   place-items: stretch end;
 }
 
-.citation-backdrop--fullscreen {
-  background: var(--surface);
+.stratos-dialog-layer:has(> .citation-modal--fullscreen) {
   padding: 0;
 }
 
-.citation-modal {
+.stratos-dialog.citation-modal {
   animation: citation-modal-in 170ms cubic-bezier(0.2, 0, 0, 1);
   background: var(--surface);
   border: 1px solid var(--border);
@@ -5802,23 +6014,26 @@ button {
   box-shadow: var(--stratos-shadow-modal);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  height: min(860px, calc(100vh - 40px));
+  height: min(860px, calc(100dvh - 40px));
+  max-height: calc(100dvh - 40px);
   overflow: hidden;
   width: min(1320px, calc(100vw - 40px));
 }
 
-.citation-modal--sidebar {
+.stratos-dialog.citation-modal--sidebar {
   animation: citation-slide-in 180ms cubic-bezier(0.2, 0, 0, 1);
   border-radius: 0;
-  height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
   width: min(660px, calc(100vw - 48px));
 }
 
-.citation-modal--fullscreen {
+.stratos-dialog.citation-modal--fullscreen {
   animation: none;
   border: 0;
   border-radius: 0;
-  height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
   width: 100vw;
 }
 
@@ -5844,30 +6059,29 @@ button {
   }
 }
 
-.citation-modal__header {
-  align-items: center;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  gap: 10px;
-  min-height: 52px;
-  padding: 0 16px;
+.citation-modal > .stratos-dialog-header {
+  padding-top: max(8px, env(safe-area-inset-top));
 }
 
-.citation-modal__title {
-  flex: 1;
-  font-size: 14px;
-  font-weight: 700;
+.citation-modal > .stratos-dialog-header > button {
+  height: 44px;
+  width: 44px;
+}
+
+.citation-modal > .stratos-dialog-body {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  padding: 0;
 }
 
 .citation-modal__modes {
   align-items: center;
   display: flex;
   gap: 2px;
+  padding: 4px 14px;
+  border-bottom: 1px solid var(--border);
 }
 
 .citation-mode-btn {
@@ -5878,14 +6092,14 @@ button {
   color: var(--muted);
   cursor: pointer;
   display: inline-flex;
-  height: 28px;
+  height: 44px;
   justify-content: center;
   padding: 0;
   transition:
     background var(--stratos-duration-fast) var(--stratos-ease),
     border-color var(--stratos-duration-fast) var(--stratos-ease),
     color var(--stratos-duration-fast) var(--stratos-ease);
-  width: 28px;
+  width: 44px;
 }
 
 .citation-mode-btn:hover {
@@ -5897,29 +6111,6 @@ button {
   background: #e7f7f4;
   border-color: #a8dcd4;
   color: var(--accent);
-}
-
-.citation-modal__close {
-  align-items: center;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  color: var(--muted);
-  cursor: pointer;
-  display: inline-flex;
-  height: 28px;
-  justify-content: center;
-  margin-left: 4px;
-  padding: 0;
-  transition:
-    background var(--stratos-duration-fast) var(--stratos-ease),
-    color var(--stratos-duration-fast) var(--stratos-ease);
-  width: 28px;
-}
-
-.citation-modal__close:hover {
-  background: var(--surface-2);
-  color: var(--ink);
 }
 
 .citation-modal__body {
@@ -5959,7 +6150,18 @@ button {
 .citation-modal__context-pane {
   min-height: 0;
   overflow-y: auto;
-  padding: 14px 18px;
+  padding: 14px 18px max(14px, env(safe-area-inset-bottom));
+}
+
+.citation-open-button[aria-disabled="true"] {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stratos-dialog.citation-modal {
+    animation: none;
+  }
 }
 
 /* Trigger badge in the answer header */
@@ -6011,7 +6213,7 @@ button {
 
 .controlled-docs__metrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
 }
 

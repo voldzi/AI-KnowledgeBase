@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "akb-clean-pilot-stack-bundle-1",
+  "repository": "AKB/ai-knowledgebase",
+  "sourceCommit": "4abd485afb0af7d39cedf062cb9834f61fd371de",
+  "migrationBundleSha256": "b7cb103d0f775b242b18e611b8d748ecd1f3a20f647646f72bd0009c30dd212c",
+  "imageBundleSha256": "2f0b1b9e13175b94f579ca352919ee665d8a67c82856a6af0fe43ea8ba68db99",
+  "images": {
+    "postgresql": "git.home.cz/akb/cpe1-postgresql@sha256:075f7ba66bc9b3ce7d6b8b635208ff61cd7cf1a67d71ec530eec5d7ae0cbe571",
+    "s3-object-storage": "git.home.cz/akb/cpe1-s3-object-storage@sha256:a1a8bd4ac40ad7881a245bab97323e18f971e4d4cba2c2007ec1bedd21cbaba2",
+    "opensearch": "git.home.cz/akb/cpe1-opensearch@sha256:b6c3071dde7b170d85f3a44b9c4ef1cae2e7a23f47448ffd7a2538524476d864",
+    "qdrant": "git.home.cz/akb/cpe1-qdrant@sha256:da65a06bc75e42702f80c992b99c5144b0fbd675ae7a96d2991de0bf957b7071",
+    "registry-api": "git.home.cz/akb/cpe1-registry-api@sha256:a5f7612ed35fe9d66055bbdaf5f662834cd2ba63fa4702f5b20c1bf84bd08164",
+    "ingestion-service": "git.home.cz/akb/cpe1-ingestion-service@sha256:e39b5ab3232efa655bfc2fc8de17e1265d6d662adf455be70a48178189eb124f",
+    "rag-retrieval-service": "git.home.cz/akb/cpe1-rag-retrieval-service@sha256:f40348c0b6bb90beabb2b07c0d84bf9250ca5d6d8db8f96d4967f59e1dce1982",
+    "evaluation-service": "git.home.cz/akb/cpe1-evaluation-service@sha256:482296d2b514551148ef0714029bb7dbbcc4786f144840d8b8f6c43a78fc4eb0",
+    "web": "git.home.cz/akb/cpe1-web@sha256:e89c39d6eff9d70c5bed41a13e8a1a1fb90c32e93daa98188d0082c6e76707d7"
+  },
+  "surfaces": [
+    "registry",
+    "search",
+    "retrieval",
+    "chat",
+    "preview",
+    "download",
+    "citation",
+    "source-open",
+    "export",
+    "publication"
+  ],
+  "networkPolicy": "internal-no-egress",
+  "credentialPolicy": "generated-ephemeral-only",
+  "productionConnectivity": false,
+  "composePath": "infra/clean-pilot/docker-compose.rehearsal.yml"
+}

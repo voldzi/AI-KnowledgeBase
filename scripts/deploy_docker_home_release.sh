@@ -4,7 +4,7 @@ set -Eeuo pipefail
 AKL_IMMUTABLE_ORCHESTRATOR_CONTRACT=2
 # Read from immutable release files by the target-side boundary transition.
 # shellcheck disable=SC2034
-AKL_IMMUTABLE_MANAGED_BOUNDARY_REVISION=4
+AKL_IMMUTABLE_MANAGED_BOUNDARY_REVISION=5
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/immutable_release_common.sh
@@ -34,6 +34,8 @@ while [[ $# -gt 0 ]]; do
 done
 [[ -n "$TARGET_SHA" ]] || usage
 akl_validate_full_sha "$TARGET_SHA"
+[[ -z "${SOURCE_DATE_EPOCH+x}" ]] \
+  || akl_fail "Ambient SOURCE_DATE_EPOCH is forbidden; it is derived from the exact target commit"
 
 RELEASE_ROOT="${AKL_RELEASE_ROOT:-/srv/akl}"
 ENV_SOURCE_FILE="${AKL_PROD_ENV_FILE:-${RELEASE_ROOT}/env/akl.prod.env}"
@@ -648,12 +650,13 @@ assert_runtime_container_bound_to_image() {
   local service="$1"
   local expected_image_id="$2"
   local phase="$3"
+  local image_owner="${4:-$service}"
   local runtime_image_ref container_ps_output container_id
   local running restarting status image_id image_ref compose_project compose_service compose_oneoff
   local config_files revision release_project release_service
   local -a container_ids=()
 
-  assert_target_image_identity_unchanged "$service" "$expected_image_id" "$phase"
+  assert_target_image_identity_unchanged "$image_owner" "$expected_image_id" "$phase"
   runtime_image_ref="$expected_image_id"
   container_ps_output="$("${COMPOSE[@]}" ps -q "$service")" \
     || akl_fail "Could not enumerate runtime container during ${phase}: $service"
@@ -685,7 +688,7 @@ assert_runtime_container_bound_to_image() {
     && "$config_files" == "$COMPOSE_FILE" \
     && "$revision" == "$TARGET_SHA" \
     && "$release_project" == "$PROJECT_NAME" \
-    && "$release_service" == "$service" ]] \
+    && "$release_service" == "$image_owner" ]] \
     || akl_fail "Runtime container provenance does not match the durable release during ${phase}: $service"
 }
 
@@ -771,11 +774,20 @@ restore_quiesced_registry_if_safe() {
 }
 
 quarantine_unverified_target_services() {
-  local service target_image_id
-  for service in "${services[@]}"; do
+  local service target_image_id image_owner
+  local -a quarantine_services=("${services[@]}")
+  if [[ " ${services[*]} " == *" ingestion-service "* ]]; then
+    quarantine_services=(docling-worker "${quarantine_services[@]}")
+  fi
+  for service in "${quarantine_services[@]}"; do
+    image_owner="$service"
     case "$service" in
       registry-api) target_image_id="$TARGET_REGISTRY_IMAGE_ID" ;;
       ingestion-service) target_image_id="$TARGET_INGESTION_IMAGE_ID" ;;
+      docling-worker)
+        target_image_id="$TARGET_INGESTION_IMAGE_ID"
+        image_owner="ingestion-service"
+        ;;
       rag-retrieval-service) target_image_id="$TARGET_RAG_IMAGE_ID" ;;
       evaluation-service) target_image_id="$TARGET_EVALUATION_IMAGE_ID" ;;
       governance-service) target_image_id="$TARGET_GOVERNANCE_IMAGE_ID" ;;
@@ -790,11 +802,12 @@ quarantine_unverified_target_services() {
         "$service" \
         "$target_image_id" \
         "$TARGET_SHA" \
-        "$COMPOSE_FILE"
+        "$COMPOSE_FILE" \
+        "$image_owner"
     ); then
       case "$service" in
         registry-api) TARGET_REGISTRY_QUARANTINED="true" ;;
-        ingestion-service) TARGET_INGESTION_QUARANTINED="true" ;;
+        ingestion-service|docling-worker) TARGET_INGESTION_QUARANTINED="true" ;;
         rag-retrieval-service) TARGET_RAG_QUARANTINED="true" ;;
         evaluation-service) TARGET_EVALUATION_QUARANTINED="true" ;;
         governance-service) TARGET_GOVERNANCE_QUARANTINED="true" ;;
@@ -807,7 +820,7 @@ quarantine_unverified_target_services() {
     else
       case "$service" in
         registry-api) TARGET_REGISTRY_QUARANTINE_FAILED="true" ;;
-        ingestion-service) TARGET_INGESTION_QUARANTINE_FAILED="true" ;;
+        ingestion-service|docling-worker) TARGET_INGESTION_QUARANTINE_FAILED="true" ;;
         rag-retrieval-service) TARGET_RAG_QUARANTINE_FAILED="true" ;;
         evaluation-service) TARGET_EVALUATION_QUARANTINE_FAILED="true" ;;
         governance-service) TARGET_GOVERNANCE_QUARANTINE_FAILED="true" ;;
@@ -938,6 +951,11 @@ akl_assert_no_ambient_compose_overrides \
   CHAT_WEB_IMAGE \
   LLM_GATEWAY_SERVICE_IMAGE
 AKL_SERVICE_VERSION="$TARGET_SHA"
+SOURCE_DATE_EPOCH="$(
+  git --no-replace-objects --git-dir="$GIT_DIR" show -s --format=%ct "$TARGET_SHA"
+)" || akl_fail "Could not derive SOURCE_DATE_EPOCH from the exact target commit"
+[[ "$SOURCE_DATE_EPOCH" =~ ^[1-9][0-9]*$ ]] \
+  || akl_fail "The exact target commit has no valid SOURCE_DATE_EPOCH"
 REGISTRY_API_IMAGE="akl/registry-api:${TARGET_SHA}"
 INGESTION_SERVICE_IMAGE="akl/ingestion-service:${TARGET_SHA}"
 RAG_RETRIEVAL_SERVICE_IMAGE="akl/rag-retrieval-service:${TARGET_SHA}"
@@ -946,9 +964,39 @@ GOVERNANCE_SERVICE_IMAGE="akl/governance-service:${TARGET_SHA}"
 WEB_IMAGE="akl/web:${TARGET_SHA}"
 CHAT_WEB_IMAGE="akl/chat-web:${TARGET_SHA}"
 LLM_GATEWAY_SERVICE_IMAGE="akl/llm-gateway-service:${TARGET_SHA}"
+PREBUILT_IMAGES="false"
+PREBUILT_MARKER="${RELEASE_ROOT}/prebuilt/${TARGET_SHA}.env"
+if [[ -e "$PREBUILT_MARKER" ]]; then
+  marker_identity="$(stat -c '%U:%G:%a:%h:%F' "$PREBUILT_MARKER")" \
+    || akl_fail "Could not inspect prebuilt image marker"
+  [[ ! -L "$PREBUILT_MARKER" \
+    && "$marker_identity" == "$(id -un):$(id -gn):600:1:regular file" ]] \
+    || akl_fail "Prebuilt image marker is not a private single-link regular file"
+  python3 - "$PREBUILT_MARKER" "$TARGET_SHA" <<'PY' \
+    || akl_fail "Prebuilt image marker is invalid"
+import re, sys
+from pathlib import Path
+values = {}
+for line in Path(sys.argv[1]).read_text().splitlines():
+    if "=" not in line:
+        raise SystemExit("malformed marker")
+    key, value = line.split("=", 1)
+    if key in values:
+        raise SystemExit("duplicate marker key")
+    values[key] = value
+if list(values) != ["schema", "release_sha", "archive_sha256"]:
+    raise SystemExit("unexpected marker keys")
+if values["schema"] != "akb-prebuilt-image-import-1" or values["release_sha"] != sys.argv[2]:
+    raise SystemExit("marker identity mismatch")
+if not re.fullmatch(r"[0-9a-f]{64}", values["archive_sha256"]):
+    raise SystemExit("archive digest invalid")
+PY
+  PREBUILT_IMAGES="true"
+fi
 COMPOSE=(
   env
   "AKL_SERVICE_VERSION=${AKL_SERVICE_VERSION}"
+  "SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}"
   "REGISTRY_API_IMAGE=${REGISTRY_API_IMAGE}"
   "INGESTION_SERVICE_IMAGE=${INGESTION_SERVICE_IMAGE}"
   "RAG_RETRIEVAL_SERVICE_IMAGE=${RAG_RETRIEVAL_SERVICE_IMAGE}"
@@ -1206,11 +1254,12 @@ else
       services/llm-gateway-service/*)
         add_service llm-gateway-service
         ;;
-      infra/keycloak/realm-stratos.json|infra/keycloak/update-stratos-public-routing.sh)
+      infra/keycloak/README.md|infra/keycloak/realm-akl.json|infra/keycloak/realm-stratos.json|infra/keycloak/update-stratos-public-routing.sh)
         # The shared Keycloak realm and public-routing client reconciliation
-        # are applied and verified outside the AKB Compose release. These exact
-        # declarative/admin resources do not select or mutate an AKB runtime
-        # service.
+        # are applied and verified outside the AKB Compose release. realm-akl
+        # is the standalone/local bootstrap template and is likewise not read
+        # by the docker.home.cz Compose runtime. These exact paths do not
+        # select or mutate an AKB runtime service.
         # Live-realm reconciliation evidence remains an independent prerequisite.
         ;;
       services/*|apps/*|infra/reverse-proxy/*|infra/keycloak/*|infra/monitoring/*|infra/postgres/*)
@@ -1240,6 +1289,104 @@ if [[ " ${services[*]} " == *" ingestion-service "* ]]; then
   [[ "$INGESTION_REGISTRY_CLIENT_SECRET_FILE" == /* ]] \
     || akl_fail "AKL_INGESTION_REGISTRY_CLIENT_SECRET_FILE must be an absolute path"
   akl_require_private_secret_file "$INGESTION_REGISTRY_CLIENT_SECRET_FILE"
+  DOCLING_MODE="$(akl_env_value "$ENV_FILE" AKL_INGESTION_DOCLING_MODE off)"
+  if [[ "$DOCLING_MODE" != "off" ]]; then
+    [[ "$DOCLING_MODE" == "shadow" || "$DOCLING_MODE" == "prefer" || "$DOCLING_MODE" == "enforce" ]] \
+      || akl_fail "AKL_INGESTION_DOCLING_MODE is invalid"
+    DOCLING_EXECUTION_MODE="$(akl_env_value "$ENV_FILE" AKL_INGESTION_DOCLING_EXECUTION_MODE)"
+    DOCLING_DEVICE="$(akl_env_value "$ENV_FILE" AKL_INGESTION_DOCLING_DEVICE)"
+    DOCLING_ARTIFACTS_DIR="$(akl_env_value "$ENV_FILE" AKL_INGESTION_DOCLING_ARTIFACTS_SOURCE_DIR)"
+    DOCLING_ARTIFACTS_SHA256="$(akl_env_value "$ENV_FILE" AKL_INGESTION_DOCLING_ARTIFACTS_SHA256)"
+    [[ "$DOCLING_EXECUTION_MODE" == "uds" ]] \
+      || akl_fail "Production Docling must use the isolated UDS worker"
+    [[ "$DOCLING_DEVICE" == "cpu" ]] \
+      || akl_fail "This production Docling profile is qualified only for CPU"
+    [[ "$DOCLING_ARTIFACTS_DIR" == /srv/akl/models/docling-standard-* ]] \
+      || akl_fail "Production Docling model bundle is outside the approved immutable root"
+    [[ "$DOCLING_ARTIFACTS_SHA256" =~ ^sha256:[0-9a-f]{64}$ ]] \
+      || akl_fail "Production Docling model-bundle SHA-256 is invalid"
+    python3 - \
+      "$DOCLING_ARTIFACTS_DIR" \
+      "$DOCLING_ARTIFACTS_SHA256" \
+      "${release_dir}/services/ingestion-service/docling_models/source-bundle.json" <<'PY' \
+      || akl_fail "Production Docling model bundle failed immutable preflight"
+import hashlib
+import json
+import os
+from pathlib import Path
+import stat
+import sys
+
+root = Path(sys.argv[1])
+expected_digest = sys.argv[2]
+source_manifest_path = Path(sys.argv[3])
+if root.is_symlink() or not root.is_dir():
+    raise SystemExit("model bundle root is invalid")
+resolved_root = root.resolve(strict=True)
+if Path("/srv/akl/models") not in resolved_root.parents:
+    raise SystemExit("model bundle escaped the approved root")
+if resolved_root.stat().st_mode & 0o222:
+    raise SystemExit("model bundle root is writable")
+files = []
+for candidate in resolved_root.rglob("*"):
+    candidate_stat = candidate.lstat()
+    if candidate.is_symlink() or candidate_stat.st_mode & 0o222:
+        raise SystemExit("model bundle contains a symlink or writable entry")
+    if candidate.is_file():
+        if not stat.S_ISREG(candidate_stat.st_mode) or candidate_stat.st_nlink != 1:
+            raise SystemExit("model bundle contains a non-regular or multiply-linked file")
+        files.append(candidate)
+if not files:
+    raise SystemExit("model bundle is empty")
+digest = hashlib.sha256()
+for path in sorted(files):
+    relative = path.relative_to(resolved_root).as_posix().encode("utf-8")
+    file_digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            file_digest.update(chunk)
+    digest.update(relative)
+    digest.update(b"\0")
+    digest.update(str(path.stat().st_size).encode("ascii"))
+    digest.update(b"\0")
+    digest.update(file_digest.digest())
+    digest.update(b"\n")
+actual_digest = f"sha256:{digest.hexdigest()}"
+if actual_digest != expected_digest:
+    raise SystemExit("model bundle digest mismatch")
+
+source_manifest = json.loads(source_manifest_path.read_text(encoding="utf-8"))
+marker = json.loads(
+    (resolved_root / "akb-docling-model-bundle.json").read_text(encoding="utf-8")
+)
+canonical_source = json.dumps(
+    source_manifest,
+    sort_keys=True,
+    separators=(",", ":"),
+).encode("utf-8")
+source_digest = f"sha256:{hashlib.sha256(canonical_source).hexdigest()}"
+if set(marker) != {
+    "schema",
+    "profile",
+    "docling_package",
+    "source_manifest_sha256",
+    "repositories",
+}:
+    raise SystemExit("model bundle marker is not closed")
+if (
+    marker.get("schema") != "akb-docling-model-bundle-1"
+    or marker.get("profile") != source_manifest.get("profile")
+    or marker.get("docling_package") != source_manifest.get("docling_package")
+    or marker.get("source_manifest_sha256") != source_digest
+    or marker.get("repositories")
+    != [
+        {"repo_id": item["repo_id"], "revision": item["revision"]}
+        for item in source_manifest["repositories"]
+    ]
+):
+    raise SystemExit("model bundle marker conflicts with the release source manifest")
+PY
+  fi
 fi
 if [[ " ${services[*]} " == *" rag-retrieval-service "* ]]; then
   [[ "$RAG_REGISTRY_CLIENT_SECRET_FILE" == /* ]] \
@@ -1293,7 +1440,8 @@ for service in "${services[@]}"; do
     chat-web) target_image="$CHAT_WEB_IMAGE" ;;
     llm-gateway-service) target_image="$LLM_GATEWAY_SERVICE_IMAGE" ;;
   esac
-  if docker image inspect "$target_image" >/dev/null 2>&1; then
+  if [[ "$PREBUILT_IMAGES" != "true" ]] \
+    && docker image inspect "$target_image" >/dev/null 2>&1; then
     TARGET_BUILD_MAY_HAVE_STARTED="true"
     RETRY_REQUIRES_DESCENDANT_SHA="true"
     akl_burn_release_sha "$RELEASE_ROOT" "$TARGET_SHA" immutable_target_tag_exists
@@ -1305,32 +1453,39 @@ printf 'Rendering immutable release compose configuration...\n'
 akl_assert_expected_env_snapshot "$ENV_FILE"
 "${COMPOSE[@]}" config --quiet
 
-printf 'Building only affected services: %s\n' "$SERVICE_CSV"
+if [[ "$PREBUILT_IMAGES" == "true" ]]; then
+  printf 'Using prebuilt immutable images for: %s\n' "$SERVICE_CSV"
+else
+  printf 'Building only affected services: %s\n' "$SERVICE_CSV"
+fi
 TARGET_BUILD_MAY_HAVE_STARTED="true"
 RETRY_REQUIRES_DESCENDANT_SHA="true"
 akl_burn_release_sha "$RELEASE_ROOT" "$TARGET_SHA" build_may_have_started
 write_deployment_record target_build_may_have_started
 akl_assert_expected_env_snapshot "$ENV_FILE"
-compose_build_services=()
-for service in "${services[@]}"; do
-  [[ "$service" == "ingestion-service" ]] || compose_build_services+=("$service")
-done
-if [[ ${#compose_build_services[@]} -gt 0 ]]; then
-  DOCKER_BUILDKIT=1 "${COMPOSE[@]}" build "${compose_build_services[@]}"
-fi
-if [[ " ${services[*]} " == *" ingestion-service "* ]]; then
-  env \
-    "AKL_SERVICE_VERSION=${AKL_SERVICE_VERSION}" \
-    "AKL_RELEASE_COMPOSE_PROJECT=${PROJECT_NAME}" \
-    "INGESTION_SERVICE_IMAGE=${INGESTION_SERVICE_IMAGE}" \
-    'DOCKER_BUILDKIT=1' \
-    docker build --pull=false \
-    --label "org.opencontainers.image.revision=${TARGET_SHA}" \
-    --label "cz.zeleznalady.akl.compose-project=${PROJECT_NAME}" \
-    --label 'cz.zeleznalady.akl.service=ingestion-service' \
-    --tag "$INGESTION_SERVICE_IMAGE" \
-    --file "${release_dir}/services/ingestion-service/Dockerfile" \
-    "${release_dir}/services/ingestion-service"
+if [[ "$PREBUILT_IMAGES" != "true" ]]; then
+  compose_build_services=()
+  for service in "${services[@]}"; do
+    [[ "$service" == "ingestion-service" ]] || compose_build_services+=("$service")
+  done
+  if [[ ${#compose_build_services[@]} -gt 0 ]]; then
+    DOCKER_BUILDKIT=1 "${COMPOSE[@]}" build "${compose_build_services[@]}"
+  fi
+  if [[ " ${services[*]} " == *" ingestion-service "* ]]; then
+    env \
+      "AKL_SERVICE_VERSION=${AKL_SERVICE_VERSION}" \
+      "AKL_RELEASE_COMPOSE_PROJECT=${PROJECT_NAME}" \
+      "INGESTION_SERVICE_IMAGE=${INGESTION_SERVICE_IMAGE}" \
+      'DOCKER_BUILDKIT=1' \
+      docker build --pull=false \
+      --label "org.opencontainers.image.revision=${TARGET_SHA}" \
+      --label "cz.zeleznalady.akl.compose-project=${PROJECT_NAME}" \
+      --label 'cz.zeleznalady.akl.service=ingestion-service' \
+      --build-arg AKL_INSTALL_DOCLING=true \
+      --tag "$INGESTION_SERVICE_IMAGE" \
+      --file "${release_dir}/services/ingestion-service/Dockerfile" \
+      "${release_dir}/services/ingestion-service"
+  fi
 fi
 for service in "${services[@]}"; do
   verified_image_id="$(verify_target_image_identity "$service" post-build)"
@@ -1561,6 +1716,22 @@ printf 'Restarting only affected services: %s\n' "$SERVICE_CSV"
 akl_assert_expected_env_snapshot "$ENV_FILE"
 TARGET_SERVICES_START_MAY_HAVE_STARTED="true"
 write_deployment_record target_services_start_may_have_started
+if [[ " ${services[*]} " == *" ingestion-service "* ]]; then
+  "${PINNED_COMPOSE[@]}" up -d --pull never --no-build --no-deps --force-recreate docling-worker
+  assert_runtime_container_bound_to_image \
+    docling-worker "$TARGET_INGESTION_IMAGE_ID" post-worker-restart ingestion-service
+  docling_worker_ready="false"
+  for ((docling_attempt = 1; docling_attempt <= 12; docling_attempt += 1)); do
+    if "${PINNED_COMPOSE[@]}" exec -T docling-worker \
+      python -m parsers.docling_service_probe --health >/dev/null 2>&1; then
+      docling_worker_ready="true"
+      break
+    fi
+    (( docling_attempt == 12 )) || sleep 5
+  done
+  [[ "$docling_worker_ready" == "true" ]] \
+    || akl_fail "The isolated Docling worker did not become healthy"
+fi
 "${PINNED_COMPOSE[@]}" up -d --pull never --no-build --no-deps --force-recreate "${services[@]}"
 if [[ " ${services[*]} " == *" registry-api "* ]]; then
   REGISTRY_QUIESCED="false"
@@ -1579,6 +1750,10 @@ for service in "${services[@]}"; do
   esac
   assert_runtime_container_bound_to_image "$service" "$expected_image_id" post-restart
 done
+if [[ " ${services[*]} " == *" ingestion-service "* ]]; then
+  assert_runtime_container_bound_to_image \
+    docling-worker "$TARGET_INGESTION_IMAGE_ID" post-restart ingestion-service
+fi
 
 mark_runtime applying verifying
 akl_assert_expected_env_snapshot "$ENV_FILE"
@@ -1608,6 +1783,10 @@ for service in "${services[@]}"; do
   esac
   assert_runtime_container_bound_to_image "$service" "$expected_image_id" pre-verified-marker
 done
+if [[ " ${services[*]} " == *" ingestion-service "* ]]; then
+  assert_runtime_container_bound_to_image \
+    docling-worker "$TARGET_INGESTION_IMAGE_ID" pre-verified-marker ingestion-service
+fi
 akl_assert_expected_env_snapshot "$ENV_FILE"
 akl_require_read_only_release_tree "$release_dir"
 akl_verify_release_tree "$GIT_DIR" "$TARGET_SHA" "$release_dir" "$TRUSTED_REF"

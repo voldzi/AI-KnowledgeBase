@@ -28,7 +28,7 @@ def test_text_ingestion_creates_report(tmp_path: Path) -> None:
                 "# Test directive",
                 "Article 4 Exception approvals",
                 "Paragraph 2 The document owner approves an exception after justification is provided.",
-                "Evidence RMO 12/2024 is coordinated through aiip.office@example.cz on 10. 7. 2026.",
+                "Evidence RMO 12/2024 is coordinated through knowledge.office@example.cz on 10. 7. 2026.",
                 "Another paragraph contains additional rules for a citable chunk.",
             ]
         ),
@@ -85,6 +85,9 @@ def test_text_ingestion_creates_report(tmp_path: Path) -> None:
     assert report.json()["ocr_used"] is False
     assert report.json()["quality"]["extraction_profile"] == "document_text_v1"
     assert report.json()["quality"]["text_chars_extracted"] > 0
+    assert report.json()["quality"]["quality_tier"] == "good"
+    assert report.json()["quality"]["requires_review"] is False
+    assert report.json()["quality"]["pages_processed"] == 0
     assert report.json()["errors"] == []
     assert [item["ingestion_status"] for item in external_statuses] == ["INGESTING", "INDEXED"]
     assert all(item["ingestion_job_id"] == body["job_id"] for item in external_statuses)
@@ -108,9 +111,51 @@ def test_text_ingestion_creates_report(tmp_path: Path) -> None:
     assert "email" in entity_payload["metadata"]["intelligence"]["entity_types"]
     assert "date" in entity_payload["metadata"]["intelligence"]["entity_types"]
     assert "RMO12/2024" in entity_payload["entity_values"]
-    assert "aiip.office@example.cz" in entity_payload["entity_values"]
+    assert "knowledge.office@example.cz" in entity_payload["entity_values"]
     assert "document_number:RMO12/2024" in entity_payload["entity_pairs"]
-    assert "email:aiip.office@example.cz" in entity_payload["entity_pairs"]
+    assert "email:knowledge.office@example.cz" in entity_payload["entity_pairs"]
+
+
+def test_document_parsing_runs_outside_the_web_event_loop(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source = tmp_path / "manual.md"
+    source.write_text(
+        "# Manual\nThis document verifies the asynchronous parser boundary.",
+        encoding="utf-8",
+    )
+    calls: list[str] = []
+
+    async def run_in_test_thread(function, *args, **kwargs):  # type: ignore[no-untyped-def]
+        calls.append(function.__qualname__)
+        return function(*args, **kwargs)
+
+    monkeypatch.setattr("app.pipeline.asyncio.to_thread", run_in_test_thread)
+
+    with make_client(tmp_path) as client:
+        response = client.post(
+            "/api/v1/ingestion/jobs",
+            headers=web_transport_headers(
+                actor_subject_id="user_dev",
+                authorization_proof=True,
+            ),
+            json={
+                "idempotency_key": "test:parser-thread-boundary",
+                "document_id": "doc_parser_thread",
+                "document_version_id": "ver_parser_thread",
+                "source_file_uri": str(source),
+                "parser_profile": "controlled_document",
+                "ocr_enabled": False,
+                "chunking_strategy": "legal_structured",
+                "embedding_profile": "default",
+                "expected_current_ingestion_job_id": None,
+            },
+        )
+
+    assert response.status_code == 201
+    assert response.json()["status"] == "completed"
+    assert calls == ["ParserRouter.parse"]
 
 
 def test_ingestion_fails_closed_without_clean_document_intake_attestation(

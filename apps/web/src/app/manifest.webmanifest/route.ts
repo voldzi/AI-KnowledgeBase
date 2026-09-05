@@ -44,7 +44,7 @@ export function GET() {
     },
     {
       headers: {
-        "cache-control": "public, max-age=300, must-revalidate",
+        "cache-control": "no-store, max-age=0",
         "content-type": "application/manifest+json; charset=utf-8",
       },
     },

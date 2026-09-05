@@ -447,7 +447,7 @@ akl-api
 budget-api
 projectflow-api
 archflow-api
-stratos-akl-adapter
+stratos-akb-service
 ```
 
 Redirect URI kontrakt:
@@ -629,9 +629,9 @@ infra/keycloak/update-stratos-public-routing.sh
 Skript se pta na Keycloak admin heslo a upravuje pouze:
 
 - `redirectUris` a `webOrigins` existujicich STRATOS klientu,
-- samostatny public klient `akb-chat-web`, jeho PKCE nastaveni a audience
-  mappery `akl-api` pro AKB, `budget-web` pro Budget API a
-  `stratos-access-api` pro oddelenou STRATOS access projection.
+- samostatny public klient `akb-chat-web`, jeho PKCE nastaveni a presne dva
+  audience mappery: `akl-api` pro AKB a `stratos-access-api` pro oddelenou
+  STRATOS access projection. Domenove audience jinych aplikaci jsou zakazane.
 
 Pokud `akb-chat-web` chybi, skript jej idempotentne vytvori. Nemaze uzivatele,
 role, skupiny ani client secrets.

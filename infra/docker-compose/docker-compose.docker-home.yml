@@ -112,6 +112,8 @@ services:
       AKL_OBJECT_STORAGE_LEGACY_BUCKETS: ${AKL_OBJECT_STORAGE_LEGACY_BUCKETS:-akl-documents}
       AKL_OBJECT_STORAGE_LOCAL_FALLBACK_READ: ${AKL_OBJECT_STORAGE_LOCAL_FALLBACK_READ:-true}
       AKL_AUTH_MODE: ${AKL_WEB_AUTH_MODE:-oidc}
+      AKL_IDENTITY_MODE: ${AKL_IDENTITY_MODE:-external_oidc}
+      AKL_MANAGED_IDENTITY_ISSUER: ${AKL_MANAGED_IDENTITY_ISSUER:-}
       AKL_REGISTRY_API_BASE_URL: http://registry-api:8000/api/v1
       AKL_INGESTION_API_BASE_URL: http://ingestion-service:8090/api/v1
       AKL_RAG_API_BASE_URL: http://rag-retrieval-service:8080/api/v1
@@ -119,15 +121,25 @@ services:
       AKL_GOVERNANCE_SERVICE_TOKEN: ${AKL_GOVERNANCE_SERVICE_TOKEN:?AKL_GOVERNANCE_SERVICE_TOKEN must be set}
       AKL_EVALUATION_API_BASE_URL: http://evaluation-service:8080/api/v1
       AKL_WEB_OIDC_ISSUER: ${AKL_WEB_OIDC_ISSUER:?AKL_WEB_OIDC_ISSUER must be set}
+      AKL_OIDC_AUDIENCE: ${AKL_OIDC_AUDIENCE:-akl-api}
       AKL_WEB_OIDC_CLIENT_ID: ${AKL_WEB_OIDC_CLIENT_ID:-akl-web}
       AKL_WEB_OIDC_CLIENT_SECRET: ${AKL_WEB_OIDC_CLIENT_SECRET:-}
+      AKL_WEB_OIDC_LOGOUT_REDIRECT_URI: ${AKL_WEB_OIDC_LOGOUT_REDIRECT_URI:-}
       AKL_WEB_OIDC_SCOPES: ${AKL_WEB_OIDC_SCOPES:-openid profile email}
       AKL_WEB_STRATOS_AUTH_ME_URL: ${AKL_WEB_STRATOS_AUTH_ME_URL:?AKL_WEB_STRATOS_AUTH_ME_URL must be set}
       AKL_WEB_STRATOS_ACCESS_TIMEOUT_MS: ${AKL_WEB_STRATOS_ACCESS_TIMEOUT_MS:-3000}
+      AKL_WEB_RAG_ASSISTANT_TIMEOUT_MS: ${AKL_WEB_RAG_ASSISTANT_TIMEOUT_MS:-45000}
       AKL_WEB_STRATOS_ACCESS_CACHE_TTL_MS: ${AKL_WEB_STRATOS_ACCESS_CACHE_TTL_MS:-0}
       AKL_WEB_PUBLIC_BASE_URL: ${AKL_WEB_PUBLIC_BASE_URL:?AKL_WEB_PUBLIC_BASE_URL must be set}
       NEXT_PUBLIC_AKL_BASE_PATH: ${AKL_WEB_BASE_PATH:-/akb}
       AKL_WEB_SESSION_SECRET: ${AKL_WEB_SESSION_SECRET:?AKL_WEB_SESSION_SECRET must be set}
+      AKL_WEB_SESSION_ENCRYPTION_KEY_SOURCE_FILE: /run/secrets/akb-web-session-encryption-key
+      AKL_WEB_SESSION_ENCRYPTION_KEY_FILE: /run/akl-secrets/akb-web-session-encryption-key
+      AKL_WEB_SESSION_STORE_SECRET_SOURCE_FILE: /run/secrets/akb-web-session-store-secret
+      AKL_WEB_SESSION_STORE_SECRET_FILE: /run/akl-secrets/akb-web-session-store-secret
+      AKL_WEB_SESSION_ABSOLUTE_TTL_DAYS: ${AKL_WEB_SESSION_ABSOLUTE_TTL_DAYS:-90}
+      AKL_WEB_SESSION_IDLE_TTL_DAYS: ${AKL_WEB_SESSION_IDLE_TTL_DAYS:-30}
+      AKL_WEB_IDENTITY_VALIDATION_INTERVAL_MINUTES: ${AKL_WEB_IDENTITY_VALIDATION_INTERVAL_MINUTES:-15}
       AKL_WEB_INGESTION_TOKEN_URL: ${AKL_WEB_INGESTION_TOKEN_URL:?AKL_WEB_INGESTION_TOKEN_URL must be set}
       AKL_WEB_INGESTION_CLIENT_ID: ${AKL_WEB_INGESTION_CLIENT_ID:-svc-akb-web-ingestion}
       AKL_WEB_INGESTION_CLIENT_SECRET_SOURCE_FILE: /run/secrets/svc-akb-web-ingestion-client-secret
@@ -138,6 +150,15 @@ services:
       AKL_DIRECTOR_COPILOT_CLIENT_ID: ${AKL_DIRECTOR_COPILOT_CLIENT_ID:-svc-akb-director-copilot}
       AKL_DIRECTOR_COPILOT_CLIENT_SECRET_SOURCE_FILE: /run/secrets/svc-akb-director-copilot-client-secret
       AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE: /run/akl-secrets/svc-akb-director-copilot-client-secret
+      AKL_DIRECTOR_COPILOT_BUDGET_CLIENT_ID: ${AKL_DIRECTOR_COPILOT_BUDGET_CLIENT_ID:-svc-akb-director-copilot-budget}
+      AKL_DIRECTOR_COPILOT_BUDGET_CLIENT_SECRET_SOURCE_FILE: /run/secrets/akb-director-budget
+      AKL_DIRECTOR_COPILOT_BUDGET_CLIENT_SECRET_FILE: /run/akl-secrets/akb-director-budget
+      AKL_DIRECTOR_COPILOT_PROJECTFLOW_CLIENT_ID: ${AKL_DIRECTOR_COPILOT_PROJECTFLOW_CLIENT_ID:-svc-akb-director-copilot-projectflow}
+      AKL_DIRECTOR_COPILOT_PROJECTFLOW_CLIENT_SECRET_SOURCE_FILE: /run/secrets/akb-director-projectflow
+      AKL_DIRECTOR_COPILOT_PROJECTFLOW_CLIENT_SECRET_FILE: /run/akl-secrets/akb-director-projectflow
+      AKL_DIRECTOR_COPILOT_ARCHFLOW_CLIENT_ID: ${AKL_DIRECTOR_COPILOT_ARCHFLOW_CLIENT_ID:-svc-akb-director-copilot-archflow}
+      AKL_DIRECTOR_COPILOT_ARCHFLOW_CLIENT_SECRET_SOURCE_FILE: /run/secrets/akb-director-archflow
+      AKL_DIRECTOR_COPILOT_ARCHFLOW_CLIENT_SECRET_FILE: /run/akl-secrets/akb-director-archflow
       AKL_DIRECTOR_COPILOT_BUDGET_BASE_URL: ${AKL_DIRECTOR_COPILOT_BUDGET_BASE_URL:-}
       AKL_DIRECTOR_COPILOT_PROJECTFLOW_BASE_URL: ${AKL_DIRECTOR_COPILOT_PROJECTFLOW_BASE_URL:-}
       AKL_DIRECTOR_COPILOT_ARCHFLOW_BASE_URL: ${AKL_DIRECTOR_COPILOT_ARCHFLOW_BASE_URL:-}
@@ -164,6 +185,11 @@ services:
       - ${AKL_S3_SECRET_ACCESS_KEY_SOURCE_FILE:-/dev/null}:/run/source-secrets/akb-s3-secret-access-key:ro
       - ${AKL_WEB_INGESTION_CLIENT_SECRET_FILE:-/srv/akl/env/svc-akb-web-ingestion.client-secret}:/run/secrets/svc-akb-web-ingestion-client-secret:ro
       - ${AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE:-/dev/null}:/run/secrets/svc-akb-director-copilot-client-secret:ro
+      - ${AKL_DIRECTOR_COPILOT_BUDGET_CLIENT_SECRET_FILE:-/dev/null}:/run/secrets/akb-director-budget:ro
+      - ${AKL_DIRECTOR_COPILOT_PROJECTFLOW_CLIENT_SECRET_FILE:-/dev/null}:/run/secrets/akb-director-projectflow:ro
+      - ${AKL_DIRECTOR_COPILOT_ARCHFLOW_CLIENT_SECRET_FILE:-/dev/null}:/run/secrets/akb-director-archflow:ro
+      - ${AKL_WEB_SESSION_ENCRYPTION_KEY_SOURCE_FILE:?AKL_WEB_SESSION_ENCRYPTION_KEY_SOURCE_FILE must be set}:/run/secrets/akb-web-session-encryption-key:ro
+      - ${AKL_WEB_SESSION_STORE_SECRET_SOURCE_FILE:?AKL_WEB_SESSION_STORE_SECRET_SOURCE_FILE must be set}:/run/secrets/akb-web-session-store-secret:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     tmpfs:
@@ -221,17 +247,22 @@ services:
       AKL_API_CLIENT_MODE: production
       AKL_WEB_PROFILE: chat
       AKL_AUTH_MODE: oidc
+      AKL_IDENTITY_MODE: ${AKL_IDENTITY_MODE:-external_oidc}
+      AKL_MANAGED_IDENTITY_ISSUER: ${AKL_MANAGED_IDENTITY_ISSUER:-}
       AKL_REGISTRY_API_BASE_URL: http://registry-api:8000/api/v1
       AKL_INGESTION_API_BASE_URL: http://ingestion-service:8090/api/v1
       AKL_RAG_API_BASE_URL: http://rag-retrieval-service:8080/api/v1
       AKL_GOVERNANCE_API_BASE_URL: http://governance-service:8080/api/v1
       AKL_EVALUATION_API_BASE_URL: http://evaluation-service:8080/api/v1
       AKL_WEB_OIDC_ISSUER: ${AKL_CHAT_WEB_OIDC_ISSUER:?AKL_CHAT_WEB_OIDC_ISSUER must be set}
+      AKL_OIDC_AUDIENCE: ${AKL_OIDC_AUDIENCE:-akl-api}
       AKL_WEB_OIDC_CLIENT_ID: ${AKL_CHAT_WEB_OIDC_CLIENT_ID:-akb-chat-web}
       AKL_WEB_OIDC_CLIENT_SECRET: ${AKL_CHAT_WEB_OIDC_CLIENT_SECRET:-}
+      AKL_WEB_OIDC_LOGOUT_REDIRECT_URI: ${AKL_CHAT_WEB_OIDC_LOGOUT_REDIRECT_URI:-}
       AKL_WEB_OIDC_SCOPES: ${AKL_CHAT_WEB_OIDC_SCOPES:-openid profile email}
       AKL_WEB_STRATOS_AUTH_ME_URL: ${AKL_CHAT_WEB_STRATOS_AUTH_ME_URL:?AKL_CHAT_WEB_STRATOS_AUTH_ME_URL must be set}
       AKL_WEB_STRATOS_ACCESS_TIMEOUT_MS: ${AKL_CHAT_WEB_STRATOS_ACCESS_TIMEOUT_MS:-3000}
+      AKL_WEB_RAG_ASSISTANT_TIMEOUT_MS: ${AKL_CHAT_WEB_RAG_ASSISTANT_TIMEOUT_MS:-45000}
       AKL_WEB_STRATOS_ACCESS_CACHE_TTL_MS: ${AKL_CHAT_WEB_STRATOS_ACCESS_CACHE_TTL_MS:-0}
       AKL_OBJECT_STORAGE_MODE: ${AKL_OBJECT_STORAGE_MODE:-local}
       AKL_S3_ENDPOINT: ${AKL_S3_ENDPOINT:-http://storage.home.cz:8333}
@@ -247,12 +278,28 @@ services:
       AKL_WEB_PUBLIC_BASE_URL: ${AKL_CHAT_WEB_PUBLIC_BASE_URL:?AKL_CHAT_WEB_PUBLIC_BASE_URL must be set}
       NEXT_PUBLIC_AKL_BASE_PATH: ""
       AKL_WEB_SESSION_SECRET: ${AKL_CHAT_WEB_SESSION_SECRET:?AKL_CHAT_WEB_SESSION_SECRET must be set}
+      AKL_WEB_SESSION_ENCRYPTION_KEY_SOURCE_FILE: /run/secrets/akb-web-session-encryption-key
+      AKL_WEB_SESSION_ENCRYPTION_KEY_FILE: /run/akl-secrets/akb-web-session-encryption-key
+      AKL_WEB_SESSION_STORE_SECRET_SOURCE_FILE: /run/secrets/akb-web-session-store-secret
+      AKL_WEB_SESSION_STORE_SECRET_FILE: /run/akl-secrets/akb-web-session-store-secret
+      AKL_WEB_SESSION_ABSOLUTE_TTL_DAYS: ${AKL_WEB_SESSION_ABSOLUTE_TTL_DAYS:-90}
+      AKL_WEB_SESSION_IDLE_TTL_DAYS: ${AKL_WEB_SESSION_IDLE_TTL_DAYS:-30}
+      AKL_WEB_IDENTITY_VALIDATION_INTERVAL_MINUTES: ${AKL_WEB_IDENTITY_VALIDATION_INTERVAL_MINUTES:-15}
       AKL_DIRECTOR_COPILOT_ENABLED: ${AKL_DIRECTOR_COPILOT_ENABLED:-false}
       AKL_DIRECTOR_COPILOT_V2_MANIFEST_CACHE_TTL_MS: ${AKL_DIRECTOR_COPILOT_V2_MANIFEST_CACHE_TTL_MS:-300000}
       AKL_DIRECTOR_COPILOT_TOKEN_URL: ${AKL_DIRECTOR_COPILOT_TOKEN_URL:-}
       AKL_DIRECTOR_COPILOT_CLIENT_ID: ${AKL_DIRECTOR_COPILOT_CLIENT_ID:-svc-akb-director-copilot}
       AKL_DIRECTOR_COPILOT_CLIENT_SECRET_SOURCE_FILE: /run/secrets/svc-akb-director-copilot-client-secret
       AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE: /run/akl-secrets/svc-akb-director-copilot-client-secret
+      AKL_DIRECTOR_COPILOT_BUDGET_CLIENT_ID: ${AKL_DIRECTOR_COPILOT_BUDGET_CLIENT_ID:-svc-akb-director-copilot-budget}
+      AKL_DIRECTOR_COPILOT_BUDGET_CLIENT_SECRET_SOURCE_FILE: /run/secrets/akb-director-budget
+      AKL_DIRECTOR_COPILOT_BUDGET_CLIENT_SECRET_FILE: /run/akl-secrets/akb-director-budget
+      AKL_DIRECTOR_COPILOT_PROJECTFLOW_CLIENT_ID: ${AKL_DIRECTOR_COPILOT_PROJECTFLOW_CLIENT_ID:-svc-akb-director-copilot-projectflow}
+      AKL_DIRECTOR_COPILOT_PROJECTFLOW_CLIENT_SECRET_SOURCE_FILE: /run/secrets/akb-director-projectflow
+      AKL_DIRECTOR_COPILOT_PROJECTFLOW_CLIENT_SECRET_FILE: /run/akl-secrets/akb-director-projectflow
+      AKL_DIRECTOR_COPILOT_ARCHFLOW_CLIENT_ID: ${AKL_DIRECTOR_COPILOT_ARCHFLOW_CLIENT_ID:-svc-akb-director-copilot-archflow}
+      AKL_DIRECTOR_COPILOT_ARCHFLOW_CLIENT_SECRET_SOURCE_FILE: /run/secrets/akb-director-archflow
+      AKL_DIRECTOR_COPILOT_ARCHFLOW_CLIENT_SECRET_FILE: /run/akl-secrets/akb-director-archflow
       AKL_DIRECTOR_COPILOT_BUDGET_BASE_URL: ${AKL_DIRECTOR_COPILOT_BUDGET_BASE_URL:-}
       AKL_DIRECTOR_COPILOT_PROJECTFLOW_BASE_URL: ${AKL_DIRECTOR_COPILOT_PROJECTFLOW_BASE_URL:-}
       AKL_DIRECTOR_COPILOT_ARCHFLOW_BASE_URL: ${AKL_DIRECTOR_COPILOT_ARCHFLOW_BASE_URL:-}
@@ -269,6 +316,11 @@ services:
       - ${AKL_S3_ACCESS_KEY_ID_SOURCE_FILE:-/dev/null}:/run/source-secrets/akb-s3-access-key-id:ro
       - ${AKL_S3_SECRET_ACCESS_KEY_SOURCE_FILE:-/dev/null}:/run/source-secrets/akb-s3-secret-access-key:ro
       - ${AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE:-/dev/null}:/run/secrets/svc-akb-director-copilot-client-secret:ro
+      - ${AKL_DIRECTOR_COPILOT_BUDGET_CLIENT_SECRET_FILE:-/dev/null}:/run/secrets/akb-director-budget:ro
+      - ${AKL_DIRECTOR_COPILOT_PROJECTFLOW_CLIENT_SECRET_FILE:-/dev/null}:/run/secrets/akb-director-projectflow:ro
+      - ${AKL_DIRECTOR_COPILOT_ARCHFLOW_CLIENT_SECRET_FILE:-/dev/null}:/run/secrets/akb-director-archflow:ro
+      - ${AKL_CHAT_WEB_SESSION_ENCRYPTION_KEY_SOURCE_FILE:?AKL_CHAT_WEB_SESSION_ENCRYPTION_KEY_SOURCE_FILE must be set}:/run/secrets/akb-web-session-encryption-key:ro
+      - ${AKL_WEB_SESSION_STORE_SECRET_SOURCE_FILE:?AKL_WEB_SESSION_STORE_SECRET_SOURCE_FILE must be set}:/run/secrets/akb-web-session-store-secret:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     tmpfs:
@@ -298,8 +350,17 @@ services:
     build:
       context: ../../services/registry-api
       labels: *immutable-release-labels
+      args:
+        SOURCE_DATE_EPOCH: ${SOURCE_DATE_EPOCH:-}
     image: ${REGISTRY_API_IMAGE:-akl/registry-api:${AKL_IMAGE_TAG:-docker-home}}
     restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:mode=1777
     labels: *immutable-release-labels
     environment:
       OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-false}
@@ -316,11 +377,14 @@ services:
       AKL_SERVICE_VERSION: ${AKL_SERVICE_VERSION:-0.1.0}
       AKL_LOG_LEVEL: ${AKL_LOG_LEVEL:-INFO}
       AKL_AUTH_MODE: ${AKL_REGISTRY_AUTH_MODE:-oidc}
+      AKL_IDENTITY_MODE: ${AKL_IDENTITY_MODE:-external_oidc}
+      AKL_MANAGED_IDENTITY_ISSUER: ${AKL_MANAGED_IDENTITY_ISSUER:-}
       AKL_DATABASE_URL: ${AKL_REGISTRY_DATABASE_URL:?AKL_REGISTRY_DATABASE_URL must be set}
+      AKL_WEB_SESSION_STORE_SECRET_FILE: /run/secrets/akb-web-session-store-secret
       AKL_AUTO_CREATE_SCHEMA: ${AKL_REGISTRY_AUTO_CREATE_SCHEMA:-false}
       AKL_OIDC_ISSUER: ${AKL_OIDC_ISSUER:?AKL_OIDC_ISSUER must be set}
       AKL_OIDC_AUDIENCE: ${AKL_OIDC_AUDIENCE:-akl-api}
-      AKL_OIDC_JWKS_URL: ${AKL_OIDC_JWKS_URL:?AKL_OIDC_JWKS_URL must be set}
+      AKL_OIDC_JWKS_URL: ${AKL_OIDC_JWKS_URL:-}
       AKL_TRUSTED_SERVICE_CLIENT_IDS: ${AKL_REGISTRY_TRUSTED_SERVICE_CLIENT_IDS:?AKL_REGISTRY_TRUSTED_SERVICE_CLIENT_IDS must be set}
       AKL_SERVICE_CLIENT_ROUTE_GRANTS: ${AKL_REGISTRY_SERVICE_CLIENT_ROUTE_GRANTS:?AKL_REGISTRY_SERVICE_CLIENT_ROUTE_GRANTS must be set}
       AKL_SERVICE_CLIENT_DELEGATIONS: ${AKL_REGISTRY_SERVICE_CLIENT_DELEGATIONS:-}
@@ -329,12 +393,10 @@ services:
       AKL_STRATOS_POLICY_DECISIONS_URL: ${AKL_STRATOS_POLICY_DECISIONS_URL:?AKL_STRATOS_POLICY_DECISIONS_URL must be set}
       AKL_STRATOS_SERVICE_POLICY_BINDING_ID: ${AKL_STRATOS_SERVICE_POLICY_BINDING_ID:?AKL_STRATOS_SERVICE_POLICY_BINDING_ID must be set}
       AKL_STRATOS_INFORMATION_RESOURCES_URL: ${AKL_STRATOS_INFORMATION_RESOURCES_URL:?AKL_STRATOS_INFORMATION_RESOURCES_URL must be set}
-      AKL_STRATOS_AIIP_AKB_RESOURCES_URL: ${AKL_STRATOS_AIIP_AKB_RESOURCES_URL:?AKL_STRATOS_AIIP_AKB_RESOURCES_URL must be set}
       AKL_STRATOS_BUDGET_AKB_RESOURCES_URL: ${AKL_STRATOS_BUDGET_AKB_RESOURCES_URL:?AKL_STRATOS_BUDGET_AKB_RESOURCES_URL must be set}
       AKL_STRATOS_INFORMATION_PUBLICATIONS_URL: ${AKL_STRATOS_INFORMATION_PUBLICATIONS_URL:?AKL_STRATOS_INFORMATION_PUBLICATIONS_URL must be set}
       AKL_STRATOS_PUBLIC_DECISIONS_URL: ${AKL_STRATOS_PUBLIC_DECISIONS_URL:?AKL_STRATOS_PUBLIC_DECISIONS_URL must be set}
       AKB_POLICY_SERVICE_TOKEN: ${AKB_POLICY_SERVICE_TOKEN:?AKB_POLICY_SERVICE_TOKEN must be set}
-      AKB_AIIP_INGEST_SERVICE_TOKEN: ${AKB_AIIP_INGEST_SERVICE_TOKEN:?AKB_AIIP_INGEST_SERVICE_TOKEN must be set}
       AKL_PUBLIC_DELIVERY_INTERNAL_TOKEN: ${AKL_PUBLIC_DELIVERY_INTERNAL_TOKEN:?AKL_PUBLIC_DELIVERY_INTERNAL_TOKEN must be set}
       AKL_PUBLIC_AUDIT_WINDOW_SECONDS: ${AKL_PUBLIC_AUDIT_WINDOW_SECONDS:-60}
       AKL_PUBLIC_AUDIT_RETENTION_DAYS: ${AKL_PUBLIC_AUDIT_RETENTION_DAYS:-90}
@@ -343,6 +405,8 @@ services:
       AKL_ASSISTANT_PURGE_ENABLED: ${AKL_ASSISTANT_PURGE_ENABLED:-true}
       AKL_ASSISTANT_PURGE_INTERVAL_SECONDS: ${AKL_ASSISTANT_PURGE_INTERVAL_SECONDS:-3600}
       AKL_ASSISTANT_PURGE_BATCH_SIZE: ${AKL_ASSISTANT_PURGE_BATCH_SIZE:-500}
+      AKL_WORKFLOW_MAINTENANCE_ENABLED: ${AKL_WORKFLOW_MAINTENANCE_ENABLED:-true}
+      AKL_WORKFLOW_MAINTENANCE_INTERVAL_SECONDS: ${AKL_WORKFLOW_MAINTENANCE_INTERVAL_SECONDS:-60}
       AKL_ASSISTANT_DELETION_AUDIT_RETENTION_DAYS: ${AKL_ASSISTANT_DELETION_AUDIT_RETENTION_DAYS:-730}
       AKL_REGISTRY_PUBLIC_RATE_WINDOW_MS: ${AKL_REGISTRY_PUBLIC_RATE_WINDOW_MS:-60000}
       AKL_REGISTRY_PUBLIC_RATE_PER_CLIENT_SLUG: ${AKL_REGISTRY_PUBLIC_RATE_PER_CLIENT_SLUG:-600}
@@ -378,6 +442,7 @@ services:
       - ${AKL_SEAWEEDFS_AKL_ROOT:-/srv/seaweedfs/akl}:/data/object-storage:ro
       - ${AKL_S3_ACCESS_KEY_ID_SOURCE_FILE:-/dev/null}:/run/secrets/akb-s3-access-key-id:ro
       - ${AKL_S3_SECRET_ACCESS_KEY_SOURCE_FILE:-/dev/null}:/run/secrets/akb-s3-secret-access-key:ro
+      - ${AKL_WEB_SESSION_STORE_SECRET_SOURCE_FILE:?AKL_WEB_SESSION_STORE_SECRET_SOURCE_FILE must be set}:/run/secrets/akb-web-session-store-secret:ro
     networks:
       - app_zone
     healthcheck:
@@ -385,9 +450,61 @@ services:
       <<: *python-healthcheck
     logging: *json-logging
 
+  docling-worker:
+    image: ${INGESTION_SERVICE_IMAGE:-akl/ingestion-service:${AKL_IMAGE_TAG:-docker-home}}
+    restart: unless-stopped
+    init: true
+    read_only: true
+    network_mode: none
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: ${AKL_INGESTION_DOCLING_PIDS_LIMIT:-256}
+    mem_limit: ${AKL_INGESTION_DOCLING_MEMORY_LIMIT:-6g}
+    cpus: ${AKL_INGESTION_DOCLING_CPU_LIMIT:-4.0}
+    stop_grace_period: 10s
+    labels:
+      <<: *immutable-release-labels
+      cz.zeleznalady.akl.service: ingestion-service
+    command: ["python", "-m", "parsers.docling_service"]
+    environment:
+      AKL_INGESTION_DOCLING_MODE: ${AKL_INGESTION_DOCLING_MODE:-off}
+      AKL_INGESTION_DOCLING_PIPELINE: ${AKL_INGESTION_DOCLING_PIPELINE:-standard}
+      AKL_INGESTION_DOCLING_DEVICE: ${AKL_INGESTION_DOCLING_DEVICE:-cpu}
+      AKL_INGESTION_DOCLING_SOCKET_PATH: /run/akb-docling/worker.sock
+      AKL_INGESTION_DOCLING_ARTIFACTS_PATH: /opt/docling-artifacts
+      AKL_INGESTION_DOCLING_ARTIFACTS_SHA256: ${AKL_INGESTION_DOCLING_ARTIFACTS_SHA256:-}
+      AKL_INGESTION_MAX_FILE_BYTES: ${AKL_INGESTION_MAX_FILE_BYTES:-104857600}
+      AKL_INGESTION_DOCLING_DOCUMENT_TIMEOUT_SECONDS: ${AKL_INGESTION_DOCLING_DOCUMENT_TIMEOUT_SECONDS:-300}
+      AKL_INGESTION_DOCLING_WORKER_TIMEOUT_SECONDS: ${AKL_INGESTION_DOCLING_WORKER_TIMEOUT_SECONDS:-330}
+      AKL_INGESTION_DOCLING_QUEUE_TIMEOUT_SECONDS: ${AKL_INGESTION_DOCLING_QUEUE_TIMEOUT_SECONDS:-5}
+      AKL_INGESTION_DOCLING_MAX_OUTPUT_BYTES: ${AKL_INGESTION_DOCLING_MAX_OUTPUT_BYTES:-134217728}
+      AKL_INGESTION_DOCLING_MAX_PAGES: ${AKL_INGESTION_DOCLING_MAX_PAGES:-1000}
+      AKL_INGESTION_OCR_LANGUAGE: ${AKL_INGESTION_OCR_LANGUAGE:-ces+eng}
+      AKL_INGESTION_TESSERACT_COMMAND: ${AKL_INGESTION_TESSERACT_COMMAND:-tesseract}
+      HF_HUB_OFFLINE: "1"
+      HF_DATASETS_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      TOKENIZERS_PARALLELISM: "false"
+      PYTHONNOUSERSITE: "1"
+      HOME: /tmp/docling-home
+      TMPDIR: /tmp
+    volumes:
+      - ${AKL_INGESTION_DOCLING_ARTIFACTS_SOURCE_DIR:-/dev/null}:/opt/docling-artifacts:ro
+      - docling-runtime:/run/akb-docling
+    tmpfs:
+      - /tmp:mode=1777,size=${AKL_INGESTION_DOCLING_TMPFS_SIZE:-2147483648}
+    healthcheck:
+      test: ["CMD", "python", "-m", "parsers.docling_service_probe", "--health"]
+      <<: *python-healthcheck
+    logging: *json-logging
+
   ingestion-service:
     build:
       context: ../../services/ingestion-service
+      args:
+        AKL_INSTALL_DOCLING: ${AKL_INSTALL_DOCLING:-false}
       labels:
         <<: *immutable-release-labels
         cz.zeleznalady.akl.service: ingestion-service
@@ -439,6 +556,19 @@ services:
       AKL_OBJECT_STORAGE_LOCAL_FALLBACK_READ: ${AKL_OBJECT_STORAGE_LOCAL_FALLBACK_READ:-true}
       AKL_INGESTION_DEFAULT_EXTRACTION_PROFILE: ${AKL_INGESTION_DEFAULT_EXTRACTION_PROFILE:-document_text_v1}
       AKL_INGESTION_PDF_ENGINE: ${AKL_INGESTION_PDF_ENGINE:-auto}
+      AKL_INGESTION_DOCLING_MODE: ${AKL_INGESTION_DOCLING_MODE:-off}
+      AKL_INGESTION_DOCLING_PIPELINE: ${AKL_INGESTION_DOCLING_PIPELINE:-standard}
+      AKL_INGESTION_DOCLING_DEVICE: ${AKL_INGESTION_DOCLING_DEVICE:-auto}
+      AKL_INGESTION_DOCLING_EXECUTION_MODE: ${AKL_INGESTION_DOCLING_EXECUTION_MODE:-uds}
+      AKL_INGESTION_DOCLING_SOCKET_PATH: /run/akb-docling/worker.sock
+      AKL_INGESTION_DOCLING_ARTIFACTS_SHA256: ${AKL_INGESTION_DOCLING_ARTIFACTS_SHA256:-}
+      AKL_INGESTION_DOCLING_DOCUMENT_TIMEOUT_SECONDS: ${AKL_INGESTION_DOCLING_DOCUMENT_TIMEOUT_SECONDS:-300}
+      AKL_INGESTION_DOCLING_WORKER_TIMEOUT_SECONDS: ${AKL_INGESTION_DOCLING_WORKER_TIMEOUT_SECONDS:-330}
+      AKL_INGESTION_DOCLING_HEALTH_TIMEOUT_SECONDS: ${AKL_INGESTION_DOCLING_HEALTH_TIMEOUT_SECONDS:-3}
+      AKL_INGESTION_DOCLING_QUEUE_TIMEOUT_SECONDS: ${AKL_INGESTION_DOCLING_QUEUE_TIMEOUT_SECONDS:-5}
+      AKL_INGESTION_DOCLING_MAX_OUTPUT_BYTES: ${AKL_INGESTION_DOCLING_MAX_OUTPUT_BYTES:-134217728}
+      AKL_INGESTION_DOCLING_MAX_CONCURRENCY: ${AKL_INGESTION_DOCLING_MAX_CONCURRENCY:-1}
+      AKL_INGESTION_DOCLING_MAX_PAGES: ${AKL_INGESTION_DOCLING_MAX_PAGES:-1000}
       AKL_INGESTION_OCR_PROVIDER: ${AKL_INGESTION_OCR_PROVIDER:-ocrmypdf}
       AKL_INGESTION_OCR_LANGUAGE: ${AKL_INGESTION_OCR_LANGUAGE:-ces+eng}
       AKL_INGESTION_OCRMYPDF_COMMAND: ${AKL_INGESTION_OCRMYPDF_COMMAND:-ocrmypdf}
@@ -484,10 +614,13 @@ services:
       - ${AKL_S3_ACCESS_KEY_ID_SOURCE_FILE:-/dev/null}:/run/secrets/akb-s3-access-key-id:ro
       - ${AKL_S3_SECRET_ACCESS_KEY_SOURCE_FILE:-/dev/null}:/run/secrets/akb-s3-secret-access-key:ro
       - ingestion-jobs:/data/ingestion-jobs
+      - docling-runtime:/run/akb-docling:ro
       - ${AKL_INGESTION_REGISTRY_CLIENT_SECRET_FILE:-/srv/akl/env/svc-ingestion.client-secret}:/run/secrets/svc-ingestion-client-secret:ro
       - ${AKL_OPENSEARCH_CA_SOURCE_FILE:-/srv/akl/env/opensearch-root-ca.pem}:/run/secrets/opensearch-root-ca.pem:ro
       - ${AKL_OPENSEARCH_INGESTION_PASSWORD_SOURCE_FILE:-/srv/akl/env/akl-opensearch-ingestion.password}:/run/secrets/akl-opensearch-password:ro
     depends_on:
+      docling-worker:
+        condition: service_healthy
       registry-api:
         condition: service_healthy
       qdrant:
@@ -503,8 +636,15 @@ services:
     build:
       context: ../../services/rag-retrieval-service
       labels: *immutable-release-labels
-    image: ${RAG_RETRIEVAL_SERVICE_IMAGE:-akl/rag-retrieval-service:docker-home}
+    image: ${RAG_RETRIEVAL_SERVICE_IMAGE:-akl/rag-retrieval-service:${AKL_IMAGE_TAG:-docker-home}}
     restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:mode=1777
     labels: *immutable-release-labels
     environment:
       OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-false}
@@ -521,13 +661,13 @@ services:
       AKL_SERVICE_VERSION: ${AKL_SERVICE_VERSION:-0.1.0}
       AKL_LOG_LEVEL: ${AKL_LOG_LEVEL:-INFO}
       AKL_AUTH_MODE: ${AKL_RAG_AUTH_MODE:-oidc}
+      AKL_IDENTITY_MODE: ${AKL_IDENTITY_MODE:-external_oidc}
+      AKL_MANAGED_IDENTITY_ISSUER: ${AKL_MANAGED_IDENTITY_ISSUER:-}
       AKL_OIDC_ISSUER: ${AKL_OIDC_ISSUER:?AKL_OIDC_ISSUER must be set}
       AKL_OIDC_AUDIENCE: ${AKL_OIDC_AUDIENCE:-akl-api}
-      AKL_OIDC_JWKS_URL: ${AKL_OIDC_JWKS_URL:?AKL_OIDC_JWKS_URL must be set}
+      AKL_OIDC_JWKS_URL: ${AKL_OIDC_JWKS_URL:-}
       AKL_RAG_USER_OIDC_AUDIENCE: ${AKL_RAG_USER_OIDC_AUDIENCE:?AKL_RAG_USER_OIDC_AUDIENCE must be set}
-      AKL_RAG_AIIP_OIDC_AUDIENCE: ${AKL_RAG_AIIP_OIDC_AUDIENCE:?AKL_RAG_AIIP_OIDC_AUDIENCE must be set}
-      AKL_TRUSTED_SERVICE_CLIENT_IDS: ${AKL_RAG_TRUSTED_SERVICE_CLIENT_IDS:?AKL_RAG_TRUSTED_SERVICE_CLIENT_IDS must be set}
-      AKL_RAG_AIIP_SERVICE_CLIENT_IDS: ${AKL_RAG_AIIP_SERVICE_CLIENT_IDS:?AKL_RAG_AIIP_SERVICE_CLIENT_IDS must be set}
+      AKL_TRUSTED_SERVICE_CLIENT_IDS: ${AKL_RAG_TRUSTED_SERVICE_CLIENT_IDS:-}
       AKL_SERVICE_ACCOUNT_SUBJECT: ${AKL_RAG_SERVICE_ACCOUNT_SUBJECT:-svc-rag}
       AKL_SERVICE_ACCOUNT_ROLES: ${AKL_RAG_SERVICE_ACCOUNT_ROLES:-service_rag}
       AKL_RAG_DEPENDENCY_MODE: http
@@ -556,8 +696,12 @@ services:
       AKL_RAG_HIGH_QUALITY_MIN_CONTEXT_CHUNKS: ${AKL_RAG_HIGH_QUALITY_MIN_CONTEXT_CHUNKS:-6}
       AKL_RAG_EMBEDDING_MODEL: ${AKL_RAG_EMBEDDING_MODEL:-bge-m3}
       AKL_RAG_EMBEDDING_DIMENSIONS: ${AKL_RAG_EMBEDDING_DIMENSIONS:-}
-      AKL_RAG_ANSWER_MAX_TOKENS: ${AKL_RAG_ANSWER_MAX_TOKENS:-512}
+      AKL_RAG_MAX_CONTEXT_CHARS: ${AKL_RAG_MAX_CONTEXT_CHARS:-20000}
+      AKL_RAG_ANSWER_MAX_TOKENS: ${AKL_RAG_ANSWER_MAX_TOKENS:-1536}
       AKL_RAG_SOURCE_CONTEXT_WINDOW: ${AKL_RAG_SOURCE_CONTEXT_WINDOW:-1}
+      AKL_ASSISTANT_HISTORY_MAX_USER_MESSAGES: ${AKL_ASSISTANT_HISTORY_MAX_USER_MESSAGES:-12}
+      AKL_ASSISTANT_HISTORY_MAX_MESSAGE_CHARS: ${AKL_ASSISTANT_HISTORY_MAX_MESSAGE_CHARS:-800}
+      AKL_ASSISTANT_HISTORY_MAX_CHARS: ${AKL_ASSISTANT_HISTORY_MAX_CHARS:-6000}
       AKL_RAG_REQUIRE_CITATIONS: ${AKL_RAG_REQUIRE_CITATIONS:-true}
       AKL_RAG_ENABLE_RERANKING: ${AKL_RAG_ENABLE_RERANKING:-true}
       AKL_RAG_V2_RETRIEVAL_MODE: ${AKL_RAG_V2_RETRIEVAL_MODE:-off}
@@ -611,6 +755,13 @@ services:
       labels: *immutable-release-labels
     image: ${LLM_GATEWAY_SERVICE_IMAGE:-akl/llm-gateway-service:${AKL_IMAGE_TAG:-docker-home}}
     restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:mode=1777
     labels: *immutable-release-labels
     environment:
       OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-false}
@@ -631,6 +782,9 @@ services:
       AKL_LLM_REQUIRE_CALLER_IDENTITY: ${AKL_LLM_REQUIRE_CALLER_IDENTITY:-true}
       AKL_LLM_GATEWAY_AUDIENCE: ${AKL_LLM_GATEWAY_AUDIENCE:-llm-gateway-service}
       AKL_LLM_GATEWAY_ALLOWED_CALLER_ROLES: ${AKL_LLM_GATEWAY_ALLOWED_CALLER_ROLES:-service_ingestion,service_rag}
+      AKL_RATE_LIMIT_ENABLED: ${AKL_RATE_LIMIT_ENABLED:-true}
+      AKL_RATE_LIMIT_PER_MINUTE: ${AKL_RATE_LIMIT_PER_MINUTE:-120}
+      AKL_RATE_LIMIT_MAX_IDENTITIES: ${AKL_RATE_LIMIT_MAX_IDENTITIES:-4096}
       AKL_LLM_DEFAULT_PROVIDER: ${AKL_LLM_DEFAULT_PROVIDER:-ollama}
       AKL_LLM_ENABLED_PROVIDERS: ${AKL_LLM_ENABLED_PROVIDERS:-ollama}
       AKL_LLM_MODEL_PROVIDER_MAP: ${AKL_LLM_MODEL_PROVIDER_MAP:-{"gemma4:12b-mlx":"ollama","gemma4:31b-mlx":"ollama","bge-m3":"ollama","qwen3-embedding:8b":"ollama","mock-chat":"mock","mock-embedding":"mock"}}
@@ -656,7 +810,7 @@ services:
     build:
       context: ../../services/evaluation-service
       labels: *immutable-release-labels
-    image: ${EVALUATION_SERVICE_IMAGE:-akl/evaluation-service:docker-home}
+    image: ${EVALUATION_SERVICE_IMAGE:-akl/evaluation-service:${AKL_IMAGE_TAG:-docker-home}}
     restart: unless-stopped
     labels: *immutable-release-labels
     environment:
@@ -716,8 +870,15 @@ services:
     build:
       context: ../../services/governance-service
       labels: *immutable-release-labels
-    image: ${GOVERNANCE_SERVICE_IMAGE:-akl/governance-service:docker-home}
+    image: ${GOVERNANCE_SERVICE_IMAGE:-akl/governance-service:${AKL_IMAGE_TAG:-docker-home}}
     restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:mode=1777
     labels: *immutable-release-labels
     environment:
       OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-false}
@@ -793,5 +954,6 @@ volumes:
   caddy-config:
   qdrant-data:
   ingestion-jobs:
+  docling-runtime:
   evaluation-reports:
   evaluation-datasets:

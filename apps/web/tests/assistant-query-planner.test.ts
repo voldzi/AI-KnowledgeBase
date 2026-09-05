@@ -20,7 +20,8 @@ describe("assistant query planner", () => {
     const second = buildAssistantQueryPlan(input);
 
     assert.equal(first.plan_id, second.plan_id);
-    assert.equal(first.version, "2026-06-23");
+    assert.equal(first.version, "2026-08-28");
+    assert.equal(first.goal, "lookup");
     assert.equal(first.intent, "obligation_table");
     assert.equal(first.output.kind, "table");
     assert.equal(first.output.artifact_contract_version, "report.v2");
@@ -28,6 +29,23 @@ describe("assistant query planner", () => {
     assert.equal(first.quality_gates.row_citations_required, true);
     assert.equal(first.quality_gates.min_columns, 3);
     assert.equal(first.quality_gates.min_informative_cells_per_row, 2);
+  });
+
+  it("records an analytical recommendation goal without changing the selected tool", () => {
+    const plan = buildAssistantQueryPlan({
+      message: "Jak je možno vylepšit finanční plán?",
+      language: "cs",
+      tool: "rag_document_answer",
+      reason: "rag_grounded_answer",
+      structuredOutput: false,
+      obligationOutput: false,
+      registryReportKind: null,
+      registryTopics: [],
+    });
+
+    assert.equal(plan.goal, "recommend");
+    assert.equal(plan.intent, "recommendation");
+    assert.equal(plan.output.kind, "answer");
   });
 
   it("uses report mode columns, detail, and export preference in the query plan", () => {
@@ -76,5 +94,23 @@ describe("assistant query planner", () => {
     assert.equal(plan.quality_gates.row_citations_required, false);
     assert.equal(plan.quality_gates.registry_metadata_without_chunk_citations_allowed, true);
     assert.deepEqual(plan.retrieval.topics, ["digitalizace"]);
+  });
+
+  it("records a document task intent without weakening citation gates", () => {
+    const plan = buildAssistantQueryPlan({
+      message: "Kde najdu formulář na zahraniční cestu?",
+      language: "cs",
+      tool: "rag_document_answer",
+      reason: "rag_document_task",
+      structuredOutput: false,
+      obligationOutput: false,
+      registryReportKind: null,
+      registryTopics: [],
+      documentKnowledgeIntent: "resource",
+    });
+
+    assert.equal(plan.intent, "resource_location");
+    assert.equal(plan.retrieval.document_knowledge_intent, "resource");
+    assert.equal(plan.quality_gates.citations_required, true);
   });
 });

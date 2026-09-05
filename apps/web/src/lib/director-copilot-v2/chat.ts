@@ -9,10 +9,7 @@ import type {
   AssistantChatResponse,
   ResponseLanguage,
 } from "@/lib/types";
-import {
-  DIRECTOR_COPILOT_AUDIT_TARGET,
-  directorCopilotServiceToken,
-} from "@/lib/director-copilot/service-identity";
+import { writeDirectorAudit } from "@/lib/director-copilot/audit-writer";
 import type { ConversationQueryState } from "@/lib/director-copilot/query-state";
 import { DirectorCopilotTransportError } from "@/lib/director-copilot/transport-error";
 
@@ -32,7 +29,6 @@ import {
 } from "./orchestrator";
 import type { DirectorCopilotIntent } from "./shared";
 
-const SERVICE_CLIENT_ID = "svc-akb-director-copilot";
 
 export async function runDirectorCopilotV2Chat(input: {
   message: string;
@@ -130,26 +126,10 @@ export async function auditDirectorCopilotV2Failure(input: {
   mode: "active";
   error: unknown;
 }): Promise<void> {
-  const serviceToken = await directorCopilotServiceToken(
-    input.config,
-    fetch,
-    DIRECTOR_COPILOT_AUDIT_TARGET,
-  );
-  const serviceContext: ApiRequestContext = {
-    ...input.actorContext,
-    subjectId: SERVICE_CLIENT_ID,
-    accessToken: serviceToken,
-    roles: [],
-    groups: [],
-    capabilities: [],
-    scopes: [],
-    applicationAccess: [],
-    serviceClientId: SERVICE_CLIENT_ID,
-  };
   const errorCode = input.error instanceof DirectorCopilotTransportError
     ? input.error.code
     : "DIRECTOR_COPILOT_V2_FAILED";
-  await input.clients.registry.createAuditEvent({
+  await writeDirectorAudit(input.config, input.clients, input.actorContext, {
     actor_id: input.actorContext.subjectId,
     event_type: "assistant.director_copilot_v2_failed",
     resource_type: "assistant_conversation",
@@ -179,7 +159,7 @@ export async function auditDirectorCopilotV2Failure(input: {
         ?? input.actorContext.requestId
         ?? null,
     },
-  }, serviceContext);
+  });
 }
 
 function composeResponse(
@@ -188,9 +168,7 @@ function composeResponse(
   language: ResponseLanguage,
 ): AssistantChatResponse {
   if (orchestration.status === "not_authorized") {
-    const answer = language === "en"
-      ? "Your current access does not cover the requested live STRATOS data."
-      : "Vaše aktuální oprávnění nepokrývá požadovaná živá data STRATOS.";
+    const answer = notAuthorizedAnswer(orchestration.snapshot, language);
     return baseResponse({
       conversationId,
       responseType: "restricted",
@@ -231,18 +209,34 @@ function composeResponse(
     });
   }
   if (orchestration.status === "no_data") {
-    const answer = language === "en"
-      ? "The authorized STRATOS sources contain no data matching this query."
-      : "Oprávněné zdroje STRATOS neobsahují data odpovídající tomuto dotazu.";
+    const applications = new Set(
+      orchestration.snapshot.outcomes.map((outcome) => outcome.application),
+    );
+    const answer = noDataAnswer(
+      applications,
+      orchestration.continuation_query_state,
+      language,
+    );
     return baseResponse({
       conversationId,
       responseType: "no_answer",
       answer,
-      confidence: "high",
+      confidence: "insufficient_source",
       queryState: orchestration.continuation_query_state,
       snapshot: orchestration.snapshot,
-      warnings: outcomeWarnings(orchestration.snapshot),
+      warnings: [
+        ...outcomeWarnings(orchestration.snapshot),
+        "LIVE_DATA_NO_MATCHING_DATA",
+      ],
       missingInformation: answer,
+      followUps: noDataFollowUps(
+        applications,
+        orchestration.continuation_query_state,
+        language,
+      ),
+      recommendedAction: language === "en"
+        ? "Specify another period or narrower authorized scope. A missing result is not interpreted as zero."
+        : "Upřesněte jiné období nebo užší oprávněný rozsah. Chybějící výsledek není vykládán jako nula.",
     });
   }
   const shapeMismatch = orchestration.snapshot.outcomes.find((outcome) => (
@@ -290,14 +284,13 @@ function composeResponse(
     .filter((outcome) => outcome.items.length > 0)
     .map((outcome) => renderSource(
       outcome,
-      orchestration.plan.query_state,
+      queryStateForOutcome(outcome, orchestration.snapshot),
       language,
     ));
   const correlations = [
     renderStratosRelationships(orchestration.snapshot, language),
   ].filter(Boolean);
   const partialNotice = orchestration.status === "partial"
-    || orchestration.snapshot.evidence.status === "partial"
     ? language === "en"
       ? "The result is partial because at least one authorized source did not return a complete result."
       : "Výsledek je částečný, protože nejméně jeden oprávněný zdroj neposkytl úplný výsledek."
@@ -334,6 +327,26 @@ function composeResponse(
   });
 }
 
+function notAuthorizedAnswer(
+  snapshot: DirectorCopilotV2Snapshot,
+  language: ResponseLanguage,
+): string {
+  const archflowOnly = snapshot.outcomes.length > 0
+    && snapshot.outcomes.every((outcome) => outcome.application === "archflow");
+  const reasons = new Set(snapshot.outcomes.flatMap((outcome) => outcome.reason_codes));
+  if (archflowOnly && (
+    reasons.has("ARCHFLOW_INFORMATION_POLICY_DENIED")
+    || reasons.has("ARCHFLOW_SCOPE_NOT_COVERED")
+  )) {
+    return language === "en"
+      ? "No needs are available in your authorized ArchFlow scope. Needs outside that scope remain hidden."
+      : "V dostupném oprávněném rozsahu ArchFlow nejsou evidovány žádné potřeby. Potřeby mimo tento rozsah zůstávají skryté.";
+  }
+  return language === "en"
+    ? "Your current access does not cover the requested live STRATOS data."
+    : "Vaše aktuální oprávnění nepokrývá požadovaná živá data STRATOS.";
+}
+
 function partialReasonsNotice(
   snapshot: DirectorCopilotV2Snapshot,
   language: ResponseLanguage,
@@ -360,29 +373,49 @@ function partialReasonsNotice(
       ? "Part of the requested scope is not covered by your current access."
       : "Část požadovaného rozsahu nepokrývá vaše aktuální oprávnění.");
   }
+  if (snapshot.evidence.issues.some((issue) => issue.code === "LIVE_DATA_SOURCE_STALE")) {
+    notices.push(language === "en"
+      ? "At least one current live source is older than seven days. The values are shown with their source timestamp and should be treated as potentially stale."
+      : "Nejméně jeden aktuální živý zdroj je starší než sedm dní. Hodnoty jsou uvedeny s časem zdroje a mohou být zastaralé.");
+  }
   return notices.join(" ");
+}
+
+function queryStateForOutcome(
+  outcome: DirectorCopilotV2SourceOutcome,
+  snapshot: DirectorCopilotV2Snapshot,
+): ConversationQueryState {
+  return (snapshot.plan.nodes.find((node) => node.node_id === outcome.node_id)
+    ?? snapshot.plan.nodes.find((node) => node.application === outcome.application))?.query_state
+    ?? snapshot.plan.query_state;
 }
 
 function renderStratosRelationships(
   snapshot: DirectorCopilotV2Snapshot,
   language: ResponseLanguage,
 ): string {
-  const budget = snapshot.outcomes.find((outcome) => outcome.application === "budget");
-  const projectflow = snapshot.outcomes.find((outcome) => outcome.application === "projectflow");
-  const archflow = snapshot.outcomes.find((outcome) => outcome.application === "archflow");
-  if (!budget && !projectflow && !archflow) return "";
+  const budgetItems = snapshot.outcomes
+    .filter((outcome) => outcome.application === "budget")
+    .flatMap((outcome) => outcome.items);
+  const projectflowItems = snapshot.outcomes
+    .filter((outcome) => outcome.application === "projectflow")
+    .flatMap((outcome) => outcome.items);
+  const archflowItems = snapshot.outcomes
+    .filter((outcome) => outcome.application === "archflow")
+    .flatMap((outcome) => outcome.items);
+  if (!budgetItems.length && !projectflowItems.length && !archflowItems.length) return "";
   const budgetById = new Map(
-    (budget?.items ?? [])
+    budgetItems
       .filter((item) => item.canonical_id.startsWith("stratos:project:"))
       .map((item) => [item.canonical_id, item]),
   );
   const projectflowById = new Map(
-    (projectflow?.items ?? [])
+    projectflowItems
     .filter((item) => item.canonical_id.startsWith("stratos:project:"))
     .map((item) => [item.canonical_id, item]),
   );
   const needsByProject = new Map<string, DirectorCopilotV2Item[]>();
-  for (const need of archflow?.items ?? []) {
+  for (const need of archflowItems) {
     for (const link of need.links.filter((candidate) => (
       candidate.key === "archflow.need.linked_project"
       && candidate.relation_type === "direct"
@@ -443,7 +476,7 @@ function renderStratosRelationships(
     `| ${headers.map(() => "---").join(" | ")} |`,
     ...rows.map((row) => `| ${row.map(markdownCell).join(" | ")} |`),
   ].join("\n");
-  const title = archflow
+  const title = archflowItems.length
     ? language === "en"
       ? "### Verified relationships across STRATOS"
       : "### Ověřené souvislosti napříč STRATOS"
@@ -609,9 +642,9 @@ function sourceShapeDoesNotMatchQuery(
   snapshot: DirectorCopilotV2Snapshot,
 ): boolean {
   if (!outcome.items.length) return false;
-  const request = snapshot.plan.nodes.find(
-    (node) => node.application === outcome.application,
-  )?.request?.parameters;
+  const request = (snapshot.plan.nodes.find((node) => node.node_id === outcome.node_id)
+    ?? snapshot.plan.nodes.find((node) => node.application === outcome.application))
+    ?.request?.parameters;
   const expected = expectedEntityType(
     outcome.application,
     request?.granularity ?? null,
@@ -830,6 +863,7 @@ function baseResponse(input: {
   warnings: string[];
   missingInformation: string | null;
   followUps?: string[];
+  recommendedAction?: string | null;
 }): AssistantChatResponse {
   return {
     response_type: input.responseType,
@@ -853,8 +887,66 @@ function baseResponse(input: {
     confidence: input.confidence,
     warnings: [...new Set(input.warnings)],
     missing_information: input.missingInformation,
-    recommended_action: null,
+    recommended_action: input.recommendedAction ?? null,
   };
+}
+
+function noDataAnswer(
+  applications: Set<string>,
+  queryState: ConversationQueryState,
+  language: ResponseLanguage,
+): string {
+  const year = queryState.period.fiscal_year;
+  if (applications.size === 1 && applications.has("budget")) {
+    return language === "en"
+      ? `Budget returned no authorized financial data matching the query for ${year}. This does not confirm that the plan or amount is zero.`
+      : `Budget pro rok ${year} nevrátil v oprávněném rozsahu finanční data odpovídající dotazu. Nejde o potvrzení, že plán nebo částka jsou nulové.`;
+  }
+  if (applications.size === 1 && applications.has("projectflow")) {
+    return language === "en"
+      ? `ProjectFlow returned no authorized projects matching the query for ${year}. The result was not substituted with document search.`
+      : `ProjectFlow nevrátil žádné oprávněné projekty odpovídající dotazu pro rok ${year}. Výsledek nebyl nahrazen vyhledáváním v dokumentech.`;
+  }
+  if (applications.size === 1 && applications.has("archflow")) {
+    return language === "en"
+      ? `ArchFlow returned no authorized needs matching the query for ${year}. Needs outside the authorized scope remain hidden.`
+      : `ArchFlow pro rok ${year} nevrátil žádné oprávněné potřeby odpovídající dotazu. Potřeby mimo oprávněný rozsah zůstávají skryté.`;
+  }
+  return language === "en"
+    ? `The authorized STRATOS sources contain no data matching the query for ${year}. Missing data was not interpreted as zero.`
+    : `Oprávněné zdroje STRATOS neobsahují data odpovídající dotazu pro rok ${year}. Chybějící data nebyla vyložena jako nula.`;
+}
+
+function noDataFollowUps(
+  applications: Set<string>,
+  queryState: ConversationQueryState,
+  language: ResponseLanguage,
+): string[] {
+  const previousYear = queryState.period.fiscal_year - 1;
+  if (applications.size === 1 && applications.has("budget")) {
+    return language === "en"
+      ? [
+          `Show the financial plan for ${previousYear}.`,
+          "Which authorized budget branches have no approved plan?",
+        ]
+      : [
+          `Ukaž finanční plán pro rok ${previousYear}.`,
+          "Které oprávněné rozpočtové větve nemají schválený plán?",
+        ];
+  }
+  if (applications.size === 1 && applications.has("projectflow")) {
+    return language === "en"
+      ? ["Show the current project portfolio.", "Which projects are delayed?"]
+      : ["Ukaž aktuální projektové portfolio.", "Které projekty jsou zpožděné?"];
+  }
+  if (applications.size === 1 && applications.has("archflow")) {
+    return language === "en"
+      ? ["Show needs in my authorized scope.", "Which needs require a decision?"]
+      : ["Ukaž potřeby v mém oprávněném rozsahu.", "Které potřeby vyžadují rozhodnutí?"];
+  }
+  return language === "en"
+    ? ["Use the current period.", "Narrow the question to finance, projects, or needs."]
+    : ["Použij aktuální období.", "Omez dotaz na finance, projekty, nebo potřeby."];
 }
 
 function outcomeWarnings(snapshot: DirectorCopilotV2Snapshot): string[] {
@@ -894,23 +986,7 @@ async function auditResult(
   orchestration: DirectorCopilotV2OrchestrationResult,
   response: AssistantChatResponse,
 ): Promise<void> {
-  const serviceToken = await directorCopilotServiceToken(
-    input.config,
-    fetch,
-    DIRECTOR_COPILOT_AUDIT_TARGET,
-  );
-  const serviceContext: ApiRequestContext = {
-    ...input.actorContext,
-    subjectId: SERVICE_CLIENT_ID,
-    accessToken: serviceToken,
-    roles: [],
-    groups: [],
-    capabilities: [],
-    scopes: [],
-    applicationAccess: [],
-    serviceClientId: SERVICE_CLIENT_ID,
-  };
-  await input.clients.registry.createAuditEvent({
+  await writeDirectorAudit(input.config, input.clients, input.actorContext, {
     actor_id: input.actorContext.subjectId,
     event_type: "assistant.director_copilot_v2_returned",
     resource_type: "assistant_conversation",
@@ -957,8 +1033,16 @@ async function auditResult(
         0,
       ),
       query_operation: orchestration.plan.query_state.operation,
+      query_operations_json: JSON.stringify(
+        orchestration.plan.nodes.map((node) => ({
+          node_id: node.node_id,
+          application: node.application,
+          operation: node.query_state.operation,
+        })),
+      ),
       requested_granularities_json: JSON.stringify(
         orchestration.plan.nodes.map((node) => ({
+          node_id: node.node_id,
           application: node.application,
           granularity: node.request?.parameters.granularity ?? null,
         })),
@@ -975,7 +1059,7 @@ async function auditResult(
       status: orchestration.status,
       failure_reason_code: primaryFailureReasonCode(orchestration),
     },
-  }, serviceContext);
+  });
 }
 
 function primaryFailureReasonCode(

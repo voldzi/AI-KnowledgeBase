@@ -105,7 +105,7 @@ def test_bearer_auth_rejects_service_without_allowed_role() -> None:
     }
     headers = {
         "Authorization": "Bearer expected",
-        "X-AKL-Subject": "aiip-service",
+        "X-AKL-Subject": "source-service",
         "X-AKL-Audience": "llm-gateway-service",
         "X-AKL-Roles": "stratos_service",
     }

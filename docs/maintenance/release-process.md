@@ -15,47 +15,79 @@ The `main` branch is protected:
 
 Required checks:
 
-- `Web`
-- `Python / registry-api`
-- `Python / ingestion-service`
-- `Python / rag-retrieval-service`
-- `Python / llm-gateway-service`
-- `Python / evaluation-service`
-- `Python / governance-service`
-- `Docker Compose Config`
-- `Immutable docker.home.cz release`
+- `Repository standards` and `Runtime impact plan` for every candidate;
+- the affected web and service checks selected from the exact Git diff;
+- Compose validation when runtime configuration changes;
+- immutable-release validation when release code or configuration changes.
+
+An unknown path, shared contract, OpenAPI change, or missing comparison base is
+treated as broad impact and selects all runtime checks. The optimisation never
+turns uncertainty into a skipped verification.
+
+Changes limited to `.gitea/workflows/`, `scripts/ci/`, and their classifier
+test are non-runtime CI plumbing: they run repository standards, including
+workflow parsing and classifier tests, but do not run application or immutable
+release simulation. A change that also touches a runtime path remains broad or
+component-specific according to that runtime path.
 
 ## CI Runtime
 
-AKB pull-request and `main` CI run on the repository-specific self-hosted
-runner `akb-ci`. It is hosted on the isolated `stratos-ci-runner-01` VM and
-has no production secrets, production SSH credential, or access to
-`docker.home.cz`. VM 125 (`stratos-ci-runner-01`) hosts three AKB runners. Two workers use the
-`akb-ci-light` label for independent standards, web, Python and Compose checks.
-One `akb-ci-exclusive` worker runs the immutable release and Registry/PostgreSQL
-jobs serially because they use Docker, fixed local ports or release-state
-fixtures. Light workers retain the standard `self-hosted`, `Linux` and `X64`
-labels; the exclusive worker deliberately uses only `akb-ci-exclusive`. Do not
-route Docker integration work to a light worker.
+AKB's primary internal Git server is Gitea. Its verification workflow runs on
+the repository-scoped runner `stratos-gitea-ci-vm125-akb` on VM 125
+(`stratos-ci-runner-01`). Historical system names remain unchanged:
 
-The production immutable release remains a separate operator action on
-`docker.home.cz`, and accepts only a full SHA reachable from protected `main`.
-CI must never use the production deployment runner or production environment.
+- system account: `stratos-ci`
+- systemd service: `stratos-gitea-ci-runner.service`
+- workflow label: `akb-gitea-ci`
+- approved full runner label:
+  `akb-gitea-ci:docker://akb/gitea-ci-tools@sha256:2be3431e52dc1cfae642ea744821980c60774485b98c5881593a95558ed518c9`
+- capacity: one concurrent job
 
-The CI VM owns its non-secret build prerequisites. Its Debian-based runner image
+The unique AKB label prevents Gitea from scheduling STRATOS work on this
+runner or AKB work on a STRATOS runner. No AKB workflow may use a label that
+starts with `stratos-gitea-ci`. The existing GitHub runners remain available as
+an unchanged parallel and rollback CI path until Gitea equivalence is formally
+accepted.
+
+The Gitea runner has no production secrets, production SSH credential, or
+access to `docker.home.cz`. Every trusted workflow job runs in the maintained
+CI image pinned by digest. Capacity remains one because the Docker
+socket, fixed local ports, release-state fixtures, and shared cache require
+strict isolation. Faster releases come from persistent caches, focused local
+checks, and avoiding unaffected checks, not from overlapping unsafe jobs on
+this runner. The runner remains single-concurrency because it has a Docker
+socket and shared caches.
+
+Pull requests do not run automatically on this Docker-capable runner. A trusted
+administrator may manually dispatch the exact reviewed SHA. An untrusted PR may
+run only on the disposable `akb-gitea-ci-untrusted` boundary described in the
+AKB Gitea CI runner runbook; that boundary has no Docker socket, host cache,
+secrets, production routes or long-lived credentials.
+
+The production immutable release remains a distinct manual promotion and
+accepts only a full SHA reachable from protected `main`. The normal CI workflow
+never receives production credentials. The separately reviewed Gitea
+production workflow may trigger the existing host release only through the
+restricted interface in `docs/OPERATIONS/gitea-production-deploy.md`; it does
+not receive the production environment or a general host shell.
+
+The CI VM owns its non-secret build prerequisites. Its Debian-based job image
 includes Docker, Ruby, `shellcheck`, and the Chromium runtime libraries required by the web
 end-to-end test. CI jobs must not use `sudo`; a repository workflow can execute
-arbitrary pull-request code and therefore receives only the `akbci` service
-account.
+arbitrary pull-request code and therefore receives only the isolated job
+container and its explicitly mounted cache and Docker socket.
 
 ### Persistent CI caches
 
 The AKB runner keeps dependency caches on the VM instead of uploading them to
 GitHub Actions cache storage:
 
-- pnpm store: `/home/akbci/.cache/akb-ci/pnpm-store`
-- pip download cache: `/home/akbci/.cache/akb-ci/pip`
-- Playwright browsers: `/home/akbci/.cache/akb-ci/playwright`
+- host cache root: `/home/stratos-ci/.cache/akb-ci`
+- container cache root: `/cache/akb-ci`
+- pnpm store: `/cache/akb-ci/pnpm/store/v3`
+- pip download cache: `/cache/akb-ci/pip`
+- Playwright browsers: `/cache/akb-ci/playwright`
+- Next.js web build cache: `/cache/akb-ci/next/web`
 - Docker image and build layers: the persistent Docker data root managed by the
   VM Docker daemon
 
@@ -69,10 +101,12 @@ runner tool cache and are also reused between jobs.
 Do not run `docker system prune`, `docker builder prune`, or delete the shared
 Docker data root from a workflow. The Docker daemon is shared with the STRATOS
 CI runner on this VM. Cache maintenance is an operator action and must run only
-while both runners are idle. Keep at least 20 GB free on the VM; when cleanup is
-needed, remove package-cache entries older than 30 days first, then remove only
-unused Docker build cache older than 30 days. Never prune running containers,
-volumes, or images used by another repository.
+while runner ID 6 is online and idle. The dedicated AKB package cache uses a
+14-day retention and a 10 GB maximum. Keep at least 20 GB free on the VM and
+treat less than 10 GB as critical. The maintained cache tool never touches the
+shared Docker data root, running containers, volumes, STRATOS cache or images.
+Its exact dry-run and apply sequence is in
+`docs/OPERATIONS/akb-gitea-ci-runner.md`.
 
 ## Pull Request Flow
 
@@ -80,14 +114,86 @@ volumes, or images used by another repository.
 2. Keep the PR scoped to one coherent change.
 3. Run relevant local validation before pushing.
 4. Push the branch and open a PR.
-5. Wait for GitHub CI to pass.
+5. Run the untrusted PR checks on the isolated runner when that runner is
+   available. Until then, a trusted administrator reviews the exact SHA and
+   manually dispatches it on the AKB runner. During the parallel migration
+   period, the required GitHub checks also remain binding.
 6. Review the diff for runtime contracts, generated files, secrets, and documentation drift.
 7. Squash merge into `main` after checks are green.
 8. Delete the feature branch.
 
 Do not push directly to `main`.
 
+## Local Fast Check
+
+Before resuming an old branch, inspect `git status`, `git worktree list` and
+fetch Gitea `origin`. The root working directory is not automatically updated
+when another worktree builds or deploys a release. Run the read-only guard:
+
+```bash
+python3 scripts/ci/check_working_baseline.py --base origin/main --production-sha <verified-full-production-sha>
+```
+
+It refuses a candidate missing either main or the supplied production commit.
+It does not fetch refs or discover production, change files, merge, reset, or
+authorize deployment. Obtain a fresh production SHA from the verified release;
+without the optional argument it explicitly reports `production_checked=false`.
+Keep useful work before rebasing or moving it to a new branch. Archive unique
+historical commits until reviewed; remove only branches demonstrably merged
+into main. A stale remote-tracking ref cannot prove current server state.
+
+The MacBook provides reproducible Docker Desktop feedback before the trusted
+Gitea run:
+
+```bash
+scripts/ci/local-fast-check.sh --base origin/main --production-sha <verified-full-production-sha>
+```
+
+The helper first runs the lineage guard, then classifies committed, staged,
+unstaged and untracked changes using the same fail-closed impact matrix as
+Gitea CI. Python services run in separate hash-locked Python 3.12 containers;
+the web runs in a pinned Node/pnpm container. All application tests use a
+sanitized read-only source snapshot, isolated tmpfs workspaces, a non-root
+identity, and no network, Docker socket, `.env`, SSH key, or production secret.
+Use `--full` for broad verification after establishing a valid baseline. Use
+`--skip-install` after a successful run to require the cached dependency images
+and fail on a cache miss; it never installs into macOS Python.
+
+Multiple runtime owners, a runtime plus release infrastructure, and unknown or
+shared paths select the complete suite. Independent selected services may run
+in parallel, but never share a writable virtual environment or workspace. The
+closed JSON timing/cache result is written to
+`reports/local-fast-check/latest.json`. Full boundary, cache, disk and evidence
+details are in [local-fast-check.md](local-fast-check.md).
+
+This is an early feedback layer, not a release approval. The final candidate
+still runs on the repo-scoped VM125 runner, where the Linux/amd64 toolchain and
+persistent caches match the production build environment.
+
+Trusted CI also retains the version-pinned OpenAPI linter and content-addressed
+Python test environments. Each Python cache key binds the interpreter and the
+exact hash-locked dependency file. A missing, changed, open or unhashed lock
+fails closed; a valid cache hit skips only dependency installation, never the
+tests, same-SHA evidence or immutable release contract.
+
 ## Optimized Release Candidate Workflow
+
+The required runtime impact job now runs Docker Buildx `--check` for the
+selected production Dockerfiles before dependent, expensive CI jobs start.
+The local fast check uses the same guard. Unknown/shared changes and release
+configuration select every production definition, including both web profiles
+and the Docling-enabled ingestion image. The check sends only Dockerfiles in an
+empty temporary context, never production environment files or credentials.
+Unavailable Docker/Buildx, a timeout or a rejected definition stops the check.
+BuildKit may resolve the public base image or Dockerfile frontend during this
+check; `--network=none` applies to build execution, not image metadata lookup.
+No build instructions execute. The existing networkless application-test
+containers retain their unchanged isolation boundary.
+
+This guard catches build-definition failures early but deliberately does not
+claim that images were built or runtime compatibility was proved. The exact
+production image build, trusted same-SHA CI, protected-main approval, backup,
+migration and readiness gates remain mandatory. It cannot authorize deployment.
 
 Use this sequence for every production-bound change. It keeps the existing
 fail-closed release controls while avoiding repeated merge/build/deploy loops.
@@ -102,6 +208,11 @@ fail-closed release controls while avoiding repeated merge/build/deploy loops.
 3. **Run focused validation.** Start with tests, type checking, contract
    checks, and schema checks owned by the affected components. Fix failures
    before starting the expensive image gate.
+
+   The Gitea workflow derives this same set from the exact candidate diff. It
+   always runs repository standards, then invokes only the affected runtime
+   jobs. Documentation-only changes therefore avoid application builds; any
+   unknown or shared change remains a full verification.
 4. **Build the exact production images.** Use the same Dockerfile, repository
    root context, build arguments, contract paths, and service profile as
    `docker-compose.docker-home.yml`. For the web profiles, the minimum exact
@@ -138,7 +249,7 @@ fail-closed release controls while avoiding repeated merge/build/deploy loops.
    is unavailable, use:
 
    ```bash
-   "/Users/voldzi/Documents/Development/18 2026/chromadb/tools/chroma-dev.sh" \
+   "/Users/voldzi/Developer/18 2026/chromadb/tools/chroma-dev.sh" \
      reindex --root .
    ```
 
@@ -151,9 +262,10 @@ fail-closed release controls while avoiding repeated merge/build/deploy loops.
    the operator log.
 8. **Deploy the exact merge SHA once.** Confirm the SHA is reachable from
    protected `origin/main`, then start the immutable release through the
-   current verified release. Run it detached with a durable owner-only
-   operator log so an SSH or agent transport interruption cannot terminate or
-   obscure the release.
+   current verified release. Use either the restricted manual Gitea workflow
+   or the documented operator command. Both start it detached with a durable
+   owner-only operator log so an SSH or agent transport interruption cannot
+   terminate or obscure the release.
 9. **Monitor durable evidence.** Follow the deployment PID, deployment record,
    and operator log until completion. Do not report success while the process
    is still running.
@@ -188,10 +300,23 @@ These are operating targets, not reasons to weaken a gate:
 - ordinary final-candidate-to-production path: at most 15 minutes;
 - forward-fix or rollback decision: within 2 minutes of a verified failure.
 
-The target architecture is build-once promotion: CI publishes signed,
-content-addressed images and a release manifest, and production pulls and
-verifies those digests instead of compiling source. Until that pipeline exists,
-the exact local production-image preflight above is mandatory.
+Production deployment uses build-once promotion. After the exact main SHA has
+passed trusted CI, the protected manual workflow builds all eight application
+images on the AKB runner from locked inputs, publishes content-addressed images
+to the internal registry, and stores the closed manifest as
+`akb-production-images-<full-sha>`. It then pulls those exact digest references,
+transfers an integrity-checked image archive through the restricted deployment
+gateway, and activates the imported images. The production host does not run a
+source build in this path.
+
+The gateway accepts only the exact eight `akl/<service>:<full-sha>` images. It
+verifies the archive digest and each image's release SHA, compose project, and
+service ownership labels before writing a private prebuilt marker. The normal
+immutable deployment still performs disk and secret preflight, Registry writer
+quiescence, backup, migration, image-identity checks, health/readiness checks,
+and atomic activation. Missing, malformed, additional, or mismatched evidence
+fails closed. The legacy production build path remains available only for a
+reviewed recovery while the gateway rollout is being completed.
 
 ## Release Tag
 

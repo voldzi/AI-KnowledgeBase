@@ -2,12 +2,16 @@ import re
 import secrets
 import unicodedata
 from collections import Counter
+from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from datetime import date, datetime, timedelta, timezone
 from hashlib import sha256
+from itertools import islice
 import json
 from threading import Lock
-from typing import Annotated
+from typing import Annotated, Literal
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.security import APIKeyHeader
@@ -28,12 +32,12 @@ from app.assistant_observability import (
     record_assistant_history_access_change_metrics,
 )
 from app.access_governance import (
-    AiipAkbGovernedResourceRegistration,
     BudgetAkbGovernedResourceRegistration,
     GovernanceDenied,
     GovernanceInvalidResponse,
     GovernanceUnavailable,
     governance_client,
+    policy_decision_scope,
     validate_public_decision_response,
 )
 from app.auth import (
@@ -45,10 +49,13 @@ from app.auth import (
 from app.config import Settings, get_settings
 from app.controlled_rule_catalog import (
     CATALOG_VERSION as CONTROLLED_RULE_CATALOG_VERSION,
+    PUBLIC_PROCUREMENT_REQUIRED_STATUTORY_KEYS,
+    STATUTORY_SOURCE_TYPES,
     canonical_normative_key,
     catalog_sha256 as controlled_rule_catalog_sha256,
     normative_key_category_matches,
     normative_key_is_registered,
+    normative_key_source_type_matches,
 )
 from app.content_security import (
     ContentSecurityAttestation,
@@ -56,6 +63,13 @@ from app.content_security import (
     verify_content_security_attestation,
 )
 from app.database import get_db
+from app.document_workflow import (
+    assignment_matches,
+    personal_roles,
+    review_due_date,
+    review_snapshot,
+    task_is_mine,
+)
 from app.errors import problem
 from app.information_policy import (
     InformationPolicyBinding,
@@ -125,6 +139,7 @@ from app.permissions import (
     context_for_principal,
     context_for_subject,
     document_governance_scope,
+    employee_directive_packages,
     evaluate_document_access,
     evaluate_employee_directive_projection,
     evaluate_global_action,
@@ -136,12 +151,6 @@ from app.permissions import (
 )
 from app.schemas import (
     Action,
-    AiipDocumentVersionCreate,
-    AiipDocumentVersionCreateResponse,
-    AiipExternalDocumentCurrentUpdateRequest,
-    AiipExternalDocumentCurrentUpdateResponse,
-    AiipExternalDocumentUpsertRequest,
-    AiipExternalDocumentUpsertResponse,
     StratosBudgetUploadDocumentVersionCreate,
     StratosBudgetUploadDocumentVersionCreateResponse,
     StratosBudgetUploadDocumentVersionLineageResponse,
@@ -205,6 +214,7 @@ from app.schemas import (
     DocumentReadinessSeverity,
     GovernanceScope,
     DocumentResponse,
+    DocumentReviewRequest,
     DocumentStatus,
     DocumentType,
     ExternalSourceSystem,
@@ -223,7 +233,6 @@ from app.schemas import (
     IntegrationIdempotencyReserveRequest,
     IntegrationIdempotencyReserveResponse,
     IntegrationEnvelope,
-    AiipUploadIntegrationEnvelope,
     IngestionAuthorizationConfirmRequest,
     IngestionAuthorizationIssueRequest,
     IngestionAuthorizationResponse,
@@ -237,12 +246,15 @@ from app.schemas import (
     PublicDocumentMetadataResponse,
     PublicDocumentSourceResolutionResponse,
     SourceLocationKind,
+    WorkflowTaskAction,
     WorkflowTaskActionRequest,
     WorkflowTaskKind,
     WorkflowTaskListResponse,
     WorkflowTaskPriority,
     WorkflowTaskResponse,
     WorkflowTaskStatus,
+    WorkflowDocumentListResponse,
+    WorkflowDocumentResponse,
     AssistantConversationCreateRequest,
     AssistantConversationDetailResponse,
     AssistantConversationListItemResponse,
@@ -519,7 +531,7 @@ def _default_assignment_payloads(payload: DocumentCreate) -> list[DocumentAssign
 def _external_document_metadata(
     payload: ExternalDocumentUpsertRequest,
     *,
-    integration_envelope: IntegrationEnvelope | AiipUploadIntegrationEnvelope | None = None,
+    integration_envelope: IntegrationEnvelope | None = None,
 ) -> dict[str, object]:
     external_system = payload.external_system.value
     source_location = (
@@ -567,10 +579,6 @@ def _external_document_policies(payload: ExternalDocumentUpsertRequest) -> list[
             for policy in payload.access_policies
         ]
 
-    reader_subjects = ["role:reader"]
-    if payload.external_system == ExternalSourceSystem.stratos_aiip:
-        reader_subjects.append("role:service_aiip")
-
     return [
         DocumentAccessPolicy(
             subjects=[
@@ -595,7 +603,7 @@ def _external_document_policies(payload: ExternalDocumentUpsertRequest) -> list[
             },
         ),
         DocumentAccessPolicy(
-            subjects=reader_subjects,
+            subjects=["role:reader"],
             actions=[Action.document_read.value, Action.rag_query.value],
             constraints={
                 "tenant_id": payload.tenant_id,
@@ -1238,7 +1246,7 @@ def _central_operation(action: str, global_action: bool) -> str:
 
 
 def _audit_service_decision_coordinates(event_type: str) -> tuple[str, str]:
-    if event_type.startswith(("aiip.", "rag.", "assistant.")):
+    if event_type.startswith(("rag.", "assistant.")):
         return "akb:chat", "ai"
     if event_type in {"chunk.opened", "citation.opened", "source.opened"}:
         return "akb:read_document", "read"
@@ -1973,9 +1981,12 @@ def _workflow_action_version(
     return _latest_document_version(db, task.document_id)
 
 
-def _approve_document_for_publication(db: Session, document: Document) -> DocumentVersion | None:
-    _transition_document_status(document, DocumentStatus.approved)
-    version = _latest_document_version(db, document.document_id)
+def _approve_document_for_publication(
+    db: Session, document: Document, version: DocumentVersion | None = None,
+) -> DocumentVersion | None:
+    if document.status != DocumentStatus.valid.value:
+        _transition_document_status(document, DocumentStatus.approved)
+    version = version or _latest_document_version(db, document.document_id)
     if version is not None and version.status in {DocumentStatus.draft.value, DocumentStatus.review.value}:
         version.status = DocumentStatus.approved.value
     return version
@@ -1984,8 +1995,93 @@ def _approve_document_for_publication(db: Session, document: Document) -> Docume
 def _request_document_changes(document: Document, version: DocumentVersion | None = None) -> None:
     if document.status in {DocumentStatus.review.value, DocumentStatus.approved.value}:
         _transition_document_status(document, DocumentStatus.draft)
-    if version is not None and version.status == DocumentStatus.approved.value:
+    if version is not None and version.status in {DocumentStatus.review.value, DocumentStatus.approved.value}:
         version.status = DocumentStatus.draft.value
+
+
+def _review_assignment(document: Document) -> DocumentAssignment | None:
+    return _select_assignment(
+        list(document.assignments),
+        [DocumentAssignmentRole.approver.value, DocumentAssignmentRole.reviewer.value],
+    )
+
+
+def _require_review_source(db: Session, version: DocumentVersion) -> None:
+    if not version.source_file_uri or not version.file_hash or version.valid_from is None:
+        raise problem(409, "review_source_incomplete", "Source, hash and effective date are required for review")
+    files = list(db.scalars(select(DocumentFile).where(
+        DocumentFile.document_version_id == version.document_version_id,
+    )))
+    required = get_settings().content_security_required
+    accepted = {"clean"} if required else {None, "clean", "not_performed"}
+    if any(item.content_security_status not in accepted for item in files):
+        raise problem(409, "review_scan_incomplete", "All source files must pass security scanning")
+    if required:
+        source = next((item for item in files if item.uri == version.source_file_uri), None)
+        if (
+            source is None or source.content_security_status != "clean"
+            or not source.content_security_attestation_sha256
+            or (source.sha256 or "").removeprefix("sha256:") != version.file_hash.removeprefix("sha256:")
+        ):
+            raise problem(409, "review_scan_incomplete", "The exact source must have a clean intake attestation")
+
+
+def _require_review_decision(
+    db: Session, principal: Principal, task: WorkflowTask, document: Document,
+) -> DocumentVersion:
+    context = require_global_action(principal, Action.workflow_task_write, db)
+    if principal.service_identity:
+        raise problem(403, "review_human_required", "A document review requires an authenticated person")
+    assignment = _review_assignment(document)
+    if assignment is not None and not assignment_matches(assignment, context):
+        raise problem(403, "review_assignee_required", "Only the assigned approver may decide this review")
+    if task.status not in ACTIVE_TASK_STATUSES or task.kind != WorkflowTaskKind.review.value:
+        raise problem(409, "review_task_not_active", "This review is no longer active")
+    if task.document_version_id is None:
+        raise problem(409, "review_version_required", "Submit an exact document version for review")
+    version = _get_version(db, document.document_id, task.document_version_id)
+    latest = _latest_document_version(db, document.document_id)
+    if latest is None or latest.document_version_id != version.document_version_id:
+        raise problem(409, "review_source_changed", "A newer version requires a new review")
+    if (task.task_metadata or {}).get("review_snapshot"):
+        if task.task_metadata.get("submitted_by") == principal.subject_id:
+            raise problem(403, "review_self_approval_forbidden", "The submitter cannot decide their own review")
+        if (
+            assignment is None
+            or task.owner_id != assignment.subject_id
+            or version.status != DocumentStatus.review.value
+            or task.task_metadata["review_snapshot"] != review_snapshot(document, version)
+        ):
+            raise problem(409, "review_source_changed", "The source or assignment changed; submit a new review")
+        _require_review_source(db, version)
+    # Approval uses the existing publication capability, not an assignment as a grant.
+    require_document_action(principal, Action.document_version_publish, document, db)
+    if context.access_v2:
+        require_document_version_action(principal, Action.document_version_publish, document, version, db)
+    return version
+
+
+def _workflow_task_response(
+    task: WorkflowTask, context: SubjectContext, document: Document | None = None,
+) -> WorkflowTaskResponse:
+    response = WorkflowTaskResponse.model_validate(task)
+    response.assigned_to_me = task_is_mine(task, context)
+    if not evaluate_global_action(context, Action.workflow_task_write.value).allowed:
+        return response
+    required_action = Action.document_version_publish if task.kind == WorkflowTaskKind.review.value else Action.document_update
+    if document is None or not evaluate_document_access(context, required_action.value, document).allowed:
+        return response
+    if task.kind == WorkflowTaskKind.review.value:
+        assignment = _review_assignment(document)
+        if task.status in ACTIVE_TASK_STATUSES and task.document_version_id and (
+            assignment is None or assignment_matches(assignment, context)
+        ) and not ((task.task_metadata or {}).get("review_snapshot") and task.task_metadata.get("submitted_by") == context.subject_id):
+            response.allowed_actions = [WorkflowTaskAction.approve, WorkflowTaskAction.request_changes]
+    elif task.status in ACTIVE_TASK_STATUSES:
+        response.allowed_actions = [WorkflowTaskAction.assign, WorkflowTaskAction.resolve]
+        if task.kind == WorkflowTaskKind.draft.value:
+            response.allowed_actions.append(WorkflowTaskAction.request_changes)
+    return response
 
 
 def _publish_version(
@@ -2008,7 +2104,27 @@ def _publish_version(
         and version.valid_to is not None
         and _is_official_public_source_document(document)
     )
-    if document.status != DocumentStatus.approved.value and not is_historical_official_source:
+    review_tasks = list(db.scalars(select(WorkflowTask).where(
+        WorkflowTask.document_id == document.document_id,
+        WorkflowTask.kind == WorkflowTaskKind.review.value,
+    ).order_by(desc(WorkflowTask.created_at), desc(WorkflowTask.task_id))))
+    bound_reviews = [task for task in review_tasks if (task.task_metadata or {}).get("review_snapshot")]
+    if bound_reviews:
+        approval = next((task for task in bound_reviews if task.document_version_id == version.document_version_id), None)
+        if (
+            approval is None
+            or version.status != DocumentStatus.approved.value
+            or approval.status != WorkflowTaskStatus.resolved.value
+            or approval.task_metadata.get("last_action") != "approve"
+            or approval.task_metadata["review_snapshot"] != review_snapshot(document, version)
+        ):
+            raise problem(409, "review_source_changed", "The exact current source requires approval before publication")
+        _require_review_source(db, version)
+    if (
+        document.status != DocumentStatus.approved.value
+        and not (document.status == DocumentStatus.valid.value and version.status == DocumentStatus.approved.value)
+        and not is_historical_official_source
+    ):
         raise problem(
             status.HTTP_409_CONFLICT,
             "publish_requires_approval",
@@ -2086,10 +2202,25 @@ def _archive_version(
     )
 
 
-def _upsert_derived_task(db: Session, *, source_key: str, values: dict[str, object]) -> None:
-    task = db.execute(select(WorkflowTask).where(WorkflowTask.source_key == source_key)).scalar_one_or_none()
+def _upsert_derived_task(
+    db: Session,
+    *,
+    source_key: str,
+    values: dict[str, object],
+    existing_tasks_by_source_key: dict[str, WorkflowTask] | None = None,
+) -> None:
+    task = (
+        existing_tasks_by_source_key.get(source_key)
+        if existing_tasks_by_source_key is not None
+        else db.execute(
+            select(WorkflowTask).where(WorkflowTask.source_key == source_key)
+        ).scalar_one_or_none()
+    )
     if task is None:
-        db.add(WorkflowTask(task_id=make_id("task"), source_key=source_key, **values))
+        task = WorkflowTask(task_id=make_id("task"), source_key=source_key, **values)
+        db.add(task)
+        if existing_tasks_by_source_key is not None:
+            existing_tasks_by_source_key[source_key] = task
         return
     if task.status not in ACTIVE_TASK_STATUSES:
         return
@@ -2097,6 +2228,8 @@ def _upsert_derived_task(db: Session, *, source_key: str, values: dict[str, obje
     has_manual_decision = "last_action" in existing_metadata
     for key, value in values.items():
         if has_manual_decision and key in {"status", "owner_id", "owner_label"}:
+            continue
+        if key == "document_version_id" and task.kind == WorkflowTaskKind.review.value and task.document_version_id:
             continue
         if key == "task_metadata":
             if has_manual_decision:
@@ -2107,15 +2240,56 @@ def _upsert_derived_task(db: Session, *, source_key: str, values: dict[str, obje
         setattr(task, key, value)
 
 
+# Only actionable domain events create tasks. Task maintenance warnings must
+# remain audit records; deriving tasks from them creates an escalation loop.
+_ACTIONABLE_WORKFLOW_AUDIT_EVENTS = frozenset({"ingestion.job.failed"})
+
+
 def _sync_derived_workflow_tasks(db: Session) -> None:
-    documents = list(db.execute(select(Document).options(selectinload(Document.assignments))).scalars())
+    existing_tasks_by_source_key = {
+        task.source_key: task
+        for task in db.execute(
+            select(WorkflowTask).where(WorkflowTask.source_key.is_not(None))
+        ).scalars()
+        if task.source_key is not None
+    }
+    documents = list(
+        db.execute(
+            select(Document)
+            .where(
+                Document.status.in_(
+                    [
+                        DocumentStatus.review.value,
+                        DocumentStatus.draft.value,
+                    ]
+                )
+                | (
+                    Document.classification.in_(
+                        [
+                            Classification.restricted.value,
+                            Classification.confidential.value,
+                        ]
+                    )
+                    & (Document.status != DocumentStatus.valid.value)
+                )
+            )
+            .options(selectinload(Document.assignments), selectinload(Document.versions))
+        ).scalars()
+    )
     for document in documents:
-        if document.status == DocumentStatus.review.value:
+        bound_review = any(
+            task.document_id == document.document_id
+            and task.kind == WorkflowTaskKind.review.value
+            and task.status in ACTIVE_TASK_STATUSES
+            and (task.task_metadata or {}).get("review_snapshot")
+            for task in existing_tasks_by_source_key.values()
+        )
+        if document.status == DocumentStatus.review.value and not bound_review:
             review_context = _workflow_assignment_context(
                 document,
                 roles=[
-                    DocumentAssignmentRole.reviewer.value,
                     DocumentAssignmentRole.approver.value,
+                    DocumentAssignmentRole.reviewer.value,
                     DocumentAssignmentRole.gestor.value,
                     DocumentAssignmentRole.owner.value,
                 ],
@@ -2143,7 +2317,10 @@ def _sync_derived_workflow_tasks(db: Session) -> None:
                     "role": review_context["role"],
                     "document_id": document.document_id,
                     "document_title": document.title,
-                    "document_version_id": None,
+                    "document_version_id": (
+                        max(document.versions, key=lambda version: version.created_at).document_version_id
+                        if document.versions else None
+                    ),
                     "audit_event_id": None,
                     "job_id": None,
                     "due_at": _add_days(document.updated_at, int(review_context["sla_days"])),
@@ -2153,9 +2330,17 @@ def _sync_derived_workflow_tasks(db: Session) -> None:
                         **dict(review_context["assignment_metadata"]),
                     },
                 },
+                existing_tasks_by_source_key=existing_tasks_by_source_key,
             )
 
-        if document.status == DocumentStatus.draft.value:
+        returned_for_changes = any(
+            task.document_id == document.document_id
+            and task.kind == WorkflowTaskKind.draft.value
+            and task.status in ACTIVE_TASK_STATUSES
+            and (task.task_metadata or {}).get("review_task_id")
+            for task in existing_tasks_by_source_key.values()
+        )
+        if document.status == DocumentStatus.draft.value and not returned_for_changes:
             draft_context = _workflow_assignment_context(
                 document,
                 roles=[DocumentAssignmentRole.owner.value, DocumentAssignmentRole.gestor.value],
@@ -2189,6 +2374,7 @@ def _sync_derived_workflow_tasks(db: Session) -> None:
                         **dict(draft_context["assignment_metadata"]),
                     },
                 },
+                existing_tasks_by_source_key=existing_tasks_by_source_key,
             )
 
         if document.classification in {Classification.restricted.value, Classification.confidential.value} and document.status != DocumentStatus.valid.value:
@@ -2233,12 +2419,41 @@ def _sync_derived_workflow_tasks(db: Session) -> None:
                         **dict(governance_context["assignment_metadata"]),
                     },
                 },
+                existing_tasks_by_source_key=existing_tasks_by_source_key,
             )
 
-    warning_events = db.execute(
-        select(AuditEvent).where(AuditEvent.severity.in_(["warning", "error", "critical"]))
-    ).scalars()
+    warning_events = list(
+        db.execute(
+            select(AuditEvent)
+            .outerjoin(
+                WorkflowTask,
+                WorkflowTask.audit_event_id == AuditEvent.audit_event_id,
+            )
+            .where(
+                AuditEvent.severity.in_(["warning", "error", "critical"]),
+                AuditEvent.event_type.in_(_ACTIONABLE_WORKFLOW_AUDIT_EVENTS),
+                WorkflowTask.task_id.is_(None),
+            )
+        ).scalars()
+    )
     documents_by_id = {document.document_id: document for document in documents}
+    missing_document_ids = {
+        document_id
+        for event in warning_events
+        if isinstance((document_id := event.event_metadata.get("document_id")), str)
+        and document_id not in documents_by_id
+    }
+    if missing_document_ids:
+        documents_by_id.update(
+            {
+                document.document_id: document
+                for document in db.execute(
+                    select(Document)
+                    .where(Document.document_id.in_(missing_document_ids))
+                    .options(selectinload(Document.assignments))
+                ).scalars()
+            }
+        )
     for event in warning_events:
         document_id = event.event_metadata.get("document_id")
         document = documents_by_id.get(document_id) if isinstance(document_id, str) else None
@@ -2296,6 +2511,7 @@ def _sync_derived_workflow_tasks(db: Session) -> None:
                     **(dict(audit_context["assignment_metadata"]) if audit_context is not None else {}),
                 },
             },
+            existing_tasks_by_source_key=existing_tasks_by_source_key,
         )
 
 
@@ -2326,7 +2542,7 @@ def _escalate_overdue_tasks(db: Session) -> None:
 
         previous_owner_id = task.owner_id
         escalation_subject_id = metadata.get("escalation_subject_id")
-        if isinstance(escalation_subject_id, str) and escalation_subject_id:
+        if isinstance(escalation_subject_id, str) and escalation_subject_id and not metadata.get("review_snapshot"):
             task.owner_id = escalation_subject_id
             task.owner_label = str(metadata.get("escalation_label") or escalation_subject_id)
         task.priority = _PRIORITY_ESCALATION.get(task.priority, WorkflowTaskPriority.critical.value)
@@ -2514,907 +2730,6 @@ def confirm_intelligence_scope_authorization_proof(
         idempotency_key=payload.idempotency_key,
         expires_at=confirmation.expires_at,
     )
-
-
-def _require_aiip_upload_service(principal: Principal) -> None:
-    if (
-        not principal.service_identity
-        or principal.service_client_id != "aiip-document-service"
-    ):
-        raise problem(
-            status.HTTP_403_FORBIDDEN,
-            "aiip_upload_service_required",
-            "The dedicated aiip-document-service identity is required for this upload route",
-        )
-
-
-def _aiip_actor_token(request: Request, principal: Principal) -> str:
-    authorization = request.headers.get("X-AIIP-Actor-Authorization") or ""
-    scheme, separator, token = authorization.strip().partition(" ")
-    token = token.strip()
-    if separator != " " or scheme.lower() != "bearer" or not token:
-        raise problem(
-            status.HTTP_401_UNAUTHORIZED,
-            "aiip_actor_authorization_required",
-            "A fresh AIIP actor bearer is required",
-        )
-    if token == principal.bearer_token:
-        raise problem(
-            status.HTTP_403_FORBIDDEN,
-            "aiip_actor_service_conflict",
-            "The AIIP actor bearer must be independent from the transport credential",
-        )
-    return token
-
-
-def _aiip_scope(
-    payload: AiipExternalDocumentUpsertRequest
-    | AiipDocumentVersionCreate
-    | AiipExternalDocumentCurrentUpdateRequest,
-) -> dict[str, str]:
-    return payload.governance_scope.model_dump(
-        mode="json", by_alias=True, exclude_none=True
-    )
-
-
-def _stable_aiip_id(prefix: str, *parts: str) -> str:
-    digest = sha256("\x00".join(parts).encode("utf-8")).hexdigest()[:32]
-    return f"{prefix}_aiip_{digest}"
-
-
-def _lock_aiip_identity(db: Session, key: str) -> None:
-    bind = db.get_bind()
-    if bind.dialect.name == "postgresql":
-        db.execute(
-            text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
-            {"key": f"akb-aiip-upload:{key}"},
-        )
-
-
-def _register_aiip_akb_authoritatively(
-    *,
-    actor_token: str,
-    resource_type: str,
-    resource_id: str,
-    source_version: str,
-    title: str,
-    parent_id: str,
-    scope: dict[str, str],
-    payload: AiipExternalDocumentUpsertRequest
-    | AiipDocumentVersionCreate
-    | AiipExternalDocumentCurrentUpdateRequest,
-    reason: str,
-) -> AiipAkbGovernedResourceRegistration:
-    settings = get_settings()
-    envelope = payload.integration_envelope
-    if settings.auth_mode == "mock":
-        return AiipAkbGovernedResourceRegistration(
-            governed_resource_id=_stable_aiip_id(
-                "gres", resource_type, resource_id, source_version
-            ),
-            resource_type=resource_type,  # type: ignore[arg-type]
-            resource_id=resource_id,
-            source_version=source_version,
-            parent_id=parent_id,
-            scope=scope,
-            inherited_from_resource_id=envelope.source_resource.governed_resource_id,
-            policy_binding_id=payload.information_policy.policy_binding_id,
-            policy_version=payload.information_policy.policy_version,
-            policy_hash=envelope.policy_hash,
-            originator_id=payload.information_policy.originator_id,
-            issued_at=payload.information_policy.issued_at.isoformat(),
-            review_at=(
-                payload.information_policy.review_at.isoformat()
-                if payload.information_policy.review_at is not None
-                else None
-            ),
-            registered_by_subject_id=envelope.actor.subject_id,
-            confirmed_by_subject_id=envelope.actor.subject_id,
-            correlation_id=envelope.correlation_id,
-            idempotency_key=envelope.idempotency_key,
-        )
-    try:
-        return governance_client(settings).register_aiip_akb_resource(
-            actor_token=actor_token,
-            resource_type=resource_type,  # type: ignore[arg-type]
-            resource_id=resource_id,
-            source_version=source_version,
-            title=title,
-            parent_id=parent_id,
-            scope=scope,
-            envelope=envelope,
-            binding=payload.information_policy,
-            reason=reason,
-        )
-    except GovernanceDenied as exc:
-        raise problem(
-            status.HTTP_403_FORBIDDEN,
-            "aiip_upload_governance_denied",
-            "STRATOS denied the AIIP actor or immutable upload lineage",
-        ) from exc
-    except (GovernanceInvalidResponse, GovernanceUnavailable) as exc:
-        raise problem(
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            "aiip_upload_governance_unavailable",
-            "Authoritative AIIP to AKB governance confirmation is unavailable",
-        ) from exc
-
-
-def _aiip_governance_columns(
-    registration: AiipAkbGovernedResourceRegistration,
-) -> dict[str, object]:
-    return {
-        "governed_resource_id": registration.governed_resource_id,
-        "governed_source_version": registration.source_version,
-        "governed_parent_resource_id": registration.parent_id,
-        "governance_scope_type": registration.scope["type"],
-        "governance_scope_id": registration.scope.get("id"),
-        "governance_scope_owner_subject_id": registration.scope.get("ownerSubjectId"),
-        "governance_registration_status": "REGISTERED",
-        "governance_registered_at": utcnow(),
-    }
-
-
-def _aiip_policy_columns(
-    payload: AiipExternalDocumentUpsertRequest
-    | AiipDocumentVersionCreate
-    | AiipExternalDocumentCurrentUpdateRequest,
-    registration: AiipAkbGovernedResourceRegistration,
-) -> dict[str, object]:
-    columns = policy_columns(payload.information_policy)
-    columns["policy_hash"] = registration.policy_hash
-    return columns
-
-
-def _aiip_parent_source(
-    payload: AiipExternalDocumentUpsertRequest
-    | AiipDocumentVersionCreate
-    | AiipExternalDocumentCurrentUpdateRequest,
-) -> dict[str, object]:
-    source = payload.integration_envelope.source_resource
-    return {
-        "governed_resource_id": source.governed_resource_id,
-        "application": source.application,
-        "resource_type": source.resource_type,
-        "resource_id": source.resource_id,
-        "source_version": source.source_version,
-        "scope": source.scope.model_dump(mode="json", by_alias=True, exclude_none=True),
-    }
-
-
-def _aiip_governance_confirmation(
-    payload: AiipExternalDocumentUpsertRequest
-    | AiipDocumentVersionCreate
-    | AiipExternalDocumentCurrentUpdateRequest,
-    registration: AiipAkbGovernedResourceRegistration,
-) -> dict[str, object]:
-    # The integration contract uses a discriminated scope shape. Pydantic may
-    # retain the mutually exclusive coordinate as ``None`` after parsing, but
-    # it must not leak into the wire response because TypeScript consumers use
-    # the exact canonical JSON shape for governance comparisons.
-    confirmation_scope = {
-        key: value for key, value in registration.scope.items() if value is not None
-    }
-    return {
-        "parent_source_resource": _aiip_parent_source(payload),
-        "governed_resource": {
-            "id": registration.governed_resource_id,
-            "application": "AKB",
-            "resource_type": registration.resource_type,
-            "resource_id": registration.resource_id,
-            "source_version": registration.source_version,
-            "parent_id": registration.parent_id,
-            "scope": confirmation_scope,
-            "policy_assignment": "INHERITED",
-            "explicit_policy_binding_id": None,
-            "inherited_from_resource_id": registration.inherited_from_resource_id,
-            "effective_policy": {
-                "policy_binding_id": registration.policy_binding_id,
-                "policy_version": registration.policy_version,
-                "policy_hash": registration.policy_hash,
-                "originator_id": registration.originator_id,
-                "issued_at": registration.issued_at,
-                "review_at": registration.review_at,
-            },
-            "registered_by_subject_id": registration.registered_by_subject_id,
-            "confirmed_by_subject_id": registration.confirmed_by_subject_id,
-        },
-        "document_policy_binding_id": registration.policy_binding_id,
-        "document_policy_version": registration.policy_version,
-        "document_policy_hash": registration.policy_hash,
-        "actor_subject_id": registration.confirmed_by_subject_id,
-        "correlation_id": registration.correlation_id,
-        "idempotency_key": registration.idempotency_key,
-    }
-
-
-def _assert_aiip_document_matches(
-    external_ref: ExternalDocumentRef,
-    payload: AiipExternalDocumentUpsertRequest
-    | AiipDocumentVersionCreate
-    | AiipExternalDocumentCurrentUpdateRequest,
-) -> None:
-    document = external_ref.document
-    source = payload.integration_envelope.source_resource
-    expected_scope = _aiip_scope(payload)
-    actual_scope = document_governance_scope(document)
-    if (
-        external_ref.tenant_id != "org_stratos"
-        or external_ref.external_system != ExternalSourceSystem.stratos_aiip.value
-        or external_ref.external_ref != payload.integration_envelope.external_ref
-        or external_ref.entity_type != payload.integration_envelope.payload.entity_type
-        or external_ref.entity_id != payload.integration_envelope.payload.entity_id
-        or source.resource_id != payload.integration_envelope.payload.entity_id
-        or document.governed_source_version != source.source_version
-        or document.governed_parent_resource_id != source.governed_resource_id
-        or actual_scope != expected_scope
-        or document.policy_binding_id != payload.information_policy.policy_binding_id
-        or document.policy_version != payload.information_policy.policy_version
-        or document.policy_hash != payload.integration_envelope.policy_hash
-        or document.governance_registration_status != "REGISTERED"
-        or not document.governed_resource_id
-    ):
-        raise problem(
-            status.HTTP_409_CONFLICT,
-            "aiip_upload_lineage_conflict",
-            "The existing AKB document does not match the immutable AIIP source lineage",
-        )
-
-
-def _assert_aiip_version_matches(
-    version: DocumentVersion,
-    document: Document,
-    payload: AiipDocumentVersionCreate | AiipExternalDocumentCurrentUpdateRequest,
-) -> None:
-    expected_scope = _aiip_scope(payload)
-    actual_scope = {
-        "type": version.governance_scope_type or "organization",
-    }
-    if version.governance_scope_id:
-        actual_scope["id"] = version.governance_scope_id
-    elif version.governance_scope_owner_subject_id:
-        actual_scope["ownerSubjectId"] = version.governance_scope_owner_subject_id
-    if (
-        version.governed_source_version != version.file_hash
-        or payload.integration_envelope.payload.sha256 != version.file_hash
-        or version.governed_parent_resource_id != document.governed_resource_id
-        or actual_scope != expected_scope
-        or version.policy_binding_id != payload.information_policy.policy_binding_id
-        or version.policy_version != payload.information_policy.policy_version
-        or version.policy_hash != payload.integration_envelope.policy_hash
-        or version.governance_registration_status != "REGISTERED"
-        or not version.governed_resource_id
-    ):
-        raise problem(
-            status.HTTP_409_CONFLICT,
-            "aiip_upload_version_lineage_conflict",
-            "The persisted AKB version does not match the immutable AIIP lineage",
-        )
-
-
-def _aiip_replay_source_lineage(
-    source_location: dict[str, object] | None,
-) -> dict[str, object] | None:
-    if source_location is None:
-        return None
-    # A retry may upload the same immutable bytes into a fresh staging object.
-    # Those coordinates are transport details; the content hash and AIIP source
-    # lineage below remain authoritative and must still match exactly.
-    ephemeral_fields = {"uri", "storage_ref", "captured_at"}
-    return {
-        key: value
-        for key, value in source_location.items()
-        if key not in ephemeral_fields
-    }
-
-
-@router.post(
-    "/integrations/aiip-upload/external-documents/upsert",
-    response_model=AiipExternalDocumentUpsertResponse,
-    status_code=status.HTTP_200_OK,
-)
-def upsert_aiip_external_document(
-    payload: AiipExternalDocumentUpsertRequest,
-    request: Request,
-    db: Session = Depends(get_db),
-    principal: Principal = Depends(get_current_principal),
-) -> AiipExternalDocumentUpsertResponse:
-    _require_aiip_upload_service(principal)
-    actor_token = _aiip_actor_token(request, principal)
-    source = payload.integration_envelope.source_resource
-    if payload.integration_envelope.actor.subject_id != (
-        source.scope.owner_subject_id
-        if source.scope.type == "own"
-        else payload.integration_envelope.actor.subject_id
-    ):
-        raise problem(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            "aiip_upload_owner_mismatch",
-            "An own AIIP upload scope must belong to the envelope actor",
-        )
-    lock_key = f"document:{payload.tenant_id}:{payload.external_system}:{payload.external_ref}"
-    _lock_aiip_identity(db, lock_key)
-    existing_ref = db.execute(
-        select(ExternalDocumentRef)
-        .where(
-            ExternalDocumentRef.tenant_id == payload.tenant_id,
-            ExternalDocumentRef.external_system == payload.external_system,
-            ExternalDocumentRef.external_ref == payload.external_ref,
-        )
-        .options(
-            selectinload(ExternalDocumentRef.document).selectinload(Document.access_policies),
-            selectinload(ExternalDocumentRef.document).selectinload(Document.assignments),
-        )
-    ).scalar_one_or_none()
-    document_id = (
-        existing_ref.document_id
-        if existing_ref is not None
-        else _stable_aiip_id("doc", payload.tenant_id, payload.external_system, payload.external_ref)
-    )
-    if existing_ref is not None:
-        if (
-            existing_ref.entity_type != payload.entity_type
-            or existing_ref.entity_id != payload.entity_id
-        ):
-            raise problem(
-                status.HTTP_409_CONFLICT,
-                "aiip_upload_external_identity_conflict",
-                "The external_ref belongs to a different AIIP entity",
-            )
-        _assert_aiip_document_matches(existing_ref, payload)
-    registration = _register_aiip_akb_authoritatively(
-        actor_token=actor_token,
-        resource_type="document",
-        resource_id=document_id,
-        source_version=source.source_version,
-        title=payload.title,
-        parent_id=source.governed_resource_id,
-        scope=_aiip_scope(payload),
-        payload=payload,
-        reason="Register exact AIIP-derived AKB document",
-    )
-    if existing_ref is not None:
-        document = existing_ref.document
-        if (
-            registration.governed_resource_id != document.governed_resource_id
-            or registration.registered_by_subject_id != document.owner_id
-        ):
-            raise problem(
-                status.HTTP_409_CONFLICT,
-                "aiip_upload_registration_conflict",
-                "STRATOS confirmation conflicts with the persisted AKB document",
-            )
-        add_audit_event(
-            db,
-            actor_id=registration.confirmed_by_subject_id,
-            event_type="external_document.aiip_governance_verified",
-            resource_type="external_document",
-            resource_id=existing_ref.external_document_id,
-            correlation_id=registration.correlation_id,
-            metadata={"document_id": document.document_id, "replay": True},
-        )
-        _commit_or_conflict(db)
-        db.refresh(existing_ref)
-        response = _external_document_response(existing_ref, created=False)
-        return AiipExternalDocumentUpsertResponse(
-            **response.model_dump(),
-            governance_confirmation=_aiip_governance_confirmation(payload, registration),
-        )
-
-    normalized_payload = ExternalDocumentUpsertRequest(
-        tenant_id=payload.tenant_id,
-        external_system=ExternalSourceSystem.stratos_aiip,
-        external_ref=payload.external_ref,
-        entity_type=payload.entity_type,
-        entity_id=payload.entity_id,
-        document_type=payload.document_type,
-        title=payload.title,
-        classification=payload.classification,
-        information_policy=payload.information_policy,
-        # The dedicated AIIP route has already verified the exact Registry-issued
-        # envelope. Do not pass it through the generic route's local hash check.
-        integration_envelope=None,
-        owner=ExternalDocumentOwner(user_id=registration.registered_by_subject_id),
-        tags=payload.tags,
-        metadata={},
-        source_location=payload.source_location,
-        citation_base_url=payload.citation_base_url,
-        preview_url=payload.preview_url,
-        governance_scope=payload.governance_scope,
-        parent_governed_resource_id=source.governed_resource_id,
-    )
-    document = Document(
-        document_id=document_id,
-        title=payload.title,
-        document_type=str(payload.document_type),
-        status=DocumentStatus.draft.value,
-        classification=legacy_classification(payload.information_policy),
-        owner_id=registration.registered_by_subject_id,
-        gestor_unit=None,
-        tags=sorted({*payload.tags, "external", "stratos_aiip"}),
-        document_metadata=_external_document_metadata(
-            normalized_payload,
-            integration_envelope=payload.integration_envelope,
-        ),
-        **_aiip_policy_columns(payload, registration),
-        **_aiip_governance_columns(registration),
-    )
-    document.access_policies = _external_document_policies(normalized_payload)
-    document.assignments = _assignment_models(
-        document=document,
-        payloads=_default_assignment_payloads(
-            DocumentCreate(
-                title=payload.title,
-                document_type=payload.document_type,
-                owner_id=registration.registered_by_subject_id,
-                classification=payload.classification,
-                tags=payload.tags,
-            )
-        ),
-        actor_id=registration.confirmed_by_subject_id,
-    )
-    _sync_document_assignment_denormalized_fields(document)
-    external_ref = ExternalDocumentRef(
-        external_document_id=make_id("extdoc"),
-        tenant_id=payload.tenant_id,
-        external_system=payload.external_system,
-        external_ref=payload.external_ref,
-        entity_type=payload.entity_type,
-        entity_id=payload.entity_id,
-        document=document,
-        source_location=(
-            payload.source_location.model_dump(mode="json", exclude_none=True)
-            if payload.source_location is not None
-            else None
-        ),
-        citation_base_url=payload.citation_base_url,
-        preview_url=payload.preview_url,
-        ref_metadata={},
-    )
-    db.add(document)
-    db.add(external_ref)
-    audit_event = add_audit_event(
-        db,
-        actor_id=registration.confirmed_by_subject_id,
-        event_type="external_document.aiip_registered",
-        resource_type="external_document",
-        resource_id=external_ref.external_document_id,
-        correlation_id=registration.correlation_id,
-        metadata={
-            "document_id": document.document_id,
-            "external_ref": payload.external_ref,
-            "governed_resource_id": registration.governed_resource_id,
-        },
-    )
-    for assignment in document.assignments:
-        assignment.last_audit_event_id = audit_event.audit_event_id
-    _commit_or_conflict(db)
-    db.refresh(external_ref)
-    response = _external_document_response(external_ref, created=True)
-    return AiipExternalDocumentUpsertResponse(
-        **response.model_dump(),
-        governance_confirmation=_aiip_governance_confirmation(payload, registration),
-    )
-
-
-@router.put(
-    "/integrations/aiip-upload/documents/{document_id}/versions",
-    response_model=AiipDocumentVersionCreateResponse,
-)
-def upsert_aiip_document_version(
-    document_id: str,
-    payload: AiipDocumentVersionCreate,
-    request: Request,
-    db: Session = Depends(get_db),
-    principal: Principal = Depends(get_current_principal),
-) -> AiipDocumentVersionCreateResponse:
-    _require_aiip_upload_service(principal)
-    actor_token = _aiip_actor_token(request, principal)
-    _lock_aiip_identity(db, f"version:{document_id}:{payload.version_label}")
-    external_ref = db.execute(
-        select(ExternalDocumentRef)
-        .where(
-            ExternalDocumentRef.document_id == document_id,
-            ExternalDocumentRef.external_system == ExternalSourceSystem.stratos_aiip.value,
-            ExternalDocumentRef.external_ref == payload.integration_envelope.external_ref,
-        )
-        .options(
-            selectinload(ExternalDocumentRef.document).selectinload(Document.access_policies),
-            selectinload(ExternalDocumentRef.document).selectinload(Document.assignments),
-            selectinload(ExternalDocumentRef.document).selectinload(Document.versions).selectinload(DocumentVersion.files),
-        )
-    ).scalar_one_or_none()
-    if external_ref is None:
-        raise problem(
-            status.HTTP_404_NOT_FOUND,
-            "aiip_upload_document_not_found",
-            "The exact AIIP-derived AKB document was not found",
-        )
-    _assert_aiip_document_matches(external_ref, payload)
-    document = external_ref.document
-    intake_attestation = _verify_document_intake_attestation(
-        document_id=document.document_id,
-        source_file_uri=payload.source_file_uri,
-        file_payload=payload.file,
-    )
-    existing = next(
-        (version for version in document.versions if version.version_label == payload.version_label),
-        None,
-    )
-    if existing is not None and existing.file_hash != payload.file_hash:
-        raise problem(
-            status.HTTP_409_CONFLICT,
-            "aiip_upload_version_hash_conflict",
-            "The AIIP version label already belongs to a different file hash",
-        )
-    if existing is not None:
-        _assert_aiip_version_matches(existing, document, payload)
-    version_id = existing.document_version_id if existing is not None else _stable_aiip_id(
-        "ver", document_id, payload.version_label, payload.file_hash
-    )
-    registration = _register_aiip_akb_authoritatively(
-        actor_token=actor_token,
-        resource_type="document-version",
-        resource_id=version_id,
-        source_version=payload.file_hash,
-        title=f"{document.title} — {payload.version_label}",
-        parent_id=str(document.governed_resource_id),
-        scope=_aiip_scope(payload),
-        payload=payload,
-        reason="Register exact immutable AIIP-derived AKB document version",
-    )
-    if existing is not None:
-        if (
-            existing.governed_resource_id != registration.governed_resource_id
-            or existing.governed_parent_resource_id != registration.parent_id
-            or existing.policy_binding_id != registration.policy_binding_id
-        ):
-            raise problem(
-                status.HTTP_409_CONFLICT,
-                "aiip_upload_version_registration_conflict",
-                "STRATOS confirmation conflicts with the persisted AKB document version",
-            )
-        add_audit_event(
-            db,
-            actor_id=registration.confirmed_by_subject_id,
-            event_type="document.version.aiip_governance_verified",
-            resource_type="document_version",
-            resource_id=existing.document_version_id,
-            correlation_id=registration.correlation_id,
-            metadata={
-                "document_id": document_id,
-                "replay": True,
-                "canonical_storage_object_reused": (
-                    existing.source_file_uri != payload.source_file_uri
-                ),
-                **_document_intake_audit_metadata(intake_attestation),
-            },
-        )
-        current_file = max(
-            existing.files,
-            key=lambda item: (item.uploaded_at, item.file_id),
-            default=None,
-        )
-        if current_file is not None:
-            _apply_document_intake_attestation(current_file, intake_attestation)
-        expected_source_location = (
-            payload.source_location.model_dump(mode="json", exclude_none=True)
-            if payload.source_location is not None
-            else None
-        )
-        if (
-            current_file is None
-            or len(existing.files) != 1
-            or existing.valid_from != payload.valid_from
-            or existing.valid_to != payload.valid_to
-            or current_file.uri != existing.source_file_uri
-            or payload.source_location.uri != payload.source_file_uri
-            or _aiip_replay_source_lineage(existing.source_location)
-            != _aiip_replay_source_lineage(expected_source_location)
-            or existing.change_summary != payload.change_summary
-            or current_file.filename != payload.file.filename
-            or current_file.mime_type != payload.file.mime_type
-            or current_file.size_bytes != payload.file.size_bytes
-            or current_file.sha256 != payload.file.sha256
-            or current_file.uploaded_by != registration.registered_by_subject_id
-        ):
-            raise problem(
-                status.HTTP_409_CONFLICT,
-                "aiip_upload_version_payload_conflict",
-                "The persisted AIIP document version does not match the immutable upload payload",
-            )
-        _commit_or_conflict(db)
-        db.refresh(existing)
-        return AiipDocumentVersionCreateResponse(
-            version=_document_version_response(existing),
-            external_document=_external_document_response(external_ref, created=False),
-            created=False,
-            governance_confirmation=_aiip_governance_confirmation(payload, registration),
-        )
-
-    version = DocumentVersion(
-        document_version_id=version_id,
-        document_id=document.document_id,
-        version_label=payload.version_label,
-        status=DocumentStatus.draft.value,
-        valid_from=payload.valid_from,
-        valid_to=payload.valid_to,
-        source_file_uri=payload.source_file_uri,
-        source_location=(
-            payload.source_location.model_dump(mode="json", exclude_none=True)
-            if payload.source_location is not None
-            else None
-        ),
-        file_hash=payload.file_hash,
-        change_summary=payload.change_summary,
-        **_aiip_policy_columns(payload, registration),
-        **_aiip_governance_columns(registration),
-    )
-    file = DocumentFile(
-        document_id=document.document_id,
-        document_version=version,
-        uri=payload.source_file_uri,
-        filename=payload.file.filename,
-        mime_type=payload.file.mime_type,
-        size_bytes=payload.file.size_bytes,
-        sha256=payload.file.sha256,
-        uploaded_by=registration.registered_by_subject_id,
-    )
-    _apply_document_intake_attestation(file, intake_attestation)
-    db.add(version)
-    db.add(file)
-    db.flush()
-    add_audit_event(
-        db,
-        actor_id=registration.confirmed_by_subject_id,
-        event_type="document.version.aiip_created",
-        resource_type="document_version",
-        resource_id=version.document_version_id,
-        correlation_id=registration.correlation_id,
-        metadata={
-            "document_id": document.document_id,
-            "governed_resource_id": registration.governed_resource_id,
-            **_document_intake_audit_metadata(intake_attestation),
-        },
-    )
-    _commit_or_conflict(db)
-    db.refresh(version)
-    return AiipDocumentVersionCreateResponse(
-        version=_document_version_response(version),
-        external_document=_external_document_response(external_ref, created=False),
-        created=True,
-        governance_confirmation=_aiip_governance_confirmation(payload, registration),
-    )
-
-
-@router.patch(
-    "/integrations/aiip-upload/external-documents/{external_document_id}/current",
-    response_model=AiipExternalDocumentCurrentUpdateResponse,
-)
-def update_aiip_external_document_current(
-    external_document_id: str,
-    payload: AiipExternalDocumentCurrentUpdateRequest,
-    request: Request,
-    db: Session = Depends(get_db),
-    principal: Principal = Depends(get_current_principal),
-) -> AiipExternalDocumentCurrentUpdateResponse:
-    _require_aiip_upload_service(principal)
-    actor_token = _aiip_actor_token(request, principal)
-    envelope = payload.integration_envelope
-    source = envelope.source_resource
-    if (
-        source is None
-        or envelope.source_system != "STRATOS_AIIP"
-        or envelope.actor.type != "person"
-        or envelope.policy_binding_id != payload.information_policy.policy_binding_id
-        or source.scope.model_dump(mode="json", by_alias=True, exclude_none=True)
-        != _aiip_scope(payload)
-    ):
-        raise problem(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            "aiip_upload_envelope_invalid",
-            "The current-state update does not match the immutable AIIP envelope",
-        )
-    _lock_aiip_identity(db, f"current:{external_document_id}")
-    external_ref = db.execute(
-        select(ExternalDocumentRef)
-        .where(
-            ExternalDocumentRef.external_document_id == external_document_id,
-            ExternalDocumentRef.document_id == payload.document_id,
-            ExternalDocumentRef.external_system == ExternalSourceSystem.stratos_aiip.value,
-            ExternalDocumentRef.external_ref == envelope.external_ref,
-        )
-        .options(
-            selectinload(ExternalDocumentRef.document).selectinload(Document.access_policies),
-            selectinload(ExternalDocumentRef.document).selectinload(Document.assignments),
-            selectinload(ExternalDocumentRef.document).selectinload(Document.versions).selectinload(DocumentVersion.files),
-        )
-    ).scalar_one_or_none()
-    if external_ref is None:
-        raise problem(
-            status.HTTP_404_NOT_FOUND,
-            "aiip_upload_document_not_found",
-            "The exact AIIP-derived AKB external document was not found",
-        )
-    _assert_aiip_document_matches(external_ref, payload)
-    version = next(
-        (
-            item
-            for item in external_ref.document.versions
-            if item.document_version_id == payload.document_version_id
-        ),
-        None,
-    )
-    if version is None or version.file_hash is None:
-        raise problem(
-            status.HTTP_404_NOT_FOUND,
-            "aiip_upload_version_not_found",
-            "The exact immutable AIIP-derived AKB version was not found",
-        )
-    _assert_aiip_version_matches(version, external_ref.document, payload)
-    file = next((item for item in version.files if item.file_id == payload.file_id), None)
-    if file is None:
-        raise problem(
-            status.HTTP_409_CONFLICT,
-            "aiip_upload_file_conflict",
-            "The file does not belong to the immutable AIIP-derived AKB version",
-        )
-    registration = _register_aiip_akb_authoritatively(
-        actor_token=actor_token,
-        resource_type="document-version",
-        resource_id=version.document_version_id,
-        source_version=version.file_hash,
-        title=f"{external_ref.document.title} — {version.version_label}",
-        parent_id=str(external_ref.document.governed_resource_id),
-        scope=_aiip_scope(payload),
-        payload=payload,
-        reason="Reconfirm AIIP-derived AKB version before current-state update",
-    )
-    if (
-        registration.governed_resource_id != version.governed_resource_id
-        or registration.parent_id != version.governed_parent_resource_id
-        or file.uri != version.source_file_uri
-        or file.sha256 != version.file_hash
-        or file.uploaded_by != registration.registered_by_subject_id
-    ):
-        raise problem(
-            status.HTTP_409_CONFLICT,
-            "aiip_upload_current_registration_conflict",
-            "STRATOS confirmation conflicts with the persisted AKB current version",
-        )
-    current_version_id = external_ref.current_document_version_id
-    same_version = current_version_id == version.document_version_id
-    if same_version:
-        if external_ref.current_file_id != file.file_id:
-            raise problem(
-                status.HTTP_409_CONFLICT,
-                "aiip_upload_current_replay_conflict",
-                "The selected AIIP-derived AKB version has conflicting current metadata",
-            )
-        if (
-            payload.ingestion_job_id is not None
-            and external_ref.current_ingestion_job_id not in {None, payload.ingestion_job_id}
-        ):
-            raise problem(
-                status.HTTP_409_CONFLICT,
-                "aiip_upload_current_replay_conflict",
-                "The selected AIIP-derived AKB version has a different ingestion job",
-            )
-        updated = (
-            payload.ingestion_job_id is not None
-            and external_ref.current_ingestion_job_id is None
-        )
-    else:
-        if current_version_id != payload.expected_current_document_version_id:
-            raise problem(
-                status.HTTP_409_CONFLICT,
-                "aiip_upload_current_cas_conflict",
-                "The AIIP upload preflight was based on a stale current document version",
-            )
-        updated = True
-
-    authoritative_external_status = payload.ingestion_status
-    if payload.ingestion_job_id is not None:
-        ingestion_attempt = _select_aiip_authoritative_ingestion_attempt(
-            db,
-            document_id=payload.document_id,
-            document_version_id=payload.document_version_id,
-            ingestion_job_id=payload.ingestion_job_id,
-        )
-        authoritative_external_status = {
-            "QUEUED": "INGESTING",
-            "INGESTING": "INGESTING",
-            "INDEXED": "INDEXED",
-            "FAILED": "FAILED",
-        }[ingestion_attempt.ingestion_status]
-        if payload.ingestion_status != authoritative_external_status:
-            raise problem(
-                status.HTTP_409_CONFLICT,
-                "aiip_ingestion_status_authority_conflict",
-                "AIIP current-state status does not match the authoritative ingestion attempt",
-            )
-
-    if not same_version:
-        external_ref.current_document_version_id = version.document_version_id
-        external_ref.current_file_id = file.file_id
-        external_ref.akb_source_uri = version.source_file_uri
-        external_ref.source_location = version.source_location
-    if payload.ingestion_job_id is not None:
-        external_ref.current_ingestion_job_id = payload.ingestion_job_id
-        external_ref.current_ingestion_status = authoritative_external_status
-    elif external_ref.current_ingestion_job_id is None:
-        external_ref.current_ingestion_status = "VERSION_CREATED"
-    add_audit_event(
-        db,
-        actor_id=registration.confirmed_by_subject_id,
-        event_type="external_document.aiip_current_reconciled",
-        resource_type="external_document",
-        resource_id=external_ref.external_document_id,
-        correlation_id=registration.correlation_id,
-        metadata={
-            "document_id": external_ref.document_id,
-            "document_version_id": version.document_version_id,
-            "ingestion_job_id": external_ref.current_ingestion_job_id,
-            "updated": updated,
-        },
-    )
-    _commit_or_conflict(db)
-    db.refresh(external_ref)
-    return AiipExternalDocumentCurrentUpdateResponse(
-        external_document=_external_document_response(external_ref, created=False),
-        updated=updated,
-        governance_confirmation=_aiip_governance_confirmation(payload, registration),
-    )
-
-
-def _select_aiip_authoritative_ingestion_attempt(
-    db: Session,
-    *,
-    document_id: str,
-    document_version_id: str,
-    ingestion_job_id: str,
-) -> IngestionAttempt:
-    # Share the same per-document serialization boundary as ingestion-service.
-    # Locking only the attempt row is insufficient while the first row does not
-    # exist, and the AIIP advisory key is intentionally private to its bridge.
-    db.execute(
-        select(Document.document_id)
-        .where(Document.document_id == document_id)
-        .with_for_update()
-    ).scalar_one()
-    attempt = db.execute(
-        select(IngestionAttempt)
-        .where(IngestionAttempt.document_id == document_id)
-        .with_for_update()
-    ).scalar_one_or_none()
-    if attempt is None:
-        attempt = IngestionAttempt(
-            document_id=document_id,
-            document_version_id=document_version_id,
-            ingestion_job_id=ingestion_job_id,
-            ingestion_status="QUEUED",
-        )
-        db.add(attempt)
-        db.flush()
-        return attempt
-    if attempt.ingestion_job_id == ingestion_job_id:
-        if attempt.document_version_id != document_version_id:
-            raise problem(
-                status.HTTP_409_CONFLICT,
-                "aiip_ingestion_attempt_version_conflict",
-                "The selected AIIP ingestion job belongs to another immutable version",
-            )
-        return attempt
-    if attempt.ingestion_status == "INGESTING":
-        raise problem(
-            status.HTTP_409_CONFLICT,
-            "ingestion_attempt_lease_active",
-            "The current ingestion attempt holds the execution lease",
-        )
-    attempt.document_version_id = document_version_id
-    attempt.ingestion_job_id = ingestion_job_id
-    attempt.ingestion_status = "QUEUED"
-    return attempt
 
 
 def _require_stratos_budget_upload_service(principal: Principal) -> None:
@@ -4686,8 +4001,6 @@ def upsert_external_document(
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> ExternalDocumentResponse:
-    if payload.external_system == ExternalSourceSystem.stratos_aiip:
-        _reject_generic_aiip_write()
     if payload.external_system == ExternalSourceSystem.stratos_budget:
         _reject_generic_budget_write()
     _require_v2_policy(principal, payload.information_policy)
@@ -4858,8 +4171,6 @@ def update_external_document_current(
     principal: Principal = Depends(get_current_principal),
 ) -> ExternalDocumentResponse:
     external_ref = _get_external_document_ref(db, external_document_id)
-    if external_ref.external_system == ExternalSourceSystem.stratos_aiip.value:
-        _reject_generic_aiip_write()
     if external_ref.external_system == ExternalSourceSystem.stratos_budget.value:
         _reject_generic_budget_write()
     if {
@@ -4914,12 +4225,8 @@ def update_document_external_references_current(
     dedicated_external_system = db.execute(
         select(ExternalDocumentRef.external_system).where(
             ExternalDocumentRef.document_id == document_id,
-            ExternalDocumentRef.external_system.in_(
-                [
-                    ExternalSourceSystem.stratos_aiip.value,
-                    ExternalSourceSystem.stratos_budget.value,
-                ]
-            ),
+            ExternalDocumentRef.external_system
+            == ExternalSourceSystem.stratos_budget.value,
         ).limit(1)
     ).scalar_one_or_none()
     if {
@@ -4927,8 +4234,6 @@ def update_document_external_references_current(
         "akb_source_uri",
         "source_location",
     }.intersection(payload.model_fields_set) and dedicated_external_system is not None:
-        if dedicated_external_system == ExternalSourceSystem.stratos_aiip.value:
-            _reject_generic_aiip_write()
         _reject_generic_budget_write()
 
     ingestion_attempt = db.execute(
@@ -4957,11 +4262,8 @@ def update_document_external_references_current(
         external_refs = [
             external_ref
             for external_ref in external_refs
-            if (
-                external_ref.external_system == ExternalSourceSystem.stratos_aiip.value
-                or external_ref.current_document_version_id
-                in {None, payload.current_document_version_id}
-            )
+            if external_ref.current_document_version_id
+            in {None, payload.current_document_version_id}
         ]
     for external_ref in external_refs:
         _apply_ingestion_status_cas(external_ref, payload)
@@ -5077,15 +4379,6 @@ def _create_authoritative_ingestion_attempt(
         ).scalars()
     )
     if any(
-        external_ref.external_system == ExternalSourceSystem.stratos_aiip.value
-        and (
-            external_ref.current_document_version_id != payload.current_document_version_id
-            or external_ref.current_ingestion_job_id != payload.current_ingestion_job_id
-        )
-        for external_ref in external_refs
-    ):
-        _reject_generic_aiip_write()
-    if any(
         external_ref.external_system == ExternalSourceSystem.stratos_budget.value
         and (
             external_ref.current_document_version_id
@@ -5195,14 +4488,6 @@ def _apply_authoritative_ingestion_attempt_cas(
     attempt.ingestion_status = requested_status
 
 
-def _reject_generic_aiip_write() -> None:
-    raise problem(
-        status.HTTP_409_CONFLICT,
-        "aiip_upload_dedicated_route_required",
-        "STRATOS_AIIP lineage may be changed only through the dedicated AIIP upload route",
-    )
-
-
 def _reject_generic_budget_write() -> None:
     raise problem(
         status.HTTP_409_CONFLICT,
@@ -5220,10 +4505,6 @@ def _apply_ingestion_status_cas(
         "akb_source_uri",
         "source_location",
     }.intersection(payload.model_fields_set)
-    if external_ref.external_system == ExternalSourceSystem.stratos_aiip.value and (
-        external_ref.current_ingestion_job_id is None or forbidden_fields
-    ):
-        _reject_generic_aiip_write()
     if external_ref.external_system == ExternalSourceSystem.stratos_budget.value and (
         external_ref.current_ingestion_job_id is None or forbidden_fields
     ):
@@ -5801,6 +5082,7 @@ def _require_controlled_package_rules_reviewed(
 
     unregistered_keys: set[str] = set()
     category_mismatches: set[str] = set()
+    source_type_mismatches: set[str] = set()
     for rule in result.rules:
         feedback = latest_feedback[f"rules.{rule.rule_id}"]
         if feedback.decision == "rejected":
@@ -5828,6 +5110,13 @@ def _require_controlled_package_rules_reviewed(
             effective_rule.category,
         ):
             category_mismatches.add(effective_rule.normative_key)
+            continue
+        if not normative_key_source_type_matches(
+            package.domain,
+            effective_rule.normative_key,
+            package.source_type,
+        ):
+            source_type_mismatches.add(effective_rule.normative_key)
 
     if unregistered_keys:
         raise problem(
@@ -5842,6 +5131,13 @@ def _require_controlled_package_rules_reviewed(
             "controlled_document_package_normative_key_category_mismatch",
             "A verified rule category does not match its registered normative key",
             {"normative_keys": sorted(category_mismatches)},
+        )
+    if source_type_mismatches:
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "controlled_document_package_normative_key_source_mismatch",
+            "A statutory normative key requires an authoritative legal source",
+            {"normative_keys": sorted(source_type_mismatches)},
         )
 
     verified_rule_count = sum(
@@ -5878,6 +5174,14 @@ def _apply_controlled_rule_precedence(
     conflict_detected = False
     rules_by_normative_key: dict[str, list[ControlledRuleResponse]] = {}
     for rule in rules:
+        if not normative_key_source_type_matches(
+            "public_procurement",
+            rule.proposal.normative_key,
+            rule.source_type.value,
+        ):
+            rule.precedence_status = "shadowed"
+            rule.consumer_eligible = False
+            continue
         rules_by_normative_key.setdefault(
             canonical_normative_key(rule.proposal.normative_key),
             [],
@@ -5921,6 +5225,22 @@ def _apply_controlled_rule_precedence(
                 "edited",
             }
     return conflict_detected
+
+
+def _has_required_statutory_rule_coverage(
+    domain: str,
+    rules: list[ControlledRuleResponse],
+) -> bool:
+    if domain != "public_procurement":
+        return True
+    available = {
+        canonical_normative_key(rule.proposal.normative_key)
+        for rule in rules
+        if rule.consumer_eligible
+        and rule.precedence_status == "authoritative"
+        and rule.source_type.value in STATUTORY_SOURCE_TYPES
+    }
+    return PUBLIC_PROCUREMENT_REQUIRED_STATUTORY_KEYS.issubset(available)
 
 
 @router.get(
@@ -6149,11 +5469,15 @@ def _controlled_rule_consumer_view_for_packages(
 @router.get(
     "/controlled-documentation/rules",
     response_model=ControlledRuleListResponse,
+    responses={403: {"description": "The subject cannot review unverified rules or inactive packages"}},
 )
 def list_controlled_document_rules(
     domain: str = Query(min_length=2, max_length=80),
     valid_on: date | None = Query(default=None),
-    approved_only: bool = Query(default=True),
+    approved_only: bool = Query(
+        default=True,
+        description="False requires document update or version publication permission; ordinary readers receive only verified rules.",
+    ),
     include_inactive: bool = Query(default=False),
     consumer_view: bool = Query(default=False),
     db: Session = Depends(get_db),
@@ -6166,6 +5490,17 @@ def list_controlled_document_rules(
             "controlled_rule_consumer_view_inactive_forbidden",
             "The controlled-rule consumer view can contain only effective packages",
         )
+    if not approved_only:
+        context = context_for_principal(principal, db)
+        if not any(
+            evaluate_global_action(context, action.value).allowed
+            for action in (Action.document_update, Action.document_version_publish)
+        ):
+            raise problem(
+                status.HTTP_403_FORBIDDEN,
+                "controlled_rule_review_forbidden",
+                "Reviewing unverified rules requires document management permission",
+            )
     if include_inactive:
         require_global_action(principal, Action.document_update, db)
         candidates = list(
@@ -6449,6 +5784,15 @@ def list_controlled_rules_for_budget(
             rule.proposal.category,
         )
     ]
+    has_required_statutory_coverage = _has_required_statutory_rule_coverage(
+        domain,
+        eligible,
+    )
+    if not has_required_statutory_coverage:
+        eligible = []
+        if internal.packages:
+            warnings.append("NO_VERIFIED_CONTROLLED_RULES_AVAILABLE")
+    warnings = list(dict.fromkeys(warnings))
     if _CONTROLLED_RULE_CONSUMER_BLOCKING_WARNINGS.intersection(warnings):
         response_status = "conflict"
         eligible = []
@@ -7638,12 +6982,13 @@ def _authorized_document_metadata_rows(
         stmt = stmt.where(Document.document_type == document_type.value)
     if owner_id:
         stmt = stmt.where(Document.owner_id == owner_id)
-    if document_ids:
+    if document_ids is not None:
         stmt = stmt.where(Document.document_id.in_(document_ids))
     if candidate_limit is not None:
         stmt = stmt.limit(candidate_limit)
 
     context = context_for_principal(principal, db)
+    employee_packages = [] if principal.service_identity else employee_directive_packages(db, context)
     runtime_candidates: list[tuple[Document, str]] = []
     runtime_evaluations: dict[str, tuple[Document, Decision]] = {}
     for document in db.execute(stmt).scalars():
@@ -7652,6 +6997,11 @@ def _authorized_document_metadata_rows(
         if context_tags and not all(_document_matches_context_tag(document, candidate) for candidate in context_tags):
             continue
         local_decision = evaluate_document_access(context, authorization_action.value, document)
+        if not local_decision.allowed and employee_packages:
+            local_decision = evaluate_employee_directive_projection(
+                db=db, context=context, action=authorization_action.value,
+                document=document, packages=employee_packages,
+            ) or local_decision
         if not local_decision.allowed:
             continue
         runtime_key = json.dumps(
@@ -7661,6 +7011,7 @@ def _authorized_document_metadata_rows(
                 "policy_hash": document.policy_hash,
                 "policy_summary": document.policy_summary,
                 "official_public_source": _is_official_public_source_document(document),
+                "employee_projection": local_decision.constraints.get("controlled_package_id"),
             },
             sort_keys=True,
             separators=(",", ":"),
@@ -7692,7 +7043,11 @@ def _authorized_document_metadata_rows(
         # PDP authoritative while preventing document-list latency from growing
         # linearly with the number of governed scopes.
         with ThreadPoolExecutor(max_workers=min(8, len(evaluation_items))) as executor:
-            runtime_access = dict(executor.map(evaluate_runtime_candidate, evaluation_items))
+            futures = [
+                executor.submit(copy_context().run, evaluate_runtime_candidate, item)
+                for item in evaluation_items
+            ]
+            runtime_access = dict(future.result() for future in futures)
 
     return [
         document
@@ -7875,6 +7230,8 @@ def replace_document_assignments(
     principal: Principal = Depends(get_current_principal),
 ) -> DocumentAssignmentListResponse:
     document = _get_document(db, document_id)
+    _lock_publication_source(db, document_id=document_id)
+    db.refresh(document)
     require_document_action(principal, Action.document_update, document, db)
     assignment_payloads = _validated_assignment_payloads(payload.assignments)
 
@@ -7913,6 +7270,8 @@ def patch_document(
     principal: Principal = Depends(get_current_principal),
 ) -> Document:
     document = _get_document(db, document_id)
+    _lock_publication_source(db, document_id=document_id)
+    db.refresh(document)
     subject_context = require_document_action(
         principal, Action.document_update, document, db
     )
@@ -7920,6 +7279,12 @@ def patch_document(
     changes = payload.model_dump(exclude_unset=True)
     if not changes:
         raise problem(status.HTTP_400_BAD_REQUEST, "empty_patch", "PATCH body must contain at least one field")
+    if payload.status in {DocumentStatus.approved, DocumentStatus.valid} and payload.status.value != document.status:
+        reviews = db.scalars(select(WorkflowTask).where(
+            WorkflowTask.document_id == document_id, WorkflowTask.kind == WorkflowTaskKind.review.value,
+        ))
+        if any((task.task_metadata or {}).get("review_snapshot") for task in reviews):
+            raise problem(409, "review_action_required", "Use the version-bound review and publication actions")
 
     if payload.title is not None:
         document.title = payload.title
@@ -8056,15 +7421,8 @@ def create_document_version(
     principal: Principal = Depends(get_current_principal),
 ) -> DocumentVersionResponse:
     document = _get_document(db, document_id)
-    aiip_external_ref = db.execute(
-        select(ExternalDocumentRef.external_document_id).where(
-            ExternalDocumentRef.document_id == document_id,
-            ExternalDocumentRef.external_system
-            == ExternalSourceSystem.stratos_aiip.value,
-        ).limit(1)
-    ).scalar_one_or_none()
-    if aiip_external_ref is not None:
-        _reject_generic_aiip_write()
+    _lock_publication_source(db, document_id=document_id)
+    db.refresh(document)
     budget_external_ref = db.execute(
         select(ExternalDocumentRef.external_document_id).where(
             ExternalDocumentRef.document_id == document_id,
@@ -8411,52 +7769,6 @@ def create_intelligence_scope_authorization_proof(
     )
 
 
-def _aiip_owner_ingestion_authority(
-    *,
-    principal: Principal,
-    action: str,
-    document: Document,
-    version: DocumentVersion,
-    db: Session,
-) -> DocumentVersionAuthority | None:
-    """Allow only the submitter's exact governed AIIP upload to enter ingestion."""
-    if (
-        action != Action.document_ingest.value
-        or document.owner_id != principal.subject_id
-        or document.governance_registration_status != "REGISTERED"
-        or document.governance_scope_type != "own"
-        or document.governance_scope_owner_subject_id != principal.subject_id
-        or version.governance_registration_status != "REGISTERED"
-        or version.governance_scope_type != "own"
-        or version.governance_scope_owner_subject_id != principal.subject_id
-        or version.governed_parent_resource_id != document.governed_resource_id
-    ):
-        return None
-    external_reference = db.execute(
-        select(ExternalDocumentRef.external_document_id).where(
-            ExternalDocumentRef.document_id == document.document_id,
-            ExternalDocumentRef.external_system
-            == ExternalSourceSystem.stratos_aiip.value,
-        )
-    ).scalar_one_or_none()
-    uploaded_files = db.execute(
-        select(DocumentFile.file_id).where(
-            DocumentFile.document_version_id == version.document_version_id,
-            DocumentFile.uploaded_by == principal.subject_id,
-        )
-    ).scalars().all()
-    if external_reference is None or len(uploaded_files) != 1:
-        return None
-    try:
-        return resolve_document_version_authority(document, version)
-    except ValueError as exc:
-        raise problem(
-            status.HTTP_409_CONFLICT,
-            "document_version_authority_invalid",
-            "The immutable AIIP document version governance authority is unavailable or conflicting",
-        ) from exc
-
-
 def _budget_historical_batch_ingestion_authority(
     *,
     principal: Principal,
@@ -8692,24 +8004,15 @@ def create_ingestion_authorization_proof(
             "ingestion_authorization_actor_inactive",
             "The current person identity, membership, and application access must be active",
         )
-    authority = _aiip_owner_ingestion_authority(
-        principal=principal,
-        action=payload.action,
-        document=document,
-        version=version,
-        db=db,
+    require_document_action(principal, Action(payload.action), document, db)
+    authority = require_document_version_action(
+        principal,
+        Action(payload.action),
+        document,
+        version,
+        db,
     )
-    authorization_basis = "aiip_owner_submission"
-    if authority is None:
-        require_document_action(principal, Action(payload.action), document, db)
-        authority = require_document_version_action(
-            principal,
-            Action(payload.action),
-            document,
-            version,
-            db,
-        )
-        authorization_basis = "application_access"
+    authorization_basis = "application_access"
     token, confirmation = issue_ingestion_authorization(
         get_settings(),
         subject_id=principal.subject_id,
@@ -8772,8 +8075,13 @@ def publish_document_version(
     principal: Principal = Depends(get_current_principal),
 ) -> DocumentVersionResponse:
     document = _get_document(db, document_id)
-    require_document_action(principal, Action.document_version_publish, document, db)
     version = _get_version(db, document_id, version_id)
+    _lock_publication_source(db, document_id=document_id, document_version_id=version_id)
+    db.refresh(document)
+    db.refresh(version)
+    context = require_document_action(principal, Action.document_version_publish, document, db)
+    if context.access_v2:
+        require_document_version_action(principal, Action.document_version_publish, document, version, db)
     _publish_version(db, document=document, version=version, actor_id=principal.subject_id)
     _commit_or_conflict(db)
     db.refresh(version)
@@ -9589,6 +8897,221 @@ def _candidate_document_coordinates_allowed(
     )
 
 
+@router.post(
+    "/documents/{document_id}/versions/{version_id}/submit-review",
+    response_model=WorkflowTaskResponse,
+)
+def submit_document_review(
+    document_id: str,
+    version_id: str,
+    payload: DocumentReviewRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> WorkflowTaskResponse:
+    document = _get_document(db, document_id)
+    version = _get_version(db, document_id, version_id)
+    _lock_publication_source(db, document_id=document_id, document_version_id=version_id)
+    db.refresh(document)
+    db.refresh(version)
+    context = require_document_action(principal, Action.document_update, document, db)
+    require_global_action(principal, Action.workflow_task_write, db)
+    if principal.service_identity:
+        raise problem(403, "review_human_required", "A document review requires an authenticated person")
+    if context.access_v2:
+        require_document_version_action(principal, Action.document_update, document, version, db)
+    latest = _latest_document_version(db, document_id)
+    if (
+        latest is None or latest.document_version_id != version_id
+        or version.status not in {DocumentStatus.draft.value, DocumentStatus.review.value, DocumentStatus.approved.value}
+        or document.status in {DocumentStatus.archived.value, DocumentStatus.cancelled.value, DocumentStatus.superseded.value}
+    ):
+        raise problem(409, "review_version_not_eligible", "Only the current unpublished version can be submitted for review")
+    approver = _review_assignment(document)
+    if approver is None or approver.subject_type not in {"user", "group"}:
+        raise problem(409, "review_assignee_required", "Assign an active person or group as approver first")
+    _require_review_source(db, version)
+    snapshot = review_snapshot(document, version)
+    active = list(db.scalars(select(WorkflowTask).where(
+        WorkflowTask.document_id == document_id,
+        WorkflowTask.kind.in_([WorkflowTaskKind.review.value, WorkflowTaskKind.draft.value]),
+        WorkflowTask.status.in_(ACTIVE_TASK_STATUSES),
+    )))
+    for task in active:
+        if (
+            task.kind == WorkflowTaskKind.review.value and task.document_version_id == version_id
+            and (task.task_metadata or {}).get("review_snapshot") == snapshot
+        ):
+            return _workflow_task_response(task, context, document)
+    now = utcnow()
+    for task in active:
+        task.status = WorkflowTaskStatus.cancelled.value if task.kind == WorkflowTaskKind.review.value else WorkflowTaskStatus.resolved.value
+        task.resolved_at = now
+        task.task_metadata = {**dict(task.task_metadata or {}), "superseded_by_review": True}
+    version.status = DocumentStatus.review.value
+    if document.status != DocumentStatus.valid.value:
+        _transition_document_status(document, DocumentStatus.review)
+    task_id = make_id("task")
+    task = WorkflowTask(
+        task_id=task_id,
+        source_key=f"document-review:{document_id}:{task_id}",
+        kind=WorkflowTaskKind.review.value,
+        priority=WorkflowTaskPriority.medium.value,
+        status=WorkflowTaskStatus.open.value,
+        title="Document review required",
+        description="Review the exact submitted version before approval.",
+        source="Document review submission",
+        owner_id=approver.subject_id,
+        owner_label=approver.display_label or approver.subject_id,
+        role=approver.role,
+        document_id=document_id,
+        document_title=document.title,
+        document_version_id=version_id,
+        due_at=now + timedelta(days=approver.sla_days or DEFAULT_ASSIGNMENT_SLA_DAYS[approver.role]),
+        task_metadata={
+            "review_snapshot": snapshot,
+            "submitted_by": principal.subject_id,
+            "submitted_at": now.isoformat(),
+            "submission_comment": payload.comment,
+            "assignment_id": approver.assignment_id,
+            "assignment_role": approver.role,
+            "assignment_subject_type": approver.subject_type,
+            "assignment_subject_id": approver.subject_id,
+            "version_label": version.version_label,
+        },
+    )
+    db.add(task)
+    add_audit_event(
+        db, actor_id=principal.subject_id, event_type="document.review.submitted",
+        resource_type="workflow_task", resource_id=task_id,
+        metadata={"document_id": document_id, "document_version_id": version_id, "assignment_id": approver.assignment_id},
+    )
+    _commit_or_conflict(db)
+    db.refresh(task)
+    return _workflow_task_response(task, context, document)
+
+
+@router.get("/workflow/documents", response_model=WorkflowDocumentListResponse)
+def list_personal_workflow_documents(
+    limit: Limit = 100,
+    offset: Offset = 0,
+    search_query: str | None = Query(default=None, alias="q", max_length=200),
+    assignment: Literal["managed", "approver"] | None = None,
+    version_status: DocumentStatus | None = None,
+    deadline: Literal["attention", "expired", "review", "missing"] | None = None,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> WorkflowDocumentListResponse:
+    context = require_global_action(principal, Action.workflow_task_read, db)
+    with policy_decision_scope():
+        return _personal_workflow_document_page(
+            db, principal, context, limit=limit, offset=offset,
+            search_query=search_query, assignment=assignment,
+            version_status=version_status, deadline=deadline,
+        )
+
+
+def _workflow_documents(db: Session, principal: Principal, document_ids: list[str]) -> list[Document]:
+    return _authorized_document_metadata_rows(
+        db=db, principal=principal, document_ids=document_ids,
+        status_filter=None, classification=None, document_type=None, owner_id=None,
+        tag=None, tenant_id=None, external_system=None, entity_type=None,
+        entity_id=None, external_ref=None, context_tags=[], include_version_details=True,
+    )
+
+
+def _personal_workflow_document_page(
+    db: Session, principal: Principal, context: SubjectContext, *, limit: int, offset: int,
+    search_query: str | None, assignment: str | None,
+    version_status: DocumentStatus | None, deadline: str | None,
+) -> WorkflowDocumentListResponse:
+    assigned_ids = select(DocumentAssignment.document_id).where(
+        DocumentAssignment.active.is_(True),
+        (
+            (DocumentAssignment.subject_type == "user") & (DocumentAssignment.subject_id == context.subject_id)
+        ) | (
+            (DocumentAssignment.subject_type == "group") & DocumentAssignment.subject_id.in_(context.groups)
+        ),
+    )
+    candidate_ids = list(db.scalars(select(Document.document_id).where(
+        (Document.owner_id == context.subject_id) | Document.document_id.in_(assigned_ids),
+    )))
+    documents = _workflow_documents(db, principal, candidate_ids)
+    query = (search_query or "").strip().casefold()
+    documents = [document for document in documents if (
+        (not query or query in f"{document.title} {document.document_id}".casefold())
+        and (not assignment or set(personal_roles(document, context)) & (
+            {"owner", "gestor", "steward"} if assignment == "managed" else {"approver", "reviewer"}
+        ))
+    )]
+    documents.sort(key=lambda item: (item.title, item.document_id))
+    total = len(documents)
+    # Ordinary pages inspect exact versions only for their visible documents.
+    # Version-dependent filters still authorize every candidate before counting.
+    filtered = bool(version_status or deadline)
+    if not filtered:
+        documents = documents[offset:offset + limit]
+    items: list[WorkflowDocumentResponse] = []
+    for document in documents:
+        item = _personal_workflow_document(db, principal, context, document)
+        if version_status and item.version_status != version_status.value:
+            continue
+        if deadline and not _workflow_deadline_matches(item, deadline):
+            continue
+        items.append(item)
+    if filtered:
+        total = len(items)
+        items = items[offset:offset + limit]
+    return WorkflowDocumentListResponse(items=items, total=total, limit=limit, offset=offset)
+
+
+def _personal_workflow_document(
+    db: Session, principal: Principal, context: SubjectContext, document: Document,
+) -> WorkflowDocumentResponse:
+    versions = []
+    for version in document.versions:
+        if context.access_v2:
+            try:
+                require_document_version_action(principal, Action.document_read, document, version, db)
+            except HTTPException as exc:
+                if exc.status_code in {403, 409}:
+                    continue
+                raise
+        versions.append(version)
+    versions.sort(key=lambda item: (item.created_at, item.document_version_id), reverse=True)
+    latest = versions[0] if versions else None
+    published = next((item for item in versions if item.status == DocumentStatus.valid.value), None)
+    review_date, invalid_review_date = review_due_date(document)
+    return WorkflowDocumentResponse(
+        document_id=document.document_id, title=document.title, document_type=document.document_type,
+        status=document.status, assignment_roles=personal_roles(document, context),
+        document_version_id=latest.document_version_id if latest else None,
+        version_label=latest.version_label if latest else None,
+        version_status=latest.status if latest else None,
+        valid_from=latest.valid_from if latest else None, valid_to=latest.valid_to if latest else None,
+        published_version_label=published.version_label if published else None,
+        published_valid_to=published.valid_to if published else None,
+        review_due_on=review_date, review_date_invalid=invalid_review_date,
+        updated_at=document.updated_at,
+    )
+
+
+def _workflow_deadline_matches(item: WorkflowDocumentResponse, deadline: str) -> bool:
+    if item.status in {"archived", "cancelled", "superseded"}:
+        return False
+    today = datetime.now(ZoneInfo("Europe/Prague")).date()
+    horizon = today + timedelta(days=30)
+    valid_to = item.published_valid_to if item.published_version_label else item.valid_to
+    expires = valid_to is not None and valid_to <= horizon
+    review = item.review_date_invalid or (item.review_due_on is not None and item.review_due_on <= horizon)
+    if deadline == "attention":
+        return expires or review
+    if deadline == "expired":
+        return valid_to is not None and valid_to < today
+    if deadline == "review":
+        return review
+    return item.review_due_on is None or item.review_date_invalid
+
+
 @router.get("/workflow/tasks", response_model=WorkflowTaskListResponse)
 def list_workflow_tasks(
     db: Session = Depends(get_db),
@@ -9598,16 +9121,21 @@ def list_workflow_tasks(
     priority: WorkflowTaskPriority | None = None,
     document_id: str | None = None,
     owner_id: str | None = None,
+    assigned_to_me: bool = False,
     include_resolved: bool = False,
+    search_query: str | None = Query(default=None, alias="q", max_length=200),
     limit: Limit = 100,
     offset: Offset = 0,
 ) -> WorkflowTaskListResponse:
-    require_global_action(principal, Action.workflow_task_read, db)
-    _sync_derived_workflow_tasks(db)
-    _escalate_overdue_tasks(db)
-    _commit_or_conflict(db)
+    """Return an authorized page and exact authorized total; candidates are processed in bounded batches."""
+    context = require_global_action(principal, Action.workflow_task_read, db)
+    can_read_team = principal.service_identity or (
+        "akb:manage_document" in context.capabilities if context.access_v2
+        else bool(context.roles & {"admin", "document_manager", "auditor"})
+    )
+    assigned_to_me = assigned_to_me or not can_read_team
 
-    stmt = select(WorkflowTask).order_by(WorkflowTask.due_at, WorkflowTask.created_at).limit(limit).offset(offset)
+    stmt = select(WorkflowTask).order_by(WorkflowTask.due_at, WorkflowTask.created_at, WorkflowTask.task_id)
     if status_filter:
         stmt = stmt.where(WorkflowTask.status == status_filter.value)
     elif not include_resolved:
@@ -9620,37 +9148,81 @@ def list_workflow_tasks(
         stmt = stmt.where(WorkflowTask.document_id == document_id)
     if owner_id:
         stmt = stmt.where(WorkflowTask.owner_id == owner_id)
+    if assigned_to_me:
+        stmt = stmt.where(WorkflowTask.owner_id.in_({context.subject_id, *context.groups}))
 
-    tasks = list(db.execute(stmt).scalars())
-    context = context_for_principal(principal, db)
-    document_ids = {task.document_id for task in tasks if task.document_id}
-    documents_by_id = {
-        document.document_id: document
-        for document in db.execute(
-            select(Document)
-            .where(Document.document_id.in_(document_ids))
-            .options(
-                selectinload(Document.access_policies),
-                selectinload(Document.versions),
-                selectinload(Document.publications),
-            )
-        ).scalars()
-    }
-    elevated_task_roles = {"admin", "document_manager", "auditor", "service_governance"}
-    visible_tasks = []
+    result = db.execute(stmt.execution_options(yield_per=_WORKFLOW_TASK_BATCH_SIZE))
+    tasks = result.scalars()
+    query = (search_query or "").strip().casefold()
+    if query:
+        tasks = (task for task in tasks if query in " ".join(
+            str(value or "") for value in (task.title, task.document_title, task.description, task.owner_label)
+        ).casefold())
+    try:
+        with policy_decision_scope():
+            return _workflow_task_page(db, principal, context, tasks, assigned_to_me, can_read_team, limit, offset)
+    finally:
+        result.close()
+
+
+_WORKFLOW_TASK_BATCH_SIZE = 200
+
+
+def _workflow_task_page(
+    db: Session, principal: Principal, context: SubjectContext, tasks: Iterable[WorkflowTask],
+    assigned_to_me: bool, can_read_team: bool, limit: int, offset: int,
+) -> WorkflowTaskListResponse:
+    # Total remains an authorized count, never the raw SQL candidate count.
+    # Bound ORM loading and response memory without skipping any policy checks.
+    iterator = iter(tasks)
+    items: list[WorkflowTaskResponse] = []
+    total = 0
+    while batch := list(islice(iterator, _WORKFLOW_TASK_BATCH_SIZE)):
+        visible = _visible_workflow_tasks(db, principal, context, batch, assigned_to_me, can_read_team)
+        for task, document in visible:
+            if offset <= total < offset + limit:
+                items.append(_workflow_task_response(task, context, document))
+            total += 1
+    return WorkflowTaskListResponse(items=items, total=total, limit=limit, offset=offset)
+
+
+def _visible_workflow_tasks(
+    db: Session, principal: Principal, context: SubjectContext, tasks: list[WorkflowTask],
+    assigned_to_me: bool, can_read_team: bool,
+) -> list[tuple[WorkflowTask, Document | None]]:
+    documents_by_id = {document.document_id: document for document in _workflow_documents(
+        db, principal, list({task.document_id for task in tasks if task.document_id}),
+    )}
+    version_access: dict[str, bool] = {}
+    visible_tasks: list[tuple[WorkflowTask, Document | None]] = []
     for task in tasks:
+        if assigned_to_me and not task_is_mine(task, context):
+            continue
         if task.document_id is None:
-            if context.roles & elevated_task_roles:
-                visible_tasks.append(task)
+            if can_read_team and (not context.access_v2 or "akb:read_audit" in context.capabilities):
+                visible_tasks.append((task, None))
             continue
         document = documents_by_id.get(task.document_id)
         if document is None:
             continue
-        decision = evaluate_document_access(context, Action.document_read.value, document)
-        if decision.allowed:
-            visible_tasks.append(task)
+        try:
+            if context.access_v2 and task.document_version_id:
+                version = next((item for item in document.versions if item.document_version_id == task.document_version_id), None)
+                if version is None:
+                    continue
+                if task.document_version_id not in version_access:
+                    version_access[task.document_version_id] = False
+                    require_document_version_action(principal, Action.document_read, document, version, db)
+                    version_access[task.document_version_id] = True
+                if not version_access[task.document_version_id]:
+                    continue
+        except HTTPException as exc:
+            if exc.status_code in {403, 409}:
+                continue
+            raise
+        visible_tasks.append((task, document))
 
-    return WorkflowTaskListResponse(items=visible_tasks, limit=limit, offset=offset)
+    return visible_tasks
 
 
 @router.post("/workflow/tasks/{task_id}/actions", response_model=WorkflowTaskResponse)
@@ -9659,23 +9231,37 @@ def apply_workflow_task_action(
     payload: WorkflowTaskActionRequest,
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
-) -> WorkflowTask:
-    require_global_action(principal, Action.workflow_task_write, db)
+) -> WorkflowTaskResponse:
+    context = require_global_action(principal, Action.workflow_task_write, db)
     task = _get_workflow_task(db, task_id)
     document: Document | None = None
     if task.document_id:
         document = _get_document(db, task.document_id)
+        _lock_publication_source(db, document_id=document.document_id, document_version_id=task.document_version_id)
+        db.refresh(document)
+        db.refresh(task, with_for_update=True)
         require_document_action(principal, Action.document_read, document, db)
+        if context.access_v2 and task.document_version_id:
+            require_document_version_action(
+                principal, Action.document_read, document,
+                _get_version(db, document.document_id, task.document_version_id), db,
+            )
 
     now = utcnow()
+    bound_review = bool((task.task_metadata or {}).get("review_snapshot"))
+    if bound_review and payload.action.value not in {"approve", "request_changes", "publish"}:
+        raise problem(409, "review_action_required", "Use the assigned review decision for this task")
+    if payload.assignee_id and (payload.action.value != "assign" or bound_review):
+        raise problem(400, "review_assignment_immutable", "Review assignment cannot be changed in a decision")
     if payload.assignee_id:
         task.owner_id = payload.assignee_id
         task.owner_label = payload.assignee_id
 
     if payload.action.value == "approve":
-        if document is not None and task.kind == WorkflowTaskKind.review.value:
-            require_document_action(principal, Action.document_update, document, db)
-            _approve_document_for_publication(db, document)
+        if document is None or task.kind != WorkflowTaskKind.review.value:
+            raise problem(409, "review_task_required", "Only a document review can be approved")
+        version = _require_review_decision(db, principal, task, document)
+        _approve_document_for_publication(db, document, version)
         task.status = WorkflowTaskStatus.resolved.value
         task.resolved_at = now
     elif payload.action.value == "publish":
@@ -9685,6 +9271,8 @@ def apply_workflow_task_action(
         version = _workflow_action_version(db, task=task, payload=payload)
         if version is None:
             raise problem(status.HTTP_409_CONFLICT, "no_publishable_version", "Workflow task has no version to publish")
+        if context.access_v2:
+            require_document_version_action(principal, Action.document_version_publish, document, version, db)
         _publish_version(db, document=document, version=version, actor_id=principal.subject_id)
         task.document_version_id = version.document_version_id
         task.status = WorkflowTaskStatus.resolved.value
@@ -9701,16 +9289,42 @@ def apply_workflow_task_action(
         task.status = WorkflowTaskStatus.resolved.value
         task.resolved_at = now
     elif payload.action.value == "resolve":
+        if document is not None:
+            require_document_action(principal, Action.document_update, document, db)
         task.status = WorkflowTaskStatus.resolved.value
         task.resolved_at = now
     elif payload.action.value == "request_changes":
         if document is not None:
-            require_document_action(principal, Action.document_update, document, db)
-            version = _workflow_action_version(db, task=task, payload=payload)
+            if task.kind == WorkflowTaskKind.review.value and bound_review:
+                version = _require_review_decision(db, principal, task, document)
+            else:
+                require_document_action(principal, Action.document_update, document, db)
+                version = _workflow_action_version(db, task=task, payload=payload)
             _request_document_changes(document, version)
-        task.status = WorkflowTaskStatus.open.value
-        task.resolved_at = None
+        task.status = WorkflowTaskStatus.resolved.value if bound_review else WorkflowTaskStatus.open.value
+        task.resolved_at = now if bound_review else None
+        if bound_review and document is not None:
+            owner = _workflow_assignment_context(
+                document, roles=[DocumentAssignmentRole.gestor.value, DocumentAssignmentRole.owner.value],
+                fallback_owner_id=document.owner_id, fallback_owner_label=document.owner_id,
+                fallback_role="Document manager", default_sla_days=5, base_time=now,
+            )
+            _upsert_derived_task(db, source_key=f"document-returned:{task.task_id}", values={
+                "kind": WorkflowTaskKind.draft.value, "priority": WorkflowTaskPriority.medium.value,
+                "status": WorkflowTaskStatus.open.value, "title": "Document changes requested",
+                "description": "Review feedback before submitting a new review.", "source": "Document review decision",
+                "owner_id": owner["owner_id"], "owner_label": owner["owner_label"], "role": owner["role"],
+                "document_id": document.document_id, "document_title": document.title,
+                "document_version_id": task.document_version_id, "due_at": now + timedelta(days=int(owner["sla_days"])),
+                "task_metadata": {
+                    "review_task_id": task.task_id, "last_comment": payload.comment,
+                    "version_label": version.version_label if version is not None else None,
+                    **dict(owner["assignment_metadata"]),
+                },
+            })
     elif payload.action.value == "assign":
+        if document is not None:
+            require_document_action(principal, Action.document_update, document, db)
         task.status = WorkflowTaskStatus.open.value
 
     task.task_metadata = {
@@ -9739,7 +9353,7 @@ def apply_workflow_task_action(
     )
     _commit_or_conflict(db)
     db.refresh(task)
-    return task
+    return _workflow_task_response(task, context, document)
 
 
 ANALYST_CASE_ADMIN_ROLES = {"admin", "document_manager", "auditor"}

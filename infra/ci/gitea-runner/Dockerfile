@@ -45,6 +45,7 @@ RUN apt-get update \
         libxshmfence1 \
         libxss1 \
         libxtst6 \
+        openssh-client \
         python3 \
         python3-pip \
         python3-venv \
@@ -55,6 +56,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=docker_cli /usr/local/bin/docker /usr/local/bin/docker
+COPY --from=docker_cli /usr/local/libexec/docker/cli-plugins/docker-buildx /usr/local/libexec/docker/cli-plugins/docker-buildx
 COPY --from=docker_cli /usr/local/libexec/docker/cli-plugins/docker-compose /usr/local/libexec/docker/cli-plugins/docker-compose
 
 RUN groupadd --gid 107 akbci-docker \
@@ -69,6 +71,7 @@ RUN npm install --global pnpm@11.7.0 \
     && pnpm --version \
     && python3 --version \
     && ruby --version \
+    && docker buildx version \
     && docker compose version
 
 FROM ci-tools AS runner

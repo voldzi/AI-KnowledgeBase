@@ -80,11 +80,11 @@ Response feedback exports `akb.assistant.feedback.recorded`. The matching
 rating, bounded reason code and an explicit marker that no content was retained.
 Free-text feedback is not part of the API contract.
 
-For the AIIP application API, operational logs and Registry audit metadata may
-include operation, request/correlation/audit ids, canonical input hash, status,
+For application APIs, operational logs and Registry audit metadata may include
+operation, request/correlation/audit ids, canonical input hash, status,
 latency, requested/actual model, fallback flag, token counts, index version,
-and candidate/suggestion counts. They must not include AIIP record bodies,
-prompts, model responses, citation text, vectors, bearer tokens, or credentials.
+and candidate/suggestion counts. They must not include record bodies, prompts,
+model responses, citation text, vectors, bearer tokens, or credentials.
 
 Production telemetry is centralized on `observability.home.cz`. AKB does not
 run a second production Grafana, Prometheus, Tempo or Loki stack on
@@ -105,12 +105,15 @@ Central dashboards:
   `akl_document_chunks*`.
 
 Central Prometheus alert rules are stored in
-`infra/monitoring/central/akb-alerts.yml` and cover:
+`infra/monitoring/central/akb-alerts.yml` and
+`infra/monitoring/central/akb-gitea-ci-alerts.yml` and cover:
 
 - public health and dependency-aware readiness,
 - refused telemetry,
 - chat HTTP 5xx responses,
-- chat p95 latency.
+- chat p95 latency,
+- AKB Gitea runner/service availability, cache size, VM125 free space and the
+  last successful `main` SHA.
 
 ## Tracing
 

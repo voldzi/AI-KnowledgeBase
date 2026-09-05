@@ -1,4 +1,4 @@
-import type { AuditEvent, Document, IngestionJob, RegistryWorkflowTask } from "@/lib/types";
+import type { AuditEvent, Document, IngestionJob, RegistryWorkflowTask, RegistryWorkflowTaskAction } from "@/lib/types";
 
 export type WorkflowTaskKind = "review" | "draft" | "ingestion" | "governance" | "audit";
 export type WorkflowTaskPriority = "critical" | "high" | "medium" | "low";
@@ -24,6 +24,10 @@ export interface WorkflowTask {
   href: string;
   secondary_href: string | null;
   action_label: string;
+  allowed_actions?: RegistryWorkflowTaskAction[];
+  version_label?: string;
+  submission_comment?: string;
+  decision_comment?: string;
 }
 
 const priorityRank: Record<WorkflowTaskPriority, number> = {
@@ -39,6 +43,7 @@ export function buildWorkflowTasks(params: {
   auditEvents: AuditEvent[];
   registryTasks?: RegistryWorkflowTask[];
   nowIso?: string;
+  preserveRegistryOrder?: boolean;
 }): WorkflowTask[] {
   const { documents, jobs, auditEvents, registryTasks } = params;
   const nowIso = params.nowIso ?? new Date().toISOString();
@@ -48,7 +53,7 @@ export function buildWorkflowTasks(params: {
   if (registryTasks) {
     tasks.push(...registryTasks.filter(isActiveRegistryTask).map(taskFromRegistry));
     tasks.push(...buildIngestionTasks(jobs, documentById));
-    return tasks.sort((left, right) => compareTasks(left, right, nowIso));
+    return params.preserveRegistryOrder ? tasks : tasks.sort((left, right) => compareTasks(left, right, nowIso));
   }
 
   for (const document of documents) {
@@ -200,7 +205,11 @@ function taskFromRegistry(task: RegistryWorkflowTask): WorkflowTask {
     created_at: task.created_at,
     href: hrefForRegistryTask(task),
     secondary_href: secondaryHrefForRegistryTask(task),
-    action_label: actionLabelForKind(task.kind)
+    action_label: actionLabelForKind(task.kind),
+    allowed_actions: task.allowed_actions ?? [],
+    version_label: typeof task.metadata.version_label === "string" ? task.metadata.version_label : undefined,
+    submission_comment: typeof task.metadata.submission_comment === "string" ? task.metadata.submission_comment : undefined,
+    decision_comment: typeof task.metadata.last_comment === "string" ? task.metadata.last_comment : undefined,
   };
 }
 
@@ -288,7 +297,9 @@ function hrefForRegistryTask(task: RegistryWorkflowTask): string {
     return "/audit";
   }
   if (task.document_id) {
-    return `/documents/${task.document_id}`;
+    const params = new URLSearchParams({ tab: task.kind === "review" ? "viewer" : "workflow" });
+    if (task.document_version_id) params.set("version", task.document_version_id);
+    return `/documents/${task.document_id}?${params.toString()}`;
   }
   return "/tasks";
 }

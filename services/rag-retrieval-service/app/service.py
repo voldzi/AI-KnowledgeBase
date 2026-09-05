@@ -6,6 +6,7 @@ import json
 import hashlib
 import inspect
 import logging
+import math
 import re
 import time
 import uuid
@@ -22,15 +23,14 @@ from app.archflow_extraction import (
     extract_archflow_handover_proposals,
 )
 from app.config import Settings
-from app.context import get_correlation_id, get_request_id
 from app.contract_extraction import contract_extraction_profiles, extract_contract_financial_proposals
 from app.controlled_rule_extraction import (
     controlled_rule_extraction_profile,
     extract_controlled_rule_proposals,
 )
 from app.errors import RetrievalError
-from app.llm_client import ChatCompletionResult, LLMGatewayClient
-from app.registry_client import IdempotencyReservation, RegistryClient
+from app.llm_client import LLMGatewayClient
+from app.registry_client import RegistryClient
 from app.schemas import (
     AnswerRequest,
     AssistantChatRequest,
@@ -47,15 +47,6 @@ from app.schemas import (
     ArchflowArchitectureExtractionResponse,
     ArchflowGoalExtractionProposeRequest,
     ArchflowGoalExtractionResponse,
-    AiipApplicationResponse,
-    AiipDuplicateCandidate,
-    AiipDuplicateCitation,
-    AiipDuplicateSearchRequest,
-    AiipDuplicateSearchResult,
-    AiipHarmonizeRequest,
-    AiipHarmonizeResult,
-    AiipModelMetadata,
-    AiipUsage,
     Citation,
     ClarificationQuestion,
     ContractExtractionProfilesResponse,
@@ -106,12 +97,6 @@ class RetrievalRun:
     denied_document_ids: set[str]
 
 
-@dataclass(frozen=True)
-class AiipExecution:
-    response: AiipApplicationResponse
-    replayed: bool = False
-
-
 class RagRetrievalService:
     def __init__(
         self,
@@ -133,210 +118,6 @@ class RagRetrievalService:
         self._no_answer_policy = no_answer_policy
         self._answer_composer = answer_composer
         self._evidence_gate = evidence_gate or EvidenceGate(settings)
-
-    async def aiip_harmonize(
-        self,
-        payload: AiipHarmonizeRequest,
-        *,
-        idempotency_key: str,
-        auth_context: AuthContext,
-    ) -> AiipExecution:
-        started = time.perf_counter()
-        input_hash = _aiip_input_hash(payload.model_dump(mode="json"))
-        reservation = await self._registry_client.reserve_idempotency(
-            client_id="aiip-service",
-            operation="harmonize",
-            idempotency_key=idempotency_key,
-            input_hash=input_hash,
-            auth_context=auth_context,
-        )
-        replay = _aiip_replay_or_error(reservation)
-        if replay is not None:
-            return AiipExecution(response=AiipApplicationResponse.model_validate(replay), replayed=True)
-
-        requested_model = _aiip_requested_model(self._settings, payload.model_preference)
-        messages = _aiip_harmonize_messages(payload)
-        completion = await self._llm_client.chat_completion_result(
-            messages=messages,
-            metadata={
-                "purpose": "aiip_idea_harmonization",
-                "prompt_template_version": "aiip-harmonize-v1",
-                "classification": payload.classification,
-            },
-            model=requested_model,
-            auth_context=auth_context,
-        )
-        result = _parse_aiip_harmonize_result(completion.content)
-        warnings: list[str] = []
-        if result is None:
-            repaired = await self._llm_client.chat_completion_result(
-                messages=_aiip_repair_messages(completion.content, payload.locale),
-                metadata={
-                    "purpose": "aiip_structured_output_repair",
-                    "prompt_template_version": "aiip-harmonize-repair-v1",
-                    "classification": payload.classification,
-                },
-                model=completion.model,
-                auth_context=auth_context,
-            )
-            result = _parse_aiip_harmonize_result(repaired.content)
-            completion = _merge_aiip_usage(completion, repaired)
-            warnings.append("STRUCTURED_OUTPUT_REPAIRED")
-        if result is None:
-            raise RetrievalError(
-                "STRUCTURED_OUTPUT_INVALID",
-                "The model did not return a valid harmonization result.",
-                status_code=422,
-            )
-
-        latency_ms = max(0, int((time.perf_counter() - started) * 1000))
-        audit_event_id = await self._registry_client.write_audit_event(
-            actor_id=auth_context.subject_id,
-            event_type="aiip.harmonize.completed",
-            resource_type="aiip_record",
-            resource_id=payload.record.record_id,
-            metadata={
-                "tenant_id": payload.tenant_id,
-                "classification": payload.classification,
-                "processing_purpose": payload.processing_purpose,
-                "input_hash": input_hash,
-                "requested_model": requested_model,
-                "actual_model": completion.model,
-                "fallback_applied": completion.model != requested_model,
-                "prompt_template_version": "aiip-harmonize-v1",
-                "schema_version": "1.0",
-                "prompt_tokens": completion.prompt_tokens,
-                "completion_tokens": completion.completion_tokens,
-                "total_tokens": completion.total_tokens,
-                "latency_ms": latency_ms,
-                "suggestion_count": len(result.suggestions),
-            },
-            auth_context=auth_context,
-        )
-        if not audit_event_id:
-            raise RetrievalError("AUDIT_WRITE_FAILED", "The AIIP audit event was not persisted.", status_code=503)
-        response = AiipApplicationResponse(
-            request_id=get_request_id(),
-            correlation_id=get_correlation_id(),
-            audit_event_id=audit_event_id,
-            result=result,
-            warnings=warnings,
-            model=AiipModelMetadata(
-                requested_preference=payload.model_preference,
-                requested_model=requested_model,
-                actual_model=completion.model,
-                fallback_applied=completion.model != requested_model,
-            ),
-            prompt_template_version="aiip-harmonize-v1",
-            usage=AiipUsage(
-                prompt_tokens=completion.prompt_tokens,
-                completion_tokens=completion.completion_tokens,
-                total_tokens=completion.total_tokens,
-            ),
-            latency_ms=latency_ms,
-        )
-        await self._registry_client.complete_idempotency(
-            record_id=reservation.record_id,
-            response_status=200,
-            response_body=response.model_dump(mode="json"),
-            audit_event_id=audit_event_id,
-            auth_context=auth_context,
-        )
-        return AiipExecution(response=response)
-
-    async def aiip_duplicate_search(
-        self,
-        payload: AiipDuplicateSearchRequest,
-        *,
-        idempotency_key: str,
-        auth_context: AuthContext,
-    ) -> AiipExecution:
-        started = time.perf_counter()
-        input_hash = _aiip_input_hash(payload.model_dump(mode="json"))
-        reservation = await self._registry_client.reserve_idempotency(
-            client_id="aiip-service",
-            operation="duplicates.search",
-            idempotency_key=idempotency_key,
-            input_hash=input_hash,
-            auth_context=auth_context,
-        )
-        replay = _aiip_replay_or_error(reservation)
-        if replay is not None:
-            return AiipExecution(response=AiipApplicationResponse.model_validate(replay), replayed=True)
-
-        query_id = _query_id()
-        run = await self._retrieve_authorized(
-            payload=RetrieveRequest(
-                subject_id=auth_context.subject_id,
-                query=_aiip_duplicate_query(payload),
-                filters=RagQueryFilters(
-                    document_types=["ai_intake", "ai_requirement_card"],
-                    only_valid=False,
-                    classification_max=payload.classification,
-                    tenant_id=payload.tenant_id,
-                    external_system="STRATOS_AIIP",
-                ),
-                max_chunks=20,
-            ),
-            query_id=query_id,
-            auth_context=auth_context,
-        )
-        candidates = _aiip_duplicate_candidates(run.response.chunks, payload.min_score)
-        selected = candidates[payload.offset : payload.offset + payload.limit]
-        result = AiipDuplicateSearchResult(
-            candidates=selected,
-            limit=payload.limit,
-            offset=payload.offset,
-            returned=len(selected),
-            has_more=payload.offset + payload.limit < len(candidates),
-        )
-        latency_ms = max(0, int((time.perf_counter() - started) * 1000))
-        index_version = _aiip_index_version(self._settings)
-        audit_event_id = await self._registry_client.write_audit_event(
-            actor_id=auth_context.subject_id,
-            event_type="aiip.duplicates.searched",
-            resource_type="aiip_record",
-            resource_id=payload.record.record_id,
-            metadata={
-                "tenant_id": payload.tenant_id,
-                "classification": payload.classification,
-                "processing_purpose": payload.processing_purpose,
-                "input_hash": input_hash,
-                "query_id": query_id,
-                "retrieval_index_version": index_version,
-                "candidate_count": len(selected),
-                "authorization_filtered": bool(run.denied_document_ids),
-                "latency_ms": latency_ms,
-            },
-            auth_context=auth_context,
-        )
-        if not audit_event_id:
-            raise RetrievalError("AUDIT_WRITE_FAILED", "The AIIP audit event was not persisted.", status_code=503)
-        response = AiipApplicationResponse(
-            request_id=get_request_id(),
-            correlation_id=get_correlation_id(),
-            audit_event_id=audit_event_id,
-            result=result,
-            warnings=run.response.warnings,
-            model=AiipModelMetadata(
-                requested_preference=payload.model_preference,
-                requested_model=self._settings.embedding_model,
-                actual_model=self._settings.embedding_model,
-                fallback_applied=False,
-            ),
-            prompt_template_version="aiip-duplicates-v1",
-            retrieval_index_version=index_version,
-            usage=AiipUsage(),
-            latency_ms=latency_ms,
-        )
-        await self._registry_client.complete_idempotency(
-            record_id=reservation.record_id,
-            response_status=200,
-            response_body=response.model_dump(mode="json"),
-            audit_event_id=audit_event_id,
-            auth_context=auth_context,
-        )
-        return AiipExecution(response=response)
 
     async def retrieve(
         self,
@@ -1405,7 +1186,24 @@ class RagRetrievalService:
             auth_context=auth_context,
         )
 
-        questions = _clarification_questions(payload.message, payload.context, payload.response_language)
+        query_context = dict(payload.context)
+        follow_up_document_ids: list[str] = []
+        follow_up_document_version_ids: list[str] = []
+        if payload.conversation_id:
+            (
+                earlier_questions,
+                follow_up_document_ids,
+                follow_up_document_version_ids,
+                persisted_context,
+            ) = await self._authorized_conversation_context(
+                conversation_id=payload.conversation_id,
+                auth_context=auth_context,
+            )
+            query_context = {**persisted_context, **query_context}
+            if earlier_questions:
+                query_context["earlier_user_questions"] = earlier_questions
+
+        questions = _clarification_questions(payload.message, query_context, payload.response_language)
         if questions:
             response = AssistantChatResponse(
                 response_type="clarification_needed",
@@ -1413,7 +1211,7 @@ class RagRetrievalService:
                 message=_localized(payload.response_language, "clarification_message"),
                 questions=questions,
                 why_needed=_localized(payload.response_language, "clarification_why_needed"),
-                current_context=payload.context,
+                current_context=_assistant_current_context(query_context),
                 suggested_actions=[
                     AssistantSuggestedAction(
                         label=_localized(payload.response_language, "complete_answers"),
@@ -1442,26 +1240,56 @@ class RagRetrievalService:
                 response.warnings.append("CONVERSATION_HISTORY_NOT_PERSISTED")
             return response
 
-        query_context = dict(payload.context)
-        if payload.conversation_id:
-            earlier_questions = await self._authorized_conversation_questions(
-                conversation_id=payload.conversation_id,
-                auth_context=auth_context,
-            )
-            if earlier_questions:
-                query_context["earlier_user_questions"] = earlier_questions
         query_id = _query_id()
-        retrieval_query = _assistant_query(payload.message, query_context)
-        answer_query = _assistant_answer_query(payload.message, query_context)
+        retrieval_query = _assistant_query(
+            payload.message,
+            query_context,
+            history_max_length=min(2400, self._settings.assistant_history_max_chars),
+            max_query_length=4000,
+        )
+        answer_query = _assistant_answer_query(
+            payload.message,
+            query_context,
+            history_max_length=self._settings.assistant_history_max_chars,
+        )
+        retrieval_filters = _assistant_filters(query_context, payload.message)
+        if _assistant_uses_authorized_follow_up_source(
+            payload.message,
+            query_context.get("earlier_user_questions"),
+        ) and follow_up_document_version_ids:
+            retrieval_filters = retrieval_filters.model_copy(
+                update={
+                    "document_ids": follow_up_document_ids,
+                    "document_version_ids": follow_up_document_version_ids,
+                    "only_valid": False,
+                }
+            )
         director_copilot_request = _director_copilot_evidence_context(
             payload.context.get("director_copilot_evidence")
         ) is not None
-        max_chunks = 3 if director_copilot_request else 6
+        requested_facets = _requested_answer_facets(payload.message)
+        document_task_request = payload.mode in {
+            "find_procedure",
+            "find_owner",
+            "find_responsibility",
+            "extract_deadlines",
+            "extract_obligations",
+            "normative_with_citations",
+        }
+        max_chunks = (
+            3
+            if director_copilot_request
+            else 10
+            if len(requested_facets) >= 2
+            else 8
+            if document_task_request
+            else 6
+        )
         run = await self._retrieve_authorized(
             payload=RetrieveRequest(
                 subject_id=payload.user_id,
                 query=retrieval_query,
-                filters=_assistant_filters(payload.context, payload.message),
+                filters=retrieval_filters,
                 max_chunks=max_chunks,
             ),
             query_id=query_id,
@@ -1511,6 +1339,12 @@ class RagRetrievalService:
                 rag_answer,
                 run.response.chunks,
                 auth_context=auth_context,
+            )
+            rag_answer = _apply_answer_facet_completeness(
+                answer=rag_answer,
+                requested_facets=requested_facets,
+                chunks=run.response.chunks,
+                response_language=payload.response_language,
             )
         rag_answer = rag_answer.model_copy(
             update={
@@ -1593,6 +1427,7 @@ class RagRetrievalService:
                 response_type="answer",
                 conversation_id=conversation_id,
                 answer=_employee_answer(rag_answer.answer, payload.response_language),
+                current_context=_assistant_current_context(query_context),
                 citations=rag_answer.citations,
                 follow_up_questions=(
                     _fallback_follow_up_questions(payload.message, payload.response_language)
@@ -1634,27 +1469,24 @@ class RagRetrievalService:
                 response.warnings.append("CONVERSATION_HISTORY_NOT_PERSISTED")
             return response
 
-        response_type = "handoff_recommended" if rag_answer.confidence == "insufficient_source" else "no_answer"
         response = AssistantChatResponse(
-            response_type=response_type,
+            response_type="no_answer",
             conversation_id=conversation_id,
-            answer=_assistant_no_source_message(payload.mode, payload.response_language),
+            answer=(
+                rag_answer.answer if "LLM_ANSWER_INCOMPLETE" in rag_answer.warnings
+                else _assistant_no_source_message(payload.mode, payload.response_language)
+            ),
+            current_context=_assistant_current_context(query_context),
             citations=[],
             confidence=rag_answer.confidence,
             warnings=rag_answer.warnings,
             missing_information=rag_answer.missing_information,
-            recommended_action=_localized(payload.response_language, "service_desk_handoff"),
-            suggested_actions=[
-                AssistantSuggestedAction(
-                    label=_localized(payload.response_language, "service_desk_handoff"),
-                    action_type="handoff",
-                    target="service-desk",
-                )
-            ],
+            recommended_action=None,
+            suggested_actions=[],
         )
         await self._audit_assistant(
             actor_id=payload.user_id,
-            event_type="assistant.handoff_recommended" if response_type == "handoff_recommended" else "assistant.no_answer_returned",
+            event_type="assistant.no_answer_returned",
             conversation_id=conversation_id,
             metadata={"warnings": rag_answer.warnings, "missing_information": rag_answer.missing_information},
             auth_context=auth_context,
@@ -1672,18 +1504,18 @@ class RagRetrievalService:
             response.warnings.append("CONVERSATION_HISTORY_NOT_PERSISTED")
         return response
 
-    async def _authorized_conversation_questions(
+    async def _authorized_conversation_context(
         self,
         *,
         conversation_id: str,
         auth_context: AuthContext | None,
-    ) -> list[str]:
-        """Return a small, user-authored context window from the freshly
-        authorized Registry projection.
+    ) -> tuple[list[str], list[str], list[str], dict[str, object]]:
+        """Return bounded questions and the latest reauthorized citation scope.
 
         Assistant answers are deliberately excluded: they are neither
         instructions nor an authority and could contain source-derived content
-        whose access has since changed.
+        whose access has since changed. Citation coordinates are safe to reuse
+        only because Registry reauthorizes them before returning the history.
         """
         try:
             stored = await self._registry_client.fetch_conversation(
@@ -1696,13 +1528,24 @@ class RagRetrievalService:
                 conversation_id,
                 exc.__class__.__name__,
             )
-            return []
+            return [], [], [], {}
         if not stored:
-            return []
+            return [], [], [], {}
         messages = stored.get("messages")
         if not isinstance(messages, list):
-            return []
-        return _bounded_conversation_questions(messages)
+            return [], [], [], {}
+        document_ids, document_version_ids = _latest_available_citation_scope(messages)
+        return (
+            _bounded_conversation_questions(
+                messages,
+                max_messages=self._settings.assistant_history_max_user_messages,
+                max_message_length=self._settings.assistant_history_max_message_chars,
+                max_total_length=self._settings.assistant_history_max_chars,
+            ),
+            document_ids,
+            document_version_ids,
+            _latest_available_assistant_context(messages),
+        )
 
     async def _follow_up_questions(
         self,
@@ -1862,9 +1705,16 @@ class RagRetrievalService:
                         "metadata": {
                             "confidence": response.confidence,
                             "warnings": response.warnings,
+                            "current_context": response.current_context,
+                            "follow_up_questions": response.follow_up_questions,
+                            "suggested_actions": [
+                                action.model_dump(mode="json") for action in response.suggested_actions
+                            ],
                             "report_artifacts": [
                                 artifact.model_dump(mode="json") for artifact in response.report_artifacts
                             ],
+                            "missing_information": response.missing_information,
+                            "recommended_action": response.recommended_action,
                         },
                     },
                 ],
@@ -2100,7 +1950,13 @@ class RagRetrievalService:
         chunks = _diversify_chunks(
             chunks,
             limit=payload.max_chunks,
-            max_per_document=self._settings.max_chunks_per_document,
+            max_per_document=(
+                payload.max_chunks
+                if exact_document_id
+                else max(self._settings.max_chunks_per_document, min(6, payload.max_chunks))
+                if len(_requested_answer_facets(payload.query)) >= 2
+                else self._settings.max_chunks_per_document
+            ),
             max_documents=plan.max_documents,
         )
         if (
@@ -2460,191 +2316,12 @@ class RagRetrievalService:
             )
 
 
-def _aiip_input_hash(payload: dict[str, object]) -> str:
-    canonical = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-
-
-def _aiip_replay_or_error(reservation: IdempotencyReservation) -> dict[str, object] | None:
-    if reservation.state == "replay" and reservation.response_body is not None:
-        return reservation.response_body
-    if reservation.state == "conflict":
-        raise RetrievalError(
-            "IDEMPOTENCY_KEY_REUSED",
-            "The idempotency key was already used with a different request body.",
-            status_code=409,
-        )
-    if reservation.state == "processing":
-        raise RetrievalError(
-            "IDEMPOTENCY_REQUEST_IN_PROGRESS",
-            "A request with this idempotency key is already being processed.",
-            status_code=409,
-        )
-    return None
-
-
-def _aiip_requested_model(settings: Settings, preference: str) -> str:
-    if preference == "high_quality" and settings.high_quality_chat_model:
-        return settings.high_quality_chat_model
-    return settings.chat_model
-
-
-def _aiip_harmonize_messages(payload: AiipHarmonizeRequest) -> list[dict[str, str]]:
-    language = "Czech" if payload.locale == "cs" else "English"
-    schema = {
-        "suggestions": [
-            {
-                "field": "normalized_title",
-                "proposed_value": "string, number, boolean, object or array",
-                "confidence": 0.0,
-                "provenance": {
-                    "source": "model_inference",
-                    "input_fields": ["title", "summary"],
-                    "prompt_template_version": "aiip-harmonize-v1",
-                },
-            }
-        ],
-        "review_required": True,
-    }
-    return [
-        {
-            "role": "system",
-            "content": (
-                "You normalize an AI innovation idea without changing source data. Return only one JSON object "
-                "that exactly follows the supplied schema. Suggestions are advisory and require human review. "
-                "Do not add markdown fences. Never include secrets or source text outside proposed values."
-            ),
-        },
-        {
-            "role": "user",
-            "content": (
-                f"Response language: {language}. Schema: {json.dumps(schema, ensure_ascii=False)}. "
-                f"AIIP record: {payload.record.model_dump_json(exclude_none=True)}"
-            ),
-        },
-    ]
-
-
-def _aiip_repair_messages(invalid_output: str, locale: str) -> list[dict[str, str]]:
-    language = "Czech" if locale == "cs" else "English"
-    return [
-        {
-            "role": "system",
-            "content": (
-                "Repair the supplied model output into strict JSON. Return only an object with suggestions and "
-                "review_required=true. Every suggestion requires field, proposed_value, confidence from 0 to 1, "
-                "and provenance with source, input_fields and prompt_template_version=aiip-harmonize-v1."
-            ),
-        },
-        {
-            "role": "user",
-            "content": f"Language: {language}. Invalid output to repair: {_truncate_prompt_text(invalid_output, 12000)}",
-        },
-    ]
-
-
-def _parse_aiip_harmonize_result(value: str) -> AiipHarmonizeResult | None:
-    stripped = value.strip()
-    if stripped.startswith("```"):
-        stripped = re.sub(r"^```(?:json)?\s*|\s*```$", "", stripped, flags=re.IGNORECASE)
-    start = stripped.find("{")
-    end = stripped.rfind("}")
-    if start < 0 or end <= start:
-        return None
-    try:
-        return AiipHarmonizeResult.model_validate(json.loads(stripped[start : end + 1]))
-    except (ValueError, json.JSONDecodeError):
-        return None
-
-
-def _merge_aiip_usage(first: ChatCompletionResult, second: ChatCompletionResult) -> ChatCompletionResult:
-    return ChatCompletionResult(
-        content=second.content,
-        model=second.model,
-        prompt_tokens=first.prompt_tokens + second.prompt_tokens,
-        completion_tokens=first.completion_tokens + second.completion_tokens,
-        total_tokens=first.total_tokens + second.total_tokens,
-    )
-
-
-def _aiip_duplicate_query(payload: AiipDuplicateSearchRequest) -> str:
-    record = payload.record
-    values = [
-        record.title,
-        record.summary,
-        record.problem_statement or "",
-        record.proposed_solution or "",
-        *record.expected_benefits,
-        *record.strategic_domains,
-        *record.keywords,
-    ]
-    return _truncate_prompt_text("\n".join(value for value in values if value), 4000)
-
-
-def _aiip_duplicate_candidates(
-    chunks: list[RetrievedChunk],
-    min_score: float,
-) -> list[AiipDuplicateCandidate]:
-    grouped: dict[str, AiipDuplicateCandidate] = {}
-    for chunk in chunks:
-        if chunk.score < min_score:
-            continue
-        document_id = chunk.citation.document_id
-        metadata = chunk.metadata
-        external_ref = _metadata_string(metadata, "external_ref", "external_id", "entity_id")
-        source_system = _metadata_string(metadata, "external_system", "source_system") or "AKB"
-        citation = AiipDuplicateCitation(
-            document_id=document_id,
-            document_version_id=chunk.citation.document_version_id,
-            chunk_id=chunk.chunk_id,
-            document_title=chunk.citation.document_title,
-            version_label=chunk.citation.version_label,
-            section_path=chunk.citation.section_path,
-            page_number=chunk.citation.page_number,
-        )
-        existing = grouped.get(document_id)
-        if existing is None:
-            grouped[document_id] = AiipDuplicateCandidate(
-                candidate_id=external_ref or document_id,
-                source_system=source_system,
-                source_record_id=external_ref,
-                akb_document_id=document_id,
-                score=chunk.score,
-                matched_areas=_aiip_matched_areas(chunk),
-                citations=[citation],
-            )
-            continue
-        existing.score = max(existing.score, chunk.score)
-        existing.matched_areas = sorted(set(existing.matched_areas).union(_aiip_matched_areas(chunk)))
-        if len(existing.citations) < 3:
-            existing.citations.append(citation)
-    return sorted(grouped.values(), key=lambda candidate: (-candidate.score, candidate.candidate_id))
-
-
 def _metadata_string(metadata: dict[str, object], *keys: str) -> str | None:
     for key in keys:
         value = metadata.get(key)
         if isinstance(value, str) and value.strip():
             return value.strip()[:240]
     return None
-
-
-def _aiip_matched_areas(chunk: RetrievedChunk) -> list[str]:
-    areas = {"semantic_content"}
-    title = chunk.citation.document_title.casefold()
-    text = chunk.text.casefold()
-    if title and title in text:
-        areas.add("title")
-    if chunk.metadata.get("entity_values") or chunk.metadata.get("keywords"):
-        areas.add("keywords")
-    return sorted(areas)
-
-
-def _aiip_index_version(settings: Settings) -> str:
-    return (
-        f"qdrant:{settings.qdrant_collection}|opensearch:{settings.opensearch_index}"
-        f"|service:{settings.service_version}"
-    )
 
 
 def _query_id() -> str:
@@ -3418,11 +3095,39 @@ def _reranker_budget(profile: str, *, available: int) -> int:
 
 
 ASSISTANT_INTERNAL_CONTEXT_KEYS = {
+    "active_source_application",
+    "answer_composition",
+    "answer_format_instruction",
+    "answer_source",
+    "assistant_contract_version",
+    "assistant_goal",
+    "assistant_query_plan",
+    "assistant_report_request",
+    "assistant_tool",
+    "assistant_tool_reason",
+    "director_copilot_evidence",
+    "document_knowledge_state",
+    "document_retrieval_hints",
+    "live_sources",
+    "mixed_evidence",
+    "stratos_query_state",
+}
+
+ASSISTANT_PERSISTED_CONTEXT_OMIT_KEYS = {
     "answer_format_instruction",
     "assistant_query_plan",
     "assistant_report_request",
     "director_copilot_evidence",
+    "director_copilot_v2_snapshot",
+    "document_retrieval_hints",
+    "earlier_user_questions",
+    "report_artifacts",
 }
+
+ASSISTANT_SENSITIVE_CONTEXT_KEY_RE = re.compile(
+    r"(?:^|_)(?:access_?token|refresh_?token|bearer|authorization|cookie|credential|password|secret|session_?id|private_?key|api_?key|encryption_?key|signing_?key|key_?material)(?:$|_)",
+    re.IGNORECASE,
+)
 
 
 def _bounded_conversation_questions(
@@ -3457,16 +3162,152 @@ def _bounded_conversation_questions(
     return questions
 
 
-def _assistant_query(message: str, context: dict[str, object]) -> str:
+def _assistant_current_context(context: dict[str, object]) -> dict[str, object]:
+    sanitized = _bounded_context_value(context)
+    result = sanitized if isinstance(sanitized, dict) else {}
+    result["answer_source"] = "rag_retrieval"
+    return result
+
+
+def _latest_available_assistant_context(
+    messages: list[object],
+    *,
+    max_messages: int = 12,
+) -> dict[str, object]:
+    merged: dict[str, object] = {}
+    inspected = 0
+    for value in reversed(messages):
+        if not isinstance(value, dict) or value.get("role") != "assistant":
+            continue
+        if value.get("availability") == "source_access_changed":
+            continue
+        metadata = value.get("metadata")
+        if not isinstance(metadata, dict):
+            continue
+        current_context = metadata.get("current_context")
+        sanitized = _bounded_context_value(current_context)
+        if not isinstance(sanitized, dict):
+            continue
+        for key, item in sanitized.items():
+            merged.setdefault(key, item)
+        inspected += 1
+        if inspected >= max_messages:
+            break
+    sanitized_merged = _bounded_context_value(merged)
+    return sanitized_merged if isinstance(sanitized_merged, dict) else {}
+
+
+def _bounded_context_value(
+    value: object,
+    *,
+    depth: int = 0,
+    budget: dict[str, int] | None = None,
+) -> object | None:
+    state = budget if budget is not None else {"entries": 0, "characters": 0}
+    if value is None or isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return value if math.isfinite(value) else None
+    if isinstance(value, str):
+        bounded = value[:800]
+        if state["characters"] + len(bounded) > 12000:
+            return None
+        state["characters"] += len(bounded)
+        return bounded
+    if depth >= 5 or state["entries"] >= 72:
+        return None
+    if isinstance(value, list):
+        result: list[object] = []
+        for item in value[:32]:
+            sanitized = _bounded_context_value(item, depth=depth + 1, budget=state)
+            if sanitized is not None:
+                result.append(sanitized)
+        return result
+    if not isinstance(value, dict):
+        return None
+    result_dict: dict[str, object] = {}
+    for raw_key, item in value.items():
+        if not isinstance(raw_key, str):
+            continue
+        if (
+            raw_key in ASSISTANT_PERSISTED_CONTEXT_OMIT_KEYS
+            or ASSISTANT_SENSITIVE_CONTEXT_KEY_RE.search(raw_key)
+        ):
+            continue
+        state["entries"] += 1
+        if state["entries"] > 72:
+            break
+        sanitized = _bounded_context_value(item, depth=depth + 1, budget=state)
+        if sanitized is not None:
+            result_dict[raw_key] = sanitized
+    return result_dict
+
+
+def _latest_available_citation_scope(
+    messages: list[object],
+    *,
+    max_citations: int = 8,
+) -> tuple[list[str], list[str]]:
+    for value in reversed(messages):
+        if not isinstance(value, dict) or value.get("role") != "assistant":
+            continue
+        if value.get("availability") == "source_access_changed":
+            continue
+        citations = value.get("citations")
+        if not isinstance(citations, list) or not citations:
+            continue
+        document_ids: list[str] = []
+        document_version_ids: list[str] = []
+        for citation in citations[:max_citations]:
+            if not isinstance(citation, dict):
+                continue
+            document_id = citation.get("document_id")
+            version_id = citation.get("document_version_id")
+            if not isinstance(document_id, str) or not document_id.strip():
+                continue
+            if not isinstance(version_id, str) or not version_id.strip():
+                continue
+            document_ids.append(document_id.strip())
+            document_version_ids.append(version_id.strip())
+        if document_version_ids:
+            return (
+                list(dict.fromkeys(document_ids)),
+                list(dict.fromkeys(document_version_ids)),
+            )
+    return [], []
+
+
+def _assistant_query(
+    message: str,
+    context: dict[str, object],
+    *,
+    include_retrieval_hint: bool = True,
+    history_max_length: int = 1800,
+    max_query_length: int = 4000,
+) -> str:
+    earlier_questions = context.get("earlier_user_questions")
+    include_history = _assistant_query_uses_history(message, earlier_questions)
+    inherited_legal_hint = None
+    inherited_legal_question = None
+    if (
+        include_retrieval_hint
+        and include_history
+        and not _assistant_query_has_explicit_source_topic(message)
+    ):
+        inherited_legal_hint, inherited_legal_question = (
+            _assistant_legal_history_retrieval_context(earlier_questions)
+        )
     context_parts = [
         f"{key}: {value_text}"
         for key, value in sorted(context.items())
-        if key not in ASSISTANT_INTERNAL_CONTEXT_KEYS
+        if not _assistant_internal_context_key(key)
+        and (key != "earlier_user_questions" or include_history)
+        and not (inherited_legal_hint and key == "earlier_user_questions")
         for value_text in [
             _assistant_context_value(
                 value,
                 max_length=(
-                    1800
+                    history_max_length
                     if key == "earlier_user_questions"
                     else 500
                 ),
@@ -3474,13 +3315,194 @@ def _assistant_query(message: str, context: dict[str, object]) -> str:
         ]
         if value_text
     ]
-    if not context_parts:
-        return message
-    return f"{message}\n\nKontext zaměstnance:\n" + "\n".join(context_parts)
+    query = message
+    if inherited_legal_hint:
+        query_parts = [
+            inherited_legal_hint,
+            f"Téma předchozí otázky: {inherited_legal_question}",
+            f"Aktuální navazující dotaz: {message}",
+        ]
+        concept_terms = _assistant_legal_follow_up_concept_terms(message)
+        if concept_terms:
+            query_parts.append(f"Hledané právní pojmy: {concept_terms}")
+        query = "\n".join(query_parts)
+    if context_parts:
+        query = f"{query}\n\nKontext zaměstnance:\n" + "\n".join(context_parts)
+    retrieval_hint = None
+    if include_retrieval_hint:
+        retrieval_hint = _assistant_legal_retrieval_hint(message)
+        if (
+            not retrieval_hint
+            and include_history
+            and not _assistant_query_has_explicit_source_topic(message)
+        ):
+            retrieval_hint = inherited_legal_hint
+    if retrieval_hint and not inherited_legal_hint:
+        query = f"{query}\n\nKanonický právní zdroj pro vyhledání: {retrieval_hint}"
+    document_hints = (
+        _assistant_document_retrieval_hints(context)
+        if include_retrieval_hint
+        else []
+    )
+    if document_hints:
+        query = (
+            f"{query}\n\nVyhledávací význam zaměstnaneckého dotazu: "
+            + "; ".join(document_hints)
+        )
+    return query[:max_query_length]
 
 
-def _assistant_answer_query(message: str, context: dict[str, object]) -> str:
-    query = _assistant_query(message, context)
+def _assistant_document_retrieval_hints(context: dict[str, object]) -> list[str]:
+    value = context.get("document_retrieval_hints")
+    if not isinstance(value, list):
+        return []
+    hints: list[str] = []
+    for item in value[:12]:
+        if not isinstance(item, str):
+            continue
+        normalized = re.sub(r"\s+", " ", item).strip()[:80]
+        if normalized and normalized not in hints:
+            hints.append(normalized)
+    return hints
+
+
+def _assistant_internal_context_key(key: str) -> bool:
+    return (
+        key in ASSISTANT_INTERNAL_CONTEXT_KEYS
+        or key.startswith("controlled_rule_")
+        or key.startswith("registry_report_")
+    )
+
+
+_ASSISTANT_HISTORY_STOPWORDS = {
+    "a", "ale", "anebo", "co", "do", "for", "from", "how", "i", "in",
+    "is", "jak", "jaka", "jake", "jaky", "je", "jsou", "k", "ke",
+    "ktere", "ktery", "na", "nad", "nebo", "o", "od", "of", "pod", "pro",
+    "se", "the", "to", "u", "v", "ve", "what", "which", "with", "z", "za",
+}
+
+_ASSISTANT_LEGAL_RETRIEVAL_HINTS = (
+    (r"\bnis\s*2\b", "Směrnice NIS2; Směrnice (EU) 2022/2555"),
+    (r"\bgdpr\b", "Obecné nařízení o ochraně osobních údajů; Nařízení (EU) 2016/679"),
+    (
+        r"\b(ai\s*act|akt\s+o\s+umele\s+inteligenci)\b",
+        "Akt o umělé inteligenci; Nařízení (EU) 2024/1689",
+    ),
+)
+
+
+def _assistant_legal_retrieval_hint(message: str) -> str | None:
+    normalized = _normalize_for_assistant(message)
+    for pattern, hint in _ASSISTANT_LEGAL_RETRIEVAL_HINTS:
+        if re.search(pattern, normalized):
+            return hint
+    return None
+
+
+def _assistant_legal_history_retrieval_hint(earlier_questions: object) -> str | None:
+    hint, _question = _assistant_legal_history_retrieval_context(earlier_questions)
+    return hint
+
+
+def _assistant_legal_history_retrieval_context(
+    earlier_questions: object,
+) -> tuple[str | None, str | None]:
+    if not isinstance(earlier_questions, list):
+        return None, None
+    for question in reversed(earlier_questions[-4:]):
+        if not isinstance(question, str):
+            continue
+        hint = _assistant_legal_retrieval_hint(question)
+        if hint:
+            return hint, question
+    return None, None
+
+
+def _assistant_legal_follow_up_concept_terms(message: str) -> str | None:
+    """Add neutral legal vocabulary for retrieval, never facts or answers."""
+    normalized = _normalize_for_assistant(message)
+    if re.search(r"\bincident\w*\b", normalized) and re.search(
+        r"\b(lhut\w*|oznam\w*|hlas\w*|zprav\w*)\b", normalized
+    ):
+        return (
+            "incident; včasné varování; oznámení incidentu; průběžná zpráva; "
+            "závěrečná zpráva"
+        )
+    return None
+
+
+def _assistant_query_has_explicit_source_topic(message: str) -> bool:
+    normalized = _normalize_for_assistant(message)
+    return bool(
+        re.search(
+            r"\b(budget|rozpocet|projectflow|projekt|archflow|potreb|verejn|zakaz|"
+            r"smlouv|gdpr|nis\s*2|ai\s*act|smernic|zakon)\w*\b",
+            normalized,
+        )
+    )
+
+
+def _assistant_query_uses_history(message: str, earlier_questions: object) -> bool:
+    if not isinstance(earlier_questions, list) or not earlier_questions:
+        return False
+    normalized = _normalize_for_assistant(message).strip()
+    if not normalized:
+        return False
+    if re.match(
+        r"^(a\s+(co|jak(?:a|e|y|ou)?)|co\s+(s\s+tim|to|dale)|jak\s+je\s+to|jak\s+to|"
+        r"ktery\s+z\s+nich|ktera\s+z\s+nich|kolik\s+jich|a\s+dale|a\s+dal|"
+        r"what\s+about|and\s+what|how\s+about)\b",
+        normalized,
+    ):
+        return True
+    if re.search(r"\b(to|toho|tomu|tento|tato|teto|ten|jeho|jeji|jejich|nich|them|it|that|those)\b", normalized):
+        return True
+
+    current_terms = _assistant_history_terms(normalized)
+    if _assistant_legal_retrieval_hint(message):
+        return False
+    if len(current_terms) < 3:
+        return True
+    previous_terms: set[str] = set()
+    for question in earlier_questions[-4:]:
+        if isinstance(question, str):
+            previous_terms.update(_assistant_history_terms(_normalize_for_assistant(question)))
+    return bool(current_terms.intersection(previous_terms))
+
+
+def _assistant_uses_authorized_follow_up_source(
+    message: str,
+    earlier_questions: object,
+) -> bool:
+    return bool(
+        _assistant_query_uses_history(message, earlier_questions)
+        and not _assistant_legal_retrieval_hint(message)
+        and not _assistant_query_has_explicit_source_topic(message)
+        and _assistant_legal_history_retrieval_hint(earlier_questions)
+    )
+
+
+def _assistant_history_terms(value: str) -> set[str]:
+    return {
+        token
+        for token in re.findall(r"[a-z0-9][a-z0-9_-]{1,}", value)
+        if token not in _ASSISTANT_HISTORY_STOPWORDS
+    }
+
+
+def _assistant_answer_query(
+    message: str,
+    context: dict[str, object],
+    *,
+    history_max_length: int = 6000,
+) -> str:
+    query = _assistant_query(
+        message,
+        context,
+        include_retrieval_hint=False,
+        history_max_length=history_max_length,
+        max_query_length=12000,
+    )
     evidence = _director_copilot_evidence_context(
         context.get("director_copilot_evidence")
     )
@@ -3570,11 +3592,10 @@ LOCALIZED_TEXT: dict[ResponseLanguage, dict[str, str]] = {
         "ask_followup": "Položit doplňující dotaz",
         "no_precise_source": "Nepodařilo se najít dostatečně přesný a citovatelný postup.",
         "no_precise_document_source": "Nepodařilo se najít dostatečně přesný a citovatelný zdroj v dokumentech.",
-        "service_desk_handoff": "Založit požadavek na Service Desk",
         "followup_owner": "Chcete zjistit, kdo je vlastník systému?",
         "followup_request_text": "Chcete připravit text žádosti?",
         "followup_incident_category": "Chcete doporučit kategorii incidentu?",
-        "followup_incident_description": "Chcete připravit popis pro Service Desk?",
+        "followup_incident_description": "Chcete upřesnit projevy a rozsah problému?",
         "followup_open_source": "Chcete otevřít zdrojový dokument?",
         "followup_ask_more": "Chcete položit doplňující otázku?",
     },
@@ -3606,11 +3627,10 @@ LOCALIZED_TEXT: dict[ResponseLanguage, dict[str, str]] = {
         "ask_followup": "Ask follow-up",
         "no_precise_source": "I could not find a sufficiently precise and citable procedure.",
         "no_precise_document_source": "I could not find a sufficiently precise and citable document source.",
-        "service_desk_handoff": "Create a Service Desk request",
         "followup_owner": "Do you want to identify the system owner?",
         "followup_request_text": "Do you want to draft the request text?",
         "followup_incident_category": "Do you want a recommended incident category?",
-        "followup_incident_description": "Do you want to draft a Service Desk description?",
+        "followup_incident_description": "Do you want to clarify the symptoms and scope of the problem?",
         "followup_open_source": "Do you want to open the source document?",
         "followup_ask_more": "Do you want to ask a follow-up question?",
     },
@@ -3729,7 +3749,19 @@ def _clarification_questions(
 ) -> list[ClarificationQuestion]:
     normalized = _normalize_for_assistant(message)
     questions: list[ClarificationQuestion] = []
-    if _is_access_query(normalized):
+    document_intent = _assistant_document_knowledge_intent(context)
+    documented_task = document_intent in {
+        "application_documentation",
+        "procedure",
+        "resource",
+        "support_channel",
+        "owner",
+        "responsibility",
+        "deadline",
+        "obligation",
+        "policy",
+    }
+    if _is_access_query(normalized) and not documented_task:
         if not context.get("system"):
             questions.append(
                 ClarificationQuestion(
@@ -3764,7 +3796,7 @@ def _clarification_questions(
                     ],
                 )
             )
-    if _is_incident_query(normalized):
+    if _is_incident_query(normalized) and not documented_task:
         if not context.get("system"):
             questions.append(
                 ClarificationQuestion(
@@ -3817,12 +3849,180 @@ def _normalize_for_assistant(value: str) -> str:
     return "".join(char for char in normalized if not unicodedata.combining(char))
 
 
+_ANSWER_FACET_CATALOG: dict[str, dict[str, object]] = {
+    "obligations": {
+        "query_terms": ("povinnost", "musi", "pozadavek", "obligation", "must", "requirement"),
+        "evidence_terms": ("povinnost", "musi", "je povinen", "pozad", "obligation", "shall", "must"),
+        "label_cs": "povinnosti",
+        "label_en": "obligations",
+    },
+    "deadlines": {
+        "query_terms": ("lhut", "termin", "do kdy", "deadline", "time limit"),
+        "evidence_terms": ("lhut", "termin", "dnu", "mesic", "nejpozdeji", "deadline", "days", "months"),
+        "label_cs": "lhůty a termíny",
+        "label_en": "deadlines and time limits",
+    },
+    "sanctions": {
+        "query_terms": ("sankc", "pokut", "penal", "postih"),
+        "evidence_terms": ("sankc", "pokut", "penal", "postih", "urok z prodleni"),
+        "label_cs": "sankce",
+        "label_en": "sanctions",
+    },
+    "price": {
+        "query_terms": ("cen", "castk", "odmen", "platb", "price", "amount", "payment"),
+        "evidence_terms": ("cen", "castk", "odmen", "platb", "kc", "eur", "price", "amount", "payment"),
+        "label_cs": "cena a platby",
+        "label_en": "price and payments",
+    },
+    "validity": {
+        "query_terms": ("platnost", "ucinnost", "trvani", "od kdy", "validity", "effective"),
+        "evidence_terms": ("platnost", "ucinnost", "trvani", "nabyva", "validity", "effective", "duration"),
+        "label_cs": "platnost a účinnost",
+        "label_en": "validity and effectiveness",
+    },
+    "termination": {
+        "query_terms": ("ukoncen", "vypoved", "odstoupen", "termination", "notice"),
+        "evidence_terms": ("ukoncen", "vypoved", "odstoupen", "termination", "notice"),
+        "label_cs": "ukončení a výpověď",
+        "label_en": "termination and notice",
+    },
+    "responsibilities": {
+        "query_terms": ("odpovednost", "gestor", "vlastnik", "kdo", "responsibility", "owner"),
+        "evidence_terms": ("odpovednost", "odpovida", "gestor", "vlastnik", "responsibility", "responsible", "owner"),
+        "label_cs": "odpovědnosti",
+        "label_en": "responsibilities",
+    },
+    "exceptions": {
+        "query_terms": ("vyjimk", "odchylk", "exception", "exemption"),
+        "evidence_terms": ("vyjimk", "odchylk", "exception", "exemption"),
+        "label_cs": "výjimky",
+        "label_en": "exceptions",
+    },
+    "risks": {
+        "query_terms": ("rizik", "risk"),
+        "evidence_terms": ("rizik", "ohrozen", "skod", "risk", "damage", "liability"),
+        "label_cs": "rizika",
+        "label_en": "risks",
+    },
+}
+
+
+def _contains_answer_facet_term(value: str, term: str) -> bool:
+    if " " in term:
+        return term in value
+    return any(
+        token.startswith(term)
+        and not (term == "termin" and token.startswith("termination"))
+        for token in re.findall(r"[a-z0-9]+", value)
+    )
+
+
+def _requested_answer_facets(message: str) -> list[str]:
+    normalized = _normalize_for_assistant(message)
+    return [
+        facet
+        for facet, definition in _ANSWER_FACET_CATALOG.items()
+        if any(
+            _contains_answer_facet_term(normalized, str(term))
+            for term in definition["query_terms"]
+        )
+    ]
+
+
+def _apply_answer_facet_completeness(
+    *,
+    answer: RagAnswer,
+    requested_facets: list[str],
+    chunks: list[RetrievedChunk],
+    response_language: ResponseLanguage,
+) -> RagAnswer:
+    if len(requested_facets) < 2 or not answer.used_chunks or answer.confidence == "insufficient_source":
+        return answer
+
+    used_chunk_ids = set(answer.used_chunks)
+    evidence = _normalize_for_assistant(
+        " ".join(chunk.text for chunk in chunks if chunk.chunk_id in used_chunk_ids)
+    )
+    rendered_answer = _normalize_for_assistant(answer.answer)
+    missing = []
+    for facet in requested_facets:
+        definition = _ANSWER_FACET_CATALOG[facet]
+        terms = definition["evidence_terms"]
+        if not any(
+            _contains_answer_facet_term(evidence, str(term)) for term in terms
+        ) or not any(
+            _contains_answer_facet_term(rendered_answer, str(term)) for term in terms
+        ):
+            missing.append(str(definition[f"label_{response_language}"]))
+    if not missing:
+        return answer
+
+    missing_label = ", ".join(missing)
+    notice = (
+        f"V autorizovaných zdrojích se nepodařilo úplně doložit: {missing_label}."
+        if response_language == "cs"
+        else f"The authorized sources did not fully substantiate: {missing_label}."
+    )
+    missing_information = " ".join(
+        part for part in (answer.missing_information, notice) if part
+    )
+    return answer.model_copy(
+        update={
+            "answer": f"{answer.answer.rstrip()}\n\n{notice}",
+            "confidence": "medium" if answer.confidence == "high" else answer.confidence,
+            "warnings": list(
+                dict.fromkeys([*answer.warnings, "ANSWER_FACET_COVERAGE_INCOMPLETE"])
+            ),
+            "missing_information": missing_information,
+            "evidence_status": (
+                "partial" if answer.evidence_status == "supported" else answer.evidence_status
+            ),
+        }
+    )
+
+
 def _is_access_query(value: str) -> bool:
     return any(term in value for term in ("pristup", "opravneni", "access", "permission"))
 
 
 def _is_incident_query(value: str) -> bool:
-    return any(term in value for term in ("nejde", "nefunguje", "vypadek", "chyba", "incident", "outage", "broken", "error"))
+    if any(
+        term in value
+        for term in ("nejde", "nefunguje", "vypadek", "outage", "broken", "error")
+    ) or re.search(r"\bchyb(a|u|y|ou|e)\b", value):
+        return True
+    if "incident" not in value:
+        return False
+    if any(
+        term in value
+        for term in (
+            "clanek",
+            "lhut",
+            "nis2",
+            "oznamen",
+            "povinnost",
+            "pravni",
+            "regulac",
+            "sankc",
+            "smernic",
+            "zakon",
+        )
+    ):
+        return False
+    return any(
+        term in value
+        for term in (
+            "aplikac",
+            "hlasim",
+            "nahlasit",
+            "nahlasuji",
+            "pocitac",
+            "sluzb",
+            "system",
+            "uzivatel",
+            "zarizeni",
+        )
+    )
 
 
 def _is_approval_query(value: str) -> bool:
@@ -3847,7 +4047,14 @@ def _employee_answer(answer: str, response_language: ResponseLanguage = "cs") ->
 def _strip_inline_chunk_citations(value: str) -> str:
     text = re.sub(r"\s*\[(?:\s*chunk_[A-Za-z0-9]+\s*,?)+\]", "", value)
     text = re.sub(r"\s*\[chunk_[^\]]+\]", "", text)
-    return re.sub(r"\bchunk_[A-Za-z0-9]+\b", "", text)
+    # A streamed or truncated model response can end before the closing bracket.
+    # Remove only a trailing citation fragment so ordinary bracketed text remains intact.
+    text = re.sub(r"\s*\[\s*chunk_[A-Za-z0-9_,\s]*$", "", text)
+    return re.sub(
+        r"(?<![A-Za-z0-9_])chunk_[A-Za-z0-9]*(?![A-Za-z0-9_])",
+        "",
+        text,
+    )
 
 
 def _strip_markdown_emphasis(value: str) -> str:
@@ -4105,6 +4312,14 @@ def _parse_follow_up_questions(raw: str) -> list[str]:
         if len(questions) == 3:
             break
     return questions
+
+
+def _assistant_document_knowledge_intent(context: dict[str, object]) -> str | None:
+    value = context.get("document_knowledge_state")
+    if not isinstance(value, dict):
+        return None
+    intent = value.get("intent")
+    return intent if isinstance(intent, str) else None
 
 
 def _normalize_follow_up_question(value: str) -> str:

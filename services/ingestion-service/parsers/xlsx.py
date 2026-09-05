@@ -50,7 +50,7 @@ class XlsxParser(DocumentParser):
                             break
                         continue
                     empty_streak = 0
-                    line = " | ".join(cell for cell in cells if cell)
+                    line = " | ".join(cells)
                     if header_row is None:
                         header_row = line
                     sheet_rows.append(line)
@@ -77,7 +77,10 @@ class XlsxParser(DocumentParser):
                             char_start=offset,
                             char_end=offset + len(text),
                             block_type="table",
-                            metadata={"sheet": str(sheet.title), "row_offset": start},
+                            metadata={
+                                "sheet": str(sheet.title), "row_offset": start,
+                                "table_header": header_row, "table_header_line_count": 1,
+                            },
                         )
                     )
                     offset += len(text) + 2

@@ -77,26 +77,35 @@ interface CachedCatalog {
 }
 
 let cachedCatalog: CachedCatalog | null = null;
-let pendingCatalog: Promise<DirectorCopilotV2ManifestCatalog> | null = null;
+let pendingCatalog: { key: string; promise: Promise<DirectorCopilotV2ManifestCatalog> } | null = null;
 
 export async function loadDirectorCopilotV2ManifestCatalog(
   options: DirectorCopilotV2ManifestCatalogOptions,
 ): Promise<DirectorCopilotV2ManifestCatalog> {
   const config = getDirectorCopilotConfig(options.config);
-  const key = [
+  const key = JSON.stringify([
     config.budgetBaseUrl,
     config.projectflowBaseUrl,
     config.archflowBaseUrl,
+    options.config.authMode,
+    options.config.oidc?.identityMode,
+    options.config.oidc?.issuer,
+    config.tokenUrl,
     config.clientId,
+    config.managedIssuer,
+    Object.entries(config.managedClients ?? {})
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([audience, client]) => [audience, client.clientId]),
     DIRECTOR_COPILOT_V2_REVISION,
-  ].join("|");
+  ]);
   const now = Date.now();
   if (!options.force && cachedCatalog?.key === key && cachedCatalog.expiresAt > now) {
     return cachedCatalog.catalog;
   }
-  if (!options.force && pendingCatalog) return pendingCatalog;
+  if (!options.force && pendingCatalog?.key === key) return pendingCatalog.promise;
   const pending = fetchCatalog(options);
-  pendingCatalog = pending;
+  const entry = { key, promise: pending };
+  pendingCatalog = entry;
   try {
     const catalog = await pending;
     cachedCatalog = {
@@ -106,7 +115,7 @@ export async function loadDirectorCopilotV2ManifestCatalog(
     };
     return catalog;
   } finally {
-    if (pendingCatalog === pending) pendingCatalog = null;
+    if (pendingCatalog === entry) pendingCatalog = null;
   }
 }
 

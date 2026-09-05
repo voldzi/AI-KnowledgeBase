@@ -35,7 +35,11 @@ AKL_RAG_CHAT_MODEL=gemma4:12b-mlx
 AKL_RAG_HIGH_QUALITY_CHAT_MODEL=gemma4:31b-mlx
 AKL_RAG_HIGH_QUALITY_MIN_CONTEXT_CHUNKS=6
 AKL_RAG_EMBEDDING_MODEL=bge-m3
-AKL_RAG_ANSWER_MAX_TOKENS=512
+AKL_RAG_MAX_CONTEXT_CHARS=20000
+AKL_RAG_ANSWER_MAX_TOKENS=768
+AKL_ASSISTANT_HISTORY_MAX_USER_MESSAGES=12
+AKL_ASSISTANT_HISTORY_MAX_MESSAGE_CHARS=800
+AKL_ASSISTANT_HISTORY_MAX_CHARS=6000
 AKL_RAG_SOURCE_CONTEXT_WINDOW=1
 AKL_RAG_AUTHZ_MODE=dev
 AKL_RAG_REQUIRE_CITATIONS=true
@@ -119,4 +123,7 @@ The backup includes PostgreSQL dump, MinIO bucket data, Qdrant snapshots for `ak
 - `QDRANT_COLLECTION_VECTOR_SIZE_MISMATCH`: the collection was created for a different embedding dimension. Recreate it or use the matching embedding profile.
 - OpenSearch has no results after enabling it: re-run the document import or reindex flow so ingestion writes existing chunks into `AKL_OPENSEARCH_INDEX`.
 - `SOURCE_FILE_URI_MISSING` in viewer: the chunk was indexed before source metadata support. Reindex the document.
-- Slow local answers: keep `AKL_RAG_ANSWER_MAX_TOKENS=512` and reduce `max_chunks` for very small local models.
+- Slow local answers on a deliberately small development model: lower
+  `AKL_RAG_ANSWER_MAX_TOKENS` to `512` and reduce `max_chunks`. The standard
+  production profile keeps `768`; authorization and evidence gates are never
+  weakened for latency.

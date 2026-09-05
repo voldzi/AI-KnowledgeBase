@@ -93,7 +93,9 @@ Important settings:
 | `AKL_LLM_MODEL_PULL_TIMEOUT_SECONDS` | Timeout for explicit model pull operations. |
 | `AKL_LLM_REQUEST_TIMEOUT_SECONDS` | HTTP timeout for external provider calls. |
 | `AKL_LLM_RETRY_ATTEMPTS` | Retries after the first failed provider attempt. |
-| `AKL_RATE_LIMIT_ENABLED` | Enables the in-process placeholder rate limiter. |
+| `AKL_RATE_LIMIT_ENABLED` | Enables the bounded per-authenticated-caller rate limiter. |
+| `AKL_RATE_LIMIT_PER_MINUTE` | Maximum requests per authenticated caller in a rolling minute window. |
+| `AKL_RATE_LIMIT_MAX_IDENTITIES` | Maximum caller counters retained in memory; oldest inactive entry is evicted when full. |
 | `AKL_OLLAMA_BASE_URL` | Ollama base URL. |
 | `AKL_OLLAMA_BASE_URLS` | Optional comma-separated ordered Ollama failover URLs; defaults to `AKL_OLLAMA_BASE_URL`. |
 | `AKL_OLLAMA_ENDPOINT_TIMEOUT_SECONDS` | Per-candidate timeout for Ollama endpoint probes before the gateway tries the next URL. |
@@ -117,7 +119,7 @@ X-AKL-Audience: llm-gateway-service
 X-AKL-Roles: service_ingestion | service_rag
 ```
 
-The token, audience, and role must all match. A user or AIIP bearer token is
+The token, audience, and role must all match. A user bearer token is
 not a substitute for this downstream service identity.
 
 In `AKL_AUTH_MODE=oidc`, the gateway requires an inbound bearer token but does not validate OIDC claims locally. It relies on upstream services to perform document authorization before calling the gateway.
@@ -139,7 +141,11 @@ It does not forward inbound service bearer tokens to LLM runtimes. OpenAI-compat
 
 ## Limits
 
-- The rate limiter is a single-process placeholder and is disabled by default.
+- The rate limiter is bounded and keyed by the authenticated service principal,
+  never by the caller-controlled `X-Service-Name` header. It is disabled in the
+  local example profile and enabled by the production Compose profile. Counters
+  are process-local, so a future multi-replica deployment requires a shared
+  limiter if one aggregate quota across replicas is required.
 - Model pull is disabled by default and is never triggered on service startup.
 - Streaming retries only happen before a stream successfully starts.
 - Ollama failover only uses the explicit `AKL_OLLAMA_BASE_URLS` allowlist. The gateway does not scan LAN ranges.

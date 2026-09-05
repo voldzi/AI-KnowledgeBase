@@ -8,6 +8,7 @@ from app.controlled_rule_catalog import (
     catalog_sha256,
     normative_key_category_matches,
     normative_key_is_registered,
+    normative_key_source_type_matches,
 )
 from app.schemas import ControlledRuleConsumerResponse
 
@@ -40,6 +41,32 @@ def test_public_procurement_catalog_canonicalizes_only_registered_aliases():
     assert not normative_key_is_registered(
         "public_procurement",
         "financial_limit:generated-hash",
+    )
+
+
+def test_statutory_normative_keys_require_an_authoritative_legal_source():
+    statutory_key = "public_procurement.vzmr.supplies_services.threshold"
+    internal_key = "public_procurement.market_research.threshold"
+
+    assert normative_key_source_type_matches(
+        "public_procurement",
+        statutory_key,
+        "law",
+    )
+    assert normative_key_source_type_matches(
+        "public_procurement",
+        statutory_key,
+        "implementing_regulation",
+    )
+    assert not normative_key_source_type_matches(
+        "public_procurement",
+        statutory_key,
+        "internal_directive",
+    )
+    assert normative_key_source_type_matches(
+        "public_procurement",
+        internal_key,
+        "internal_directive",
     )
 
 

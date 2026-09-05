@@ -13,6 +13,7 @@ import { resetDirectorCopilotV2ManifestCacheForTests } from "../src/lib/director
 import {
   authorizeDirectorCopilotV2History,
   directorCopilotV2PersistenceMetadata,
+  persistedDirectorCopilotV2Response,
 } from "../src/lib/director-copilot-v2/history";
 import { resolveConversationQuery } from "../src/lib/director-copilot/query-state";
 import type {
@@ -113,6 +114,30 @@ describe("Director Copilot V2 active chat", () => {
     assert.match(serializedHistory, /"item_count":1/);
     assert.equal(serializedHistory.includes("actor-token"), false);
     assert.equal(serializedHistory.includes("Projekt Alfa"), false);
+    const persistedMixed = persistedDirectorCopilotV2Response({
+      ...response,
+      current_context: {
+        ...response.current_context,
+        assistant_goal: "recommend",
+        answer_composition: "live_and_document_evidence",
+        mixed_evidence: {
+          live_data: "available",
+          document_guidance: "available",
+          live_data_substituted_by_documents: false,
+          unsafe_extra: "must-not-persist",
+        },
+      },
+    });
+    assert.equal(persistedMixed.current_context.assistant_goal, "recommend");
+    assert.equal(
+      persistedMixed.current_context.answer_composition,
+      "live_and_document_evidence",
+    );
+    assert.deepEqual(persistedMixed.current_context.mixed_evidence, {
+      live_data: "available",
+      document_guidance: "available",
+      live_data_substituted_by_documents: false,
+    });
     const originalFetch = globalThis.fetch;
     globalThis.fetch = fetcher();
     try {
@@ -278,6 +303,47 @@ describe("Director Copilot V2 active chat", () => {
     assert.match(response.answer ?? "", /\*\*Stav dat:\*\* úplná/);
     assert.match(response.answer ?? "", /\[Servery\]\(https:\/\/stratos\.example\.test\/budget\/actions\/servery\)/);
     assert.equal((response.answer ?? "").includes("Licence"), false);
+  });
+
+  it("keeps year and financial meaning when a budget summary is followed by the most expensive item", async () => {
+    const requests: DirectorCopilotV2Request[] = [];
+    const auditEvents: unknown[] = [];
+    const previous = resolveConversationQuery({
+      message: "Jaký má IT rozpočet na rok 2025?",
+      now: new Date("2026-08-28T10:00:00Z"),
+    }).state;
+    const message = "A jaká byla nejdražší položka?";
+    const queryState = resolveConversationQuery({
+      message,
+      context: { stratos_query_state: previous },
+      now: new Date("2026-08-28T10:00:00Z"),
+    }).state;
+    const response = await runDirectorCopilotV2Chat({
+      message,
+      conversationId: "conversation-v2-budget-follow-up",
+      responseLanguage: "cs",
+      actorContext: context(),
+      clients: {
+        registry: { createAuditEvent: async (event: unknown) => { auditEvents.push(event); return {}; } },
+        rag: { assistantChat: async () => { throw new Error("No document fallback for live finance"); } },
+      } as unknown as ApiClients,
+      config: config(),
+      intent: "budget_portfolio_status",
+      queryState,
+      mode: "active",
+      fetcher: budgetItemFetcher(requests),
+      refreshActorContext: async () => context(),
+    });
+    assert.equal(queryState.period.fiscal_year, 2025);
+    assert.equal(requests.length, 1);
+    assert.deepEqual(requests[0]?.parameters.group_by, ["procurement_action"]);
+    assert.deepEqual(requests[0]?.parameters.scenario, ["plan"]);
+    assert.equal(response.response_type, "answer");
+    assert.match(response.answer ?? "", /Servery/);
+    assert.match(response.answer ?? "", /500[  ]000/);
+    assert.match(response.answer ?? "", /\*\*Stav dat:\*\* úplná/);
+    assert.doesNotMatch(response.answer ?? "", /Licence|Sekce IT/);
+    assert.match(JSON.stringify(auditEvents), /"evidence_status":"passed"/);
   });
 
   it("counts authorized Budget actions from item-level completeness metadata", async () => {
@@ -535,6 +601,69 @@ describe("Director Copilot V2 active chat", () => {
     assert.ok(response.warnings.includes("LIVE_DATA_CONTRACT_REJECTED"));
     assert.ok(response.warnings.includes("LIVE_DATA_FALLBACK_BLOCKED"));
   });
+
+  it("identifies ProjectFlow explicitly when an authorized portfolio query has no data", async () => {
+    const message = "Jaký je aktuální stav projektového portfolia?";
+    const queryState = resolveConversationQuery({
+      message,
+      now: new Date("2026-08-10T10:00:00.000Z"),
+    }).state;
+    const response = await runDirectorCopilotV2Chat({
+      message,
+      conversationId: "conversation-v2-projectflow-no-data",
+      responseLanguage: "cs",
+      actorContext: context(),
+      clients: {
+        registry: {
+          createAuditEvent: async () => ({}),
+        },
+      } as unknown as ApiClients,
+      config: config(),
+      intent: "project_portfolio_status",
+      queryState,
+      mode: "active",
+      fetcher: projectflowNoDataFetcher(),
+      refreshActorContext: async () => context(),
+    });
+
+    assert.equal(response.response_type, "no_answer");
+    assert.equal(response.confidence, "insufficient_source");
+    assert.match(response.answer ?? "", /ProjectFlow nevrátil žádné oprávněné projekty/i);
+    assert.match(response.answer ?? "", /nebyl nahrazen vyhledáváním v dokumentech/i);
+    assert.ok(response.warnings.includes("LIVE_DATA_NO_MATCHING_DATA"));
+    assert.ok(response.follow_up_questions.length > 0);
+    assert.match(response.recommended_action ?? "", /Chybějící výsledek není vykládán jako nula/i);
+  });
+
+  it("describes an empty authorized ArchFlow scope without implying organization-wide absence", async () => {
+    const message = "Jaké potřeby eviduje Sekce IT?";
+    const queryState = resolveConversationQuery({
+      message,
+      now: new Date("2026-08-10T10:00:00.000Z"),
+    }).state;
+    const response = await runDirectorCopilotV2Chat({
+      message,
+      conversationId: "conversation-v2-archflow-policy-denied",
+      responseLanguage: "cs",
+      actorContext: context(),
+      clients: {
+        registry: {
+          createAuditEvent: async () => ({}),
+        },
+      } as unknown as ApiClients,
+      config: config(),
+      intent: "archflow_demand_overview",
+      queryState,
+      mode: "active",
+      fetcher: archflowNotAuthorizedFetcher(),
+      refreshActorContext: async () => context(),
+    });
+
+    assert.equal(response.response_type, "restricted");
+    assert.match(response.answer ?? "", /v dostupném oprávněném rozsahu ArchFlow/i);
+    assert.match(response.answer ?? "", /mimo tento rozsah zůstávají skryté/i);
+    assert.doesNotMatch(response.answer ?? "", /v organizaci nejsou/i);
+  });
 });
 
 function fetcher(): typeof fetch {
@@ -561,6 +690,61 @@ function fetcher(): typeof fetch {
         : budgetProjectShapedOrganizationResponse();
     return Response.json({
       ...source,
+      tool_id: request.tool_id,
+      tool_call_id: request.tool_call_id,
+    });
+  };
+}
+
+function projectflowNoDataFetcher(): typeof fetch {
+  return async (input, init) => {
+    const url = String(input);
+    if (init?.method === "GET") {
+      const audience = url.includes("projectflow")
+        ? "projectflow-api"
+        : url.includes("archflow")
+          ? "archflow-api"
+          : "budget-api";
+      return Response.json({
+        schema_version: "director-copilot-2",
+        manifests: pinnedDirectorCopilotV2ManifestBundle().manifests.filter(
+          (manifest) => manifest.audience === audience,
+        ),
+      });
+    }
+    assert.match(url, /projectflow/);
+    const request = JSON.parse(String(init?.body)) as DirectorCopilotV2Request;
+    return Response.json({
+      ...structuredClone(projectflow.responses.no_data),
+      tool_id: request.tool_id,
+      tool_call_id: request.tool_call_id,
+    });
+  };
+}
+
+function archflowNotAuthorizedFetcher(): typeof fetch {
+  return async (input, init) => {
+    const url = String(input);
+    if (init?.method === "GET") {
+      const audience = url.includes("projectflow")
+        ? "projectflow-api"
+        : url.includes("archflow")
+          ? "archflow-api"
+          : "budget-api";
+      return Response.json({
+        schema_version: "director-copilot-2",
+        manifests: pinnedDirectorCopilotV2ManifestBundle().manifests.filter(
+          (manifest) => manifest.audience === audience,
+        ),
+      });
+    }
+    assert.match(url, /archflow/);
+    const request = JSON.parse(String(init?.body)) as DirectorCopilotV2Request;
+    const response = structuredClone(archflow.responses.not_authorized);
+    response.completeness.missing_reasons = ["ARCHFLOW_INFORMATION_POLICY_DENIED"];
+    response.warnings = ["ARCHFLOW_INFORMATION_POLICY_DENIED"];
+    return Response.json({
+      ...response,
       tool_id: request.tool_id,
       tool_call_id: request.tool_call_id,
     });

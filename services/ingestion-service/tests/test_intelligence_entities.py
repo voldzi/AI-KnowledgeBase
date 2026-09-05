@@ -3,7 +3,7 @@ from intelligence.entities import build_intelligence_metadata, extract_entities
 
 def test_rule_based_entity_extractor_detects_supported_entities() -> None:
     text = (
-        "Kontakt: AIIP.Office@example.cz, telefon +420 777 888 999. "
+        "Kontakt: Knowledge.Office@example.cz, telefon +420 777 888 999. "
         "Zdroj https://akb.example/doc/123 obsahuje RMO 12/2024 a IP 10.20.30.40. "
         "Platnost od 10. 7. 2026."
     )
@@ -13,7 +13,7 @@ def test_rule_based_entity_extractor_detects_supported_entities() -> None:
     normalized_values = {entity["normalized_value"] for entity in entities}
 
     assert {"email", "phone", "url", "document_number", "ipv4", "date"} <= entity_types
-    assert "aiip.office@example.cz" in normalized_values
+    assert "knowledge.office@example.cz" in normalized_values
     assert "+420777888999" in normalized_values
     assert "RMO12/2024" in normalized_values
     assert "10.20.30.40" in normalized_values

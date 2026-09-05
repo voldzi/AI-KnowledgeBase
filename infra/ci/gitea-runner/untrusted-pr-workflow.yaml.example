@@ -1,0 +1,150 @@
+name: AKB Untrusted Pull Request CI
+
+# Enable this template as .gitea/workflows/untrusted-pr.yaml only after the
+# disposable runner and its network boundary from the AKB runner runbook have
+# been accepted. It deliberately has no Docker socket, host cache or secrets.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  PIP_CACHE_DIR: /tmp/akb-ci/pip
+  PLAYWRIGHT_BROWSERS_PATH: /tmp/akb-ci/playwright
+  PNPM_STORE_DIR: /tmp/akb-ci/pnpm-store
+  NPM_CONFIG_REGISTRY: ${{ vars.AKB_CI_NPM_REGISTRY }}
+  PIP_INDEX_URL: ${{ vars.AKB_CI_PYPI_INDEX_URL }}
+  PLAYWRIGHT_DOWNLOAD_HOST: ${{ vars.AKB_CI_PLAYWRIGHT_DOWNLOAD_HOST }}
+
+jobs:
+  standards:
+    name: PR repository standards
+    runs-on: akb-gitea-ci-untrusted
+    steps:
+      - name: Check out pull request
+        env:
+          GITEA_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "${{ github.server_url }}/${{ github.repository }}.git"
+          git -c http.extraheader="Authorization: token ${GITEA_TOKEN}" \
+            fetch --depth=1 origin "${{ github.sha }}"
+          git checkout --detach FETCH_HEAD
+      - name: Verify repository contracts
+        run: |
+          set -euo pipefail
+          bash scripts/validate-skeleton.sh
+          ruby scripts/generate_openapi_index.rb --check
+          python3 -m json.tool openapi/openapi.json >/dev/null
+          python3 scripts/check_embedding_shadow_profiles.py
+          python3 tests/test_gitea_ci_operations.py
+          npx --yes @redocly/cli lint openapi/openapi.json
+
+  web:
+    name: PR web
+    runs-on: akb-gitea-ci-untrusted
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - name: Check out pull request
+        env:
+          GITEA_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "${{ github.server_url }}/${{ github.repository }}.git"
+          git -c http.extraheader="Authorization: token ${GITEA_TOKEN}" \
+            fetch --depth=1 origin "${{ github.sha }}"
+          git checkout --detach FETCH_HEAD
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --store-dir "$PNPM_STORE_DIR"
+      - name: Validate, test, build and run browser tests
+        run: |
+          set -euo pipefail
+          pnpm semantic-registry:check
+          pnpm typecheck
+          pnpm test
+          pnpm build
+          pnpm exec playwright install chromium
+          pnpm test:e2e
+
+  python-services:
+    name: PR Python / ${{ matrix.service }}
+    runs-on: akb-gitea-ci-untrusted
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: registry-api
+            working-directory: services/registry-api
+            install-command: python3 -m pip install -e ".[test]"
+          - service: ingestion-service
+            working-directory: services/ingestion-service
+            install-command: python3 -m pip install -r requirements.txt
+          - service: rag-retrieval-service
+            working-directory: services/rag-retrieval-service
+            install-command: python3 -m pip install -r requirements.txt
+          - service: llm-gateway-service
+            working-directory: services/llm-gateway-service
+            install-command: python3 -m pip install -r requirements.txt
+          - service: evaluation-service
+            working-directory: services/evaluation-service
+            install-command: python3 -m pip install -r requirements.txt
+          - service: governance-service
+            working-directory: services/governance-service
+            install-command: python3 -m pip install -r requirements.txt
+    steps:
+      - name: Check out pull request
+        env:
+          GITEA_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "${{ github.server_url }}/${{ github.repository }}.git"
+          git -c http.extraheader="Authorization: token ${GITEA_TOKEN}" \
+            fetch --depth=1 origin "${{ github.sha }}"
+          git checkout --detach FETCH_HEAD
+      - name: Install dependencies and test
+        working-directory: ${{ matrix.working-directory }}
+        env:
+          PYTHONPATH: .
+        run: |
+          set -euo pipefail
+          python3 -m venv .venv
+          . .venv/bin/activate
+          python -m pip install --upgrade pip
+          ${{ matrix.install-command }}
+          python -m pytest
+
+  compose:
+    name: PR Docker Compose configuration
+    runs-on: akb-gitea-ci-untrusted
+    steps:
+      - name: Check out pull request
+        env:
+          GITEA_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "${{ github.server_url }}/${{ github.repository }}.git"
+          git -c http.extraheader="Authorization: token ${GITEA_TOKEN}" \
+            fetch --depth=1 origin "${{ github.sha }}"
+          git checkout --detach FETCH_HEAD
+      - name: Validate supported runtime configurations
+        run: |
+          set -euo pipefail
+          docker compose --env-file .env.example \
+            -f infra/docker-compose/docker-compose.dev.yml config >/tmp/akb-compose-dev.yml
+          docker compose --env-file .env.local-prod.example \
+            -f infra/docker-compose/docker-compose.dev.yml \
+            -f infra/docker-compose/docker-compose.local-prod.yml config >/tmp/akb-compose-local-prod.yml
+          AKB_POLICY_SERVICE_TOKEN=dummy-akb-policy-service-token \
+          docker compose --env-file infra/docker-compose/docker-home.env.example \
+            -f infra/docker-compose/docker-compose.docker-home.yml config >/tmp/akb-compose-docker-home.yml
+
+  # The immutable release contract is intentionally absent. It requires the
+  # host Docker socket and may run only after a trusted administrator manually
+  # dispatches the reviewed SHA on the repository-scoped AKB runner.

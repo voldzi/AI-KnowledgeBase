@@ -9,16 +9,20 @@ from sqlalchemy.pool import StaticPool
 
 os.environ.setdefault("AKL_ENV", "test")
 os.environ.setdefault("AKL_AUTH_MODE", "mock")
+os.environ.setdefault("AKL_WORKFLOW_MAINTENANCE_ENABLED", "false")
 os.environ.setdefault("AKL_MOCK_ROLES", '["admin"]')
 os.environ.setdefault(
+    "AKL_WEB_SESSION_STORE_SECRET",
+    "akb-development-web-session-store-secret-v1",
+)
+os.environ.setdefault(
     "AKL_TRUSTED_SERVICE_CLIENT_IDS",
-    "aiip-document-service,akb-rag-service,stratos-akb-service,"
+    "akb-rag-service,stratos-akb-service,"
     "svc-budget-controlled-rules,svc-ingestion,svc-governance,svc-evaluation,"
     "svc-akb-director-copilot",
 )
 os.environ.setdefault(
     "AKL_SERVICE_CLIENT_ROUTE_GRANTS",
-    "aiip-document-service=aiip-upload,"
     "akb-rag-service=authz|audit|idempotency,"
     "stratos-akb-service=stratos-budget-upload,"
     "svc-budget-controlled-rules=controlled-rules-read,"
@@ -27,10 +31,7 @@ os.environ.setdefault(
     "svc-evaluation=audit|idempotency,"
     "svc-akb-director-copilot=audit",
 )
-os.environ.setdefault(
-    "AKL_SERVICE_CLIENT_DELEGATIONS",
-    "akb-rag-service=aiip-service",
-)
+os.environ.setdefault("AKL_SERVICE_CLIENT_DELEGATIONS", "")
 
 from app.database import Base, get_db  # noqa: E402
 import app.models  # noqa: F401,E402

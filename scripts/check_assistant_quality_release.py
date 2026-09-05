@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -13,12 +14,23 @@ class QualityReleaseError(ValueError):
     """The supplied evaluation report is not safe to use as release evidence."""
 
 
+REQUIRED_CHECKS = {
+    "retrieval_recall": ">=", "retrieval_ndcg": ">=",
+    "false_zero_result_rate": "<=", "authorization_leak_rate": "<=",
+    "citation_traceability": ">=", "retrieval_latency_p95_ms": "<=",
+    "retrieval_recall_at_50": ">=", "supported_claim_rate": ">=",
+    "false_answer_rate": "<=", "router_accuracy": ">=",
+}
+
+
 def validate_quality_report(
     report: dict[str, Any],
     *,
     expected_dataset_id: str | None,
     min_gold_cases: int,
 ) -> dict[str, Any]:
+    if type(min_gold_cases) is not int or min_gold_cases < 1:
+        raise QualityReleaseError("minimum reviewed coverage must be positive")
     if report.get("status") != "completed":
         raise QualityReleaseError("evaluation run must be completed without errors")
     dataset_id = _required_string(report, "dataset_id")
@@ -26,6 +38,12 @@ def validate_quality_report(
         raise QualityReleaseError("evaluation dataset does not match the release contract")
 
     summary = _required_mapping(report, "summary")
+    total_cases = _required_non_negative_int(summary, "total_cases")
+    passed_cases = _required_non_negative_int(summary, "passed_cases")
+    failed_cases = _required_non_negative_int(summary, "failed_cases")
+    error_cases = _required_non_negative_int(summary, "error_cases")
+    if error_cases or total_cases != passed_cases + failed_cases + error_cases:
+        raise QualityReleaseError("evaluation cases contain errors or inconsistent totals")
     gold_cases = _required_non_negative_int(summary, "gold_cases")
     if gold_cases < min_gold_cases:
         raise QualityReleaseError(
@@ -36,6 +54,8 @@ def validate_quality_report(
     if gate.get("status") != "passed":
         raise QualityReleaseError("quality gate did not pass")
     eligible_cases = _required_non_negative_int(gate, "eligible_cases")
+    if not gold_cases <= eligible_cases <= total_cases:
+        raise QualityReleaseError("reviewed case counts are inconsistent")
     if eligible_cases < min_gold_cases:
         raise QualityReleaseError(
             "quality gate does not contain enough eligible reviewed cases"
@@ -43,17 +63,32 @@ def validate_quality_report(
     checks = gate.get("checks")
     if not isinstance(checks, list) or not checks:
         raise QualityReleaseError("quality gate checks are missing")
-    failed_checks = [
-        str(check.get("key", "unknown"))
-        for check in checks
-        if isinstance(check, dict)
-        and check.get("eligible") is True
-        and check.get("passed") is not True
-    ]
-    if failed_checks:
-        raise QualityReleaseError(
-            f"quality gate contains failed checks: {', '.join(failed_checks)}"
-        )
+    seen: set[str] = set()
+    for check in checks:
+        if not isinstance(check, dict) or set(check) != {
+            "key", "actual", "operator", "threshold", "passed", "eligible"
+        }:
+            raise QualityReleaseError("quality gate check contract is invalid")
+        key = check["key"]
+        if not isinstance(key, str) or key not in REQUIRED_CHECKS or key in seen:
+            raise QualityReleaseError("quality gate has unknown or duplicate checks")
+        seen.add(key)
+        if check["eligible"] is not True or check["passed"] is not True:
+            raise QualityReleaseError("required quality check was not evaluated successfully")
+        if check["operator"] != REQUIRED_CHECKS[key]:
+            raise QualityReleaseError("quality check comparison is invalid")
+        actual, threshold = check["actual"], check["threshold"]
+        if any(type(value) not in (int, float) or not math.isfinite(value) or value < 0
+               for value in (actual, threshold)):
+            raise QualityReleaseError("quality check values must be finite non-negative numbers")
+        if key != "retrieval_latency_p95_ms" and max(actual, threshold) > 1:
+            raise QualityReleaseError("quality check rates must be within 0 and 1")
+        if not (actual >= threshold if check["operator"] == ">=" else actual <= threshold):
+            raise QualityReleaseError("quality check result contradicts its measurements")
+        if key == "authorization_leak_rate" and (actual != 0 or threshold != 0):
+            raise QualityReleaseError("authorization leakage is never acceptable")
+    if seen != set(REQUIRED_CHECKS):
+        raise QualityReleaseError("required quality check coverage is incomplete")
 
     comparison = report.get("comparison")
     regressions: list[str] = []

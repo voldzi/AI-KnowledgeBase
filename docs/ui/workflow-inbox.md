@@ -1,71 +1,156 @@
-# Workflow Inbox
+# Osobni Pracovni Prehled
 
-Workflow Inbox je produkcni vrstva pro organizacni praci nad dokumenty. Cilem je, aby spravci dokumentu, gestori a auditori nemuseli hledat rizikove stavy napric registrem, ingestion boardem a auditem.
+Route `/tasks` (v integrovane instalaci `/akb/tasks`) je osobni pracovni plocha
+gestora a schvalovatele. V hlavni navigaci ma nazev `Moje prace / My workspace`.
+V centralnim modelu ji otevre aktivni uzivatel s `akb:read_document` nebo
+`akb:manage_document`. Pristup na stranku neni opravneni schvalovat ani publikovat.
 
-Route: `/tasks`
+## Prehledy
 
-## Stav Po Inkrementu
+- **Ke schvaleni**: aktivni revize prirazene prihlasene osobe nebo jeji skupine.
+- **Moje ukoly**: aktivni osobni ukoly s filtry stavu, priority a typu.
+  Historicka rozhodnuti zustavaji v detailu dokumentu a autorizovanem auditu.
+- **Moje dokumenty**: vlastnene dokumenty a dokumenty s aktivnim osobnim nebo
+  skupinovym prirazenim. Filtry rozlisuji gestora/vlastnika a schvalovatele,
+  stav posledni pristupne verze a terminy.
+- **Tymove ukoly**: autorizovany prehled pro `akb:manage_document`; ctenar ma
+  pristup jen k vlastni praci, i kdyz zada tymovou cestu primo.
 
-Implementovano ve web aplikaci:
+Nacita se jen aktivni zalozka, po 25 polozkach. Celkovy pocet odpovida jejim
+filtrum a aktualnim opravnenim, nikoli cele databazi. Schvalovatel muze v prehledu
+dokumentu filtrovat vsechny dokumenty, u kterych ma tuto odpovednost, nejen
+prave otevrene zadosti. Filtry a navrat z detailu zustavaji v URL.
 
-- hlavni navigace obsahuje polozku `Ukoly / Tasks`,
-- dashboard ukazuje pocet workflow ukolu,
-- `/tasks` zobrazuje metriky otevrenych, blokujicich a review ukolu,
-- inbox podporuje vyhledavani a filtry podle priority, stavu a typu,
-- detail ukolu ukazuje odpovednost, zdrojovy signal, vazany dokument, verzi, ingestion job a primarni akci,
-- Registry API tasky lze z detailu priradit, vratit k uprave, schvalit nebo uzavrit,
-- provozni ingestion signaly vedou na zdrojovou obrazovku: dokumentovy workbench, ingestion nebo audit,
-- detail dokumentu ve workflow zalozce zobrazuje task historii pro dany dokument.
-- Registry API poskytuje `GET /workflow/tasks` a `POST /workflow/tasks/{task_id}/actions`.
+Terminy se vyhodnocuji podle kalendarniho dne `Europe/Prague`:
 
-## Read Model
+- `valid_to` je vcetne posledniho dne; upozorneni zacina 30 dni pred koncem;
+- pri priprave nove verze zustava videt konec platnosti publikovane verze;
+- `metadata.review_due_on` je samostatny termin revize, ne konec platnosti;
+- neuvedeny nebo chybny termin revize je viditelny, nikoli domysleny;
+- archivovane, zrusene a nahrazene dokumenty nevytvareji upozorneni na termin.
 
-Soucasny inbox ma dva zdroje:
+Prekroceni revize samo nezneplatni dokument ani neschvali novou verzi.
+Seznam se aktualizuje pri otevreni stranky, po rozhodnuti a tlacitkem obnovy.
 
-- autoritativni Registry API tasky z `GET /workflow/tasks`,
-- provozni ingestion tasky dopocitane ve webu z `IngestionJob.status`.
+## Osobni Prehled V Chatu
 
-Registry API tasky jsou perzistentni a vznikaji idempotentni synchronizaci z `Document.status`, `Document.classification` a `AuditEvent.severity`. Synchronizace zachovava manualni rozhodnuti nad taskem, takze `request_changes` nebo `assign` nezmizí pri dalsim nacteni inboxu. Ingestion tasky zustavaji v UI doplnkem, protoze stav zpracovani vlastni Ingestion Service.
+Chat umi primo odpovedet na jednoznacne osobni dotazy, napriklad "Jake mam
+ukoly v AKB?", "Co mam ke schvaleni?" nebo "Ktere moje dokumenty potrebuji
+revizi?". Pouziva stejny Registry jako Moje prace, nikoli LLM nebo dokumentovy
+RAG. Vraci nejvyse pet polozek a celkovy autorizovany pocet pro dany filtr.
+Rozsirene filtrovani zustava v pracovni plose; historicke, tymove, projektove
+nebo obsahove dotazy se za tento jednoduchy osobni prehled nevydavaji.
 
-Webove rozhodnuti jde pres Next route `/api/workflow/tasks/{task_id}/actions`, ktera pouze validuje vstup a predava request do Registry API s aktualnim server request contextem. Po uspesne akci se inbox obnovi z autoritativniho list endpointu.
+Pred ctenim se overi pravo na chat a osobni pracovni plochu. Registry uplatni
+aktualni prirazeni a Information Policy. Po nacteni se znovu overi centralni
+projekce; pri zmene identity nebo prav se vysledek nezpristupni. Neuplna
+stranka, duplicita nebo nedostupna sluzba neni prazdna fronta. Chat zadne
+rozhodnuti neprovadi a nenabizi schvaleni bez otevreni presneho dokumentu.
 
-## Typy Odvozenych Ukolu
+Osobni seznam neni sdilitelny dukaz. Do historie se z odpovedi uklada pouze
+neutralni vyzva k obnoveni, bez nazvu dokumentu, identifikatoru ukolu nebo poctu.
+Po novem dotazu se zobrazi vlastni aktualni prace prave prihlaseneho cloveka.
+Odpoved ma `Cache-Control: no-store`. Platforma nabizi odkaz do Moji prace ve
+stejne zalozce; samostatny Chat nevytvari odkaz na nedostupnou pracovni plochu.
 
-- `review`: dokument je ve stavu `review`.
-- `draft`: dokument je ve stavu `draft` a potrebuje doplneni pred revizi.
-- `governance`: citlivy dokument neni platny a vyzaduje kontrolu pred publikaci.
-- `ingestion`: zpracovani bezi, skoncilo s varovanim nebo selhalo.
-- `audit`: auditni udalost se severity `warning`, `error` nebo `critical`.
+## Predani A Rozhodnuti
 
-## Produkcni Cil
+1. Gestor zkontroluje zdroj, prilohy, metadata, ucinnost a prirazeneho
+   schvalovatele v detailu dokumentu.
+2. V casti schvaleni zvoli **Predat ke schvaleni**. Poznamka je volitelna.
+3. Registry vytvori perzistentni ukol pro presnou nepublikovanou verzi a
+   prirazeneho schvalovatele; stejny pozadavek nad stejnym zdrojem je idempotentni.
+4. Schvalovatel otevre **Moje prace > Ke schvaleni**, precte presnou verzi a zvoli
+   **Schvalit** nebo **Vratit k uprave** s pripominkou.
+5. Vraceni uzavre tuto revizi a vytvori jediny ukol gestorovi. Po oprave se
+   vytvori novy schvalovaci cyklus; stara rozhodnuti zustavaji dohledatelna.
+6. Schvalena verze neni automaticky zverejnena. Opravneny uzivatel ji publikuje
+   existujici publikacni akci. Do te doby zustava predchozi platne vydani zachovano.
 
-Registry API uz dodava prvni perzistentni workflow task kontrakt:
+Prirazeni osoby neni prideleni prava. Schvaleni vyzaduje aktualni opravneneho
+cloveka, shodu s prirazenym schvalovatelem a existujici publikacni opravneni.
+Predkladatel nemuze rozhodnout vlastni nove predani, ani pres clenstvi ve skupine.
+Skupinove schvaleni znamena jedno rozhodnuti opravnenym clenem, nikoli kvorum.
+Organizacni jednotka nebo servisni identita nemuze byt sama schvalovatelem.
 
-- task id, stav, priorita, deadline a vlastnik,
-- vazba na dokument, verzi, ingestion job a audit event,
-- akce `assign`, `request_changes`, `approve`, `publish`, `archive`, `resolve`,
-- zapis rozhodnuti do audit logu,
-- authz kontrola pro kazdou akci.
+## Ochrana Konkretni Verze
 
-Samotne dokumentove rozhodnuti, napr. realna publikace verze, zustava oddelene v dokumentovych endpointach. `workflow.task.publish` auditne zachycuje workflow rozhodnuti, ale nenahrazuje `/documents/{document_id}/versions/{version_id}/publish`.
+Predani obsahuje interni otisk verze, zdroje, souboru, metadat, politiky a
+aktivnich prirazeni. Zmena techto udaju nebo vznik novejsi verze zabrani
+schvaleni stareho zdroje. Je nutne znovu predat aktualni verzi.
+Publikace znovu kontroluje otisk posledniho schvaleni a cisty vysledek
+bezpecnostni kontroly presneho zdroje, pokud je kontrola povinna.
 
-## SLA Eskalace
+Schvalovaci ukol nelze obejit akci `resolve`, prepsanim stavu dokumentu ani
+prerazenim ukolu na jinou osobu. Opravneni a Information Policy se kontroluji
+znovu pri rozhodnuti i publikaci. Odpoved `allowed_actions` je pouze aktualni
+napoveda pro UI, nikoli trvale opravneni.
 
-Pri kazdem nacteni `GET /workflow/tasks` probehne eskalacni pruchod nad
-aktivnimi tasky (`open`, `waiting`, `blocked`):
+Existujici odvozene legacy ukoly zustavaji kompatibilni. Po prvnim explicitnim
+predani dokumentu se publikace jeho verzi ridi novym presnym schvalenim.
+Zadna existujici produkcni verze neni touto zmenou automaticky publikovana,
+schvalena, migrovana nebo zrusena.
 
-- task po terminu `due_at` dostane zvysenou prioritu (low → medium → high → critical),
-- pokud ma assignment nastaven eskalacni subjekt (`escalation_subject_id`),
-  task se preradi na nej a `owner_label` prevezme `escalation_label`,
-- do metadat tasku se zapise `sla_escalated`, `sla_escalated_at` a
-  `previous_owner_id`,
-- zapise se audit udalost `workflow.task.sla_escalated` se severitou `warning`.
+## API A Provozni Chovani
 
-Eskalace je idempotentni — flag `sla_escalated` zajisti, ze probehne jen jednou.
+Registry vlastni:
 
-## Dalsi Rez
+```text
+POST /api/v1/documents/{document_id}/versions/{version_id}/submit-review
+GET  /api/v1/workflow/tasks?assigned_to_me=true
+GET  /api/v1/workflow/documents
+POST /api/v1/workflow/tasks/{task_id}/actions
+```
 
-1. Governance Service: vracet vysledky compliance/conflict checks jako vstup do tasku.
-2. Ingestion Service: publikovat varovani do workflow tasku pres Registry API misto webove derivace.
-3. Registry API: viceurovnove schvalovatele (multi-step approval chains).
-4. Web UI: doplnit audit tab dokumentu s filtrovanou historii workflow a publikace.
+Osobni seznamy se filtruji podle overene identity a aktualni autorizace pred
+strankovanim. Vraci `items`, `total`, `limit` a `offset`; web overi uplnost
+pozadovane stranky. Ukoly podporuji `q`, stav, prioritu a typ; dokumenty `q`,
+`assignment`, `version_status` a `deadline`. Chybejici pravo ani vypadek sluzby
+se nezobrazuje jako prazdna bezproblemova fronta. Pri zmene filtru se predchozi
+vysledek skryje, dokud neni bezpecne nacten novy. Navrat z detailu zachova
+aktivni zalozku, filtry a stranku.
+
+Klientska navigace pouziva cestu `/tasks` bez rucniho pridani `/akb`; base path
+prida router jednou. Stejne filtry se zachovavaji pres overeni relace. Shell
+ceka na overenou identitu pred rozhodnutim o presmerovani a ani jeho chybova
+stranka nepouziva identitu zachycenou pri sestaveni aplikace. Sdilene uzivatelske
+preference meni jen prezentaci stejneho overeneho subjectu, nikdy jeho role,
+capabilities nebo access projection. Odkaz na globalni audit se ctenari nenabizi.
+
+Osobni stranka nenacita vsechny ingestion joby ani celou auditni historii.
+Provozni podrobnosti zustavaji na obrazovkach Ingestion a Audit; Registry
+nadale materializuje sve odvozene dokumentove, governance a auditni ukoly.
+
+GET seznamu neprovadi zapis ani udrzbu ukolu. Odvozene ukoly a idempotentni
+SLA eskalaci aktualizuje smycka Registry na pozadi, standardne kazdych 60 sekund.
+`AKL_WORKFLOW_MAINTENANCE_ENABLED` ji zapina; interval ridi
+`AKL_WORKFLOW_MAINTENANCE_INTERVAL_SECONDS` (15 az 3600 sekund).
+PostgreSQL transakcni advisory lock nedovoli soubezny cyklus jine repliky.
+Explicitni predani a rozhodnuti se ukladaji ihned, nezavisle na tomto intervalu.
+U explicitniho schvaleni muze eskalace
+zvysit prioritu, ale nesmi zmenit prirazeneho schvalovatele. U starsich ukolu
+zustava puvodni eskalacni mechanismus. E-mail ani notifikacni worker v tomto
+inkrementu nejsou zapnuty.
+
+## Navazujici E-mailova Upozorneni
+
+Navrh pro samostatne schvaleny inkrement, nikoli hotova dorucovaci funkce:
+
+- udalosti: nove predani, vraceni k uprave, schvaleni, blizici se revize/expirace;
+- transakcni outbox v Registry, unikatni klic udalost + ukol/verze + prijemce,
+  retry s backoffem a stavem doruceni; nezneuzivat auditni log jako frontu;
+- prijemce z overeneho adresare, cerstva kontrola aktivniho prirazeni a prava
+  cist dokument pred odeslanim; zadne adresy z neoverenych metadat;
+- e-mail pouze s obecnym upozornenim a odkazem do AKB, bez obsahu, priloh,
+  citaci, tokenu nebo schvalovaciho odkazu, ktery obchazi prihlaseni;
+- souhrn terminu nejvyse jednou denne; deduplikace opakovanych upozorneni;
+- SMTP/secrets, odchozi sit, odesilatel, retence a preference se dohodnou
+  pred zapnutim se spravcem infrastruktury; zadna zmena STRATOS je nezastoupi.
+
+Do zapojeni dorucovani je autoritativnim seznamem **Moje prace**, ne e-mailova schranka.
+
+Overeni tohoto inkrementu a podminky nasazeni:
+`docs/qa/document-approval-workspace-2026-08-27.md`.
+
+Navazujici overeni osobniho pristupu, strankovani, vykonu a chybovych stavu:
+`docs/qa/workspace-access-performance-2026-08-28.md`.

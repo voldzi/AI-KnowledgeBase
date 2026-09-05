@@ -4,6 +4,19 @@ This is the canonical entry point for repository documentation.
 
 Use `README.md` in the repository root for local setup and runtime commands. Use this file to navigate the active documentation set under `docs/`.
 
+## External Installation And Operations Suite
+
+For a deployment outside the current organization, start with
+`reference/external-deployment-documentation-suite.md`. It records the verified
+implementation baseline, separates integrated production from local development
+and the currently unsupported autonomous production mode, and links the
+role-based architecture, installation, operations, administration, user,
+security, disaster-recovery and documentation-governance guides.
+
+The suite uses placeholders for site-owned topology and secrets. Do not copy
+current `*.home.cz` values or the `docker.home.cz` release layout as universal
+installation defaults.
+
 ## Flat Standard Documents
 
 The active AKB documentation follows the central application skeleton standard.
@@ -44,6 +57,14 @@ from the flat standard documents.
    - `observability.md`
    - `runbook.md`
    - `OPERATIONS/immutable-docker-home-release.md`
+   - `OPERATIONS/external-environment-runbook.md`
+   - `OPERATIONS/disaster-recovery.md`
+   - `handover/akb-stratos-predani-dokumentace-cs.md`
+   - `deployment/akb-stratos-instalace-infrastruktura-pilotu-cs.md`
+   - `deployment/akb-stratos-instalace-prevzeti-pilotu-cs.md`
+   - `deployment/akb-stratos-provoz-pilot-cs.md`
+   - `deployment/akb-stratos-uzivatel-pilot-cs.md`
+   - `deployment/akb-stratos-bezpecnost-obnova-pilotu-cs.md`
 5. STRATOS shared integration:
    - `29_STRATOS_SHARED_LIBRARIES.md`
    - `ui/stratos-ui-adapter.md`
@@ -51,20 +72,35 @@ from the flat standard documents.
    - `integration/STRATOS_EXTERNAL_DOCUMENTS_API.md`
    - `integration/STRATOS_OKF_PROFILE.md`
    - `integration/STRATOS_IT_MANAGEMENT_PROFILE.md`
-   - `integration/AKB_AIIP_APPLICATION_API.md`
 6. Intelligence Workbench:
    - `intelligence/workbench.md`
    - `evaluation/retrieval-quality-lab.md`
 7. Current implementation status:
    - `maintenance/project-status.md`
    - `qa/access-information-policy-v2-impact-report.md`
-8. Director Copilot target and delivery plan:
-   - `ARCHITECTURE/director-copilot-implementation-plan.md`
+8. Director Copilot implementation and verification:
    - `qa/director-copilot-akb-foundation.md`
    - `integration/PROJECTFLOW_FREE_FORM_COPILOT_HANDOFF.md`
    - `integration/DIRECTOR_COPILOT_V2_IMPLEMENTATION.md`
-   - `qa/director-copilot-v2-impact-2026-07-25.md`
    - `qa/projectflow-free-form-copilot.md`
+9. External deployment and controlled documentation suite:
+   - `reference/external-deployment-documentation-suite.md`
+   - `deployment/external-environment-architecture.md`
+   - `deployment/external-environment-installation.md`
+   - `OPERATIONS/application-administration.md`
+   - `ui/user-manual.md`
+   - `security/standalone-and-stratos-integration.md`
+   - `governance/documentation-lifecycle.md`
+10. Management and security overview:
+   - `executive/akb-stratos-prehled-pro-vedeni-cs.md`
+   - `executive/akb-stratos-reference-katalog-funkci-cs.md`
+   - `executive/akb-stratos-bezpecnost-posouzeni-cs.md`
+11. Application documentation authoring and handover:
+   - `how-to/akb-metodika-tvorba-dokumentace-aplikaci-cs.md`
+   - `how-to/akb-postup-vlozeni-predavaci-dokumentace-cs.md`
+   - `templates/application-documentation/`
+   - `handover/akb-stratos-dokumentacni-sada.json`
+   - `qa/chat-handover-readiness-2026-08-27.md`
 
 ## Active Documentation Homes
 

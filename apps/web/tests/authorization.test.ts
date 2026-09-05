@@ -3,7 +3,10 @@ import { describe, it } from "node:test";
 
 import {
   canUseAdminSurface,
+  canAccessAppShellRoute,
   canAccessWorkspaceRoute,
+  canAccessWorkspaceRouteForContext,
+  constrainAuthorizationHintsToContext,
   canUseEmployeeChat,
   canUseIntelligence,
   canUseKnowledgeWorkspace,
@@ -114,6 +117,143 @@ describe("AKB web authorization", () => {
     assert.equal(canAccessWorkspaceRoute(["document_manager"], "/documents/new"), true);
     assert.equal(canAccessWorkspaceRoute(["document_owner"], "/documents/new"), false);
     assert.equal(canAccessWorkspaceRoute(["admin"], "/admin"), true);
+    assert.equal(canAccessWorkspaceRoute(["document_gestor"], "/controlled-documentation"), true);
+    assert.equal(
+      canAccessWorkspaceRoute(
+        ["stratos_user"],
+        "/controlled-documentation",
+        ["akb:read_document"],
+      ),
+      true,
+    );
+    assert.equal(
+      canAccessWorkspaceRoute(
+        ["stratos_user"],
+        "/controlled-documentation",
+        ["akb:chat"],
+      ),
+      false,
+    );
+  });
+
+  it("lets read-only employees see their work without granting management access", () => {
+    const roles = ["stratos_user"];
+    const capabilities = ["akb:access", "akb:chat", "akb:read_document"];
+
+    for (const route of ["/chat", "/help", "/documents", "/controlled-documentation", "/tasks"]) {
+      assert.equal(canAccessWorkspaceRoute(roles, route, capabilities), true, route);
+    }
+    for (const route of ["/dashboard", "/ingestion", "/intelligence", "/audit", "/admin"]) {
+      assert.equal(canAccessWorkspaceRoute(roles, route, capabilities), false, route);
+    }
+    assert.equal(canAccessWorkspaceRoute(roles, "/tasks", ["akb:read_audit"]), false);
+  });
+
+  it("authorizes contextual upload routes independently of top-level navigation", () => {
+    const roles = ["stratos_user"];
+    const reader = ["akb:access", "akb:chat", "akb:read_document"];
+    const uploader = [...reader, "akb:upload"];
+    const manager = [...reader, "akb:manage_document"];
+
+    for (const capabilities of [uploader, manager]) {
+      assert.equal(canAccessAppShellRoute(roles, "/upload?document_id=doc_102", capabilities, "platform"), true);
+      assert.equal(canAccessAppShellRoute(roles, "/documents/doc_102", capabilities, "platform"), true);
+      assert.equal(canAccessAppShellRoute(roles, "/unknown", capabilities, "platform"), false);
+    }
+    assert.equal(canAccessAppShellRoute(roles, "/upload", reader, "platform"), false);
+    assert.equal(canAccessAppShellRoute(["stratos_admin"], "/upload", [], "platform"), false);
+    assert.equal(canAccessAppShellRoute(["admin"], "/upload", undefined, "platform"), true);
+    assert.equal(canAccessAppShellRoute(["reviewer"], "/upload", undefined, "platform"), false);
+  });
+
+  it("does not expose contextual management routes in standalone Chat", () => {
+    const capabilities = ["akb:chat", "akb:upload", "akb:manage_document"];
+    for (const route of ["/upload", "/documents/doc_102", "/tasks", "/admin"]) {
+      assert.equal(canAccessAppShellRoute(["stratos_admin"], route, capabilities, "chat"), false);
+    }
+    for (const route of ["/", "/chat?thread=conv_123"]) {
+      assert.equal(canAccessAppShellRoute(["stratos_user"], route, capabilities, "chat"), true);
+      assert.equal(canAccessAppShellRoute(["stratos_user"], route, [], "chat"), false);
+    }
+  });
+
+  it("maps operational surfaces to their exact central capabilities", () => {
+    const roles = ["stratos_user"];
+    const manager = ["akb:access", "akb:chat", "akb:read_document", "akb:manage_document"];
+    const auditor = ["akb:access", "akb:chat", "akb:read_document", "akb:read_audit"];
+    const uploader = ["akb:access", "akb:chat", "akb:upload"];
+
+    for (const route of ["/dashboard", "/tasks", "/ingestion", "/intelligence", "/sources"]) {
+      assert.equal(canAccessWorkspaceRoute(roles, route, manager), true, route);
+    }
+    for (const route of ["/dashboard", "/tasks", "/intelligence", "/audit"]) {
+      assert.equal(canAccessWorkspaceRoute(roles, route, auditor), true, route);
+    }
+    assert.equal(canAccessWorkspaceRoute(roles, "/ingestion", auditor), false);
+    assert.equal(canAccessWorkspaceRoute(roles, "/documents/new", uploader), true);
+    assert.equal(canAccessWorkspaceRoute(roles, "/upload", uploader), true);
+    assert.equal(canAccessWorkspaceRoute(roles, "/ingestion", uploader), false);
+  });
+
+  it("rejects every workspace route when central access is inactive", () => {
+    const context = {
+      roles: ["stratos_user"],
+      capabilities: ["akb:access", "akb:chat", "akb:read_document", "akb:manage_document"],
+      identityActive: true,
+      membershipActive: false,
+      applicationAccessActive: true,
+    };
+
+    assert.equal(canAccessWorkspaceRouteForContext(context, "/documents"), false);
+    assert.equal(canAccessWorkspaceRouteForContext({ ...context, membershipActive: true }, "/documents"), true);
+  });
+
+  it("intersects Registry action hints with the current access projection", () => {
+    const upstream = {
+      can_read: true,
+      can_update: true,
+      can_ingest: true,
+      can_publish: true,
+      can_read_audit: true,
+      can_manage_admin: true,
+    };
+
+    assert.deepEqual(
+      constrainAuthorizationHintsToContext(
+        {
+          roles: ["stratos_user"],
+          capabilities: ["akb:access", "akb:chat", "akb:read_document"],
+        },
+        upstream,
+      ),
+      {
+        can_read: true,
+        can_update: false,
+        can_ingest: false,
+        can_publish: false,
+        can_read_audit: false,
+        can_manage_admin: false,
+      },
+    );
+
+    assert.deepEqual(
+      constrainAuthorizationHintsToContext(
+        {
+          roles: ["stratos_user"],
+          capabilities: ["akb:manage_document", "akb:read_audit"],
+          applicationAccessActive: false,
+        },
+        upstream,
+      ),
+      {
+        can_read: false,
+        can_update: false,
+        can_ingest: false,
+        can_publish: false,
+        can_read_audit: false,
+        can_manage_admin: false,
+      },
+    );
   });
 
   it("allows signed role preview only for the current admin user", () => {

@@ -5,6 +5,11 @@ as PASS for `director-copilot-2` revision `2.0.3`.
 
 Contract: `director-copilot-2`, revision `2.0.3`
 
+The ProjectFlow portfolio manifest is pinned as
+`projectflow-portfolio-delivery-overview-1.0.3`. Its bounded no-data reasons
+distinguish an unassigned portfolio from a covered scope with no matching
+projects; neither condition is substituted with document retrieval.
+
 The runtime manifests must be byte-identical with the pinned shared bundle
 before S1. Revision `2.0.3` includes the closed ProjectFlow reason
 `PROJECTFLOW_ENTITY_FILTER_UNSUPPORTED`; any additional runtime-only reason

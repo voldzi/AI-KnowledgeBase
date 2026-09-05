@@ -156,6 +156,7 @@ RESTORE_CONFIRM=restore-akl scripts/restore_local_prod.sh backups/local-prod/<ba
 ```
 
 Documentation entry point: `docs/README.md`.
+External installation and operations suite: `docs/reference/external-deployment-documentation-suite.md`.
 Architecture: `docs/architecture.md`.
 API contract: `docs/api.md` and `openapi/openapi.json`.
 Security model: `docs/security.md`.

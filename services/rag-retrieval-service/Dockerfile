@@ -1,4 +1,8 @@
-FROM python:3.12-slim
+FROM python:3.12-slim@sha256:e5c9fa26ffb76e11e0f054f30dc2523a2f9693f0c36c0cf1e39b27e152d899fc
+
+ENV PIP_DEFAULT_TIMEOUT=300 \
+    PIP_RETRIES=8 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
 LABEL cz.zeleznalady.akl.service="rag-retrieval-service"
 
@@ -8,8 +12,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.c4.lock .
+RUN pip install --no-cache-dir --require-hashes -r requirements.c4.lock
 
 COPY app ./app
 COPY retrievers ./retrievers
@@ -17,6 +21,12 @@ COPY rerankers ./rerankers
 COPY answer_composer ./answer_composer
 COPY policies ./policies
 COPY openapi.yaml README.md ./
+
+RUN groupadd --gid 1000 akb \
+    && useradd --uid 1000 --gid akb --no-create-home --shell /usr/sbin/nologin akb \
+    && chmod -R a+rX /app
+
+USER akb
 
 EXPOSE 8080
 

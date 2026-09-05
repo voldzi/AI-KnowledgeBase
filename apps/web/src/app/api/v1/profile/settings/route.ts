@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
-
 import { getAklConfig } from "@/lib/api/config";
 import {
+  getOptionalServerOidcSession,
   getOptionalServerRequestContext,
   getServerApiClients,
 } from "@/lib/api/server";
@@ -11,7 +10,6 @@ import {
   canUseEmployeeChat,
   canUseKnowledgeWorkspace,
 } from "@/lib/auth/authorization";
-import { readSessionCookie } from "@/lib/auth/oidc";
 import { isAklLanguage, type AklLanguage } from "@/lib/language";
 import type {
   ApiRequestContext,
@@ -140,7 +138,7 @@ async function identityForRequest(
   const groups = [...(context.groups ?? [])].sort();
 
   if (config.authMode === "oidc") {
-    const session = readSessionCookie(await cookies(), config);
+    const session = await getOptionalServerOidcSession();
     return {
       subject_id: context.subjectId,
       display_name: session?.name ?? session?.email ?? context.subjectId,

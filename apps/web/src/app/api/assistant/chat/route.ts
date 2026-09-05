@@ -3,10 +3,31 @@ import { randomUUID } from "node:crypto";
 
 import { getOptionalServerRequestContext, getServerApiClients } from "@/lib/api/server";
 import { getAklConfig, getDirectorCopilotConfig } from "@/lib/api/config";
+import { withAppBasePath } from "@/lib/app-url";
 import { contextFromStratosAccessProjection } from "@/lib/auth/access-projection";
 import { normalizeAssistantChatResponse } from "@/lib/assistant/assistant-response-normalizer";
-import { ragContextForAssistantRoute, routeAssistantMessage } from "@/lib/assistant/assistant-tool-router";
-import { buildControlledRuleAssistantResponse } from "@/lib/assistant/controlled-rule-answer";
+import {
+  assistantConversationContextFromMessages,
+  hasAssistantContinuityContext,
+  mergeAssistantConversationContext,
+  safeAssistantConversationContext,
+} from "@/lib/assistant/conversation-context";
+import {
+  answerModeForAssistantRequest,
+  ragContextForAssistantRoute,
+  routeAssistantMessage,
+  routeAssistantMessageForRag,
+} from "@/lib/assistant/assistant-tool-router";
+import {
+  buildControlledRuleAssistantResponse,
+  currentControlledRuleDate,
+} from "@/lib/assistant/controlled-rule-answer";
+import { composeMixedEvidenceAssistantResponse } from "@/lib/assistant/mixed-evidence-answer";
+import { answerPersonalWorkflow, persistPersonalWorkflowTurn } from "@/lib/assistant/personal-workflow";
+import {
+  isAnalyticalAssistantGoal,
+  queryStateForAssistantGoal,
+} from "@/lib/assistant/user-goal";
 import { resolveConversationQuery } from "@/lib/director-copilot/query-state";
 import {
   auditDirectorCopilotV2Failure,
@@ -24,6 +45,7 @@ import {
   buildRegistryDocumentReport,
   buildRegistryDocumentReportFromSummary,
   registryDocumentTypeFilterForReport,
+  registrySummaryOptionsFromMessage,
   registryTopicsForDocumentListRequest,
   summarizeRegistryReportForAudit
 } from "@/lib/reporting/assistant-registry-report";
@@ -70,15 +92,52 @@ async function handlePost(request: NextRequest) {
       return badAssistantRequest("message is required.");
     }
     const conversationId = typeof body.conversation_id === "string" ? body.conversation_id : null;
-    const requestContext = _objectContext(body.context);
+    let requestContext = safeAssistantConversationContext(_objectContext(body.context));
+    if (conversationId && !hasAssistantContinuityContext(requestContext)) {
+      const persistedConversation = await clients.registry
+        .getAssistantConversation(conversationId, context)
+        .catch(() => undefined);
+      if (persistedConversation) {
+        requestContext = mergeAssistantConversationContext(
+          assistantConversationContextFromMessages(persistedConversation.messages),
+          requestContext,
+        );
+      }
+    }
     const responseLanguage = isAklLanguage(body.response_language) ? body.response_language : "cs";
     const config = getAklConfig();
     const directorConfig = getDirectorCopilotConfig(config);
+    const assistantRoute = routeAssistantMessage(message, responseLanguage, requestContext);
+    if (assistantRoute.personalWorkflow) {
+      const intent = assistantRoute.personalWorkflow;
+      const params = new URLSearchParams({ view: intent.view });
+      if (intent.view === "documents") params.set("assignment", "managed");
+      if (intent.deadline) params.set("deadline", intent.deadline);
+      const personalResponse = await answerPersonalWorkflow({
+        intent, context, registry: clients.registry, language: responseLanguage, conversationId,
+        workspaceHref: config.webProfile === "chat" ? undefined : withAppBasePath(`/tasks?${params}`),
+        refreshContext: context.accessToken
+          ? () => contextFromStratosAccessProjection(context.accessToken!, config, fetch, Date.now(), true)
+          : undefined,
+      });
+      return NextResponse.json(await persistPersonalWorkflowTurn({
+        message, title: titleFromMessage(message), response: personalResponse,
+        language: responseLanguage, context, registry: clients.registry,
+      }), { headers: { "Cache-Control": "no-store" } });
+    }
+    const documentationRequest = assistantRoute.documentKnowledge.applicationDocumentation;
+    const assistantGoal = assistantRoute.queryPlan.goal;
     const directorQuery = resolveConversationQuery({
       message,
       context: requestContext,
     });
-    const directorIntent = classifyDirectorCopilotV2Intent(message, requestContext);
+    const directorQueryState = queryStateForAssistantGoal(
+      directorQuery.state,
+      assistantGoal,
+    );
+    const directorIntent = assistantRoute.tool === "controlled_rule_answer"
+      ? null
+      : classifyDirectorCopilotV2Intent(message, requestContext);
     if (directorIntent && directorQuery.clarification?.kind === "plan_meaning") {
       const clarificationResponse = directorPlanClarificationResponse({
         conversationId,
@@ -114,16 +173,16 @@ async function handlePost(request: NextRequest) {
       const refreshActorContext = context.accessToken
         ? () => contextFromStratosAccessProjection(context.accessToken!, config, fetch, Date.now(), true)
         : undefined;
-      const directorResponse = directorConfig.enabled
-        ? await runDirectorCopilotV2Chat({
-            message,
+      const directorPromise: Promise<AssistantChatResponse> = directorConfig.enabled
+        ? runDirectorCopilotV2Chat({
+            message: documentationRequest?.liveMessage ?? message,
             conversationId,
             responseLanguage,
             actorContext: context,
             clients,
             config,
             intent: directorIntent,
-            queryState: directorQuery.state,
+            queryState: directorQueryState,
             refreshActorContext,
             mode: "active",
           }).catch(async (error: unknown) => {
@@ -139,16 +198,72 @@ async function handlePost(request: NextRequest) {
               conversationId,
               language: responseLanguage,
               error,
-              queryState: directorQuery.state,
+              queryState: directorQueryState,
             });
           })
-        : directorCopilotV2FailureResponse({
+        : Promise.resolve(directorCopilotV2FailureResponse({
             conversationId,
             language: responseLanguage,
             error: new Error("DIRECTOR_COPILOT_V2_DISABLED"),
-            queryState: directorQuery.state,
-          });
-      const response = persistedDirectorCopilotV2Response(directorResponse);
+            queryState: directorQueryState,
+          }));
+      const includeDocumentEvidence = isAnalyticalAssistantGoal(assistantGoal)
+        || Boolean(documentationRequest?.liveMessage);
+      const documentResultPromise: Promise<{
+        response: AssistantChatResponse | null;
+        unavailable: boolean;
+      }> = includeDocumentEvidence
+        ? (async () => {
+            const documentRoute = routeAssistantMessageForRag(
+              documentationRequest?.documentMessage ?? message,
+              responseLanguage,
+              requestContext,
+            );
+            try {
+              const rawResponse = await clients.rag.assistantChat(
+                {
+                  user_id: context.subjectId,
+                  conversation_id: conversationId,
+                  message: documentationRequest?.documentMessage ?? message,
+                  context: ragContextForAssistantRoute({
+                    ...requestContext,
+                    assistant_goal: assistantGoal,
+                    mixed_evidence_role: "document_guidance",
+                  }, documentRoute),
+                  mode: documentRoute.answerMode,
+                  response_language: responseLanguage,
+                  persist_conversation: false,
+                },
+                context,
+              );
+              return {
+                response: normalizeAssistantChatResponse({
+                  response: rawResponse,
+                  message,
+                  language: responseLanguage,
+                  route: documentRoute,
+                }),
+                unavailable: false,
+              };
+            } catch {
+              return { response: null, unavailable: true };
+            }
+          })()
+        : Promise.resolve({ response: null, unavailable: false });
+      const [directorResponse, documentResult] = await Promise.all([
+        directorPromise,
+        documentResultPromise,
+      ]);
+      const composedResponse = includeDocumentEvidence
+        ? composeMixedEvidenceAssistantResponse({
+            directorResponse,
+            documentResponse: documentResult.response,
+            documentUnavailable: documentResult.unavailable,
+            goal: assistantGoal,
+            language: responseLanguage,
+          })
+        : directorResponse;
+      const response = persistedDirectorCopilotV2Response(composedResponse);
       const persistedConversation = await clients.registry
         .appendAssistantConversationMessages(
           response.conversation_id,
@@ -158,7 +273,13 @@ async function handlePost(request: NextRequest) {
             messages: assistantTurnMessages(
               message,
               response,
-              directorCopilotV2PersistenceMetadata(directorResponse, context),
+              {
+                ...directorCopilotV2PersistenceMetadata(composedResponse, context),
+                assistant_goal: assistantGoal,
+                answer_composition: includeDocumentEvidence
+                  ? "live_and_document_evidence"
+                  : "live_data",
+              },
             ),
           },
           context,
@@ -172,10 +293,8 @@ async function handlePost(request: NextRequest) {
         persistence_status: persistedConversation ? "persisted" : "failed",
       });
     }
-    const assistantRoute = routeAssistantMessage(message, responseLanguage, requestContext);
-
     if (assistantRoute.tool === "controlled_rule_answer" && assistantRoute.controlledRuleIntent) {
-      const validOn = assistantRoute.controlledRuleIntent.validOn ?? new Date().toISOString().slice(0, 10);
+      const validOn = assistantRoute.controlledRuleIntent.validOn ?? currentControlledRuleDate();
       const controlledRules = await clients.registry.listControlledRules(
         assistantRoute.controlledRuleIntent.domain,
         context,
@@ -219,7 +338,10 @@ async function handlePost(request: NextRequest) {
       });
     }
 
-    const registrySummaryFilters = registrySummaryOptionsFromAssistantContext(requestContext);
+    const registrySummaryFilters = {
+      ...registrySummaryOptionsFromAssistantContext(requestContext),
+      ...registrySummaryOptionsFromMessage(message),
+    };
     const registryReportKind = assistantRoute.registryReportKind ?? "document_inventory_summary";
     const inferredDocumentType = registryDocumentTypeFilterForReport(message, registryReportKind);
     if (!registrySummaryFilters.documentType && inferredDocumentType) {
@@ -355,7 +477,7 @@ async function handlePost(request: NextRequest) {
         conversation_id: conversationId,
         message,
         context: ragContextForAssistantRoute(requestContext, assistantRoute),
-        mode: body.mode ?? "it_support_answer",
+        mode: answerModeForAssistantRequest(assistantRoute, body.mode),
         response_language: responseLanguage
       },
       context

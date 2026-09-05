@@ -17,6 +17,29 @@ const SAFE_PRECACHE = [
   "/icons/akb-chat-512.png",
   "/icons/akb-chat-maskable-512.png"
 ];
+const NETWORK_ONLY_PREFIXES = [
+  "/api/",
+  "/chat",
+  "/documents",
+  "/controlled-documentation",
+  "/sources",
+  "/tasks",
+  "/audit",
+  "/reports"
+];
+const NETWORK_ONLY_FRAGMENTS = [
+  "/source/",
+  "/citation",
+  "/download",
+  "/export",
+  "/rag/",
+  "/controlled-rules"
+];
+
+function isNetworkOnlyPath(pathname) {
+  return NETWORK_ONLY_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+    || NETWORK_ONLY_FRAGMENTS.some((fragment) => pathname.includes(fragment));
+}
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -51,12 +74,7 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
-  if (
-    url.pathname.startsWith("/api/")
-    || url.pathname.startsWith("/documents/")
-    || url.pathname.includes("/source/")
-    || url.pathname.includes("/export")
-  ) {
+  if (isNetworkOnlyPath(url.pathname)) {
     event.respondWith(fetch(request));
     return;
   }

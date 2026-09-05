@@ -1,27 +1,28 @@
 import "server-only";
 
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { cache } from "react";
 
-import { ApiClientError, type ApiRequestContext } from "@/lib/types";
+import type { ApiRequestContext } from "@/lib/types";
 
 import { createApiClients } from ".";
 import { getAklConfig } from "./config";
 import { createMockContext } from "./correlation";
 import {
   buildPublicAppUrl,
-  cookieOptions,
-  getOrRefreshOidcSession,
-  OIDC_ACCESS_COOKIE,
-  OIDC_REFRESH_COOKIE,
-  OIDC_SESSION_COOKIE,
-  readSessionCookie,
-  requireOidcConfig,
-  sealBrowserSession,
-  sealRefreshToken,
   type OidcSession,
 } from "../auth/oidc";
+import {
+  CENTRAL_SSO_SYNC_COOKIE,
+  hasCurrentCentralSsoSyncMarker,
+  resolveServerSession,
+  serverSessionCookieOptions,
+  SERVER_SESSION_COOKIE,
+  type ResolvedServerSession,
+} from "../auth/server-session";
 import { contextFromStratosAccessProjection } from "../auth/access-projection";
+import { isSameAppRscNavigation } from "../auth/login-navigation";
 
 export {
   getStratosActorRequestContext,
@@ -39,7 +40,11 @@ type CookieReader = {
   get(name: string): { value: string } | undefined;
 };
 
-const requestOidcSessions = new WeakMap<object, Promise<OidcSession | null>>();
+const requestOidcSessions = new WeakMap<object, Promise<ResolvedServerSession | null>>();
+const requestContexts = new WeakMap<object, Promise<ApiRequestContext | null>>();
+// React cache is scoped to the current server render, not a cross-request TTL.
+const renderSession = cache(() => resolveOptionalServerOidcSession());
+const renderContext = cache(() => resolveOptionalServerRequestContext());
 
 export function getServerApiClients() {
   return createApiClients();
@@ -52,12 +57,13 @@ export async function getServerRequestContext(): Promise<ApiRequestContext> {
   }
 
   const config = getAklConfig();
-  redirect(buildPublicAppUrl(config, "/api/auth/login"));
+  redirect(buildPublicAppUrl(config, "/api/auth/sso"));
 }
 
 export async function getServerRequestContextForPath(
   returnTo: string,
 ): Promise<ApiRequestContext> {
+  await requireCurrentCentralSso(returnTo);
   const context = await getOptionalServerRequestContext();
   if (context) {
     return context;
@@ -67,7 +73,36 @@ export async function getServerRequestContextForPath(
   redirect(
     buildPublicAppUrl(
       config,
-      `/api/auth/login?return_to=${encodeURIComponent(returnTo)}`,
+      `/api/auth/sso?return_to=${encodeURIComponent(returnTo)}`,
+    ),
+  );
+}
+
+async function requireCurrentCentralSso(returnTo: string): Promise<void> {
+  const config = getAklConfig();
+  if (config.authMode !== "oidc") return;
+
+  const cookieStore = await cookies();
+  const selector = cookieStore.get(SERVER_SESSION_COOKIE)?.value;
+  // Internal RSC refreshes cannot complete a browser OIDC redirect. This only
+  // skips entry synchronization; the session and access projection below still
+  // have to authorize every request, including forged transport metadata.
+  if (selector && isSameAppRscNavigation(config, await headers())) return;
+  if (
+    selector &&
+    await hasCurrentCentralSsoSyncMarker(
+      config,
+      selector,
+      cookieStore.get(CENTRAL_SSO_SYNC_COOKIE)?.value,
+    )
+  ) {
+    return;
+  }
+
+  redirect(
+    buildPublicAppUrl(
+      config,
+      `/api/auth/sso?return_to=${encodeURIComponent(returnTo)}`,
     ),
   );
 }
@@ -86,30 +121,23 @@ export async function getServerRequestContextForRequest(
   redirect(
     buildPublicAppUrl(
       config,
-      `/api/auth/login?return_to=${encodeURIComponent(returnTo)}`,
+      `/api/auth/sso?return_to=${encodeURIComponent(returnTo)}`,
     ),
   );
-}
-
-export async function getAiipActorRequestContext(
-  request: RequestLike,
-): Promise<ApiRequestContext> {
-  const authorization = request.headers.get("X-AIIP-Actor-Authorization") ?? "";
-  const [scheme, token] = authorization.trim().split(/\s+/, 2);
-  if (scheme?.toLowerCase() !== "bearer" || !token) {
-    throw new ApiClientError(
-      "A fresh AIIP actor bearer is required.",
-      401,
-      "AIIP_ACTOR_AUTH_REQUIRED",
-      "web-stratos-bridge",
-    );
-  }
-  return contextFromStratosAccessProjection(token, getAklConfig());
 }
 
 export async function getOptionalServerRequestContext(
   request?: RequestLike,
 ): Promise<ApiRequestContext | null> {
+  if (!request) return renderContext();
+  const pending = requestContexts.get(request);
+  if (pending) return pending;
+  const resolved = resolveOptionalServerRequestContext(request);
+  requestContexts.set(request, resolved);
+  return resolved;
+}
+
+async function resolveOptionalServerRequestContext(request?: RequestLike): Promise<ApiRequestContext | null> {
   const bearerToken = bearerTokenFromRequest(request);
   if (bearerToken) {
     return contextFromStratosAccessProjection(bearerToken, getAklConfig());
@@ -156,6 +184,10 @@ export async function getOptionalServerRequestContext(
 export async function getOptionalServerOidcSession(
   request?: RequestLike,
 ): Promise<OidcSession | null> {
+  return (await getOptionalResolvedServerSession(request))?.oidc ?? null;
+}
+
+export async function getOptionalResolvedServerSession(request?: RequestLike): Promise<ResolvedServerSession | null> {
   if (request) {
     const pending = requestOidcSessions.get(request);
     if (pending) return pending;
@@ -163,12 +195,12 @@ export async function getOptionalServerOidcSession(
     requestOidcSessions.set(request, resolved);
     return resolved;
   }
-  return resolveOptionalServerOidcSession();
+  return renderSession();
 }
 
 async function resolveOptionalServerOidcSession(
   request?: RequestLike,
-): Promise<OidcSession | null> {
+): Promise<ResolvedServerSession | null> {
   const config = getAklConfig();
   if (config.authMode !== "oidc") {
     return null;
@@ -176,26 +208,19 @@ async function resolveOptionalServerOidcSession(
   const cookieStore = request
     ? cookieReaderFromRequest(request)
     : await cookies();
-  const session = readSessionCookie(cookieStore, config);
-  if (!session) return null;
-  const refreshed = await getOrRefreshOidcSession(config, session);
-  if (!refreshed) return null;
-  if (request && oidcSessionChanged(session, refreshed)) {
-    const oidc = requireOidcConfig(config);
-    const responseCookies = await cookies();
-    const options = cookieOptions(config);
-    responseCookies.set(OIDC_SESSION_COOKIE, sealBrowserSession(refreshed, oidc.sessionSecret), options);
-    responseCookies.delete(OIDC_ACCESS_COOKIE);
-    if (refreshed.refreshToken) {
-      responseCookies.set(OIDC_REFRESH_COOKIE, sealRefreshToken(refreshed.refreshToken, oidc.sessionSecret), options);
+  const selector = cookieStore.get(SERVER_SESSION_COOKIE)?.value;
+  if (!selector) return null;
+  const resolved = await resolveServerSession(config, selector);
+  if (resolved && request) {
+    try {
+      // Route handlers propagate a policy downgrade to the browser immediately.
+      (await cookies()).set(SERVER_SESSION_COOKIE, selector, serverSessionCookieOptions(config, resolved.persistent, resolved.absoluteExpiresAt));
+    } catch {
+      // Read-only rendering cannot set cookies; /api/auth/session synchronizes
+      // them. Server expiry and revocation remain authoritative in either case.
     }
   }
-  return refreshed;
-}
-
-function oidcSessionChanged(previous: OidcSession, current: OidcSession): boolean {
-  return previous.refreshToken !== current.refreshToken
-    || previous.expiresAt !== current.expiresAt;
+  return resolved;
 }
 
 function cookieReaderFromRequest(request: RequestLike): CookieReader {

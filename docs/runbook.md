@@ -1,7 +1,23 @@
 # AKB Runbook
 
+For a portable incident model and dependency ownership outside the current
+site, use `docs/OPERATIONS/external-environment-runbook.md`. For recovery order,
+backup evidence and isolated restore acceptance, use
+`docs/OPERATIONS/disaster-recovery.md`.
+
 Use this runbook for first response. Detailed environment-specific procedures
 remain in `docs/deployment/` and `docs/OPERATIONS/`.
+
+## Central SSO Or Managed Identity Change
+
+Use [the identity runbook](security/managed-identity.md). Keep the approved
+external issuer until a separate managed cutover is accepted. The supplied
+preflight only prepares disabled client proposals and optionally reads public
+discovery; it never registers clients or applies configuration. Missing
+remember-policy claims do not authorize a persistent cookie. Do not fix login
+errors by disabling signature, audience, Origin, projection or policy checks.
+Full managed activation is blocked until the remaining AKB worker identity
+contracts and end-to-end acceptance are complete.
 
 ## Application Does Not Start
 
@@ -141,12 +157,32 @@ autorizace.
    is mounted read-only as `/run/secrets/svc-ingestion-client-secret`; never
    print the value.
 3. Confirm Registry trusted clients include `svc-ingestion` with exactly
-   `authz|audit|documents-read|ingestion-status`, while `aiip-service` remains
-   exactly `aiip-upload`.
+   `authz|audit|documents-read|ingestion-status`.
 4. Compare only token expiry/audience/client-id metadata or a short SHA-256
-   fingerprint. Never substitute the inbound AIIP bearer or LLM Gateway token.
+   fingerprint. Never substitute an inbound user bearer or LLM Gateway token.
 5. Recreate `ingestion-service`, wait for `/ready`, then run one disposable
    dedicated-confirm ingestion and verify status-only transition to `INDEXED`.
+
+### Docling worker unavailable or conversion fallback
+
+1. Confirm `docling-worker` is running and healthy and that its Docker network
+   mode is `none`. Do not add a network as a repair.
+2. Compare only the configured model-bundle path and SHA-256 with the immutable
+   marker under `/srv/akl/models`; do not print model paths together with any
+   production environment contents.
+3. Run `python -m parsers.docling_service_probe --health` inside the worker and
+   `python -m parsers.docling_service_probe --conversion-smoke` inside
+   `ingestion-service`. The latter uses a synthetic PDF and no business data.
+4. If the bundle is missing or its digest differs, keep Docling unavailable and
+   prepare a new immutable bundle from the exact release SHA. Never enable
+   runtime downloads or relax the digest gate.
+5. In `prefer`, confirm the ingestion report records
+   `DOCLING_PREFERRED_FALLBACK` or `DOCLING_LOW_TEXT_FALLBACK`; the native
+   parser remains the safe fallback. In `enforce`, leave the job failed and do
+   not substitute another parser.
+6. Recreate `docling-worker` first, wait for health, then recreate
+   `ingestion-service`. A release-bound repair must still pass the normal
+   immutable same-SHA gate.
 
 ## Controlled Rule Missing, Stale Or Conflicting
 

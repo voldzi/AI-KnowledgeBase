@@ -205,7 +205,7 @@ Service worker bude online-first a musí mít explicitní cache pravidla:
 | Obsah | Strategie |
 | --- | --- |
 | verzované statické JS/CSS/fonty | cache-first s verzovanou cache |
-| manifest a ikony | řízená krátkodobá cache |
+| manifest a ikony | HTTP `no-store`; pouze explicitní verzovaná PWA cache |
 | navigace a shell | network-first s bezpečnou offline stránkou |
 | OIDC a session endpointy | pouze síť, `no-store` |
 | dotazy, odpovědi a historie | pouze síť, `no-store` |
@@ -235,6 +235,14 @@ Do `localStorage`, Cache Storage ani IndexedDB se nesmí ukládat:
 - PDF nebo jiné zdrojové soubory;
 - access a refresh tokeny;
 - policy bindingy nebo podepsané odkazy.
+
+Service worker používá výhradně cache `akb-chat-static-<release SHA>`. Do ní
+smí zapsat jen obecnou offline stránku, manifest, produktové ikony a neměnné
+`/_next/static/` soubory. Všechny autentizační, session, API, chatové,
+dokumentové, citační, exportní, RAG a řízené-rule cesty jsou pouze online.
+Úspěšná navigace se do Cache Storage nikdy nezapisuje. Při odhlášení, odebrání
+oprávnění nebo výpadku sítě tak service worker nemá chráněný obsah, který by
+mohl znovu zobrazit.
 
 Dotazy se bez spojení neřadí do offline fronty. Samotný dotaz může obsahovat
 citlivé organizační údaje.

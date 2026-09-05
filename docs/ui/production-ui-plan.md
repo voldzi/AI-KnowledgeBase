@@ -37,7 +37,7 @@ workspace:
 - Federated answers show a compact, human-readable list of the authorized live
   STRATOS sources used for the answer. The persisted history keeps only source
   identity, status, item count and timestamp; it never duplicates Budget,
-  ProjectFlow, ArchFlow or AIIP business payloads.
+  ProjectFlow or ArchFlow business payloads.
 - The source panel distinguishes live application sources from cited controlled
   documents and gives links a usable label even when an upstream Markdown link
   does not contain display text.
