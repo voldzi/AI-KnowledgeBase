@@ -1,5 +1,12 @@
 # Document Intake, TLP and Product Quality Plan
 
+Aktualizace 7. 9. 2026: koordinovaná lokální akceptace uzavřela skutečný
+Budget, ProjectFlow a ArchFlow document → Chat → přesná citace průchod včetně
+negativních hranic a odebrání přístupu. Budget exact replay vrátil jedinou
+kanonickou verzi i ingestion job. Produkce ani testovací volumes nebyly
+měněny nebo resetovány. Zbývající položky plánu se týkají jiných vstupních
+profilů a celkové produktové připravenosti.
+
 Aktualizace 6. 9. 2026: AKB implementovalo source preflight, společný binární příjem, confirm a status pro ProjectFlow/ArchFlow. Aktuální pokyn a kontrakty: [STRATOS source intake](../integration/STRATOS_SOURCE_DOCUMENT_INTAKE_V1.md). Následuje implementace autority/adaptérů na STRATOS a společná akceptace; příjem zůstává uzavřený. Starší položka „AKB musí dodat source OpenAPI“ je tímto nahrazena.
 
 Updated 2026-09-05 after the product owner authorized implementation. The target
@@ -11,7 +18,8 @@ document and version. The previously proposed "approved without TLP" exception
 is removed. A missing value is an invalid/incomplete state, never an approved
 classification or an implicit TLP:CLEAR. This requirement applies to all entry
 paths, including official public sources and automated STRATOS imports. Runtime
-enforcement is implemented in the working tree; joint acceptance remains required. See [ADR 0017](../adr/0017-mandatory-document-policy.md).
+enforcement is implemented; joint Budget, ProjectFlow and ArchFlow intake
+acceptance has passed. See [ADR 0017](../adr/0017-mandatory-document-policy.md).
 
 ## Current implementation increment
 
@@ -25,9 +33,10 @@ logout reached all BFFs with standard freshness. Observed AKB delay was about
 expiry. Budget organization/recipient_set audiences now pass schema/authorization
 regressions and are built locally, preserving the financial source scope and PDP.
 AKB has implemented PF/ArchFlow source preflight, confirm and status with the
-shared binary intake and delivered exact connector/authority OpenAPI. The next
-dependency is STRATOS source authority/adapters, followed by complete positive
-document → Chat → citation acceptance. The global intake gate stays closed.
+shared binary intake and delivered exact connector/authority OpenAPI. STRATOS
+source authority/adapters and the complete positive document → Chat → citation
+acceptance are now jointly verified. The global intake gate stays closed until
+the remaining application profiles and release gates are complete.
 
 Joint local acceptance now runs as the persistent Docker Desktop project
 `akb-stratos-test`; see the [runbook](../deployment/local-acceptance-docker-desktop.md)
@@ -38,10 +47,11 @@ document connector and live information provider. This is not yet a passed
 whole-product acceptance. The local
 STRATOS checkout implements the Budget root/version replay correction and
 Budget atomic admission/revalidation; the earlier central replay finding below
-must now be closed by joint positive intake acceptance. The catalog readiness
+is closed by joint positive intake acceptance. The catalog readiness
 gate still rejects admission because other required adapters are incomplete.
 The Budget organization/recipient_set restriction was removed in the 0.5.1
-acceptance increment; real positive intake is still pending.
+acceptance increment; both audiences now have real positive/negative boundary
+evidence.
 Successful OIDC login, healthy containers and negative admission tests do not
 close these remaining application requirements.
 
@@ -90,8 +100,9 @@ GIF/SVG intake is explicitly unavailable rather than silently accepted.
 Official-source collection selection now uses a proposed authoritative STRATOS
 projection and fresh per-source preparation. The AKB client, unavailable UI,
 strict validation and contract exist; STRATOS d035bdb6 now implements the
-central native/official capability. Its joint positive acceptance is pending. ProjectFlow/ArchFlow source integration and central
-Budget root/version replay still require coordinated acceptance.
+central native/official capability. Its joint positive acceptance is pending.
+ProjectFlow/ArchFlow source integration and central Budget root/version replay
+have completed coordinated local acceptance.
 
 These are local, uncommitted changes. The earlier
 [validation record](../qa/document-intake-hardening-2026-09-05.md) describes its
@@ -99,14 +110,15 @@ own earlier checkpoint. Current evidence and remaining acceptance work are
 recorded in [the profile/Chat checkpoint](../qa/document-policy-and-chat-2026-09-05.md)
 and [measured Chat rendering](../qa/chat-history-performance-2026-09-05.md).
 
-### Earlier STRATOS replay defect — implementation delivered, joint test pending
+### Earlier STRATOS replay defect — implementation and joint test completed
 
 The earlier central Budget registration rejected root-document reconfirmation
 when the same logical operation's idempotency key already belongs to its
 document version. This affects preflight, intake reauthorization and confirm
 after an earlier successful confirmation. The local canonical-file recovery
-is implemented. STRATOS d035bdb6 contains the central fix; complete replay
-now requires joint positive acceptance against it.
+is implemented. Joint acceptance on 2026-09-07 repeated confirm and returned
+the same canonical document, version and Registry ingestion attempt without a
+duplicate job.
 
 STRATOS must permit exact root/version replay while preserving active source,
 parent, scope, actor, inherited policy and immutable content checks, and return
