@@ -12,6 +12,7 @@ import {
   safeAssistantReportFilename
 } from "@/lib/reporting/assistant-report-xlsx";
 import { AssistantReportValidationError } from "@/lib/reporting/assistant-report-validation-error";
+import type { Citation } from "@/lib/types";
 import {
   getOptionalServerRequestContext,
   getServerApiClients,
@@ -37,25 +38,28 @@ export async function POST(request: NextRequest) {
       return policyExportDenied("CAPABILITY_MISSING", "Export capability is required.");
     }
     const report = normalizeAssistantReportArtifact(bodyContext.report ?? body);
-    const citationsByDocument = reportCitationPolicyHashes(report);
-    if (citationsByDocument.size === 0) {
-      return policyExportDenied("POLICY_UNAVAILABLE", "Export requires source policy bindings.");
+    const sourceVersions = new Map<string, Citation>();
+    for (const row of report.rows) {
+      // Browser-controlled report ids/warnings cannot authorize uncited rows.
+      if (!row.citations.length) return policyExportDenied("POLICY_UNAVAILABLE", "Every exported row requires verified source coordinates.");
+      for (const citation of row.citations) {
+        if (!citation.policy_binding_id || !citation.policy_version || !/^sha256:[a-f0-9]{64}$/.test(citation.policy_hash ?? "")) {
+          return policyExportDenied("POLICY_UNAVAILABLE", "Every citation requires its own complete source policy binding.");
+        }
+        const key = JSON.stringify([citation.document_id, citation.document_version_id]);
+        const existing = sourceVersions.get(key);
+        if (existing && (existing.policy_hash !== citation.policy_hash || existing.policy_binding_id !== citation.policy_binding_id || existing.policy_version !== citation.policy_version)) {
+          return policyExportDenied("POLICY_HASH_MISMATCH", "The report contains conflicting exact-version policy bindings.");
+        }
+        sourceVersions.set(key, citation);
+      }
     }
+    if (!sourceVersions.size) return policyExportDenied("POLICY_UNAVAILABLE", "Export requires source policy bindings.");
     const registry = getServerApiClients().registry;
-    const decisions = await Promise.all(
-      [...citationsByDocument.entries()].map(async ([documentId, hashes]) => ({
-        documentId,
-        hashes,
-        decision: await registry.authorizeDocument(
-          documentId,
-          "rag.export",
-          context,
-        ),
-      })),
-    );
     const obligations = new Set<string>();
     const policyBindings = new Set<string>();
-    for (const { hashes, decision } of decisions) {
+    for (const citation of sourceVersions.values()) {
+      const decision = await registry.authorizeDocument(citation.document_id, "rag.export", context, citation.document_version_id);
       if (!decision.allowed) {
         return policyExportDenied(
           decision.reason_codes[0] ?? "EXPORT_DENIED",
@@ -63,7 +67,11 @@ export async function POST(request: NextRequest) {
         );
       }
       const currentHash = textValue(decision.constraints.policy_hash);
-      if (!currentHash || hashes.size !== 1 || !hashes.has(currentHash)) {
+      if (!currentHash || currentHash !== citation.policy_hash
+        || textValue(decision.constraints.policy_binding_id) !== citation.policy_binding_id
+        || textValue(decision.constraints.policy_version) !== citation.policy_version
+        || textValue(decision.constraints.document_id) !== citation.document_id
+        || textValue(decision.constraints.document_version_id) !== citation.document_version_id) {
         return policyExportDenied(
           "POLICY_HASH_MISMATCH",
           "The report cites a stale or incomplete source policy snapshot.",
@@ -107,28 +115,6 @@ export async function POST(request: NextRequest) {
 
 function _objectContext(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-}
-
-function reportCitationPolicyHashes(value: unknown): Map<string, Set<string>> {
-  const result = new Map<string, Set<string>>();
-  const visit = (candidate: unknown): void => {
-    if (Array.isArray(candidate)) {
-      candidate.forEach(visit);
-      return;
-    }
-    if (!candidate || typeof candidate !== "object") return;
-    const record = candidate as Record<string, unknown>;
-    const documentId = textValue(record.document_id);
-    const policyHash = textValue(record.policy_hash);
-    if (documentId) {
-      const hashes = result.get(documentId) ?? new Set<string>();
-      if (policyHash) hashes.add(policyHash);
-      result.set(documentId, hashes);
-    }
-    Object.values(record).forEach(visit);
-  };
-  visit(value);
-  return result;
 }
 
 function textValue(value: unknown): string | null {

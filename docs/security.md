@@ -8,6 +8,14 @@ outage behavior.
 AKB security is centralized in backend services. Browser clients and STRATOS
 host applications do not make authorization decisions for AKB documents.
 
+Document Intake uses one canonical HTTP binary endpoint and current upload
+authorization before body reads. Interactive uploads bind the current person
+to the signed session. Budget requires its exact server-side service credential,
+a separate current actor bearer for interactive mode, and Registry/central
+lineage revalidation. The signed session alone is not an upload permission.
+See `docs/integration/AKB_DOCUMENT_INTAKE_V1.md` and ADR 0016 for the clean-target
+contract, removal of old binary aliases and immutable replay evidence.
+
 ## Authentication
 
 - Local development may use mock/dev auth.
@@ -135,6 +143,49 @@ central policy enforcement.
 The detailed current contract is in
 `docs/security/access-information-policy-v2.md`.
 
+Every admitted AKB document and immutable version requires an explicit effective
+TLP: `TLP:RED`, `TLP:AMBER+STRICT`, `TLP:AMBER`, `TLP:GREEN`, or `TLP:CLEAR`.
+The Registry `DocumentInformationPolicyBinding` admission profile composes the
+shared STRATOS V2 binding with this requirement. The shared defensive binding
+can still parse absent/null TLP for error handling; it is not an admission mode
+and its central canonical hash payload is unchanged. No administrator, service,
+public-source import, or STRATOS integration can admit an unlabelled document.
+Version creation can inherit an already admissible document policy; it never
+invents a TLP. PATCH cannot clear the policy. Missing or null input is rejected
+with `422 validation_error`; internal admission guards use
+`document_tlp_required` / `document_tlp_invalid`, and refuse incomplete stored
+snapshots with `409` before approval, publication, replay or activation.
+
+The guard covers document creation and policy updates, generic external intake,
+Budget document/version/current state, exact version authority, review submission,
+controlled package membership and activation, public publication, and retrieval
+candidate filtering, including local administrator and service shortcuts.
+Withdrawal/revocation remains possible without converting or approving an
+incomplete policy. Repair must use an authoritative complete binding and the
+existing central governance registration; there is no automatic null-to-CLEAR
+migration. Official public-reference and employee-directive projections require
+explicit `TLP:CLEAR` together with all their existing profile, audience and access
+gates. CLEAR alone does not authorize anonymous access or broaden an audience.
+
+TLP does not establish active accountability by itself. Registry additionally
+requires complete root and version profiles, persists immutable snapshots, and
+verifies atomic STRATOS admission covering exact source, policy, scope, profile
+and current accountable owner/gestor. A proper owner transfer changes the current
+root while preserving the historical root behind existing versions. Local role
+labels, uploader identity and service credentials cannot replace central proof.
+See the [document profile contract](CONTRACTS/AKB_DOCUMENT_PROFILE_PROPOSAL.md).
+The required STRATOS registration/decision extensions are coordinated dependencies;
+unsupported, stale, denied or conflicting confirmation fails closed.
+
+The specialized `/api/v1/integrations/ingestion/readiness` requires fresh central
+support for the exact catalog/profile revisions and atomic registration plus
+revalidation capabilities. Missing support returns `503`
+`document_profile_admission_unavailable`; a verified support response enables
+readiness, never access to a particular document. Every operation still checks its
+own exact authority. General infrastructure readiness remains separate. No
+passing health response, local test authority or static catalog is evidence of
+production admission support.
+
 Registry API owns document authorization. RAG retrieval filters candidate
 documents through Registry authorization before answer composition. If sources
 are unauthorized or insufficient, the assistant returns a no-answer or handoff
@@ -148,7 +199,7 @@ document versions referenced by a `valid` controlled package whose source type
 is `internal_directive`, whose effective date has started, and whose package
 metadata does not set `employee_access=false`. Registry additionally requires
 an `INTERNAL` Information Policy with organization-wide audience, no explicit
-recipients, no narrower scope IDs, no TLP/PAP, and document classification no
+recipients, no narrower scope IDs, explicit `TLP:CLEAR`, no PAP, and document classification no
 higher than `internal`. A matching scope therefore cannot expose an unrelated
 internal document, a draft or future package, or a restricted/confidential
 source. Direct source opening still requires `akb:read_document`; deterministic
@@ -519,3 +570,7 @@ Detailed references:
 - `docs/security/stratos-identity-access-management.md`
 - `docs/security/access-information-policy-v2.md`
 - `docs/CONTRACTS/06_SECURITY_AUTHZ_MODEL.md`
+
+### ProjectFlow and ArchFlow source document intake
+
+The dedicated source bridge is implemented with exact source service identities, a separate current person credential and fresh STRATOS source authorization. The common scanner and mandatory document-profile/TLP admission remain in force. Generic source write bypasses are closed. STRATOS adapters and joint positive acceptance are pending; intake remains closed. See [source intake contract and handoff](integration/STRATOS_SOURCE_DOCUMENT_INTAKE_V1.md).

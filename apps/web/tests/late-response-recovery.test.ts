@@ -34,6 +34,30 @@ describe("late assistant response recovery", () => {
     assert.equal(loads, 2);
     assert.equal(recovered?.messages.at(-1)?.message_id, "assistant_new");
   });
+
+  it("stops recovery immediately while waiting and never performs another load", async () => {
+    const controller = new AbortController();
+    let loads = 0;
+    const pending = recoverPersistedAssistantTurn({
+      conversationId: "conv_1", submittedQuestion: "Jaký je limit?", knownAssistantMessageIds: new Set(),
+      signal: controller.signal, intervalMs: 60_000, maxWaitMs: 120_000,
+      loadConversation: async () => { loads++; return null; },
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    controller.abort();
+    assert.equal(await pending, null);
+    assert.equal(loads, 1);
+  });
+
+  it("does not return a late persisted answer after cancellation during a load", async () => {
+    const controller = new AbortController();
+    const result = await recoverPersistedAssistantTurn({
+      conversationId: "conv_1", submittedQuestion: "Jaký je limit?", knownAssistantMessageIds: new Set(),
+      signal: controller.signal,
+      loadConversation: async () => { controller.abort(); return conversationWithAnswer(); },
+    });
+    assert.equal(result, null);
+  });
 });
 
 function conversationWithoutAnswer(): AssistantConversationDetail {

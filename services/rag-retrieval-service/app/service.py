@@ -11,7 +11,8 @@ import re
 import time
 import uuid
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 from collections.abc import Callable
 from typing import AsyncIterator, Awaitable
 
@@ -23,6 +24,7 @@ from app.archflow_extraction import (
     extract_archflow_handover_proposals,
 )
 from app.config import Settings
+from app.source_locator import office_source_locator, same_source_locator
 from app.contract_extraction import contract_extraction_profiles, extract_contract_financial_proposals
 from app.controlled_rule_extraction import (
     controlled_rule_extraction_profile,
@@ -1759,17 +1761,44 @@ class RagRetrievalService:
             )
 
         response = _source_context_from_chunk(chunk)
-        neighbor_getter = getattr(self._retriever, "get_neighbors", None)
-        if neighbor_getter is not None:
+        neighbor_getter = getattr(self._retriever, "get_context_chunks", None)
+        window = self._settings.source_context_window
+        chunk_index = chunk.metadata.get("chunk_index")
+        if neighbor_getter is not None and window > 0 and type(chunk_index) is int:
+            candidates: list[RetrievedChunk] = []
             try:
-                before_text, after_text = await neighbor_getter(chunk)
-                response = response.model_copy(update={"before_text": before_text, "after_text": after_text})
+                candidates = await neighbor_getter(chunk, window=window)
             except Exception as exc:
                 logger.warning(
                     "source_context_neighbors_failed chunk_id=%s reason=%s",
                     chunk_id,
                     exc.__class__.__name__,
                 )
+                response = response.model_copy(update={"warnings": [*response.warnings, "SOURCE_CONTEXT_NEIGHBORS_UNAVAILABLE"]})
+            # Raw strings from an index neighbour query cannot carry current
+            # authorization or trustworthy source coordinates. Verify exact
+            # chunk candidates, including the seed again, before rendering any.
+            related = {
+                item.chunk_id: item for item in candidates
+                if item.chunk_id != chunk.chunk_id
+                and _same_source_context_scope(chunk, item)
+                and type(item.metadata.get("chunk_index")) is int
+                and 0 < abs(item.metadata["chunk_index"] - chunk_index) <= window
+            }
+            authorized, denied = await self._filter_authorized_chunks(
+                subject_id=subject_id, chunks=[chunk, *related.values()], auth_context=auth_context,
+            )
+            if not any(item.chunk_id == chunk.chunk_id for item in authorized):
+                raise RetrievalError(
+                    "CHUNK_ACCESS_DENIED", "The subject is not authorized to open this chunk.",
+                    status_code=403, details={"chunk_id": chunk_id, "denied_document_ids": sorted(denied)},
+                )
+            ordered = sorted((item for item in authorized if item.chunk_id != chunk.chunk_id),
+                             key=lambda item: item.metadata["chunk_index"])
+            response = response.model_copy(update={
+                "before_text": "\n\n".join(item.text for item in ordered if item.metadata["chunk_index"] < chunk_index),
+                "after_text": "\n\n".join(item.text for item in ordered if item.metadata["chunk_index"] > chunk_index),
+            })
         await self._audit_source_opened(
             actor_id=subject_id,
             event_type=event_type,
@@ -1814,6 +1843,14 @@ class RagRetrievalService:
             and payload.filters.valid_on is None
         ):
             retrieval_filters = payload.filters.model_copy(update={"only_valid": False})
+        # Index validity is a candidate prefilter. Registry resolves the full
+        # publication timeline before a chunk can reach reranking or the model.
+        effective_on = retrieval_filters.valid_on or (
+            datetime.now(ZoneInfo("Europe/Prague")).date()
+            if retrieval_filters.only_valid else None
+        )
+        if effective_on is not None:
+            retrieval_filters = retrieval_filters.model_copy(update={"valid_on": effective_on})
         exact_document_id = None
         exact_resolver_candidates = 0
         exact_resolver_authorized = 0
@@ -1845,6 +1882,7 @@ class RagRetrievalService:
                         chunks=scoped_candidates,
                         auth_context=auth_context,
                         action=authorization_action,
+                        effective_on=effective_on,
                     )
                     stage_timings_ms["exact_resolution_authorization"] = _elapsed_stage_ms(
                         stage_started
@@ -1902,6 +1940,7 @@ class RagRetrievalService:
             chunks=candidates,
             auth_context=auth_context,
             action=authorization_action,
+            effective_on=effective_on,
         )
         denied_document_ids.update(candidate_denied_document_ids)
         stage_timings_ms["authorization"] = _elapsed_stage_ms(stage_started)
@@ -1970,11 +2009,17 @@ class RagRetrievalService:
                 chunks=chunks,
                 auth_context=auth_context,
                 action=authorization_action,
+                effective_on=effective_on,
             )
             stage_timings_ms["parent_expansion"] = _elapsed_stage_ms(stage_started)
             warnings.extend(expansion_warnings)
             if self._settings.parent_retrieval_mode == "enforce":
                 chunks = expanded
+            else:
+                # Shadow mode evaluates expansion text only. A fresh access
+                # revocation still removes the original source from the answer.
+                still_authorized = {chunk.chunk_id for chunk in expanded}
+                chunks = [chunk for chunk in chunks if chunk.chunk_id in still_authorized]
         else:
             stage_timings_ms["parent_expansion"] = 0.0
         stage_timings_ms["total_retrieval"] = _elapsed_stage_ms(retrieval_started)
@@ -2067,6 +2112,7 @@ class RagRetrievalService:
         chunks: list[RetrievedChunk],
         auth_context: AuthContext | None,
         action: str = "rag.query",
+        effective_on: date | None = None,
     ) -> tuple[list[RetrievedChunk], list[str]]:
         getter = getattr(self._retriever, "get_context_chunks", None)
         if getter is None:
@@ -2080,7 +2126,7 @@ class RagRetrievalService:
         related_by_seed = await asyncio.gather(*(get_related(seed) for seed in chunks))
         unique_related = {
             item.chunk_id: item
-            for related in related_by_seed
+            for related in [chunks, *related_by_seed]
             for item in related
         }
         authorized_related, _ = await self._filter_authorized_chunks(
@@ -2088,17 +2134,26 @@ class RagRetrievalService:
             chunks=list(unique_related.values()),
             auth_context=auth_context,
             action=action,
+            effective_on=effective_on,
         )
         authorized_chunk_ids = {item.chunk_id for item in authorized_related}
 
         expanded: list[RetrievedChunk] = []
         for seed, related in zip(chunks, related_by_seed, strict=True):
+            if seed.chunk_id not in authorized_chunk_ids:
+                continue
             same_version = [
                 item
                 for item in related
                 if item.chunk_id in authorized_chunk_ids
                 if item.citation.document_id == seed.citation.document_id
                 and item.citation.document_version_id == seed.citation.document_version_id
+                and item.citation.page_number == seed.citation.page_number
+                and same_source_locator(
+                    item.metadata.get("source_locator"), seed.metadata.get("source_locator"),
+                    required=_viewer_mode(_str_or_none(seed.metadata.get("source_mime_type")),
+                                          _str_or_none(seed.metadata.get("source_file_name"))) in {"table", "presentation"},
+                )
             ]
             merged_text, source_ids = _merge_context(seed, same_version, self._settings.max_context_chars)
             expanded.append(
@@ -2122,6 +2177,7 @@ class RagRetrievalService:
         chunks: list[RetrievedChunk],
         auth_context: AuthContext | None = None,
         action: str = "rag.query",
+        effective_on: date | None = None,
     ) -> tuple[list[RetrievedChunk], set[str]]:
         strict_policy = (
             self._settings.authz_mode == "registry"
@@ -2161,6 +2217,7 @@ class RagRetrievalService:
             candidate_policy_hashes=candidate_policy_hashes,
             candidate_document_versions=candidate_document_versions,
             action=action,
+            effective_on=effective_on,
         )
         allowed = [
             chunk
@@ -2735,6 +2792,21 @@ def _retrieval_only_answer(
     )
 
 
+def _same_source_context_scope(seed: RetrievedChunk, item: RetrievedChunk) -> bool:
+    return (
+        item.citation.document_id == seed.citation.document_id
+        and item.citation.document_version_id == seed.citation.document_version_id
+        and item.citation.page_number == seed.citation.page_number
+        and all(item.metadata.get(key) == seed.metadata.get(key)
+                for key in ("organization_id", "policy_binding_id", "policy_version", "policy_hash", "source_file_uri", "source_sha256"))
+        and same_source_locator(
+            item.metadata.get("source_locator"), seed.metadata.get("source_locator"),
+            required=_viewer_mode(_str_or_none(seed.metadata.get("source_mime_type")),
+                                  _str_or_none(seed.metadata.get("source_file_name"))) in {"table", "presentation"},
+        )
+    )
+
+
 def _source_context_from_chunk(chunk: RetrievedChunk) -> SourceContextResponse:
     metadata = chunk.metadata
     source_mime_type = _str_or_none(metadata.get("source_mime_type"))
@@ -2744,6 +2816,12 @@ def _source_context_from_chunk(chunk: RetrievedChunk) -> SourceContextResponse:
         warnings.append("SOURCE_FILE_URI_MISSING")
     if not source_mime_type:
         warnings.append("SOURCE_MIME_TYPE_MISSING")
+    locator = office_source_locator(metadata.get("source_locator")) or {}
+    viewer_mode = _viewer_mode(source_mime_type, source_file_name)
+    office_source = viewer_mode in {"table", "presentation"}
+    if office_source and not locator:
+        warnings.append("SOURCE_LOCATION_UNAVAILABLE")
+    rows = locator.get("row_numbers") or []
 
     return SourceContextResponse(
         chunk_id=chunk.chunk_id,
@@ -2758,9 +2836,13 @@ def _source_context_from_chunk(chunk: RetrievedChunk) -> SourceContextResponse:
         source_file_name=source_file_name,
         source_size_bytes=_int_or_none(metadata.get("source_size_bytes")),
         source_sha256=_str_or_none(metadata.get("source_sha256")),
-        viewer_mode=_viewer_mode(source_mime_type, source_file_name),
+        viewer_mode=viewer_mode,
         location=SourceLocation(
-            page_number=chunk.citation.page_number,
+            page_number=None if office_source else chunk.citation.page_number,
+            slide_number=locator.get("slide_number"),
+            sheet_name=locator.get("sheet_name"),
+            row_number=rows[0] if rows else None,
+            column_name=locator.get("column_name"),
             section_path=chunk.citation.section_path,
             section_title=_str_or_none(metadata.get("section_title")),
             paragraph_number=chunk.citation.paragraph_number,
@@ -2810,6 +2892,7 @@ def _complete_chunk_policy_metadata(chunk: RetrievedChunk) -> bool:
         or summary.get("policyVersion") != version
         or summary.get("handlingClass") not in {"PUBLIC", "INTERNAL", "PROJECT_MANAGEMENT", "RESTRICTED"}
         or summary.get("legalClassification") != "NONE"
+        or summary.get("tlp") not in ("TLP:RED", "TLP:AMBER+STRICT", "TLP:AMBER", "TLP:GREEN", "TLP:CLEAR")
         or not isinstance(summary.get("audience"), dict)
         or not isinstance(summary.get("contentCategories"), list)
         or not isinstance(summary.get("obligations"), list)
@@ -2819,6 +2902,18 @@ def _complete_chunk_policy_metadata(chunk: RetrievedChunk) -> bool:
         )
     ):
         return False
+    if summary.get("tlp") == "TLP:RED":
+        audience = summary["audience"]
+        recipients = audience.get("recipientSubjectIds")
+        if (
+            audience.get("scopeType") != "recipient_set"
+            or not isinstance(recipients, list)
+            or not recipients
+            or any(not isinstance(item, str) or not item.strip() for item in recipients)
+            or not isinstance(summary.get("originatorId"), str)
+            or not summary["originatorId"].strip()
+        ):
+            return False
     canonical = {
         "policyBindingId": summary.get("policyBindingId"),
         "policyVersion": summary.get("policyVersion"),

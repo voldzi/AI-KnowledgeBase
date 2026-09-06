@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "stratos-document-version-1",
+  "organizationId": "org_stratos",
+  "documentId": "doc_profile_example01",
+  "documentVersionId": "ver_profile_example01",
+  "rootMetadataRevision": "document-v1",
+  "rootSnapshotHash": "sha256:8b216beca5de9dbdd3443548c00192f92c4a5ac93a51a5e5347c2a7c1428942b",
+  "sourceLineage": {
+    "sourceSystem": "AKB",
+    "sourceRecordId": "doc_profile_example01",
+    "sourceVersion": "ver_profile_example01",
+    "sourceGovernedResourceId": null,
+    "contentSha256": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "contentUri": "s3://akl-documents/example/verified-source.pdf",
+    "intakeReceiptId": "example-receipt-id",
+    "capturedAt": "2026-09-05T12:00:00Z"
+  },
+  "lifecycle": {
+    "mode": "until_superseded",
+    "effectiveFrom": "2026-09-05",
+    "effectiveTo": null,
+    "recordedOn": null,
+    "reviewAt": "2027-09-05",
+    "reviewRuleId": "akb.review.annual",
+    "retentionRuleId": "akb.retention.organizational-record"
+  },
+  "domainEvidence": {
+    "family": "controlled_document",
+    "issuerReference": "example-issuer",
+    "applicability": "Example organizational procedure",
+    "effectiveDateEvidenceReference": "example-approved-effectivity"
+  }
+}

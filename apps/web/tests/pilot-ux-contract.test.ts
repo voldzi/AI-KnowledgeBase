@@ -34,9 +34,11 @@ describe("pilot user experience contracts", () => {
   });
 
   it("shows live STRATOS sources and gives empty markdown links a usable name", () => {
-    assert.match(assistantApp, /assistantLiveSources\(lastAssistantResponse\?\.current_context\)/);
+    assert.match(assistantApp, /assistantLiveSources\(sourceResponse\?\.current_context\)/);
     assert.match(assistantApp, /assistant-live-source-list/);
-    assert.match(assistantApp, /hasLabel \? children : openLinkLabel/);
+    // Link rendering and image-fetch prevention are exercised with actual
+    // rendered HTML in assistant-markdown-security.test.ts.
+    assert.match(assistantApp, /<AssistantMarkdown content=\{displayContent\} openLinkLabel=\{openLinkLabel\}/);
   });
 
   it("pages and filters the document registry on the authorized server bridge", () => {

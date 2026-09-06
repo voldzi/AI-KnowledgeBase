@@ -1,0 +1,27 @@
+{
+  "anonymous_prepare": {
+    "status": 401,
+    "code": "AUTH_REQUIRED"
+  },
+  "anonymous_confirm": {
+    "status": 401,
+    "code": "AUTH_REQUIRED"
+  },
+  "anonymous_status": {
+    "status": 401,
+    "code": "AUTH_REQUIRED"
+  },
+  "budget_cannot_impersonate_source": {
+    "token_status": 200,
+    "status": 403,
+    "code": "SOURCE_SYSTEM_NOT_ALLOWED"
+  },
+  "registry_boundary": {
+    "source_authority_configured": false,
+    "auth_mode": "oidc",
+    "stored_counts": {
+      "documents": 0,
+      "versions": 0
+    }
+  }
+}

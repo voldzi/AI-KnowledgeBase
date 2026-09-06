@@ -1,0 +1,19 @@
+{
+  "schema_version": "akb-federated-history-auth-1",
+  "provider": "budget",
+  "tenant_id": "org_stratos",
+  "actor_subject_id": "subject_current_reader",
+  "read_id": "read_example_01",
+  "nonce": "43e85551-cd1c-41b1-894a-f6f2a8370662",
+  "evidence_manifest_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "decision_id": "decision_example_unavailable",
+  "request_digest": "sha256:f95c6ca5f5519992f4250f5541b11b41da854c87b3524bb6e82db6641f0bbd70",
+  "decision": "UNAVAILABLE",
+  "issued_at": "2026-09-05T12:00:00Z",
+  "expires_at": "2026-09-05T12:00:30Z",
+  "authorized_references": [],
+  "obligations": [],
+  "reason_codes": [
+    "CURRENT_AUTHORITY_UNAVAILABLE"
+  ]
+}

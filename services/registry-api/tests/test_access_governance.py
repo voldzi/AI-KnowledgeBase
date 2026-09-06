@@ -5,6 +5,8 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
+from document_profile_fixtures import admit_orm_profile, profiled_document_request, verified_profile_authority
+from datetime import date
 from fastapi import HTTPException
 from starlette.requests import Request
 
@@ -751,10 +753,10 @@ def test_service_decision_uses_fixed_akb_central_identity(monkeypatch) -> None:
 
 
 def test_ingestion_service_document_transport_uses_fixed_central_identity(
-    monkeypatch,
-) -> None:
+    monkeypatch, db_session, verified_profile_authority) -> None:
     binding = _policy()
     document = _document(binding)
+    admit_orm_profile(db_session, document, [], verified_profile_authority, profile_id="akb.contract")
     principal = Principal(
         subject_id="service-account-svc-ingestion",
         roles={"service_ingestion"},
@@ -946,7 +948,7 @@ def _policy(scope_id: str = "it") -> InformationPolicyBinding:
         "issuedAt": "2026-07-14T00:00:00Z",
         "handlingClass": "INTERNAL",
         "legalClassification": "NONE",
-        "tlp": None,
+        "tlp": "TLP:CLEAR",
         "pap": None,
         "contentCategories": ["FINANCIAL"],
         "audience": {
@@ -967,7 +969,7 @@ def _service_policy() -> InformationPolicyBinding:
         "issuedAt": "2026-07-14T00:00:00Z",
         "handlingClass": "INTERNAL",
         "legalClassification": "NONE",
-        "tlp": None,
+        "tlp": "TLP:CLEAR",
         "pap": None,
         "contentCategories": ["AUDIT"],
         "audience": {
@@ -988,7 +990,7 @@ def _public_policy() -> InformationPolicyBinding:
         "issuedAt": "2026-07-14T00:00:00Z",
         "handlingClass": "PUBLIC",
         "legalClassification": "NONE",
-        "tlp": None,
+        "tlp": "TLP:CLEAR",
         "pap": None,
         "contentCategories": ["PUBLIC_INFORMATION"],
         "audience": {
@@ -1046,9 +1048,10 @@ def _official_public_document() -> Document:
     )
 
 
-def test_runtime_decision_rechecks_active_scope_and_fails_closed(monkeypatch) -> None:
+def test_runtime_decision_rechecks_active_scope_and_fails_closed(monkeypatch, db_session, verified_profile_authority) -> None:
     binding = _policy()
     document = _document(binding)
+    admit_orm_profile(db_session, document, [], verified_profile_authority, profile_id="akb.contract")
     principal = Principal(
         subject_id="user-it",
         roles={"stratos_user"},
@@ -1141,9 +1144,9 @@ def test_official_public_source_runtime_decision_uses_fixed_service_identity(
 
 
 def test_public_chat_scope_can_query_but_not_read_valid_official_reference(
-    monkeypatch,
-) -> None:
+    monkeypatch, db_session, verified_profile_authority) -> None:
     document = _official_public_document()
+    admit_orm_profile(db_session, document, [], verified_profile_authority, profile_id="akb.official-public-reference")
     principal = Principal(
         subject_id="user-employee",
         roles={"stratos_user"},
@@ -1222,8 +1225,7 @@ def test_public_chat_scope_denies_inactive_or_untrusted_official_reference() -> 
 
 
 def test_official_public_source_exact_version_decision_uses_fixed_service_identity(
-    monkeypatch,
-) -> None:
+    monkeypatch, db_session, verified_profile_authority) -> None:
     document = _official_public_document()
     binding = _public_policy()
     policy_hash = canonical_policy_hash(binding)
@@ -1240,6 +1242,10 @@ def test_official_public_source_exact_version_decision_uses_fixed_service_identi
         governance_scope_type="organization",
         governance_scope_id="org_stratos",
     )
+    version.document = document
+    version.source_file_uri = "s3://test/official-admitted.pdf"
+    version.valid_from = date(2020, 1, 1)
+    admit_orm_profile(db_session, document, [version], verified_profile_authority, profile_id="akb.official-public-reference")
     authority = DocumentVersionAuthority(
         organization_id="org_stratos",
         governed_resource_id="gir_official_public_version_1",
@@ -1286,8 +1292,7 @@ def test_official_public_source_exact_version_decision_uses_fixed_service_identi
 
 
 def test_public_chat_scope_keeps_exact_valid_official_reference_version(
-    monkeypatch,
-) -> None:
+    monkeypatch, db_session, verified_profile_authority) -> None:
     document = _official_public_document()
     binding = _public_policy()
     policy_hash = canonical_policy_hash(binding)
@@ -1304,6 +1309,10 @@ def test_public_chat_scope_keeps_exact_valid_official_reference_version(
         governance_scope_type="organization",
         governance_scope_id="org_stratos",
     )
+    version.document = document
+    version.source_file_uri = "s3://test/official-admitted.pdf"
+    version.valid_from = date(2020, 1, 1)
+    admit_orm_profile(db_session, document, [version], verified_profile_authority, profile_id="akb.official-public-reference")
     authority = DocumentVersionAuthority(
         organization_id="org_stratos",
         governed_resource_id="gir_official_public_history_version",
@@ -1541,7 +1550,7 @@ def test_interactive_registration_uses_fixed_akb_identity_and_human_audit(monkey
 
 
 def test_official_public_source_marker_requires_exact_public_policy_shape() -> None:
-    payload = DocumentCreate.model_validate({
+    payload = DocumentCreate.model_validate(profiled_document_request({
         "title": "Official source",
         "document_type": "methodology",
         "owner_id": "user-manager",
@@ -1557,7 +1566,7 @@ def test_official_public_source_marker_requires_exact_public_policy_shape() -> N
             "authority": "NÚKIB",
             "canonical_url": "https://nukib.gov.cz/example.pdf",
         },
-    })
+    }, profile_id="akb.official-public-reference"))
 
     assert _is_official_public_source_create(payload) is True
     assert _is_official_public_source_create(

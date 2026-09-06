@@ -39,12 +39,16 @@ interface ZipEntry {
   name: string;
   method: number;
   compressedSize: number;
+  uncompressedSize: number;
   localHeaderOffset: number;
 }
 
 const CENTRAL_DIRECTORY_SIGNATURE = 0x02014b50;
 const END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06054b50;
 const LOCAL_FILE_SIGNATURE = 0x04034b50;
+const MAX_PREVIEW_ENTRIES = 4096;
+const MAX_PREVIEW_XML_BYTES = 8 * 1024 * 1024;
+const MAX_PREVIEW_TOTAL_XML_BYTES = 32 * 1024 * 1024;
 
 export function buildNativeSourcePreview({
   bytes,
@@ -105,11 +109,10 @@ function buildXlsxPreview(bytes: Uint8Array, filename: string): NativeSourcePrev
     .filter((name) => name.match(/^xl\/worksheets\/sheet\d+\.xml$/))
     .sort((left, right) => left.localeCompare(right, undefined, { numeric: true }));
 
-  const sheets = worksheetEntries.slice(0, 8).map((entryName, index) => ({
-    name: sheetNames.get(entryName) ?? `Sheet ${index + 1}`,
-    rows: parseWorksheetRows(archive.get(entryName) ?? "", sharedStrings).slice(0, 80),
-    truncated: parseWorksheetRows(archive.get(entryName) ?? "", sharedStrings).length > 80
-  }));
+  const sheets = worksheetEntries.slice(0, 8).map((entryName, index) => {
+    const rows = parseWorksheetRows(archive.get(entryName) ?? "", sharedStrings);
+    return { name: sheetNames.get(entryName) ?? `Sheet ${index + 1}`, rows: rows.slice(0, 80), truncated: rows.length > 80 };
+  });
 
   return {
     kind: "xlsx",
@@ -145,63 +148,96 @@ function buildPresentationPreview(bytes: Uint8Array, filename: string): NativeSo
 
 function readZipEntries(bytes: Uint8Array): Map<string, string> {
   const buffer = Buffer.from(bytes);
-  const entries = readCentralDirectory(buffer);
+  const { entries, contentEnd } = readCentralDirectory(buffer);
   const result = new Map<string, string>();
+  let expandedBytes = 0;
 
   for (const entry of entries) {
-    if (entry.name.includes("..") || entry.name.startsWith("/")) {
-      continue;
+    // A text preview never expands embedded images, macros, fonts or attachments.
+    if (!/\.(?:xml|rels)$/.test(entry.name)) continue;
+    const remaining = MAX_PREVIEW_TOTAL_XML_BYTES - expandedBytes;
+    if (entry.uncompressedSize > MAX_PREVIEW_XML_BYTES || entry.uncompressedSize > remaining) {
+      throw new Error("OOXML_PREVIEW_SIZE_LIMIT");
     }
     const localHeaderOffset = entry.localHeaderOffset;
-    if (buffer.readUInt32LE(localHeaderOffset) !== LOCAL_FILE_SIGNATURE) {
-      continue;
+    if (localHeaderOffset + 30 > contentEnd || buffer.readUInt32LE(localHeaderOffset) !== LOCAL_FILE_SIGNATURE) {
+      throw new Error("OOXML_ZIP_ENTRY_INVALID");
     }
     const filenameLength = buffer.readUInt16LE(localHeaderOffset + 26);
     const extraLength = buffer.readUInt16LE(localHeaderOffset + 28);
     const dataStart = localHeaderOffset + 30 + filenameLength + extraLength;
     const dataEnd = dataStart + entry.compressedSize;
-    if (dataStart < 0 || dataEnd > buffer.length || dataStart > dataEnd) {
-      continue;
+    if (dataStart < 0 || dataEnd > contentEnd || dataStart > dataEnd) {
+      throw new Error("OOXML_ZIP_ENTRY_INVALID");
+    }
+    const localName = buffer.subarray(localHeaderOffset + 30, localHeaderOffset + 30 + filenameLength).toString("utf8");
+    if (localName !== entry.name || buffer.readUInt16LE(localHeaderOffset + 8) !== entry.method || (buffer.readUInt16LE(localHeaderOffset + 6) & 1)) {
+      throw new Error("OOXML_ZIP_ENTRY_INVALID");
     }
     const compressed = buffer.subarray(dataStart, dataEnd);
-    const content = entry.method === 0 ? compressed : entry.method === 8 ? inflateRawSync(compressed) : null;
-    if (content) {
-      result.set(entry.name, content.toString("utf8"));
+    const limit = Math.min(MAX_PREVIEW_XML_BYTES, remaining);
+    if (limit <= 0 || (entry.method === 0 && compressed.length > limit)) throw new Error("OOXML_PREVIEW_SIZE_LIMIT");
+    // The actual output is bounded too: a forged small directory size is not trusted.
+    let content: Buffer;
+    try {
+      content = entry.method === 0 ? compressed : inflateRawSync(compressed, { maxOutputLength: limit });
+    } catch {
+      throw new Error("OOXML_ZIP_EXPANSION_REJECTED");
     }
+    if (content.length !== entry.uncompressedSize) throw new Error("OOXML_ZIP_SIZE_MISMATCH");
+    expandedBytes += content.length;
+    result.set(entry.name, content.toString("utf8"));
   }
 
   return result;
 }
 
-function readCentralDirectory(buffer: Buffer): ZipEntry[] {
+function readCentralDirectory(buffer: Buffer): { entries: ZipEntry[]; contentEnd: number } {
   const eocdOffset = findEndOfCentralDirectory(buffer);
   const totalEntries = buffer.readUInt16LE(eocdOffset + 10);
+  const centralDirectorySize = buffer.readUInt32LE(eocdOffset + 12);
   const centralDirectoryOffset = buffer.readUInt32LE(eocdOffset + 16);
+  if (buffer.readUInt16LE(eocdOffset + 4) !== 0 || buffer.readUInt16LE(eocdOffset + 6) !== 0
+    || buffer.readUInt16LE(eocdOffset + 8) !== totalEntries
+    || totalEntries > MAX_PREVIEW_ENTRIES
+    || centralDirectoryOffset + centralDirectorySize !== eocdOffset) {
+    throw new Error("OOXML_ZIP_DIRECTORY_INVALID");
+  }
   const entries: ZipEntry[] = [];
+  const names = new Set<string>();
   let offset = centralDirectoryOffset;
 
   for (let index = 0; index < totalEntries; index += 1) {
-    if (buffer.readUInt32LE(offset) !== CENTRAL_DIRECTORY_SIGNATURE) {
-      break;
+    if (offset + 46 > eocdOffset || buffer.readUInt32LE(offset) !== CENTRAL_DIRECTORY_SIGNATURE) {
+      throw new Error("OOXML_ZIP_DIRECTORY_INVALID");
     }
     const method = buffer.readUInt16LE(offset + 10);
     const compressedSize = buffer.readUInt32LE(offset + 20);
+    const uncompressedSize = buffer.readUInt32LE(offset + 24);
     const filenameLength = buffer.readUInt16LE(offset + 28);
     const extraLength = buffer.readUInt16LE(offset + 30);
     const commentLength = buffer.readUInt16LE(offset + 32);
     const localHeaderOffset = buffer.readUInt32LE(offset + 42);
     const name = buffer.subarray(offset + 46, offset + 46 + filenameLength).toString("utf8");
-    entries.push({ name, method, compressedSize, localHeaderOffset });
-    offset += 46 + filenameLength + extraLength + commentLength;
+    const nextOffset = offset + 46 + filenameLength + extraLength + commentLength;
+    if (nextOffset > eocdOffset || !name || name.includes("\0") || name.includes("\\") || name.startsWith("/")
+      || name.split("/").includes("..") || names.has(name) || (method !== 0 && method !== 8)
+      || (buffer.readUInt16LE(offset + 8) & 1) || localHeaderOffset >= centralDirectoryOffset) {
+      throw new Error("OOXML_ZIP_ENTRY_INVALID");
+    }
+    names.add(name);
+    entries.push({ name, method, compressedSize, uncompressedSize, localHeaderOffset });
+    offset = nextOffset;
   }
-
-  return entries;
+  if (offset !== eocdOffset) throw new Error("OOXML_ZIP_DIRECTORY_INVALID");
+  return { entries, contentEnd: centralDirectoryOffset };
 }
 
 function findEndOfCentralDirectory(buffer: Buffer): number {
   const minOffset = Math.max(0, buffer.length - 65_557);
   for (let offset = buffer.length - 22; offset >= minOffset; offset -= 1) {
-    if (buffer.readUInt32LE(offset) === END_OF_CENTRAL_DIRECTORY_SIGNATURE) {
+    if (buffer.readUInt32LE(offset) === END_OF_CENTRAL_DIRECTORY_SIGNATURE
+      && offset + 22 + buffer.readUInt16LE(offset + 20) === buffer.length) {
       return offset;
     }
   }

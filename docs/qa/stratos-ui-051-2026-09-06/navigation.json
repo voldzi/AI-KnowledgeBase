@@ -1,0 +1,24 @@
+{
+  "allowed_switcher_budget_pf_arch_akb_budget": {
+    "status": "PASS",
+    "credentialEntries": 1,
+    "localTargets": true
+  },
+  "stratos_to_standalone_chat": {
+    "status": "PASS",
+    "credentialEntries": 1,
+    "standaloneProfile": true
+  },
+  "new_tabs_without_login": {
+    "status": "PASS",
+    "tabs": 5
+  },
+  "restricted_person_projectflow_denied": {
+    "status": "PASS",
+    "bootstrapStatus": 403
+  },
+  "akb_chat_switcher_both_directions": {
+    "status": "PASS",
+    "localTargets": true
+  }
+}

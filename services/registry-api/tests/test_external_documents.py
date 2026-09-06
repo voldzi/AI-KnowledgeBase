@@ -1,3 +1,9 @@
+import pytest
+from document_profile_fixtures import root_profile, profiled_version_request, verified_profile_authority
+pytestmark = pytest.mark.usefixtures("verified_profile_authority")
+
+from tests.document_policy_fixtures import admitted_policy
+
 import time
 from threading import Lock
 
@@ -8,7 +14,7 @@ from app.permissions import Decision
 def _external_payload(**overrides):
     payload = {
         "tenant_id": "org_stratos",
-        "external_system": "STRATOS_PROJECTFLOW",
+        "external_system": "STRATOS_PLATFORM",
         "external_ref": "contract:256-2022-S:main",
         "entity_type": "Contract",
         "entity_id": "contract-uuid",
@@ -42,6 +48,15 @@ def _external_payload(**overrides):
         "preview_url": "https://stratos.local/contracts/256-2022-S/preview",
     }
     payload.update(overrides)
+    if "information_policy" not in payload:
+        payload["information_policy"] = admitted_policy(
+            handling_class={"confidential": "RESTRICTED"}.get(payload["classification"], payload["classification"].upper())
+        )
+    payload["document_profile"] = root_profile(profile_id="akb.contract" if payload["document_type"] == "contract" else "akb.controlled-document", owner=payload["owner"]["user_id"])
+    payload["document_profile"]["provenance"] = {"sourceSystem":payload["external_system"], "sourceRecordId":payload["entity_id"], "sourceGovernedResourceId":"gres_fixture_source_"+payload["entity_id"]}
+    payload["gestor_unit"]="unit_knowledge"
+    if payload["document_type"] != "contract":
+        payload["assignments"]=[{"role":"owner","subject_type":"user","subject_id":payload["owner"]["user_id"],"is_primary":True},{"role":"gestor","subject_type":"unit","subject_id":"unit_knowledge","is_primary":True},{"role":"approver","subject_type":"user","subject_id":"test_independent_approver","is_primary":True}]
     return payload
 
 
@@ -52,7 +67,7 @@ def test_external_document_upsert_creates_registry_document(client, admin_header
     body = response.json()
     assert body["created"] is True
     assert body["external_document"]["external_document_id"].startswith("extdoc_")
-    assert body["external_document"]["external_system"] == "STRATOS_PROJECTFLOW"
+    assert body["external_document"]["external_system"] == "STRATOS_PLATFORM"
     assert body["external_document"]["external_ref"] == "contract:256-2022-S:main"
     assert body["external_document"]["source_location"]["kind"] == "url"
     assert body["external_document"]["source_location"]["display_url"] == "https://stratos.local/contracts/256-2022-S"
@@ -62,9 +77,9 @@ def test_external_document_upsert_creates_registry_document(client, admin_header
     assert body["external_document"]["metadata"]["contract_number"] == "256-2022-S"
     assert body["document"]["document_id"].startswith("doc_")
     assert body["document"]["document_type"] == "contract"
-    assert body["document"]["metadata"]["external"]["external_system"] == "STRATOS_PROJECTFLOW"
+    assert body["document"]["metadata"]["external"]["external_system"] == "STRATOS_PLATFORM"
     assert body["document"]["metadata"]["external"]["source_location"]["file_name"] == "256-2022-S.pdf"
-    assert "stratos_projectflow" in body["document"]["tags"]
+    assert "stratos_platform" in body["document"]["tags"]
 
     audit = client.get("/api/v1/audit/events", headers=admin_headers)
     assert audit.status_code == 200
@@ -147,7 +162,7 @@ def test_document_metadata_summary_filters_external_context(client, admin_header
         "/api/v1/external-documents/upsert",
         headers=admin_headers,
         json=_external_payload(
-            tenant_id="tenant-a",
+            tenant_id="org_stratos",
             external_ref="contract:budget-context:main",
             entity_type="contract",
             entity_id="contract-1",
@@ -160,7 +175,7 @@ def test_document_metadata_summary_filters_external_context(client, admin_header
         "/api/v1/external-documents/upsert",
         headers=admin_headers,
         json=_external_payload(
-            tenant_id="tenant-b",
+            tenant_id="org_stratos",
             external_ref="contract:budget-context-other:main",
             entity_type="contract",
             entity_id="contract-2",
@@ -173,8 +188,8 @@ def test_document_metadata_summary_filters_external_context(client, admin_header
     summary = client.get(
         "/api/v1/documents/metadata-summary"
         "?topic=smlouva"
-        "&tenant_id=tenant-a"
-        "&external_system=STRATOS_PROJECTFLOW"
+        "&tenant_id=org_stratos"
+        "&external_system=STRATOS_PLATFORM"
         "&entity_type=contract"
         "&entity_id=contract-1"
         "&external_ref=contract%3Abudget-context%3Amain"
@@ -195,7 +210,7 @@ def test_document_list_filters_external_context_and_topic(client, admin_headers)
         "/api/v1/external-documents/upsert",
         headers=admin_headers,
         json=_external_payload(
-            tenant_id="tenant-a",
+            tenant_id="org_stratos",
             external_ref="contract:list-context:main",
             entity_type="contract",
             entity_id="contract-list-1",
@@ -208,7 +223,7 @@ def test_document_list_filters_external_context_and_topic(client, admin_headers)
         "/api/v1/external-documents/upsert",
         headers=admin_headers,
         json=_external_payload(
-            tenant_id="tenant-a",
+            tenant_id="org_stratos",
             external_ref="contract:list-context-other:main",
             entity_type="contract",
             entity_id="contract-list-2",
@@ -222,11 +237,11 @@ def test_document_list_filters_external_context_and_topic(client, admin_headers)
     listing = client.get(
         "/api/v1/documents"
         "?topic=smlouva"
-        "&tenant_id=tenant-a"
-        "&external_system=STRATOS_PROJECTFLOW"
+        "&tenant_id=org_stratos"
+        "&external_system=STRATOS_PLATFORM"
         "&entity_type=contract"
         "&entity_id=contract-list-1"
-        "&context_tag=stratos_projectflow",
+        "&context_tag=stratos_platform",
         headers=admin_headers,
     )
 
@@ -255,7 +270,7 @@ def test_document_version_accepts_source_location(client, admin_headers):
     response = client.post(
         f"/api/v1/documents/{document_id}/versions",
         headers=admin_headers,
-        json={
+        json=profiled_version_request(created.json()["document"], {
             "version_label": "1.0",
             "source_file_uri": "s3://akl-documents/stratos/contracts/256-2022-S.pdf",
             "source_location": {
@@ -273,7 +288,7 @@ def test_document_version_accepts_source_location(client, admin_headers):
                 "sha256": "sha256:" + "b" * 64,
                 "uploaded_by": "user_admin",
             },
-        },
+        }),
     )
 
     assert response.status_code == 201, response.text
@@ -303,7 +318,7 @@ def test_external_document_current_can_be_updated_after_ingestion_start(client, 
     version = client.post(
         f"/api/v1/documents/{document_id}/versions",
         headers=admin_headers,
-        json={
+        json=profiled_version_request(created.json()["document"], {
             "version_label": "1.0",
             "source_file_uri": "s3://akl-documents/stratos/contracts/256-2022-S.pdf",
             "file_hash": "sha256:" + "c" * 64,
@@ -314,7 +329,7 @@ def test_external_document_current_can_be_updated_after_ingestion_start(client, 
                 "sha256": "sha256:" + "c" * 64,
                 "uploaded_by": "user_admin",
             },
-        },
+        }),
     )
     assert version.status_code == 201, version.text
     assert version.json()["file_id"].startswith("file_")

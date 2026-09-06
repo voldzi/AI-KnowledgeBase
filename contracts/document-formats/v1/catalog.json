@@ -1,0 +1,602 @@
+{
+  "schema_version": "akb-document-formats-1",
+  "revision": "2026-09-05.1",
+  "formats": [
+    {
+      "id": "pdf",
+      "extensions": [
+        ".pdf"
+      ],
+      "mime_type": "application/pdf",
+      "mime_aliases": [],
+      "admission": "enabled",
+      "parser": "pdf",
+      "locator": "page",
+      "requires": [],
+      "label": {
+        "cs": "PDF",
+        "en": "PDF"
+      },
+      "limitation": {
+        "cs": "Textové stránky a skeny s dostupným OCR. Úplnost výsledku se kontroluje po zpracování.",
+        "en": "Text pages and scans when OCR is available. Extraction completeness is checked after processing."
+      }
+    },
+    {
+      "id": "docx",
+      "extensions": [
+        ".docx"
+      ],
+      "mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "mime_aliases": [],
+      "admission": "enabled",
+      "parser": "docx",
+      "locator": "section",
+      "requires": [],
+      "label": {
+        "cs": "Word DOCX",
+        "en": "Word DOCX"
+      },
+      "limitation": {
+        "cs": "Text a běžné tabulky; obsah obrázků a složitých objektů vyžaduje kontrolu.",
+        "en": "Text and ordinary tables; images and complex objects require review."
+      }
+    },
+    {
+      "id": "xlsx",
+      "extensions": [
+        ".xlsx"
+      ],
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "mime_aliases": [],
+      "admission": "enabled",
+      "parser": "xlsx",
+      "locator": "sheet_row",
+      "requires": [],
+      "label": {
+        "cs": "Excel XLSX",
+        "en": "Excel XLSX"
+      },
+      "limitation": {
+        "cs": "Uložené hodnoty buněk; vzorce se nepřepočítávají. Citace odkazují na list a řádky.",
+        "en": "Stored cell values; formulas are not recalculated. Citations identify sheets and rows."
+      }
+    },
+    {
+      "id": "xlsm",
+      "extensions": [
+        ".xlsm"
+      ],
+      "mime_type": "application/vnd.ms-excel.sheet.macroEnabled.12",
+      "mime_aliases": [],
+      "admission": "enabled",
+      "parser": "xlsx",
+      "locator": "sheet_row",
+      "requires": [],
+      "label": {
+        "cs": "Excel XLSM",
+        "en": "Excel XLSM"
+      },
+      "limitation": {
+        "cs": "Uložené hodnoty buněk; makra se nespouštějí a vzorce se nepřepočítávají.",
+        "en": "Stored cell values; macros are never executed and formulas are not recalculated."
+      }
+    },
+    {
+      "id": "pptx",
+      "extensions": [
+        ".pptx"
+      ],
+      "mime_type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      "mime_aliases": [],
+      "admission": "enabled",
+      "parser": "pptx",
+      "locator": "slide",
+      "requires": [],
+      "label": {
+        "cs": "PowerPoint PPTX",
+        "en": "PowerPoint PPTX"
+      },
+      "limitation": {
+        "cs": "Text, tabulky a poznámky snímků; obrázky a diagramy vyžadují kontrolu.",
+        "en": "Slide text, tables and notes; images and diagrams require review."
+      }
+    },
+    {
+      "id": "markdown",
+      "extensions": [
+        ".md",
+        ".markdown"
+      ],
+      "mime_type": "text/markdown",
+      "mime_aliases": [
+        "text/x-markdown",
+        "application/markdown"
+      ],
+      "admission": "enabled",
+      "parser": "plain_text",
+      "locator": "section",
+      "requires": [],
+      "label": {
+        "cs": "Markdown",
+        "en": "Markdown"
+      },
+      "limitation": {
+        "cs": "Text a tabulky; externí obrázky se automaticky nenačítají.",
+        "en": "Text and tables; external images are not loaded automatically."
+      }
+    },
+    {
+      "id": "text",
+      "extensions": [
+        ".txt"
+      ],
+      "mime_type": "text/plain",
+      "mime_aliases": [],
+      "admission": "enabled",
+      "parser": "plain_text",
+      "locator": "section",
+      "requires": [],
+      "label": {
+        "cs": "Text UTF-8",
+        "en": "UTF-8 text"
+      },
+      "limitation": {
+        "cs": "Textový obsah; citace neoznačuje stránku tiskové podoby.",
+        "en": "Text content; citations do not identify a printed page."
+      }
+    },
+    {
+      "id": "csv",
+      "extensions": [
+        ".csv"
+      ],
+      "mime_type": "text/csv",
+      "mime_aliases": [],
+      "admission": "enabled",
+      "parser": "plain_text",
+      "locator": "section",
+      "requires": [],
+      "label": {
+        "cs": "CSV",
+        "en": "CSV"
+      },
+      "limitation": {
+        "cs": "Textový obsah CSV bez přepočtu, datových typů a interpretace sešitu.",
+        "en": "CSV text without calculation, typed cells or workbook interpretation."
+      }
+    },
+    {
+      "id": "json",
+      "extensions": [
+        ".json"
+      ],
+      "mime_type": "application/json",
+      "mime_aliases": [],
+      "admission": "enabled",
+      "parser": "plain_text",
+      "locator": "section",
+      "requires": [],
+      "label": {
+        "cs": "JSON",
+        "en": "JSON"
+      },
+      "limitation": {
+        "cs": "Text strukturovaného zdroje; nevykonává se kód ani dotazy.",
+        "en": "Structured source text; no code or queries are executed."
+      }
+    },
+    {
+      "id": "xml",
+      "extensions": [
+        ".xml"
+      ],
+      "mime_type": "application/xml",
+      "mime_aliases": [
+        "text/xml"
+      ],
+      "admission": "enabled",
+      "parser": "plain_text",
+      "locator": "section",
+      "requires": [],
+      "label": {
+        "cs": "XML",
+        "en": "XML"
+      },
+      "limitation": {
+        "cs": "Text strukturovaného zdroje; externí entity se nenačítají.",
+        "en": "Structured source text; external entities are not loaded."
+      }
+    },
+    {
+      "id": "yaml",
+      "extensions": [
+        ".yaml",
+        ".yml"
+      ],
+      "mime_type": "application/yaml",
+      "mime_aliases": [
+        "application/x-yaml",
+        "text/yaml",
+        "text/x-yaml",
+        "text/plain"
+      ],
+      "admission": "enabled",
+      "parser": "plain_text",
+      "locator": "section",
+      "requires": [],
+      "label": {
+        "cs": "YAML",
+        "en": "YAML"
+      },
+      "limitation": {
+        "cs": "Text strukturovaného zdroje; nevykonává se konfigurace ani kód.",
+        "en": "Structured source text; configuration and code are never executed."
+      }
+    },
+    {
+      "id": "html",
+      "extensions": [
+        ".html",
+        ".htm",
+        ".xhtml"
+      ],
+      "mime_type": "text/html",
+      "mime_aliases": [
+        "application/xhtml+xml"
+      ],
+      "admission": "enabled",
+      "parser": "html",
+      "locator": "section",
+      "requires": [],
+      "label": {
+        "cs": "HTML",
+        "en": "HTML"
+      },
+      "limitation": {
+        "cs": "Text stránky bez externích zdrojů; náhled neslibuje původní vzhled webu.",
+        "en": "Page text without external resources; the preview does not reproduce the original website layout."
+      }
+    },
+    {
+      "id": "png",
+      "extensions": [
+        ".png"
+      ],
+      "mime_type": "image/png",
+      "mime_aliases": [],
+      "admission": "enabled",
+      "parser": "image_ocr",
+      "locator": "image",
+      "requires": [
+        "ocr"
+      ],
+      "label": {
+        "cs": "PNG",
+        "en": "PNG"
+      },
+      "limitation": {
+        "cs": "Jednostránkový obrázek s OCR; rozpoznaný text vyžaduje kontrolu.",
+        "en": "Single-frame image with OCR; recognized text requires review."
+      }
+    },
+    {
+      "id": "jpeg",
+      "extensions": [
+        ".jpg",
+        ".jpeg"
+      ],
+      "mime_type": "image/jpeg",
+      "mime_aliases": [],
+      "admission": "enabled",
+      "parser": "image_ocr",
+      "locator": "image",
+      "requires": [
+        "ocr"
+      ],
+      "label": {
+        "cs": "JPEG",
+        "en": "JPEG"
+      },
+      "limitation": {
+        "cs": "Jednostránkový obrázek s OCR; rozpoznaný text vyžaduje kontrolu.",
+        "en": "Single-frame image with OCR; recognized text requires review."
+      }
+    },
+    {
+      "id": "webp",
+      "extensions": [
+        ".webp"
+      ],
+      "mime_type": "image/webp",
+      "mime_aliases": [],
+      "admission": "enabled",
+      "parser": "image_ocr",
+      "locator": "image",
+      "requires": [
+        "ocr"
+      ],
+      "label": {
+        "cs": "WEBP",
+        "en": "WEBP"
+      },
+      "limitation": {
+        "cs": "Jednostránkový obrázek s OCR; rozpoznaný text vyžaduje kontrolu.",
+        "en": "Single-frame image with OCR; recognized text requires review."
+      }
+    },
+    {
+      "id": "archimate",
+      "extensions": [
+        ".archimate",
+        ".archimate3"
+      ],
+      "mime_type": "application/vnd.opengroup.archimate.exchange+xml",
+      "mime_aliases": [
+        "application/xml",
+        "text/xml"
+      ],
+      "admission": "enabled",
+      "parser": "plain_text",
+      "locator": "section",
+      "requires": [],
+      "label": {
+        "cs": "ARCHIMATE",
+        "en": "ARCHIMATE"
+      },
+      "limitation": {
+        "cs": "Pouze čitelný text zdrojového souboru; grafický význam a komprimované části nejsou vytěženy.",
+        "en": "Readable source text only; visual semantics and compressed content are not extracted."
+      }
+    },
+    {
+      "id": "bpmn",
+      "extensions": [
+        ".bpmn"
+      ],
+      "mime_type": "application/bpmn+xml",
+      "mime_aliases": [
+        "application/xml",
+        "text/xml"
+      ],
+      "admission": "enabled",
+      "parser": "plain_text",
+      "locator": "section",
+      "requires": [],
+      "label": {
+        "cs": "BPMN",
+        "en": "BPMN"
+      },
+      "limitation": {
+        "cs": "Pouze čitelný text zdrojového souboru; grafický význam a komprimované části nejsou vytěženy.",
+        "en": "Readable source text only; visual semantics and compressed content are not extracted."
+      }
+    },
+    {
+      "id": "drawio",
+      "extensions": [
+        ".drawio",
+        ".dio"
+      ],
+      "mime_type": "application/vnd.jgraph.mxfile",
+      "mime_aliases": [
+        "application/xml",
+        "text/xml"
+      ],
+      "admission": "enabled",
+      "parser": "plain_text",
+      "locator": "section",
+      "requires": [],
+      "label": {
+        "cs": "DRAWIO",
+        "en": "DRAWIO"
+      },
+      "limitation": {
+        "cs": "Pouze čitelný text zdrojového souboru; grafický význam a komprimované části nejsou vytěženy.",
+        "en": "Readable source text only; visual semantics and compressed content are not extracted."
+      }
+    },
+    {
+      "id": "mermaid",
+      "extensions": [
+        ".mermaid",
+        ".mmd"
+      ],
+      "mime_type": "text/vnd.mermaid",
+      "mime_aliases": [
+        "application/mermaid",
+        "text/plain"
+      ],
+      "admission": "enabled",
+      "parser": "plain_text",
+      "locator": "section",
+      "requires": [],
+      "label": {
+        "cs": "MERMAID",
+        "en": "MERMAID"
+      },
+      "limitation": {
+        "cs": "Pouze čitelný text zdrojového souboru; grafický význam a komprimované části nejsou vytěženy.",
+        "en": "Readable source text only; visual semantics and compressed content are not extracted."
+      }
+    },
+    {
+      "id": "plantuml",
+      "extensions": [
+        ".plantuml",
+        ".puml"
+      ],
+      "mime_type": "text/x-plantuml",
+      "mime_aliases": [
+        "text/plain"
+      ],
+      "admission": "enabled",
+      "parser": "plain_text",
+      "locator": "section",
+      "requires": [],
+      "label": {
+        "cs": "PLANTUML",
+        "en": "PLANTUML"
+      },
+      "limitation": {
+        "cs": "Pouze čitelný text zdrojového souboru; grafický význam a komprimované části nejsou vytěženy.",
+        "en": "Readable source text only; visual semantics and compressed content are not extracted."
+      }
+    },
+    {
+      "id": "openapi",
+      "extensions": [
+        ".openapi"
+      ],
+      "mime_type": "application/vnd.oai.openapi",
+      "mime_aliases": [
+        "application/json",
+        "application/vnd.oai.openapi+json",
+        "application/yaml",
+        "application/x-yaml",
+        "text/yaml",
+        "text/x-yaml"
+      ],
+      "admission": "enabled",
+      "parser": "plain_text",
+      "locator": "section",
+      "requires": [],
+      "label": {
+        "cs": "OPENAPI",
+        "en": "OPENAPI"
+      },
+      "limitation": {
+        "cs": "Pouze čitelný text zdrojového souboru; grafický význam a komprimované části nejsou vytěženy.",
+        "en": "Readable source text only; visual semantics and compressed content are not extracted."
+      }
+    },
+    {
+      "id": "asyncapi",
+      "extensions": [
+        ".asyncapi"
+      ],
+      "mime_type": "application/vnd.asyncapi",
+      "mime_aliases": [
+        "application/json",
+        "application/vnd.asyncapi+json",
+        "application/yaml",
+        "application/x-yaml",
+        "text/yaml",
+        "text/x-yaml"
+      ],
+      "admission": "enabled",
+      "parser": "plain_text",
+      "locator": "section",
+      "requires": [],
+      "label": {
+        "cs": "ASYNCAPI",
+        "en": "ASYNCAPI"
+      },
+      "limitation": {
+        "cs": "Pouze čitelný text zdrojového souboru; grafický význam a komprimované části nejsou vytěženy.",
+        "en": "Readable source text only; visual semantics and compressed content are not extracted."
+      }
+    },
+    {
+      "id": "doc",
+      "extensions": [
+        ".doc"
+      ],
+      "mime_type": "application/msword",
+      "mime_aliases": [],
+      "admission": "unavailable",
+      "parser": null,
+      "locator": null,
+      "requires": [],
+      "label": {
+        "cs": "DOC",
+        "en": "DOC"
+      },
+      "limitation": {
+        "cs": "Pro spolehlivé zpracování nyní exportujte do PDF, DOCX nebo jednostránkového PNG/JPEG.",
+        "en": "For supported processing, export to PDF, DOCX or a single-frame PNG/JPEG."
+      }
+    },
+    {
+      "id": "rtf",
+      "extensions": [
+        ".rtf"
+      ],
+      "mime_type": "application/rtf",
+      "mime_aliases": [
+        "text/rtf"
+      ],
+      "admission": "unavailable",
+      "parser": null,
+      "locator": null,
+      "requires": [],
+      "label": {
+        "cs": "RTF",
+        "en": "RTF"
+      },
+      "limitation": {
+        "cs": "Pro spolehlivé zpracování nyní exportujte do PDF, DOCX nebo jednostránkového PNG/JPEG.",
+        "en": "For supported processing, export to PDF, DOCX or a single-frame PNG/JPEG."
+      }
+    },
+    {
+      "id": "gif",
+      "extensions": [
+        ".gif"
+      ],
+      "mime_type": "image/gif",
+      "mime_aliases": [],
+      "admission": "unavailable",
+      "parser": null,
+      "locator": null,
+      "requires": [],
+      "label": {
+        "cs": "GIF",
+        "en": "GIF"
+      },
+      "limitation": {
+        "cs": "Pro spolehlivé zpracování nyní exportujte do PDF, DOCX nebo jednostránkového PNG/JPEG.",
+        "en": "For supported processing, export to PDF, DOCX or a single-frame PNG/JPEG."
+      }
+    },
+    {
+      "id": "svg",
+      "extensions": [
+        ".svg"
+      ],
+      "mime_type": "image/svg+xml",
+      "mime_aliases": [
+        "application/xml"
+      ],
+      "admission": "unavailable",
+      "parser": null,
+      "locator": null,
+      "requires": [],
+      "label": {
+        "cs": "SVG",
+        "en": "SVG"
+      },
+      "limitation": {
+        "cs": "Pro spolehlivé zpracování nyní exportujte do PDF, DOCX nebo jednostránkového PNG/JPEG.",
+        "en": "For supported processing, export to PDF, DOCX or a single-frame PNG/JPEG."
+      }
+    }
+  ],
+  "limits": {
+    "office": {
+      "zip_entries": 4096,
+      "zip_total_bytes": 134217728,
+      "zip_entry_bytes": 67108864,
+      "visited_rows": 100000,
+      "columns": 512,
+      "cells": 2000000,
+      "extracted_chars": 10000000,
+      "slides": 1000,
+      "seconds": 30
+    },
+    "image": {
+      "pixels": 25000000,
+      "frames": 1
+    }
+  }
+}

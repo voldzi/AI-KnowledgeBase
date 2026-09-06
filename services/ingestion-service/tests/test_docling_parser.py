@@ -654,12 +654,12 @@ def test_docling_docker_build_uses_only_hash_locked_dependencies() -> None:
     assert "--only-binary=:all:" in dockerfile
     assert "--extra-index-url https://download.pytorch.org/whl/cpu" in dockerfile
     assert "pip install --no-cache-dir -r" not in dockerfile
-    assert "docling-slim==2.124.0" in lockfile
+    assert "docling-slim==2.126.0" in lockfile
     assert "rapidocr==" not in lockfile
     assert "omegaconf==" not in lockfile
     assert "torch==2.14.0+cpu" in lockfile
     assert "--hash=sha256:" in lockfile
-    assert "docling-slim==2.124.0" in macos_lockfile
+    assert "docling-slim==2.126.0" in macos_lockfile
     assert "mlx==0.32.2" in macos_lockfile
     assert "docling-parse==" not in macos_lockfile
     assert "requirements-docling-macos.c4.lock" in setup_script

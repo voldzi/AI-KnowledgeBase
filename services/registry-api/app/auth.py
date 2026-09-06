@@ -350,6 +350,10 @@ def _service_route_for_request(request: Request) -> str | None:
     path = request.url.path.removeprefix("/api/v1")
     write = request.method.upper() not in {"GET", "HEAD", "OPTIONS"}
     path_segments = path.strip("/").split("/")
+    if path.startswith("/admin/intake-cleanup/"):
+        return "intake-cleanup"
+    if path.startswith("/integrations/stratos-source-intake/"):
+        return "stratos-source-intake"
     if path.startswith("/integrations/stratos-budget-upload/"):
         return "stratos-budget-upload"
     if path.startswith("/integrations/controlled-rules-read/"):

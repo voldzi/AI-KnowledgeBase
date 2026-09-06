@@ -80,7 +80,7 @@ Budget server používá pouze samostatný web/BFF namespace:
 
 ```http
 POST /akb/api/stratos/budget-upload/preflight
-PUT  /akb/api/stratos/budget-upload/sessions/{session_id}/content
+PUT  /akb/api/document-intake/v1/sessions/{session_id}/content
 POST /akb/api/stratos/budget-upload/sessions/{session_id}/confirm
 GET  /akb/api/stratos/budget-upload/documents/{document_id}/ingestion-status
 POST /akb/api/stratos/budget-upload/documents/{document_id}/retry-ingestion
@@ -123,9 +123,9 @@ confirm nebo retry vyžaduje čerstvé
 `X-STRATOS-Actor-Authorization`, jehož canonical subject se přesně rovná
 `integrationEnvelope.actor.subjectId` aktuální verze. Prosté
 `X-STRATOS-Actor` není autorizace. Auditním aktérem service-only registrace je
-služba. Osoba z první registrace zůstává v kořenovém `document.owner_id` jako
-historická provenance, ale není autorizační podmínkou pro dalšího správce,
-kterému STRATOS povolil vložení nové verze.
+služba. Kořenový `document.owner_id` odpovídá explicitnímu
+`document_profile.accountability.ownerSubjectId`; nahrávající osoba se uchovává
+samostatně v lineage. Iniciátor není automaticky autor, vlastník ani gestor.
 
 Úplný serverový `historical_batch` může nést `lifecycle=CURRENT` i
 `lifecycle=ARCHIVED`. Po potvrzení používá samostatný service-only autorizační
@@ -146,15 +146,76 @@ cestou obnovit nedá a nadále vyžaduje čerstvý actor bearer.
 Vytvoření dokumentu a verze vrací `201`; přesný idempotentní replay vrací
 `200` a `created=false`. Nová service-only verze CAS-kontroluje předchozí
 current version/job a nikdy nezdědí ingestion job předchozí verze. Potvrzená
-verze se v AKB aktivuje jako `valid`, aby byla vyhledatelná a citovatelná, ale
-nevzniká tím anonymní/public publikace ani automaticky přijatá AI extrakce.
+verze odpovídá schválenému execution/lifecycle profilu; návrh smlouvy zůstává
+`draft`, i když projde extrakcí pro review. Aktivace ostatních verzí nesmí být
+záměnou za právní účinnost ani anonymní/public publikaci.
 Confirm vrací také přesné `governance_confirmation` pro dokument a verzi a
-`document_version_status=valid`.
+skutečný `document_version_status` (`draft` nebo `valid`).
 
 Webový bridge má pro tento řízený provoz oddělený rate limit. Produkční hodnoty
 se nastavují pomocí `AKL_WEB_STRATOS_BUDGET_SERVICE_RATE_LIMIT` a
 `AKL_WEB_STRATOS_BUDGET_SERVICE_RATE_WINDOW_SECONDS`; výchozí profil je 300
 požadavků za 60 sekund a nesdílí okno s ostatními STRATOS bridge voláními.
+
+### Povinné profily při přípravě a potvrzení
+
+Aktuální pracovní implementace používá čistý povinný kontrakt. Budget BFF
+preflight vyžaduje `actor_subject_id` rovný ověřenému
+`integration_envelope.actor.subjectId`; starý `owner_actor_id` není alias a je
+odmítnut. `owner_display_name` popisuje explicitního vlastníka z profilu,
+nikoli automaticky iniciátora uploadu.
+
+Preflight má dva oddělené vstupy:
+
+- `document_profile`: úplný `DocumentProfileInput` s `profile`, `authorship`,
+  `provenance`, `accountability`; pro smlouvy `akb.contract`, revize `1`;
+- `document_version_profile`: návrh obsahující přesně `lifecycle` a
+  `domain_evidence`, bez klientem vymyšlené kořenové revize.
+
+`provenance.sourceRecordId` musí odpovídat `entity_id`/envelope contractId a
+`provenance.sourceGovernedResourceId` přesnému Budget parent resource.
+`domain_evidence.contractReference` označuje tentýž kontrakt. Autorství a
+odpovědnost dodává zdroj a čerstvě ověřuje centrální autorita; identita
+nahrávajícího je nesmí nahradit.
+
+Příklad návrhu verze (jde o doménová data, nikoli o centrální schválení):
+
+```json
+{
+  "document_version_profile": {
+    "lifecycle": {
+      "mode": "fixed_interval", "effectiveFrom": "2026-01-01", "effectiveTo": "2028-12-31",
+      "recordedOn": null, "reviewAt": "2027-01-01",
+      "reviewRuleId": "akb.review.annual", "retentionRuleId": "akb.retention.organizational-record"
+    },
+    "domain_evidence": {
+      "family": "contract", "contractReference": "contract-uuid",
+      "partyReferences": ["supplier-uuid", "org_stratos"], "executionStatus": "signed",
+      "executionEvidenceReference": "signed-contract-record"
+    }
+  }
+}
+```
+
+Registry root response obsahuje `document.document_profile.metadataRevision`,
+`current_root_metadata_revision` a `current_root_snapshot_hash`. BFF ověří
+shodu vráceného profilu a hash/revizi, doplní
+`expected_root_metadata_revision` do návrhu verze a podepíše jej jako jednotné
+`document_profile` v upload tokenu. Preflight response vrací přesně toto
+`document_profile`. Confirm posílá vrácený objekt beze změny pod stejným
+klíčem. PUT i confirm před čtením souboru žádají čerstvou Registry intake
+autorizaci s tímto profilem; změna vlastníka, gestora, původu nebo kořenové
+revize vyžaduje novou přípravu. Lifecycle/domain změna oproti tokenu je 409.
+
+Přímé Registry root endpointy (Budget i podporované generic STRATOS zdroje)
+vyžadují `document_profile: DocumentProfileInput`; version endpointy
+vyžadují `document_profile: DocumentVersionProfileInput`, tedy celý návrh
+verze včetně `expected_root_metadata_revision`. Zdrojové hash/URI, receipt a
+admission proof odvozuje a ověřuje Registry ze souboru/envelope. Klient
+nesmí dodat vlastní `ALLOW`, source snapshot či důkaz autority. Chybějící
+profil je 422, chybějící čerstvé centrální potvrzení zůstává fail closed.
+Lokální katalog není tvrzení o nasazení či souhlasu STRATOS; jeho aktivní
+schválení a atomic admission kontrakt jsou podmínkou produkčního provozu.
 
 ### Registrace Budget smlouvy v Registry
 
@@ -179,6 +240,12 @@ musí odpovídat):
   "entity_type": "Contract",
   "entity_id": "contract-uuid",
   "document_type": "contract",
+  "document_profile": {
+    "profile": {"id": "akb.contract", "revision": "1"},
+    "authorship": [{"kind": "organization", "id": "supplier-uuid", "evidenceReference": "signed-contract-record"}],
+    "provenance": {"sourceSystem": "STRATOS_BUDGET", "sourceRecordId": "contract-uuid", "sourceGovernedResourceId": "gres_budget_contract_uuid"},
+    "accountability": {"ownerSubjectId": "subject-document-owner", "gestor": {"kind": "organization_unit", "id": "unit-contracts"}}
+  },
   "title": "256-2022-S – Zajištění provozu přebíracích míst",
   "classification": "internal",
   "information_policy": {
@@ -225,7 +292,7 @@ musí odpovídat):
     }
   },
   "owner": {
-    "user_id": "subject-budget-owner",
+    "user_id": "subject-document-owner",
     "display_name": "Ředitel IT"
   },
   "tags": ["stratos", "budget", "contract"],
@@ -277,7 +344,8 @@ Stabilní identitu dokumentu tvoří smlouva (`contract_id`), finanční scope,
 `external_ref`, governance scope a nadřazený governed resource. Popisná pole
 `title`, `contract_number` a `contract_name` se mohou při dalším autorizovaném
 preflightu opravit; Registry změnu uloží na stejném dokumentu a zapíše ji do
-auditní události. Kořenový `document.owner_id` se tím nepřepisuje. Nová verze
+auditní události. Odpovědnost za dokument se řídí aktuálně potvrzeným kořenovým
+profilem a jeho revizí; nelze ji odvodit z osoby iniciátora. Nová verze
 má vlastního `uploaded_by` podle aktéra ve své immutable integration envelope,
 takže předání správy smlouvy jiné oprávněné osobě nevytváří nový AKB dokument.
 
@@ -923,8 +991,6 @@ PATCH /api/v1/documents/{document_id}/external-references/current
 GET  /api/v1/external-documents/by-ref?tenant_id=...&external_system=...&external_ref=...
 
 POST /api/v1/external-documents/{external_document_id}/versions
-POST /api/v1/external-documents/{external_document_id}/upload-sessions/preflight
-POST /api/v1/external-documents/{external_document_id}/upload-sessions/{upload_session_id}/confirm
 
 POST /api/v1/external-documents/{external_document_id}/ingestion-jobs
 GET  /api/v1/external-documents/{external_document_id}/ingestion-status
@@ -984,93 +1050,26 @@ Response:
 
 AKB filtruje výsledky podle oprávnění aktuálního uživatele nebo subjektu předaného serverovým adapterem.
 
-### Upload session preflight
+### Příjem souborů přes Document Intake
 
-```http
-POST /api/v1/external-documents/{external_document_id}/upload-sessions/preflight
-```
+Binární obsah používá pouze canonical cestu
+`PUT /api/document-intake/v1/sessions/{sessionId}/content`, vrácenou v
+`upload_url` schváleného preflight. Budget používá vyhrazené operace uvedené
+výše; jeho PUT vyžaduje přesný service bearer a pro interaktivní režim také
+`X-STRATOS-Actor-Authorization`. Preflight poskytuje popis
+`required_authentication` bez hodnot přihlašovacích údajů. Přenos proto provádí
+backend Budgetu; servisní token nesmí přejít do prohlížeče.
 
-Request:
+Potvrzení musí obsahovat podepsaný token a potvrzení skenu. Při přesném replayi
+může AKB vrátit původní neměnnou verzi a její původní adresu souboru; ověřuje
+původní obsah a zachovává jeho důkaz skenu. Nová session není důvodem k přepsání
+původní verze. Nově nahraný soubor musí také projít všemi vlastními kontrolami.
 
-```json
-{
-  "tenant_id": "default",
-  "file_name": "smlouva.pdf",
-  "file_type": "application/pdf",
-  "file_size": 123456,
-  "sha256": "sha256:...",
-  "classification": "restricted",
-  "document_type": "contract",
-  "owner_actor_id": "user-uuid",
-  "context_tags": ["budget-contract:contract-uuid"]
-}
-```
-
-Response:
-
-```json
-{
-  "upload_session_id": "upl_...",
-  "upload_url": "/akb/api/stratos/upload/sessions/upl_.../content",
-  "upload_method": "PUT",
-  "expires_at": "2026-06-11T10:15:00Z",
-  "required_headers": {
-    "Content-Type": "application/pdf",
-    "X-AKL-Content-SHA256": "sha256:...",
-    "X-AKL-Upload-Token": "<opaque-token>"
-  },
-  "source_file_uri": "s3://akl-documents/stratos/..."
-}
-```
-
-### Confirm upload
-
-```http
-POST /api/v1/external-documents/{external_document_id}/upload-sessions/{upload_session_id}/confirm
-```
-
-Response:
-
-```json
-{
-  "document_id": "doc_...",
-  "document_version_id": "ver_...",
-  "external_document_id": "extdoc_...",
-  "file_id": "file_...",
-  "ingestion_job_id": "job_...",
-  "ingestion_status": "INGESTING",
-  "idempotent_replay": false,
-  "canonical_open_url": "https://stratos.zeleznalady.cz/akb/documents/doc_...?tab=viewer"
-}
-```
-
-Potvrzení je idempotentní podle vazby
-`tenant_id + external_system + external_ref + version_label + file_hash`.
-Externí trojice se ověřuje přes `external_document_id` a `document_id`; pokud
-je v requestu zopakovaná, musí přesně souhlasit.
-
-- první potvrzení vytvoří verzi/job, vrátí HTTP `201` a
-  `idempotent_replay=false`,
-- opakované potvrzení stejného labelu a SHA-256 vrátí HTTP `200`, stejné
-  `document_version_id`, `file_id` a existující nejnovější
-  `ingestion_job_id`, bez nové verze nebo jobu,
-- stejný `version_label` s jiným SHA-256 vrátí HTTP `409` a kód
-  `UPLOAD_VERSION_HASH_CONFLICT`,
-- nesoulad tenant/system/ref/document vazby vrátí HTTP `409` a kód
-  `UPLOAD_EXTERNAL_IDENTITY_CONFLICT`.
-
-Pokud verze existuje, ale předchozí pokus skončil před založením ingestion
-jobu, confirm chybějící job bezpečně doplní. Existující `FAILED` job se při
-replayi nezdvojuje; pro nový pokus se používá explicitní `retry-ingestion`.
-Oprávněný uživatel může stejnou akci spustit také v detailu dokumentu na
-záložce `Zpracování`; ovládací prvek se zobrazuje pouze při `can_ingest` a po
-dokončení ukáže ID nového jobu a výsledný lifecycle stav.
-
-Ingestion Service po autorizovaném spuštění synchronizuje nový job do Registry
-přes `PATCH /api/v1/documents/{document_id}/external-references/current`.
-Externí reference stejné verze proto auditovaně přejde přes `INGESTING` do
-`INDEXED`, případně `FAILED`; retry už nenechá `current_ingestion_job_id`
-ukazovat na starší pokus.
+Obecné upload-session příklady byly odstraněny, protože neodpovídaly
+implementovaným endpointům. ProjectFlow/ArchFlow potřebují výslovný zdrojový
+profil a implementovaný preflight/confirm kontrakt; nesmějí použít Budget
+identitu ani historické URL. Úplný postup a společná akceptace jsou v
+`AKB_DOCUMENT_INTAKE_V1.md` a `STRATOS_DOCUMENT_INTAKE_HANDOFF.md`.
 
 ### Ingestion status
 
@@ -1241,3 +1240,14 @@ STALE
 ```
 
 Interní service statuses se mapují na tento enum před návratem do STRATOS komponent.
+
+
+Contract execution and extraction are separate states. The `akb.contract`
+profile uses `record` lifecycle for `draft` and `terminated` evidence; signed
+or effective contracts require explicit normative effectivity. A draft original
+can pass the existing authorized ingestion flow for review and confirm reports
+`document_version_status: "draft"`; extraction does not publish it or permit
+current RAG retrieval. A centrally confirmed terminated record can be historical
+evidence, but is not proof that the contract is currently in force. Consumers
+must retain the returned workflow status and lifecycle/execution evidence and
+must not equate `INDEXED` with approval or legal effectivity.

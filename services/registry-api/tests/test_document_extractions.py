@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+import pytest
+from tests.document_policy_fixtures import admitted_policy
+from document_profile_fixtures import verified_profile_authority, root_profile, profiled_version_request
+from document_intake_fixtures import _intake_receipt
+
+pytestmark = pytest.mark.usefixtures("verified_profile_authority")
+
 from app.information_policy import InformationPolicyBinding, canonical_policy_hash
 
 
 def _external_payload(**overrides):
     payload = {
-        "tenant_id": "tenant-a",
-        "external_system": "STRATOS_PROJECTFLOW",
+        "tenant_id": "org_stratos",
+        "external_system": "STRATOS_PLATFORM",
         "external_ref": "contract:256-2022-S:main",
         "entity_type": "Contract",
         "entity_id": "contract-uuid",
@@ -16,10 +23,18 @@ def _external_payload(**overrides):
         "owner": {"user_id": "user_owner"},
     }
     payload.update(overrides)
+    if "information_policy" not in payload:
+        payload["information_policy"] = admitted_policy(
+            handling_class={"confidential": "RESTRICTED"}.get(payload["classification"], payload["classification"].upper())
+        )
+    payload["gestor_unit"] = "test_contract_gestor"
+    payload["document_profile"] = root_profile(profile_id="akb.contract",owner=payload["owner"]["user_id"],gestor=payload["gestor_unit"])
+    payload["document_profile"]["provenance"] = {"sourceSystem":payload["external_system"],"sourceRecordId":payload["entity_id"],"sourceGovernedResourceId":"gres-test-project-contract"}
+    payload["parent_governed_resource_id"] = "gres-test-project-contract"
     return payload
 
 
-def _document_with_version(client, admin_headers, *, tenant_id="tenant-a", version_label="1.0"):
+def _document_with_version(client, admin_headers, *, tenant_id="org_stratos", version_label="1.0"):
     created = client.post(
         "/api/v1/external-documents/upsert",
         headers=admin_headers,
@@ -30,11 +45,12 @@ def _document_with_version(client, admin_headers, *, tenant_id="tenant-a", versi
     version = client.post(
         f"/api/v1/documents/{document_id}/versions",
         headers=admin_headers,
-        json={
+        json=profiled_version_request(created.json()["document"], {
             "version_label": version_label,
             "source_file_uri": f"s3://akl-documents/contracts/{version_label}.pdf",
             "file_hash": "sha256:" + "a" * 64,
-        },
+            "source_location": {"kind":"object_storage", "version":"sha256:" + "a" * 64},
+        }),
     )
     assert version.status_code == 201, version.text
     return document_id, version.json()["document_version_id"]
@@ -42,8 +58,8 @@ def _document_with_version(client, admin_headers, *, tenant_id="tenant-a", versi
 
 def _extraction_payload(document_id: str, document_version_id: str, **overrides):
     payload = {
-        "tenant_id": "tenant-a",
-        "external_system": "STRATOS_PROJECTFLOW",
+        "tenant_id": "org_stratos",
+        "external_system": "STRATOS_PLATFORM",
         "external_ref": "contract:256-2022-S:main",
         "entity_type": "Contract",
         "entity_id": "contract-uuid",
@@ -113,11 +129,12 @@ def test_document_extraction_supersedes_previous_version(client, admin_headers):
     version_two = client.post(
         f"/api/v1/documents/{document_id}/versions",
         headers=admin_headers,
-        json={
+        json=profiled_version_request(client.get(f"/api/v1/documents/{document_id}",headers=admin_headers).json(), {
             "version_label": "2.0",
             "source_file_uri": "s3://akl-documents/contracts/2.0.pdf",
             "file_hash": "sha256:" + "b" * 64,
-        },
+            "source_location": {"kind":"object_storage", "version":"sha256:" + "b" * 64},
+        }),
     )
     assert version_two.status_code == 201, version_two.text
 
@@ -141,29 +158,14 @@ def test_document_extraction_supersedes_previous_version(client, admin_headers):
     assert fetched_first.json()["status"] == "SUPERSEDED"
 
 
-def test_document_extraction_tenant_is_part_of_identity(client, admin_headers):
-    doc_a, ver_a = _document_with_version(client, admin_headers, tenant_id="tenant-a")
-    doc_b, ver_b = _document_with_version(
-        client,
-        admin_headers,
-        tenant_id="tenant-b",
-        version_label="tenant-b-1.0",
-    )
-
-    first = client.post(
-        "/api/v1/document-extractions",
+def test_document_intake_rejects_other_tenant_before_extraction(client, admin_headers):
+    response = client.post(
+        "/api/v1/external-documents/upsert",
         headers=admin_headers,
-        json=_extraction_payload(doc_a, ver_a, tenant_id="tenant-a"),
+        json=_external_payload(tenant_id="tenant-b"),
     )
-    second = client.post(
-        "/api/v1/document-extractions",
-        headers=admin_headers,
-        json=_extraction_payload(doc_b, ver_b, tenant_id="tenant-b"),
-    )
-
-    assert first.status_code == 201, first.text
-    assert second.status_code == 201, second.text
-    assert first.json()["extraction"]["extraction_id"] != second.json()["extraction"]["extraction_id"]
+    assert response.status_code == 422, response.text
+    assert response.json()["error"]["code"] == "organization_mismatch"
 
 
 def test_document_extraction_feedback_updates_status(client, admin_headers):
@@ -185,7 +187,7 @@ def test_document_extraction_feedback_updates_status(client, admin_headers):
             "decision": "accepted",
             "reason": "Matches Budget value",
             "actor": "budget-approver",
-            "source_app": "STRATOS_PROJECTFLOW",
+            "source_app": "STRATOS_PLATFORM",
             "source_entity_id": "contract-uuid",
             "correlation_id": "corr-budget-feedback",
         },
@@ -215,7 +217,7 @@ def test_document_extraction_feedback_rejected_updates_status(client, admin_head
             "decision": "rejected",
             "reason": "Wrong source contract",
             "actor": "budget-approver",
-            "source_app": "STRATOS_PROJECTFLOW",
+            "source_app": "STRATOS_PLATFORM",
             "source_entity_id": "contract-uuid",
         },
     )
@@ -244,7 +246,7 @@ def test_document_extraction_feedback_edited_updates_status(client, admin_header
             "decision": "edited",
             "reason": "Budget canonical format",
             "actor": "budget-approver",
-            "source_app": "STRATOS_PROJECTFLOW",
+            "source_app": "STRATOS_PLATFORM",
             "source_entity_id": "contract-uuid",
         },
     )
@@ -336,10 +338,14 @@ def test_budget_contract_extraction_and_feedback_use_dedicated_bridge(client, ad
         "X-AKL-Roles": "service_ingestion",
         "X-Correlation-ID": "corr-budget-extraction-123",
     }
+    budget_profile = root_profile(profile_id="akb.contract", owner=actor, gestor="test_contract_gestor")
+    budget_profile["provenance"] = {"sourceSystem":"STRATOS_BUDGET", "sourceRecordId":contract_id,
+                                    "sourceGovernedResourceId":"gres-budget-contract-extraction"}
     created = client.post(
         "/api/v1/integrations/stratos-budget-upload/external-documents/upsert",
         headers=service_headers,
         json={
+            "document_profile": budget_profile,
             "tenant_id": "org_stratos",
             "external_system": "STRATOS_BUDGET",
             "external_ref": external_ref,
@@ -385,7 +391,7 @@ def test_budget_contract_extraction_and_feedback_use_dedicated_bridge(client, ad
     version = client.put(
         f"/api/v1/integrations/stratos-budget-upload/documents/{document_id}/versions",
         headers=service_headers,
-        json={
+        json=_budget_version_fixture(created.json()["document"], {
             "external_ref": external_ref,
             "version_label": "contract-file-v1",
             "valid_from": "2023-01-01",
@@ -423,7 +429,7 @@ def test_budget_contract_extraction_and_feedback_use_dedicated_bridge(client, ad
                 "size_bytes": 2048,
                 "sha256": file_hash,
             },
-        },
+        }),
     )
     assert version.status_code == 201, version.text
     version_id = version.json()["version"]["document_version_id"]
@@ -498,3 +504,10 @@ def test_budget_contract_extraction_and_feedback_use_dedicated_bridge(client, ad
     assert feedback.status_code == 201, feedback.text
     assert feedback.json()["feedback"]["decision"] == "accepted"
     assert feedback.json()["extraction"]["status"] == "ACCEPTED_IN_SOURCE_APP"
+
+
+def _budget_version_fixture(document, payload):
+    value = profiled_version_request(document, payload)
+    value["document_profile"]["domain_evidence"]["contractReference"] = payload["integration_envelope"]["payload"]["contractId"]
+    value["file"]["intake_receipt"] = _intake_receipt(document["document_id"], value, session="budget-extraction-source")
+    return value

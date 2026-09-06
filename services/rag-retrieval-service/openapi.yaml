@@ -3401,34 +3401,40 @@ components:
     SourceLocation:
       properties:
         page_number:
+          description: Verified physical source page. Native worksheet and slide coordinates never imply a PDF rendition page.
           anyOf:
           - type: integer
             minimum: 1.0
           - type: 'null'
           title: Page Number
         slide_number:
+          description: One-based slide in the immutable original presentation; independent of rendered PDF pagination.
           anyOf:
           - type: integer
             minimum: 1.0
           - type: 'null'
           title: Slide Number
         sheet_name:
+          description: Exact original worksheet name.
           anyOf:
           - type: string
           - type: 'null'
           title: Sheet Name
         row_number:
+          description: First cited original row, including a repeated source header. section_path carries the complete possibly non-contiguous row ranges.
           anyOf:
           - type: integer
             minimum: 1.0
           - type: 'null'
           title: Row Number
         column_name:
+          description: First original worksheet column in the cited rectangular row rendering.
           anyOf:
           - type: string
           - type: 'null'
           title: Column Name
         section_path:
+          description: Source section labels; native Office citations include the exact sheet/slide, table and row ranges where applicable.
           items:
             type: string
           type: array

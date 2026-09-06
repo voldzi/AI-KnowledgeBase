@@ -1,3 +1,4 @@
+import { authCookieNames } from "@/lib/auth/cookies";
 import { NextRequest, NextResponse } from "next/server";
 
 import { hasAllowedSessionRequestOrigin } from "@/lib/auth/csrf";
@@ -16,7 +17,7 @@ export function proxy(request: NextRequest) {
     secFetchSite: request.headers.get("sec-fetch-site"),
     secFetchMode: request.headers.get("sec-fetch-mode"),
     secFetchDest: request.headers.get("sec-fetch-dest"),
-    hasServerSession: request.cookies.has("akl_session"),
+    hasServerSession: request.cookies.has(authCookieNames(process.env.AKL_WEB_PROFILE === "chat" ? "chat" : "platform").session),
   };
   if (
     !hasAllowedSessionRequestOrigin(

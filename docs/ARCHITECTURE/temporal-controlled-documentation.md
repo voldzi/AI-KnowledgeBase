@@ -18,9 +18,64 @@ profilu, dokud je gestor neověří.
 ## Základní model
 
 `DocumentVersion` je neměnný zdrojový soubor. Pole `valid_from` a `valid_to`
-vymezují uzavřený interval účinnosti v kalendářních dnech; `valid_to=null`
-znamená bez známého konce. Více publikovaných verzí jednoho dokumentu proto
-může zůstat platných v různých, nepřekrývajících se intervalech.
+zachovávají deklarovaný interval účinnosti v kalendářních dnech včetně obou
+krajních dnů; `valid_to=null` znamená bez známého konce. Publikace nového znění
+nepřepisuje tato data, soubor, hash ani původní schvalovací snapshot.
+Více publikovaných verzí jednoho dokumentu tvoří časovou řadu; stav `valid`
+označuje publikaci, nikoli automaticky znění účinné dnes.
+Stejnou časovou řadu zachovává automatická aktivace ověřené verze ze STRATOS
+Budget. Její integrační potvrzení nenahrazuje starší znění před začátkem
+účinnosti nové verze; audit nadále rozlišuje tuto aktivaci od veřejné publikace.
+
+### Výběr aktuální, historické a budoucí verze
+
+Registry pro požadovaný den nejprve vybere publikaci s nejpozdějším
+`valid_from`, které není po tomto dni. Teprve potom ověří, že vítězná verze
+není stažená a její `valid_to` ještě neuplynulo. Chybějící `valid_from` je
+počáteční znění bez známého začátku. Koncepty a nikdy nepublikované verze
+nevytvářejí hranici účinnosti.
+
+- Předčasně publikovaná V2 s budoucím začátkem nemění dostupnost dnešní V1.
+  Přesně od začátku V2 vybírá Registry V2. Původní otevřený interval V1
+  zůstává uložen beze změny a historický dotaz před začátkem V2 vybere V1.
+- Publikace opravy se stejným začátkem účinnosti nastaví starší znění na
+  `superseded`; nejnovější publikovaná oprava rozhoduje pro tento interval.
+- Konec účinnosti, `cancelled`, `archived` nebo `superseded` nástupnické
+  publikace nesmí automaticky oživit starší otevřené znění. Bez další platné
+  publikace není pro dotčený den účinný zdroj. To platí i při stažení již
+  publikované budoucí verze: od jejího původního začátku je nutná explicitní
+  náhradní publikace. Zrušený nepublikovaný koncept současnou verzi neovlivní.
+- Mezery mezi deklarovanými intervaly se nezaplňují domněnkou. Požadavek na
+  historii znamená znění účinné k danému dni podle dnes evidované časové řady;
+  nejde o snapshot toho, co systém znal v tehdejším okamžiku.
+
+`GET /documents/{document_id}/versions?valid_on=YYYY-MM-DD` vrací nejvýše
+jednu takto vybranou verzi. Bez `valid_on` vrací standardní stránkovaný seznam
+verzí pro audit a správu, včetně konceptů a historie. Výběr nepřidává žádné
+přístupové oprávnění. Stažený dokument není způsobilý jako účinný zdroj.
+
+RAG při `only_valid=true` používá stejný kalendářní den `Europe/Prague`,
+případně explicitní `valid_on`. Datum posílá do indexového předfiltru i jako
+`effective_on` do `/authz/filter-documents`, společně s přesnými kandidátními
+verzemi. Registry vybírá z celé evidované časové řady, až poté protne výsledek
+s povolenými kandidáty. Pokud účinná V2 chybí v indexu, RAG nesmí odpovědět
+starou V1. Chybějící nebo rozdílné potvrzení data z Registry končí chybou
+`REGISTRY_TEMPORAL_AUTHORIZATION_INVALID` před rerankingem a skládáním kontextu.
+Rozšíření sousedních odstavců používá stejné datum, přesnou verzi a stejnou
+fyzickou stránku, aby nerozšířilo text pod neodpovídající citací. Nepaginované
+odstavce se mohou rozšířit mezi sebou. Čerstvé odmítnutí původního zdroje jej
+odebere z odpovědi i při režimu parent expansion `shadow`.
+
+Explicitní práce s identifikovanou verzí při `only_valid=false` bez data
+nepřidává implicitní dnešní datum; nadále vyžaduje běžnou autorizaci přesného
+zdroje. Explicitní `valid_on` se uplatní i při vypnutém indexovém filtru
+`only_valid`. Vývojové mock klienty nejsou důkazem autoritativní Registry
+časové řady.
+
+Regresní důkaz je v `services/registry-api/tests/test_document_temporal.py`
+a `services/rag-retrieval-service/tests/test_temporal_authorization.py`:
+budoucí publikace, historické datum, krajní dny, oprava stejného začátku,
+stažení a expirace bez oživení minulého znění a účinná V2 chybějící v indexu.
 
 `ControlledDocumentPackage` spojuje jednu přesnou verzi hlavního dokumentu s
 přesnými verzemi příloh, formulářů, vzorů a metodik. Balíček má vlastní

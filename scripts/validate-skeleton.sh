@@ -95,6 +95,22 @@ if [[ -f "$root/scripts/generate_openapi_index.rb" ]]; then
   fi
 fi
 
+if [[ -f "$root/scripts/generate_document_formats.py" ]]; then
+  if python3 "$root/scripts/generate_document_formats.py" --check >/dev/null 2>&1; then
+    ok "document format catalogs are up to date"
+  else
+    fail "document format catalogs differ from their binding source"
+  fi
+fi
+
+if [[ -f "$root/scripts/sync_document_profile_catalog.py" ]]; then
+  if python3 "$root/scripts/sync_document_profile_catalog.py" --check >/dev/null 2>&1; then
+    ok "document profile catalogs are up to date"
+  else
+    fail "document profile catalogs differ from their binding source"
+  fi
+fi
+
 echo
 if [[ "$failures" -gt 0 ]]; then
   echo "Skeleton validation failed: $failures problem(s)."

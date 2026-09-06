@@ -1,0 +1,5 @@
+{
+  "openapi/openapi.json": "sha256:d66d6761d2c72dc7251b3d733158c5286e2332a07282aa0662cb8814648b6b40",
+  "contracts/stratos/source-document-intake/openapi.json": "sha256:85a2753e50dfbf47978d51300d487622821ed63841e6826ee81aff1b330e5b4a",
+  "contracts/stratos/source-document-intake/stratos-authority.openapi.json": "sha256:03c8c548f200ff194a5565cc5d1823b07b63085fbfddaaa052e62dfbf1bd00c4"
+}

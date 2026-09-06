@@ -84,6 +84,7 @@ class Settings(BaseSettings):
     stratos_information_resources_url: str | None = Field(
         default=None, alias="AKL_STRATOS_INFORMATION_RESOURCES_URL"
     )
+    stratos_source_intake_authority_url: str = Field(default="", alias="AKL_STRATOS_SOURCE_INTAKE_AUTHORITY_URL")
     stratos_budget_akb_resources_url: str | None = Field(
         default=None, alias="AKL_STRATOS_BUDGET_AKB_RESOURCES_URL"
     )
@@ -219,6 +220,11 @@ class Settings(BaseSettings):
         default=None,
         alias="AKL_WEB_UPLOAD_SIGNING_SECRET",
     )
+    intake_cleanup_service_client_id: str | None = Field(default=None, alias="AKL_INTAKE_CLEANUP_SERVICE_CLIENT_ID")
+    intake_cleanup_grace_seconds: int = Field(default=86400, ge=3600, le=31536000, alias="AKL_INTAKE_CLEANUP_GRACE_SECONDS")
+    intake_manifest_verify_keys: str | None = Field(default=None, alias="AKL_INTAKE_MANIFEST_VERIFY_KEYS")
+    intake_cleanup_bucket: str = Field(default="akl-documents", alias="AKL_S3_BUCKET")
+    intake_cleanup_legacy_buckets: str = Field(default="", alias="AKL_OBJECT_STORAGE_LEGACY_BUCKETS")
 
     keycloak_admin_base_url: str | None = Field(default=None, alias="AKL_KEYCLOAK_ADMIN_BASE_URL")
     keycloak_realm: str = Field(default="stratos", alias="AKL_KEYCLOAK_REALM")
@@ -368,8 +374,10 @@ class Settings(BaseSettings):
                 "profile-read",
                 "profile-write",
                 "stratos-budget-upload",
+                "stratos-source-intake",
                 "controlled-rules-read",
                 "ingestion-status",
+                "intake-cleanup",
             }
         }
         if invalid_routes:

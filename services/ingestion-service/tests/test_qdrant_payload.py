@@ -785,10 +785,15 @@ async def test_qdrant_indexer_rejects_existing_collection_with_wrong_vector_size
 @pytest.mark.asyncio
 async def test_qdrant_indexer_rejects_mock_embedding_dimension_in_real_profile(tmp_path) -> None:
     settings = _settings(tmp_path, {"AKL_INGESTION_INDEXER_MODE": "qdrant"})
+    from app.registry_client import RegistryClient
+    metadata = await RegistryClient(settings).get_document_metadata("doc_test", "ver_test")
+    chunk = _chunk().model_copy(update={key: getattr(metadata, key) for key in (
+        "policy_binding_id", "policy_version", "policy_hash", "policy_summary",
+    )})
 
     with pytest.raises(IngestionError) as exc:
         await QdrantIndexer(settings).index(
-            chunks=[_chunk()],
+            chunks=[chunk],
             vectors=[[0.1] * 8],
             embedding_model="mock-embedding",
         )

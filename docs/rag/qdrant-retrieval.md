@@ -110,12 +110,20 @@ wording.
 ## Source Context Neighbours
 
 `GET /api/v1/citations/{chunk_id}/open` and the chunk source-context endpoint
-fill `before_text` and `after_text` from neighboring chunks inside the same
-`document_version_id`, based on `metadata.chunk_index`. The default window is
-one chunk on each side and can be changed with `AKL_RAG_SOURCE_CONTEXT_WINDOW`.
+fill `before_text` and `after_text` only from currently authorized neighbouring
+chunks with the exact same document/version, immutable file, policy coordinates
+and source page/Office locator. The selected chunk is reauthorized with the
+eligible neighbours before any text is assembled. Missing TLP, revoked access
+or unavailable current authority cannot return the selected source through
+this path. Candidates use `metadata.chunk_index`; the default window is one
+chunk on each side, configured by `AKL_RAG_SOURCE_CONTEXT_WINDOW`.
 Ingestion creates an integer payload index on `metadata.chunk_index` to keep
-the neighbour lookup efficient. Neighbour lookup failures degrade gracefully
-to empty context.
+the neighbour lookup efficient. An index lookup failure returns empty context
+and `SOURCE_CONTEXT_NEIGHBORS_UNAVAILABLE` only after the selected source passes
+current authorization again. Authority failures remain fail-closed.
+
+Native Office sources retain exact worksheet/row or slide/table coordinates
+instead of fabricated PDF pages; see [native Office extraction](../ingestion/native-office-extraction.md).
 
 ## Empty Results
 

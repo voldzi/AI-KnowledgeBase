@@ -1,50 +1,8 @@
 "use client";
 
-export const SUPPORTED_UPLOAD_ACCEPT = [
-  ".csv",
-  ".doc",
-  ".docx",
-  ".gif",
-  ".htm",
-  ".html",
-  ".jpeg",
-  ".jpg",
-  ".json",
-  ".md",
-  ".markdown",
-  ".pdf",
-  ".png",
-  ".pptx",
-  ".rtf",
-  ".svg",
-  ".txt",
-  ".webp",
-  ".xlsm",
-  ".xlsx",
-  ".xhtml",
-  ".xml",
-  "application/json",
-  "application/msword",
-  "application/pdf",
-  "application/rtf",
-  "application/vnd.ms-excel.sheet.macroEnabled.12",
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/xhtml+xml",
-  "application/xml",
-  "image/gif",
-  "image/jpeg",
-  "image/png",
-  "image/svg+xml",
-  "image/webp",
-  "text/csv",
-  "text/html",
-  "text/markdown",
-  "text/plain",
-  "text/rtf",
-  "text/xml"
-].join(",");
+import { DOCUMENT_UPLOAD_ACCEPT } from "@/lib/documents/document-formats";
+
+export const SUPPORTED_UPLOAD_ACCEPT = DOCUMENT_UPLOAD_ACCEPT;
 
 export const MAX_UPLOAD_SIZE_BYTES = 50 * 1024 * 1024;
 

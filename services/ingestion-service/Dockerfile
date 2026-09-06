@@ -28,6 +28,11 @@ RUN printf '%s\n' \
         'Check-Valid-Until: no' \
         > /etc/apt/sources.list.d/debian.sources \
     && apt-get -o Acquire::Check-Valid-Until=false update \
+    && case "$(dpkg --print-architecture)" in \
+        amd64) AKB_UNPAPER_VERSION=7.0.0-3+b2 ;; \
+        arm64) AKB_UNPAPER_VERSION=7.0.0-3+b3 ;; \
+        *) printf '%s\n' 'Unsupported ingestion image architecture' >&2; exit 2 ;; \
+       esac \
     && apt-get install -y --no-install-recommends \
         ghostscript=10.05.1~dfsg-1+deb13u1 \
         libreoffice-calc-nogui=4:25.2.3-2+deb13u6 \
@@ -43,7 +48,7 @@ RUN printf '%s\n' \
         tesseract-ocr-ces=1:4.1.0-2 \
         tesseract-ocr-eng=1:4.1.0-2 \
         tesseract-ocr-osd=1:4.1.0-2 \
-        unpaper=7.0.0-3+b2 \
+        "unpaper=$AKB_UNPAPER_VERSION" \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.c4.lock requirements-docling.c4.lock ./

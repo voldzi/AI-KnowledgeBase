@@ -6,6 +6,87 @@ info:
     or LLM logic.
   version: dev
 paths:
+  /api/v1/admin/intake-cleanup/dry-run:
+    post:
+      tags:
+      - Intake cleanup
+      summary: Dry Run
+      description: Read-only exact manifest batch check against every Registry content
+        reference, including historical and user-invisible rows. No deletion authority
+        is returned.
+      operationId: dry_run_api_v1_admin_intake_cleanup_dry_run_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CleanupRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CleanupResponse'
+        '400':
+          description: Invalid signed manifest or conflicting exact candidate identity
+        '401':
+          description: Missing or invalid verified service identity
+        '403':
+          description: Caller is not the configured cleanup service with its explicit
+            route grant
+        '409':
+          description: A different immutable manifest has already claimed the object
+        '503':
+          description: Configuration, signature verifier, transaction fence or complete
+            reference query unavailable; retain objects
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/intake-cleanup/claim:
+    post:
+      tags:
+      - Intake cleanup
+      summary: Claim
+      description: Commit a permanent reference fence only for valid signed expiry
+        plus grace and a complete empty reference set. Idempotent exact-manifest replay
+        returns the original claim. Storage removal is a separate conditional operator
+        action.
+      operationId: claim_api_v1_admin_intake_cleanup_claim_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CleanupRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CleanupResponse'
+        '400':
+          description: Invalid signed manifest or conflicting exact candidate identity
+        '401':
+          description: Missing or invalid verified service identity
+        '403':
+          description: Caller is not the configured cleanup service with its explicit
+            route grant
+        '409':
+          description: A different immutable manifest has already claimed the object
+        '503':
+          description: Configuration, signature verifier, transaction fence or complete
+            reference query unavailable; retain objects
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /health:
     get:
       summary: Health
@@ -41,11 +122,35 @@ paths:
           content:
             application/json:
               schema:
-                additionalProperties:
-                  type: string
+                $ref: '#/components/schemas/DocumentIntakeReadinessResponse'
+        '503':
+          description: Fresh nonce-bound STRATOS service/catalog/admission support
+            is unavailable, denied or conflicting. Infrastructure/read-only readiness
+            is separate; readiness never admits a document.
+          content:
+            application/json:
+              schema:
+                properties:
+                  error:
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        additionalProperties: true
+                        type: object
+                      trace_id:
+                        type: string
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
                 type: object
-                title: Response Ingestion Service Readiness Api V1 Integrations Ingestion
-                  Readiness Get
+                required:
+                - error
   /api/v1/integrations/ingestion/authorizations/confirm:
     post:
       summary: Confirm Ingestion Authorization Proof
@@ -92,6 +197,148 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/integrations/stratos-budget-upload/documents/{document_id}/intake-authorization:
+    post:
+      summary: Authorize Stratos Budget Document Intake
+      description: 'Revalidate signed BFF claims before binary acceptance, without
+        local writes.
+
+
+        The exact Budget transport validates the upload token and its new-file hash.
+
+        Registry stores contract-level provenance, so source_version and filename
+
+        cannot be compared with a previous file. STRATOS resource confirmation is
+        an
+
+        idempotent upstream call that rechecks the current parent/inherited policy;
+
+        this operation is not described as globally read-only.
+
+
+        Organization and explicit-recipient audiences retain the Budget source scope;
+
+        a budget_scope audience must match that source. Every audience requires fresh
+
+        actor, source, policy and document-profile authorization before binary intake.'
+      operationId: authorize_stratos_budget_document_intake_api_v1_integrations_stratos_budget_upload_documents__document_id__intake_authorization_post
+      parameters:
+      - name: document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Document Id
+      - name: X-STRATOS-Actor-Authorization
+        in: header
+        required: false
+        schema:
+          type: string
+        description: A fresh person bearer (Bearer <token>), required when workflow_mode
+          is interactive and forbidden when workflow_mode is historical_batch. This
+          is separate from the Budget service bearer in Authorization; the authenticated
+          person must match actor_subject_id.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StratosBudgetIntakeAuthorizationRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StratosBudgetIntakeAuthorizationResponse'
+        '403':
+          description: Current actor or service is denied
+        '409':
+          description: 'Conflicting policy/profile/lineage or state: document_tlp_required/document_tlp_invalid,
+            document_profile_required/document_profile_conflict, document_profile_independent_approval_required,
+            or native_intake_replay_conflict. Stale root revisions, incomplete snapshots
+            and unbound approval cannot activate or replace a version.'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
+        '503':
+          description: Central document admission is unavailable, denied, unsupported,
+            stale or inconsistent (document_profile_admission_unavailable or governance_unavailable).
+            No stored proof or mock grant substitutes for a fresh decision.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
+        '422':
+          description: Invalid or missing required policy/profile (validation_error),
+            document_tlp_required/document_tlp_invalid, document_profile_invalid,
+            document_profile_assignment_mismatch, document_profile_lifecycle_mismatch
+            or document_profile_source_invalid. No document/version is admitted.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
   /api/v1/integrations/stratos-budget-upload/external-documents/upsert:
     post:
       summary: Upsert Stratos Budget External Document
@@ -116,11 +363,91 @@ paths:
               schema:
                 $ref: '#/components/schemas/ExternalDocumentResponse'
         '422':
-          description: Validation Error
+          description: Invalid or missing required policy/profile (validation_error),
+            document_tlp_required/document_tlp_invalid, document_profile_invalid,
+            document_profile_assignment_mismatch, document_profile_lifecycle_mismatch
+            or document_profile_source_invalid. No document/version is admitted.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
+        '409':
+          description: 'Conflicting policy/profile/lineage or state: document_tlp_required/document_tlp_invalid,
+            document_profile_required/document_profile_conflict, document_profile_independent_approval_required,
+            or native_intake_replay_conflict. Stale root revisions, incomplete snapshots
+            and unbound approval cannot activate or replace a version.'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
+        '503':
+          description: Central document admission is unavailable, denied, unsupported,
+            stale or inconsistent (document_profile_admission_unavailable or governance_unavailable).
+            No stored proof or mock grant substitutes for a fresh decision.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
   /api/v1/integrations/stratos-budget-upload/documents/{document_id}/versions:
     put:
       summary: Upsert Stratos Budget Document Version
@@ -152,11 +479,91 @@ paths:
               schema:
                 $ref: '#/components/schemas/StratosBudgetUploadDocumentVersionCreateResponse'
         '422':
-          description: Validation Error
+          description: Invalid or missing required policy/profile (validation_error),
+            document_tlp_required/document_tlp_invalid, document_profile_invalid,
+            document_profile_assignment_mismatch, document_profile_lifecycle_mismatch
+            or document_profile_source_invalid. No document/version is admitted.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
+        '409':
+          description: 'Conflicting policy/profile/lineage or state: document_tlp_required/document_tlp_invalid,
+            document_profile_required/document_profile_conflict, document_profile_independent_approval_required,
+            or native_intake_replay_conflict. Stale root revisions, incomplete snapshots
+            and unbound approval cannot activate or replace a version.'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
+        '503':
+          description: Central document admission is unavailable, denied, unsupported,
+            stale or inconsistent (document_profile_admission_unavailable or governance_unavailable).
+            No stored proof or mock grant substitutes for a fresh decision.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
   /api/v1/integrations/stratos-budget-upload/external-documents/{external_document_id}/current:
     patch:
       summary: Update Stratos Budget External Document Current
@@ -259,11 +666,91 @@ paths:
               schema:
                 $ref: '#/components/schemas/ExternalDocumentResponse'
         '422':
-          description: Validation Error
+          description: Invalid or missing required policy/profile (validation_error),
+            document_tlp_required/document_tlp_invalid, document_profile_invalid,
+            document_profile_assignment_mismatch, document_profile_lifecycle_mismatch
+            or document_profile_source_invalid. No document/version is admitted.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
+        '409':
+          description: 'Conflicting policy/profile/lineage or state: document_tlp_required/document_tlp_invalid,
+            document_profile_required/document_profile_conflict, document_profile_independent_approval_required,
+            or native_intake_replay_conflict. Stale root revisions, incomplete snapshots
+            and unbound approval cannot activate or replace a version.'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
+        '503':
+          description: Central document admission is unavailable, denied, unsupported,
+            stale or inconsistent (document_profile_admission_unavailable or governance_unavailable).
+            No stored proof or mock grant substitutes for a fresh decision.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
   /api/v1/external-documents/{external_document_id}:
     get:
       summary: Get External Document
@@ -425,11 +912,91 @@ paths:
               schema:
                 $ref: '#/components/schemas/ControlledDocumentPackageResponse'
         '422':
-          description: Validation Error
+          description: Invalid or missing required policy/profile (validation_error),
+            document_tlp_required/document_tlp_invalid, document_profile_invalid,
+            document_profile_assignment_mismatch, document_profile_lifecycle_mismatch
+            or document_profile_source_invalid. No document/version is admitted.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
+        '409':
+          description: 'Conflicting policy/profile/lineage or state: document_tlp_required/document_tlp_invalid,
+            document_profile_required/document_profile_conflict, document_profile_independent_approval_required,
+            or native_intake_replay_conflict. Stale root revisions, incomplete snapshots
+            and unbound approval cannot activate or replace a version.'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
+        '503':
+          description: Central document admission is unavailable, denied, unsupported,
+            stale or inconsistent (document_profile_admission_unavailable or governance_unavailable).
+            No stored proof or mock grant substitutes for a fresh decision.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
     get:
       summary: List Controlled Document Packages
       operationId: list_controlled_document_packages_api_v1_controlled_documentation_packages_get
@@ -490,11 +1057,91 @@ paths:
               schema:
                 $ref: '#/components/schemas/OfficialLegalPackageCreateResponse'
         '422':
-          description: Validation Error
+          description: Invalid or missing required policy/profile (validation_error),
+            document_tlp_required/document_tlp_invalid, document_profile_invalid,
+            document_profile_assignment_mismatch, document_profile_lifecycle_mismatch
+            or document_profile_source_invalid. No document/version is admitted.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
+        '409':
+          description: 'Conflicting policy/profile/lineage or state: document_tlp_required/document_tlp_invalid,
+            document_profile_required/document_profile_conflict, document_profile_independent_approval_required,
+            or native_intake_replay_conflict. Stale root revisions, incomplete snapshots
+            and unbound approval cannot activate or replace a version.'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
+        '503':
+          description: Central document admission is unavailable, denied, unsupported,
+            stale or inconsistent (document_profile_admission_unavailable or governance_unavailable).
+            No stored proof or mock grant substitutes for a fresh decision.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
   /api/v1/controlled-documentation/packages/{package_id}/status:
     post:
       summary: Transition Controlled Document Package
@@ -520,11 +1167,91 @@ paths:
               schema:
                 $ref: '#/components/schemas/ControlledDocumentPackageResponse'
         '422':
-          description: Validation Error
+          description: Invalid or missing required policy/profile (validation_error),
+            document_tlp_required/document_tlp_invalid, document_profile_invalid,
+            document_profile_assignment_mismatch, document_profile_lifecycle_mismatch
+            or document_profile_source_invalid. No document/version is admitted.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
+        '409':
+          description: 'Conflicting policy/profile/lineage or state: document_tlp_required/document_tlp_invalid,
+            document_profile_required/document_profile_conflict, document_profile_independent_approval_required,
+            or native_intake_replay_conflict. Stale root revisions, incomplete snapshots
+            and unbound approval cannot activate or replace a version.'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
+        '503':
+          description: Central document admission is unavailable, denied, unsupported,
+            stale or inconsistent (document_profile_admission_unavailable or governance_unavailable).
+            No stored proof or mock grant substitutes for a fresh decision.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
   /api/v1/controlled-documentation/rules:
     get:
       summary: List Controlled Document Rules
@@ -552,10 +1279,12 @@ paths:
         required: false
         schema:
           type: boolean
-          description: False requires document update or version publication permission; ordinary readers receive only verified rules.
+          description: False requires document update or version publication permission;
+            ordinary readers receive only verified rules.
           default: true
           title: Approved Only
-        description: False requires document update or version publication permission; ordinary readers receive only verified rules.
+        description: False requires document update or version publication permission;
+          ordinary readers receive only verified rules.
       - name: include_inactive
         in: query
         required: false
@@ -713,11 +1442,91 @@ paths:
               schema:
                 $ref: '#/components/schemas/DocumentResponse'
         '422':
-          description: Validation Error
+          description: Invalid or missing required policy/profile (validation_error),
+            document_tlp_required/document_tlp_invalid, document_profile_invalid,
+            document_profile_assignment_mismatch, document_profile_lifecycle_mismatch
+            or document_profile_source_invalid. No document/version is admitted.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
+        '409':
+          description: 'Conflicting policy/profile/lineage or state: document_tlp_required/document_tlp_invalid,
+            document_profile_required/document_profile_conflict, document_profile_independent_approval_required,
+            or native_intake_replay_conflict. Stale root revisions, incomplete snapshots
+            and unbound approval cannot activate or replace a version.'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
+        '503':
+          description: Central document admission is unavailable, denied, unsupported,
+            stale or inconsistent (document_profile_admission_unavailable or governance_unavailable).
+            No stored proof or mock grant substitutes for a fresh decision.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
     get:
       summary: List Documents
       operationId: list_documents_api_v1_documents_get
@@ -1301,6 +2110,11 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
     patch:
       summary: Patch Document
+      description: 'Update admitted metadata. STRATOS source provenance is immutable;
+
+        changing its system, source record or governed source returns 409
+
+        source_provenance_immutable, including attempts to relabel it as native AKB.'
       operationId: patch_document_api_v1_documents__document_id__patch
       parameters:
       - name: document_id
@@ -1323,11 +2137,91 @@ paths:
               schema:
                 $ref: '#/components/schemas/DocumentResponse'
         '422':
-          description: Validation Error
+          description: Invalid or missing required policy/profile (validation_error),
+            document_tlp_required/document_tlp_invalid, document_profile_invalid,
+            document_profile_assignment_mismatch, document_profile_lifecycle_mismatch
+            or document_profile_source_invalid. No document/version is admitted.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
+        '409':
+          description: 'Conflicting policy/profile/lineage or state: document_tlp_required/document_tlp_invalid,
+            document_profile_required/document_profile_conflict, document_profile_independent_approval_required,
+            or native_intake_replay_conflict. Stale root revisions, incomplete snapshots
+            and unbound approval cannot activate or replace a version.'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
+        '503':
+          description: Central document admission is unavailable, denied, unsupported,
+            stale or inconsistent (document_profile_admission_unavailable or governance_unavailable).
+            No stored proof or mock grant substitutes for a fresh decision.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
     delete:
       summary: Delete Document
       operationId: delete_document_api_v1_documents__document_id__delete
@@ -1424,12 +2318,100 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/DocumentVersionResponse'
-        '422':
-          description: Validation Error
+        '503':
+          description: Central document admission is unavailable, denied, unsupported,
+            stale or inconsistent (document_profile_admission_unavailable or governance_unavailable).
+            No stored proof or mock grant substitutes for a fresh decision.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
+        '422':
+          description: Invalid or missing required policy/profile (validation_error),
+            document_tlp_required/document_tlp_invalid, document_profile_invalid,
+            document_profile_assignment_mismatch, document_profile_lifecycle_mismatch
+            or document_profile_source_invalid. No document/version is admitted.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
+        '409':
+          description: 'Conflicting policy/profile/lineage or state: document_tlp_required/document_tlp_invalid,
+            document_profile_required/document_profile_conflict, document_profile_independent_approval_required,
+            or native_intake_replay_conflict. Stale root revisions, incomplete snapshots
+            and unbound approval cannot activate or replace a version.'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
+        '200':
+          description: The same native intake session returned its exact immutable
+            version after fresh root and version authorization; idempotent_replay
+            is true.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentVersionResponse'
     get:
       summary: List Document Versions
       operationId: list_document_versions_api_v1_documents__document_id__versions_get
@@ -1456,7 +2438,11 @@ paths:
           - type: string
             format: date
           - type: 'null'
+          description: Resolve the single published version effective on this date;
+            withdrawn or expired successors never revive an earlier release.
           title: Valid On
+        description: Resolve the single published version effective on this date;
+          withdrawn or expired successors never revive an earlier release.
       - name: limit
         in: query
         required: false
@@ -1639,11 +2625,91 @@ paths:
               schema:
                 $ref: '#/components/schemas/DocumentVersionResponse'
         '422':
-          description: Validation Error
+          description: Invalid or missing required policy/profile (validation_error),
+            document_tlp_required/document_tlp_invalid, document_profile_invalid,
+            document_profile_assignment_mismatch, document_profile_lifecycle_mismatch
+            or document_profile_source_invalid. No document/version is admitted.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
+        '409':
+          description: 'Conflicting policy/profile/lineage or state: document_tlp_required/document_tlp_invalid,
+            document_profile_required/document_profile_conflict, document_profile_independent_approval_required,
+            or native_intake_replay_conflict. Stale root revisions, incomplete snapshots
+            and unbound approval cannot activate or replace a version.'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
+        '503':
+          description: Central document admission is unavailable, denied, unsupported,
+            stale or inconsistent (document_profile_admission_unavailable or governance_unavailable).
+            No stored proof or mock grant substitutes for a fresh decision.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
   /api/v1/documents/{document_id}/versions/{version_id}/archive:
     post:
       summary: Archive Document Version
@@ -1734,11 +2800,91 @@ paths:
               schema:
                 $ref: '#/components/schemas/DocumentPublicationResponse'
         '422':
-          description: Validation Error
+          description: Invalid or missing required policy/profile (validation_error),
+            document_tlp_required/document_tlp_invalid, document_profile_invalid,
+            document_profile_assignment_mismatch, document_profile_lifecycle_mismatch
+            or document_profile_source_invalid. No document/version is admitted.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
+        '409':
+          description: 'Conflicting policy/profile/lineage or state: document_tlp_required/document_tlp_invalid,
+            document_profile_required/document_profile_conflict, document_profile_independent_approval_required,
+            or native_intake_replay_conflict. Stale root revisions, incomplete snapshots
+            and unbound approval cannot activate or replace a version.'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
+        '503':
+          description: Central document admission is unavailable, denied, unsupported,
+            stale or inconsistent (document_profile_admission_unavailable or governance_unavailable).
+            No stored proof or mock grant substitutes for a fresh decision.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
   /api/v1/public/documents/{public_slug}:
     get:
       summary: Get Public Document Metadata
@@ -1809,6 +2955,11 @@ paths:
   /api/v1/authz/check:
     post:
       summary: Check Authorization
+      description: Evaluate current authority. With resource.document_version_id,
+        require current person authority and matching document_id, evaluate root and
+        exact immutable version policies, and return exact source/policy coordinates
+        plus combined obligations. Denied or invalid versions return allowed=false;
+        a required PDP outage returns 503. No source contents are returned.
       operationId: check_authorization_api_v1_authz_check_post
       requestBody:
         content:
@@ -1823,6 +2974,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AuthzCheckResponse'
+        '503':
+          description: Required current document or exact-version policy authority
+            is unavailable
         '422':
           description: Validation Error
           content:
@@ -1855,7 +3009,8 @@ paths:
   /api/v1/workflow/tasks:
     get:
       summary: List Workflow Tasks
-      description: Return an authorized page and exact authorized total; candidates are processed in bounded batches.
+      description: Return an authorized page and exact authorized total; candidates
+        are processed in bounded batches.
       operationId: list_workflow_tasks_api_v1_workflow_tasks_get
       parameters:
       - name: status
@@ -3217,11 +4372,91 @@ paths:
               schema:
                 $ref: '#/components/schemas/WorkflowTaskResponse'
         '422':
-          description: Validation Error
+          description: Invalid or missing required policy/profile (validation_error),
+            document_tlp_required/document_tlp_invalid, document_profile_invalid,
+            document_profile_assignment_mismatch, document_profile_lifecycle_mismatch
+            or document_profile_source_invalid. No document/version is admitted.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
+        '409':
+          description: 'Conflicting policy/profile/lineage or state: document_tlp_required/document_tlp_invalid,
+            document_profile_required/document_profile_conflict, document_profile_independent_approval_required,
+            or native_intake_replay_conflict. Stale root revisions, incomplete snapshots
+            and unbound approval cannot activate or replace a version.'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
+        '503':
+          description: Central document admission is unavailable, denied, unsupported,
+            stale or inconsistent (document_profile_admission_unavailable or governance_unavailable).
+            No stored proof or mock grant substitutes for a fresh decision.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - error
+                properties:
+                  error:
+                    type: object
+                    required:
+                    - code
+                    - message
+                    - details
+                    - trace_id
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        additionalProperties: true
+                      trace_id:
+                        type: string
   /api/v1/workflow/documents:
     get:
       summary: List Personal Workflow Documents
@@ -3340,8 +4575,662 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/integrations/stratos-source-intake/prepare:
+    post:
+      tags:
+      - STRATOS source intake
+      summary: Prepare
+      operationId: prepare_api_v1_integrations_stratos_source_intake_prepare_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SourcePrepare'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourcePrepared'
+        '403':
+          description: Forbidden
+        '409':
+          description: Conflict
+        '503':
+          description: Service Unavailable
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/integrations/stratos-source-intake/documents/{document_id}/authorize:
+    post:
+      tags:
+      - STRATOS source intake
+      summary: Authorize Upload
+      operationId: authorize_upload_api_v1_integrations_stratos_source_intake_documents__document_id__authorize_post
+      parameters:
+      - name: document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Document Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SourceAuthorization'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceAuthorized'
+        '403':
+          description: Forbidden
+        '409':
+          description: Conflict
+        '503':
+          description: Service Unavailable
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/integrations/stratos-source-intake/documents/{document_id}/confirm:
+    post:
+      tags:
+      - STRATOS source intake
+      summary: Confirm
+      operationId: confirm_api_v1_integrations_stratos_source_intake_documents__document_id__confirm_post
+      parameters:
+      - name: document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Document Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SourceConfirm'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceConfirmed'
+        '403':
+          description: Forbidden
+        '409':
+          description: Conflict
+        '503':
+          description: Service Unavailable
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/integrations/stratos-source-intake/documents/{document_id}/status:
+    post:
+      tags:
+      - STRATOS source intake
+      summary: Source Status
+      operationId: source_status_api_v1_integrations_stratos_source_intake_documents__document_id__status_post
+      parameters:
+      - name: document_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Document Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SourceStatusRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SourceStatusResponse'
+        '403':
+          description: Forbidden
+        '409':
+          description: Conflict
+        '503':
+          description: Service Unavailable
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
+    CleanupDecision:
+      properties:
+        manifest_digest:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+          title: Manifest Digest
+        source_file_uri:
+          type: string
+          title: Source File Uri
+        references:
+          $ref: '#/components/schemas/CleanupReferences'
+        claim_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Claim Id
+        status:
+          type: string
+          enum:
+          - referenced
+          - not_expired
+          - eligible
+          - claimed
+          title: Status
+      additionalProperties: false
+      type: object
+      required:
+      - manifest_digest
+      - source_file_uri
+      - references
+      - claim_id
+      - status
+      title: CleanupDecision
+    CleanupReferences:
+      properties:
+        document_versions:
+          type: integer
+          minimum: 0.0
+          title: Document Versions
+        document_files:
+          type: integer
+          minimum: 0.0
+          title: Document Files
+        document_publications:
+          type: integer
+          minimum: 0.0
+          title: Document Publications
+        external_document_refs:
+          type: integer
+          minimum: 0.0
+          title: External Document Refs
+        document_profile_version_snapshots:
+          type: integer
+          minimum: 0.0
+          title: Document Profile Version Snapshots
+      additionalProperties: false
+      type: object
+      required:
+      - document_versions
+      - document_files
+      - document_publications
+      - external_document_refs
+      - document_profile_version_snapshots
+      title: CleanupReferences
+    CleanupRequest:
+      properties:
+        manifests:
+          items:
+            type: string
+            maxLength: 16384
+          type: array
+          maxItems: 100
+          minItems: 1
+          title: Manifests
+      additionalProperties: false
+      type: object
+      required:
+      - manifests
+      title: CleanupRequest
+    CleanupResponse:
+      properties:
+        complete:
+          type: boolean
+          const: true
+          title: Complete
+        reference_scope:
+          type: string
+          const: all_registry_content_references
+          title: Reference Scope
+        results:
+          items:
+            $ref: '#/components/schemas/CleanupDecision'
+          type: array
+          title: Results
+      additionalProperties: false
+      type: object
+      required:
+      - complete
+      - reference_scope
+      - results
+      title: CleanupResponse
+    DocumentVersionSnapshot:
+      properties:
+        schemaVersion:
+          type: string
+          const: stratos-document-version-1
+          title: Schemaversion
+        organizationId:
+          type: string
+          const: org_stratos
+          title: Organizationid
+        documentId:
+          type: string
+          maxLength: 160
+          minLength: 1
+          pattern: ^\S+$
+          title: Documentid
+        documentVersionId:
+          type: string
+          maxLength: 160
+          minLength: 1
+          pattern: ^\S+$
+          title: Documentversionid
+        rootMetadataRevision:
+          type: string
+          maxLength: 160
+          minLength: 1
+          pattern: ^\S+$
+          title: Rootmetadatarevision
+        rootSnapshotHash:
+          type: string
+          pattern: ^sha256:[a-f0-9]{64}$
+          title: Rootsnapshothash
+        sourceLineage:
+          $ref: '#/components/schemas/DocumentSourceLineage'
+        lifecycle:
+          $ref: '#/components/schemas/DocumentLifecycle'
+        domainEvidence:
+          additionalProperties: true
+          type: object
+          title: Domainevidence
+      additionalProperties: false
+      type: object
+      required:
+      - schemaVersion
+      - organizationId
+      - documentId
+      - documentVersionId
+      - rootMetadataRevision
+      - rootSnapshotHash
+      - sourceLineage
+      - lifecycle
+      - domainEvidence
+      title: DocumentVersionSnapshot
+    DocumentVersionProfileInput:
+      properties:
+        expected_root_metadata_revision:
+          type: string
+          maxLength: 160
+          minLength: 1
+          pattern: ^\S+$
+          title: Expected Root Metadata Revision
+        lifecycle:
+          $ref: '#/components/schemas/DocumentLifecycle'
+        domain_evidence:
+          additionalProperties: true
+          type: object
+          title: Domain Evidence
+      additionalProperties: false
+      type: object
+      required:
+      - expected_root_metadata_revision
+      - lifecycle
+      - domain_evidence
+      title: DocumentVersionProfileInput
+    DocumentSourceLineage:
+      properties:
+        sourceSystem:
+          type: string
+          maxLength: 160
+          minLength: 1
+          pattern: ^\S+$
+          title: Sourcesystem
+        sourceRecordId:
+          type: string
+          maxLength: 160
+          minLength: 1
+          pattern: ^\S+$
+          title: Sourcerecordid
+        sourceVersion:
+          type: string
+          maxLength: 160
+          minLength: 1
+          pattern: ^\S+$
+          title: Sourceversion
+        sourceGovernedResourceId:
+          anyOf:
+          - type: string
+            maxLength: 160
+            minLength: 1
+            pattern: ^\S+$
+          - type: 'null'
+          title: Sourcegovernedresourceid
+        contentSha256:
+          type: string
+          pattern: ^sha256:[a-f0-9]{64}$
+          title: Contentsha256
+        contentUri:
+          type: string
+          maxLength: 2048
+          minLength: 1
+          title: Contenturi
+        intakeReceiptId:
+          type: string
+          maxLength: 160
+          minLength: 1
+          pattern: ^\S+$
+          title: Intakereceiptid
+        capturedAt:
+          type: string
+          format: date-time
+          title: Capturedat
+      additionalProperties: false
+      type: object
+      required:
+      - sourceSystem
+      - sourceRecordId
+      - sourceVersion
+      - sourceGovernedResourceId
+      - contentSha256
+      - contentUri
+      - intakeReceiptId
+      - capturedAt
+      title: DocumentSourceLineage
+    DocumentRootSnapshot:
+      properties:
+        schemaVersion:
+          type: string
+          const: stratos-document-root-1
+          title: Schemaversion
+        organizationId:
+          type: string
+          const: org_stratos
+          title: Organizationid
+        documentId:
+          type: string
+          maxLength: 160
+          minLength: 1
+          pattern: ^\S+$
+          title: Documentid
+        metadataRevision:
+          type: string
+          maxLength: 160
+          minLength: 1
+          pattern: ^\S+$
+          title: Metadatarevision
+        profile:
+          $ref: '#/components/schemas/DocumentProfileReference'
+        documentType:
+          type: string
+          maxLength: 160
+          minLength: 1
+          pattern: ^\S+$
+          title: Documenttype
+        authorship:
+          items:
+            $ref: '#/components/schemas/DocumentAuthor'
+          type: array
+          minItems: 1
+          title: Authorship
+        provenance:
+          $ref: '#/components/schemas/DocumentRootProvenance'
+        accountability:
+          $ref: '#/components/schemas/DocumentAccountability'
+      additionalProperties: false
+      type: object
+      required:
+      - schemaVersion
+      - organizationId
+      - documentId
+      - metadataRevision
+      - profile
+      - documentType
+      - authorship
+      - provenance
+      - accountability
+      title: DocumentRootSnapshot
+    DocumentRootProvenance:
+      properties:
+        sourceSystem:
+          type: string
+          maxLength: 160
+          minLength: 1
+          pattern: ^\S+$
+          title: Sourcesystem
+        sourceRecordId:
+          type: string
+          maxLength: 160
+          minLength: 1
+          pattern: ^\S+$
+          title: Sourcerecordid
+        sourceGovernedResourceId:
+          anyOf:
+          - type: string
+            maxLength: 160
+            minLength: 1
+            pattern: ^\S+$
+          - type: 'null'
+          title: Sourcegovernedresourceid
+      additionalProperties: false
+      type: object
+      required:
+      - sourceSystem
+      - sourceRecordId
+      - sourceGovernedResourceId
+      title: DocumentRootProvenance
+    DocumentProvenanceInput:
+      properties:
+        sourceSystem:
+          type: string
+          maxLength: 160
+          minLength: 1
+          pattern: ^\S+$
+          title: Sourcesystem
+        sourceRecordId:
+          anyOf:
+          - type: string
+            maxLength: 160
+            minLength: 1
+            pattern: ^\S+$
+          - type: 'null'
+          title: Sourcerecordid
+        sourceGovernedResourceId:
+          anyOf:
+          - type: string
+            maxLength: 160
+            minLength: 1
+            pattern: ^\S+$
+          - type: 'null'
+          title: Sourcegovernedresourceid
+      additionalProperties: false
+      type: object
+      required:
+      - sourceSystem
+      - sourceRecordId
+      - sourceGovernedResourceId
+      title: DocumentProvenanceInput
+    DocumentProfileReference:
+      properties:
+        id:
+          type: string
+          maxLength: 160
+          minLength: 1
+          pattern: ^\S+$
+          title: Id
+        revision:
+          type: string
+          maxLength: 160
+          minLength: 1
+          pattern: ^\S+$
+          title: Revision
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - revision
+      title: DocumentProfileReference
+    DocumentProfileInput:
+      properties:
+        profile:
+          $ref: '#/components/schemas/DocumentProfileReference'
+        authorship:
+          items:
+            $ref: '#/components/schemas/DocumentAuthor'
+          type: array
+          minItems: 1
+          title: Authorship
+        provenance:
+          $ref: '#/components/schemas/DocumentProvenanceInput'
+        accountability:
+          $ref: '#/components/schemas/DocumentAccountability'
+      additionalProperties: false
+      type: object
+      required:
+      - profile
+      - authorship
+      - provenance
+      - accountability
+      title: DocumentProfileInput
+    DocumentLifecycle:
+      properties:
+        mode:
+          type: string
+          enum:
+          - fixed_interval
+          - until_superseded
+          - record
+          title: Mode
+        effectiveFrom:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Effectivefrom
+        effectiveTo:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Effectiveto
+        recordedOn:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Recordedon
+        reviewAt:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Reviewat
+        reviewRuleId:
+          type: string
+          maxLength: 160
+          minLength: 1
+          pattern: ^\S+$
+          title: Reviewruleid
+        retentionRuleId:
+          type: string
+          maxLength: 160
+          minLength: 1
+          pattern: ^\S+$
+          title: Retentionruleid
+      additionalProperties: false
+      type: object
+      required:
+      - mode
+      - effectiveFrom
+      - effectiveTo
+      - recordedOn
+      - reviewAt
+      - reviewRuleId
+      - retentionRuleId
+      title: DocumentLifecycle
+    DocumentGestor:
+      properties:
+        kind:
+          type: string
+          enum:
+          - person
+          - organization_unit
+          title: Kind
+        id:
+          type: string
+          maxLength: 160
+          minLength: 1
+          pattern: ^\S+$
+          title: Id
+      additionalProperties: false
+      type: object
+      required:
+      - kind
+      - id
+      title: DocumentGestor
+    DocumentAuthor:
+      properties:
+        kind:
+          type: string
+          enum:
+          - person
+          - organization
+          - external_authority
+          title: Kind
+        id:
+          type: string
+          maxLength: 160
+          minLength: 1
+          pattern: ^\S+$
+          title: Id
+        evidenceReference:
+          type: string
+          maxLength: 160
+          minLength: 1
+          pattern: ^\S+$
+          title: Evidencereference
+      additionalProperties: false
+      type: object
+      required:
+      - kind
+      - id
+      - evidenceReference
+      title: DocumentAuthor
+    DocumentAccountability:
+      properties:
+        ownerSubjectId:
+          type: string
+          maxLength: 160
+          minLength: 1
+          pattern: ^\S+$
+          title: Ownersubjectid
+        gestor:
+          $ref: '#/components/schemas/DocumentGestor'
+      additionalProperties: false
+      type: object
+      required:
+      - ownerSubjectId
+      - gestor
+      title: DocumentAccountability
     AccessPolicyCreate:
       properties:
         subjects:
@@ -4593,6 +6482,15 @@ components:
             type: array
           type: object
           title: Candidate Document Versions
+        effective_on:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Effective On
+          description: When set, intersect authorization with the single effective
+            published version for each document, using its complete Registry publication
+            timeline.
         roles:
           items:
             type: string
@@ -4637,6 +6535,14 @@ components:
       title: AuthzFilterDocumentsRequest
     AuthzFilterDocumentsResponse:
       properties:
+        effective_on:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Effective On
+          description: Echoes the applied publication-timeline date; null for ordinary
+            exact-source authorization.
         allowed_document_ids:
           items:
             type: string
@@ -4678,6 +6584,11 @@ components:
           - type: string
           - type: 'null'
           title: Document Version Id
+          description: When supplied, requires document_id and current person authority;
+            checks both root and exact immutable version with the current PDP. Missing,
+            mismatched or unauthorized versions deny access. Service-only version
+            authorization is unavailable. Successful constraints echo exact document/version
+            and version policy coordinates and retain root/version obligations.
         classification:
           anyOf:
           - $ref: '#/components/schemas/Classification'
@@ -5635,6 +7546,13 @@ components:
       title: DocumentAssignmentListResponse
     DocumentAssignmentReplaceRequest:
       properties:
+        document_profile:
+          $ref: '#/components/schemas/DocumentProfileInput'
+        expected_root_metadata_revision:
+          type: string
+          maxLength: 160
+          minLength: 1
+          title: Expected Root Metadata Revision
         assignments:
           items:
             $ref: '#/components/schemas/DocumentAssignmentCreate'
@@ -5642,8 +7560,11 @@ components:
           maxItems: 50
           minItems: 1
           title: Assignments
+      additionalProperties: false
       type: object
       required:
+      - document_profile
+      - expected_root_metadata_revision
       - assignments
       title: DocumentAssignmentReplaceRequest
     DocumentAssignmentResponse:
@@ -5751,6 +7672,8 @@ components:
       title: DocumentAssignmentRole
     DocumentCreate:
       properties:
+        document_profile:
+          $ref: '#/components/schemas/DocumentProfileInput'
         title:
           type: string
           maxLength: 300
@@ -5773,9 +7696,9 @@ components:
           $ref: '#/components/schemas/Classification'
           default: internal
         information_policy:
-          anyOf:
-          - $ref: '#/components/schemas/InformationPolicyBinding'
-          - type: 'null'
+          $ref: '#/components/schemas/DocumentInformationPolicyBinding'
+          description: Authoritative Policy V2 binding with one explicit effective
+            TLP; missing/null TLP is rejected for every actor and import channel.
         tags:
           items:
             type: string
@@ -5809,11 +7732,14 @@ components:
             maxLength: 128
           - type: 'null'
           title: Parent Governed Resource Id
+      additionalProperties: false
       type: object
       required:
+      - document_profile
       - title
       - document_type
       - owner_id
+      - information_policy
       title: DocumentCreate
     DocumentExtractionFeedbackCreate:
       properties:
@@ -6361,6 +8287,17 @@ components:
       title: DocumentMetadataSummaryTopic
     DocumentPatch:
       properties:
+        document_profile:
+          anyOf:
+          - $ref: '#/components/schemas/DocumentProfileInput'
+          - type: 'null'
+        expected_root_metadata_revision:
+          anyOf:
+          - type: string
+            maxLength: 160
+            minLength: 1
+          - type: 'null'
+          title: Expected Root Metadata Revision
         title:
           anyOf:
           - type: string
@@ -6394,9 +8331,11 @@ components:
           - $ref: '#/components/schemas/Classification'
           - type: 'null'
         information_policy:
-          anyOf:
-          - $ref: '#/components/schemas/InformationPolicyBinding'
-          - type: 'null'
+          $ref: '#/components/schemas/DocumentInformationPolicyBinding'
+          title: Information Policy
+          description: When supplied, must be a complete binding with explicit TLP.
+            Omit to retain the current admissible policy; explicit null cannot clear
+            it.
         tags:
           anyOf:
           - items:
@@ -6434,6 +8373,7 @@ components:
             maxLength: 128
           - type: 'null'
           title: Parent Governed Resource Id
+      additionalProperties: false
       type: object
       title: DocumentPatch
     DocumentPublicationPutRequest:
@@ -6751,6 +8691,20 @@ components:
             format: date-time
           - type: 'null'
           title: Governance Registered At
+        current_root_metadata_revision:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Current Root Metadata Revision
+        current_root_snapshot_hash:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Current Root Snapshot Hash
+        document_profile:
+          anyOf:
+          - $ref: '#/components/schemas/DocumentRootSnapshot'
+          - type: 'null'
         owner_id:
           type: string
           title: Owner Id
@@ -6840,6 +8794,8 @@ components:
       title: DocumentType
     DocumentVersionCreate:
       properties:
+        document_profile:
+          $ref: '#/components/schemas/DocumentVersionProfileInput'
         version_label:
           type: string
           maxLength: 80
@@ -6879,8 +8835,10 @@ components:
           title: Change Summary
         information_policy:
           anyOf:
-          - $ref: '#/components/schemas/InformationPolicyBinding'
+          - $ref: '#/components/schemas/DocumentInformationPolicyBinding'
           - type: 'null'
+          description: Explicit Policy V2 binding or inheritance from the document;
+            the resulting effective policy must contain one of the five TLP values.
         file:
           anyOf:
           - $ref: '#/components/schemas/DocumentFileCreate'
@@ -6889,8 +8847,10 @@ components:
           anyOf:
           - $ref: '#/components/schemas/GovernanceScope'
           - type: 'null'
+      additionalProperties: false
       type: object
       required:
+      - document_profile
       - version_label
       - source_file_uri
       title: DocumentVersionCreate
@@ -6915,6 +8875,12 @@ components:
       title: DocumentVersionListResponse
     DocumentVersionResponse:
       properties:
+        idempotent_replay:
+          type: boolean
+          title: Idempotent Replay
+          description: True only when native intake creation returned the same immutable
+            version after fresh exact authorization; not persisted version state.
+          default: false
         document_version_id:
           type: string
           title: Document Version Id
@@ -6993,6 +8959,29 @@ components:
             format: date-time
           - type: 'null'
           title: Governance Registered At
+        root_metadata_revision:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Root Metadata Revision
+        root_snapshot_hash:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Root Snapshot Hash
+        version_snapshot_hash:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Version Snapshot Hash
+        document_profile:
+          anyOf:
+          - $ref: '#/components/schemas/DocumentRootSnapshot'
+          - type: 'null'
+        document_profile_snapshot:
+          anyOf:
+          - $ref: '#/components/schemas/DocumentVersionSnapshot'
+          - type: 'null'
         valid_from:
           anyOf:
           - type: string
@@ -7272,6 +9261,8 @@ components:
       title: ExternalDocumentResponse
     ExternalDocumentUpsertRequest:
       properties:
+        document_profile:
+          $ref: '#/components/schemas/DocumentProfileInput'
         external_system:
           $ref: '#/components/schemas/ExternalSourceSystem'
         external_ref:
@@ -7300,9 +9291,9 @@ components:
           $ref: '#/components/schemas/Classification'
           default: internal
         information_policy:
-          anyOf:
-          - $ref: '#/components/schemas/InformationPolicyBinding'
-          - type: 'null'
+          $ref: '#/components/schemas/DocumentInformationPolicyBinding'
+          description: Authoritative policy with explicit effective TLP; external
+            and official imports have no unclassified admission mode.
         integration_envelope:
           anyOf:
           - $ref: '#/components/schemas/IntegrationEnvelope'
@@ -7378,12 +9369,14 @@ components:
           title: Parent Governed Resource Id
       type: object
       required:
+      - document_profile
       - external_system
       - external_ref
       - entity_type
       - entity_id
       - document_type
       - title
+      - information_policy
       - owner
       title: ExternalDocumentUpsertRequest
     ExternalSourceSystem:
@@ -8719,6 +10712,8 @@ components:
       description: Closed source lineage accepted by the dedicated Budget bridge.
     StratosBudgetUploadDocumentVersionCreate:
       properties:
+        document_profile:
+          $ref: '#/components/schemas/DocumentVersionProfileInput'
         external_ref:
           type: string
           maxLength: 240
@@ -8790,7 +10785,7 @@ components:
           format: date
           title: Contract End Date
         information_policy:
-          $ref: '#/components/schemas/InformationPolicyBinding'
+          $ref: '#/components/schemas/DocumentInformationPolicyBinding'
         integration_envelope:
           $ref: '#/components/schemas/IntegrationEnvelope'
         governance_scope:
@@ -8805,6 +10800,7 @@ components:
       additionalProperties: false
       type: object
       required:
+      - document_profile
       - external_ref
       - version_label
       - source_file_uri
@@ -8904,7 +10900,7 @@ components:
           minLength: 1
           title: External Ref
         information_policy:
-          $ref: '#/components/schemas/InformationPolicyBinding'
+          $ref: '#/components/schemas/DocumentInformationPolicyBinding'
         integration_envelope:
           $ref: '#/components/schemas/IntegrationEnvelope'
         governance_scope:
@@ -8942,6 +10938,8 @@ components:
       title: StratosBudgetUploadExternalDocumentCurrentUpdateResponse
     StratosBudgetUploadExternalDocumentUpsertRequest:
       properties:
+        document_profile:
+          $ref: '#/components/schemas/DocumentProfileInput'
         tenant_id:
           type: string
           const: org_stratos
@@ -8976,7 +10974,7 @@ components:
         classification:
           $ref: '#/components/schemas/Classification'
         information_policy:
-          $ref: '#/components/schemas/InformationPolicyBinding'
+          $ref: '#/components/schemas/DocumentInformationPolicyBinding'
         integration_envelope:
           $ref: '#/components/schemas/IntegrationEnvelope'
         owner:
@@ -9012,6 +11010,7 @@ components:
       additionalProperties: false
       type: object
       required:
+      - document_profile
       - tenant_id
       - external_system
       - external_ref
@@ -9028,7 +11027,6 @@ components:
       - governance_scope
       - parent_governed_resource_id
       title: StratosBudgetUploadExternalDocumentUpsertRequest
-      description: Closed server-to-server contract for governed Budget contract uploads.
     StratosBudgetUploadMetadata:
       properties:
         contract_id:
@@ -9640,6 +11638,762 @@ components:
       - severity
       - metadata
       title: DirectorAuditWrite
+    StratosBudgetIntakeAuthorizationRequest:
+      properties:
+        document_profile:
+          $ref: '#/components/schemas/DocumentVersionProfileInput'
+        upload_session_id:
+          type: string
+          maxLength: 160
+          minLength: 1
+          title: Upload Session Id
+        external_document_id:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: External Document Id
+        governed_document_resource_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Governed Document Resource Id
+        source_governed_resource_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Source Governed Resource Id
+        source_resource_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Source Resource Id
+        source_version:
+          type: string
+          pattern: ^sha256:[a-f0-9]{64}$
+          title: Source Version
+        policy_binding_id:
+          type: string
+          maxLength: 160
+          minLength: 8
+          title: Policy Binding Id
+        policy_version:
+          type: string
+          const: information-policy-2.0.0
+          title: Policy Version
+        policy_hash:
+          type: string
+          pattern: ^sha256:[a-f0-9]{64}$
+          title: Policy Hash
+        governance_scope:
+          $ref: '#/components/schemas/GovernanceScope'
+        actor_subject_id:
+          type: string
+          maxLength: 160
+          minLength: 1
+          title: Actor Subject Id
+        registered_by_subject_id:
+          type: string
+          maxLength: 160
+          minLength: 1
+          title: Registered By Subject Id
+        correlation_id:
+          type: string
+          maxLength: 200
+          minLength: 8
+          title: Correlation Id
+        idempotency_key:
+          type: string
+          maxLength: 200
+          minLength: 8
+          title: Idempotency Key
+        workflow_mode:
+          type: string
+          enum:
+          - interactive
+          - historical_batch
+          title: Workflow Mode
+        workflow_context:
+          additionalProperties:
+            type: string
+          type: object
+          title: Workflow Context
+      additionalProperties: false
+      type: object
+      required:
+      - document_profile
+      - upload_session_id
+      - external_document_id
+      - governed_document_resource_id
+      - source_governed_resource_id
+      - source_resource_id
+      - source_version
+      - policy_binding_id
+      - policy_version
+      - policy_hash
+      - governance_scope
+      - actor_subject_id
+      - registered_by_subject_id
+      - correlation_id
+      - idempotency_key
+      - workflow_mode
+      - workflow_context
+      title: StratosBudgetIntakeAuthorizationRequest
+    StratosBudgetIntakeAuthorizationResponse:
+      properties:
+        allowed:
+          type: boolean
+          const: true
+          title: Allowed
+          default: true
+        document_id:
+          type: string
+          title: Document Id
+        upload_session_id:
+          type: string
+          title: Upload Session Id
+        confirmed_subject_id:
+          type: string
+          title: Confirmed Subject Id
+        registered_by_subject_id:
+          type: string
+          title: Registered By Subject Id
+        policy_binding_id:
+          type: string
+          title: Policy Binding Id
+        policy_version:
+          type: string
+          title: Policy Version
+        policy_hash:
+          type: string
+          title: Policy Hash
+        source_governed_resource_id:
+          type: string
+          title: Source Governed Resource Id
+        source_version:
+          type: string
+          title: Source Version
+        reason_codes:
+          items:
+            type: string
+          type: array
+          title: Reason Codes
+      additionalProperties: false
+      type: object
+      required:
+      - document_id
+      - upload_session_id
+      - confirmed_subject_id
+      - registered_by_subject_id
+      - policy_binding_id
+      - policy_version
+      - policy_hash
+      - source_governed_resource_id
+      - source_version
+      title: StratosBudgetIntakeAuthorizationResponse
+    DocumentInformationPolicyBinding:
+      allOf:
+      - properties:
+          schemaVersion:
+            type: string
+            const: stratos-information-policy-2
+            title: Schemaversion
+          policyBindingId:
+            type: string
+            pattern: ^(?:pol|pb)_[A-Za-z0-9_-]{8,}$
+            title: Policybindingid
+          policyVersion:
+            type: string
+            const: information-policy-2.0.0
+            title: Policyversion
+          handlingClass:
+            $ref: '#/components/schemas/HandlingClass'
+          legalClassification:
+            type: string
+            const: NONE
+            title: Legalclassification
+          tlp:
+            anyOf:
+            - $ref: '#/components/schemas/TlpLabel'
+            - type: 'null'
+          pap:
+            anyOf:
+            - $ref: '#/components/schemas/PapLabel'
+            - type: 'null'
+          contentCategories:
+            items:
+              $ref: '#/components/schemas/ContentCategory'
+            type: array
+            title: Contentcategories
+          audience:
+            $ref: '#/components/schemas/PolicyAudience'
+          obligations:
+            items:
+              $ref: '#/components/schemas/PolicyObligation'
+            type: array
+            title: Obligations
+          originatorId:
+            anyOf:
+            - type: string
+            - type: 'null'
+            title: Originatorid
+          issuedAt:
+            type: string
+            format: date-time
+            title: Issuedat
+          reviewAt:
+            anyOf:
+            - type: string
+              format: date-time
+            - type: 'null'
+            title: Reviewat
+        additionalProperties: false
+        type: object
+        required:
+        - schemaVersion
+        - policyBindingId
+        - policyVersion
+        - handlingClass
+        - legalClassification
+        - contentCategories
+        - audience
+        - obligations
+        - issuedAt
+        title: InformationPolicyBinding
+      - properties:
+          tlp:
+            type: string
+            enum:
+            - TLP:RED
+            - TLP:AMBER+STRICT
+            - TLP:AMBER
+            - TLP:GREEN
+            - TLP:CLEAR
+        type: object
+        required:
+        - tlp
+      title: DocumentInformationPolicyBinding
+      description: AKB admission profile; the shared STRATOS binding remains defensive
+        nullable.
+    DocumentAdmissionError:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: object
+          required:
+          - code
+          - message
+          - details
+          - trace_id
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+              additionalProperties: true
+            trace_id:
+              type: string
+    DocumentIntakeReadinessResponse:
+      properties:
+        status:
+          type: string
+          const: ready
+          title: Status
+        service:
+          type: string
+          const: registry-api
+          title: Service
+        document_profile_admission:
+          type: string
+          const: ready
+          title: Document Profile Admission
+        catalog_revision:
+          type: string
+          maxLength: 160
+          minLength: 1
+          pattern: ^\S+$
+          title: Catalog Revision
+        catalog_hash:
+          type: string
+          pattern: ^sha256:[a-f0-9]{64}$
+          title: Catalog Hash
+      additionalProperties: false
+      type: object
+      required:
+      - status
+      - service
+      - document_profile_admission
+      - catalog_revision
+      - catalog_hash
+      title: DocumentIntakeReadinessResponse
+    SourceAuthorization:
+      properties:
+        external_document_id:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: External Document Id
+        document_profile:
+          $ref: '#/components/schemas/DocumentVersionProfileInput'
+        file:
+          $ref: '#/components/schemas/SourceFile'
+        source_revision:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Source Revision
+        version_label:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Version Label
+        actor_subject_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Actor Subject Id
+        registered_by_subject_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Registered By Subject Id
+        correlation_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Correlation Id
+        policy_hash:
+          type: string
+          pattern: ^sha256:[a-f0-9]{64}$
+          title: Policy Hash
+      additionalProperties: false
+      type: object
+      required:
+      - external_document_id
+      - document_profile
+      - file
+      - source_revision
+      - version_label
+      - actor_subject_id
+      - registered_by_subject_id
+      - correlation_id
+      - policy_hash
+      title: SourceAuthorization
+    SourceAuthorized:
+      properties:
+        allowed:
+          type: boolean
+          const: true
+          title: Allowed
+          default: true
+        document_id:
+          type: string
+          title: Document Id
+        external_document_id:
+          type: string
+          title: External Document Id
+        actor_subject_id:
+          type: string
+          title: Actor Subject Id
+        registered_by_subject_id:
+          type: string
+          title: Registered By Subject Id
+        policy_hash:
+          type: string
+          title: Policy Hash
+      additionalProperties: false
+      type: object
+      required:
+      - document_id
+      - external_document_id
+      - actor_subject_id
+      - registered_by_subject_id
+      - policy_hash
+      title: SourceAuthorized
+    SourceConfirm:
+      properties:
+        external_document_id:
+          type: string
+          maxLength: 64
+          minLength: 1
+          title: External Document Id
+        document_profile:
+          $ref: '#/components/schemas/DocumentVersionProfileInput'
+        file:
+          $ref: '#/components/schemas/SourceFile'
+        source_revision:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Source Revision
+        version_label:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Version Label
+        actor_subject_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Actor Subject Id
+        registered_by_subject_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Registered By Subject Id
+        correlation_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Correlation Id
+        policy_hash:
+          type: string
+          pattern: ^sha256:[a-f0-9]{64}$
+          title: Policy Hash
+        expected_current_document_version_id:
+          anyOf:
+          - type: string
+            maxLength: 64
+          - type: 'null'
+          title: Expected Current Document Version Id
+        source_file_uri:
+          type: string
+          maxLength: 1024
+          minLength: 1
+          title: Source File Uri
+        upload_receipt:
+          type: string
+          maxLength: 32768
+          minLength: 1
+          title: Upload Receipt
+      additionalProperties: false
+      type: object
+      required:
+      - external_document_id
+      - document_profile
+      - file
+      - source_revision
+      - version_label
+      - actor_subject_id
+      - registered_by_subject_id
+      - correlation_id
+      - policy_hash
+      - expected_current_document_version_id
+      - source_file_uri
+      - upload_receipt
+      title: SourceConfirm
+    SourceConfirmed:
+      properties:
+        version:
+          $ref: '#/components/schemas/DocumentVersionResponse'
+        external_document_id:
+          type: string
+          title: External Document Id
+      additionalProperties: false
+      type: object
+      required:
+      - version
+      - external_document_id
+      title: SourceConfirmed
+    SourceDocument:
+      properties:
+        document_profile:
+          $ref: '#/components/schemas/DocumentProfileInput'
+        external_system:
+          type: string
+          enum:
+          - STRATOS_PROJECTFLOW
+          - STRATOS_ARCHFLOW
+          title: External System
+        external_ref:
+          type: string
+          maxLength: 240
+          minLength: 1
+          title: External Ref
+        entity_type:
+          type: string
+          enum:
+          - project
+          - task
+          - status_report
+          - need
+          title: Entity Type
+        entity_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Entity Id
+        document_type:
+          $ref: '#/components/schemas/DocumentType'
+        title:
+          type: string
+          maxLength: 300
+          minLength: 1
+          title: Title
+        classification:
+          $ref: '#/components/schemas/Classification'
+          default: internal
+        information_policy:
+          $ref: '#/components/schemas/DocumentInformationPolicyBinding'
+          description: Authoritative policy with explicit effective TLP; external
+            and official imports have no unclassified admission mode.
+        integration_envelope:
+          anyOf:
+          - $ref: '#/components/schemas/IntegrationEnvelope'
+          - type: 'null'
+        owner:
+          $ref: '#/components/schemas/ExternalDocumentOwner'
+        tenant_id:
+          type: string
+          const: org_stratos
+          title: Tenant Id
+          default: org_stratos
+        gestor_unit:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Gestor Unit
+        tags:
+          items:
+            type: string
+          type: array
+          title: Tags
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+        source_location:
+          anyOf:
+          - $ref: '#/components/schemas/SourceLocation'
+          - type: 'null'
+        akb_source_uri:
+          anyOf:
+          - type: string
+            maxLength: 1024
+          - type: 'null'
+          title: Akb Source Uri
+        citation_base_url:
+          anyOf:
+          - type: string
+            maxLength: 512
+          - type: 'null'
+          title: Citation Base Url
+        preview_url:
+          anyOf:
+          - type: string
+            maxLength: 2048
+          - type: 'null'
+          title: Preview Url
+        access_policies:
+          anyOf:
+          - items:
+              $ref: '#/components/schemas/AccessPolicyCreate'
+            type: array
+          - type: 'null'
+          title: Access Policies
+        assignments:
+          anyOf:
+          - items:
+              $ref: '#/components/schemas/DocumentAssignmentCreate'
+            type: array
+          - type: 'null'
+          title: Assignments
+        governance_scope:
+          anyOf:
+          - $ref: '#/components/schemas/GovernanceScope'
+          - type: 'null'
+        parent_governed_resource_id:
+          anyOf:
+          - type: string
+            maxLength: 128
+          - type: 'null'
+          title: Parent Governed Resource Id
+        source_document_id:
+          type: string
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$
+          title: Source Document Id
+        project_id:
+          anyOf:
+          - type: string
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$
+          - type: 'null'
+          title: Project Id
+      additionalProperties: false
+      type: object
+      required:
+      - document_profile
+      - external_system
+      - external_ref
+      - entity_type
+      - entity_id
+      - document_type
+      - title
+      - information_policy
+      - owner
+      - source_document_id
+      title: SourceDocument
+    SourceFile:
+      properties:
+        file_name:
+          type: string
+          maxLength: 240
+          minLength: 1
+          title: File Name
+        file_size:
+          type: integer
+          maximum: 52428800.0
+          exclusiveMinimum: 0.0
+          title: File Size
+        file_type:
+          type: string
+          maxLength: 160
+          minLength: 1
+          title: File Type
+        sha256:
+          type: string
+          pattern: ^sha256:[a-f0-9]{64}$
+          title: Sha256
+      additionalProperties: false
+      type: object
+      required:
+      - file_name
+      - file_size
+      - file_type
+      - sha256
+      title: SourceFile
+    SourcePrepare:
+      properties:
+        document:
+          $ref: '#/components/schemas/SourceDocument'
+        file:
+          $ref: '#/components/schemas/SourceFile'
+        source_revision:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Source Revision
+        version_label:
+          type: string
+          maxLength: 80
+          minLength: 1
+          title: Version Label
+        version_profile:
+          $ref: '#/components/schemas/VersionDraft'
+        actor_subject_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Actor Subject Id
+        correlation_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Correlation Id
+      additionalProperties: false
+      type: object
+      required:
+      - document
+      - file
+      - source_revision
+      - version_label
+      - version_profile
+      - actor_subject_id
+      - correlation_id
+      title: SourcePrepare
+    SourcePrepared:
+      properties:
+        external_document:
+          $ref: '#/components/schemas/ExternalDocumentResponse'
+        document_profile:
+          $ref: '#/components/schemas/DocumentVersionProfileInput'
+        expected_current_ingestion_job_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Expected Current Ingestion Job Id
+      additionalProperties: false
+      type: object
+      required:
+      - external_document
+      - document_profile
+      - expected_current_ingestion_job_id
+      title: SourcePrepared
+    VersionDraft:
+      properties:
+        lifecycle:
+          $ref: '#/components/schemas/DocumentLifecycle'
+        domain_evidence:
+          additionalProperties: true
+          type: object
+          title: Domain Evidence
+      additionalProperties: false
+      type: object
+      required:
+      - lifecycle
+      - domain_evidence
+      title: VersionDraft
+    SourceStatusRequest:
+      properties:
+        actor_subject_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Actor Subject Id
+        correlation_id:
+          type: string
+          maxLength: 128
+          minLength: 1
+          title: Correlation Id
+      additionalProperties: false
+      type: object
+      required:
+      - actor_subject_id
+      - correlation_id
+      title: SourceStatusRequest
+    SourceStatusResponse:
+      properties:
+        document_id:
+          type: string
+          title: Document Id
+        external_document_id:
+          type: string
+          title: External Document Id
+        document_version_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Document Version Id
+        ingestion_job_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Ingestion Job Id
+        ingestion_status:
+          type: string
+          title: Ingestion Status
+        document_status:
+          type: string
+          title: Document Status
+        document_version_status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Document Version Status
+      additionalProperties: false
+      type: object
+      required:
+      - document_id
+      - external_document_id
+      - document_version_id
+      - ingestion_job_id
+      - ingestion_status
+      - document_status
+      - document_version_status
+      title: SourceStatusResponse
   securitySchemes:
     akbPublicDeliveryToken:
       type: apiKey

@@ -1,0 +1,94 @@
+{
+  "document": {
+    "external_system": "STRATOS_ARCHFLOW",
+    "external_ref": "archflow-need:record-1:document:attachment-1",
+    "source_document_id": "attachment-1",
+    "project_id": null,
+    "entity_type": "need",
+    "entity_id": "record-1",
+    "document_type": "knowledge_base_article",
+    "title": "Project source note",
+    "information_policy": {
+      "schemaVersion": "stratos-information-policy-2",
+      "policyBindingId": "pol_test_admission01",
+      "policyVersion": "information-policy-2.0.0",
+      "handlingClass": "INTERNAL",
+      "legalClassification": "NONE",
+      "tlp": "TLP:CLEAR",
+      "pap": null,
+      "contentCategories": [],
+      "audience": {
+        "organizationId": "org_stratos",
+        "scopeType": "organization",
+        "scopeIds": [],
+        "recipientSubjectIds": []
+      },
+      "obligations": [
+        "AUDIT_ACCESS"
+      ],
+      "originatorId": "user_owner",
+      "issuedAt": "2026-01-01T00:00:00Z",
+      "reviewAt": null
+    },
+    "owner": {
+      "user_id": "user_owner"
+    },
+    "gestor_unit": "unit_knowledge",
+    "document_profile": {
+      "profile": {
+        "id": "akb.knowledge-note",
+        "revision": "1"
+      },
+      "authorship": [
+        {
+          "kind": "person",
+          "id": "test_document_author",
+          "evidenceReference": "test_authoring_workflow"
+        }
+      ],
+      "provenance": {
+        "sourceSystem": "STRATOS_ARCHFLOW",
+        "sourceRecordId": "record-1",
+        "sourceGovernedResourceId": "gres_source_1"
+      },
+      "accountability": {
+        "ownerSubjectId": "user_owner",
+        "gestor": {
+          "kind": "organization_unit",
+          "id": "unit_knowledge"
+        }
+      }
+    },
+    "parent_governed_resource_id": "gres_source_1",
+    "governance_scope": {
+      "type": "organization",
+      "id": "org_stratos"
+    }
+  },
+  "file": {
+    "file_name": "sample.txt",
+    "file_size": 91,
+    "file_type": "text/plain",
+    "sha256": "sha256:a02141c31017b7b842fb3b77f41fc73d450cce532e08691d2065fb44452bfc68"
+  },
+  "source_revision": "source-revision-1",
+  "version_label": "1",
+  "version_profile": {
+    "lifecycle": {
+      "mode": "record",
+      "effectiveFrom": null,
+      "effectiveTo": null,
+      "recordedOn": "2026-09-05",
+      "reviewAt": "2027-09-05",
+      "reviewRuleId": "akb.review.annual",
+      "retentionRuleId": "akb.retention.organizational-record"
+    },
+    "domain_evidence": {
+      "family": "knowledge_note",
+      "subject": "Test knowledge",
+      "createdOn": "2026-09-05"
+    }
+  },
+  "actor_subject_id": "user_admin",
+  "correlation_id": "corr-test"
+}

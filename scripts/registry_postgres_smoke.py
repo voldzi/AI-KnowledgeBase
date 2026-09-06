@@ -5,7 +5,9 @@ import json
 import os
 import subprocess
 import sys
+from contextlib import closing
 from pathlib import Path
+from unittest.mock import patch
 from urllib.parse import quote, urlsplit, urlunsplit
 
 import psycopg
@@ -190,13 +192,31 @@ def verify_external_document_api(database_url: str) -> None:
     os.environ["AKL_AUTO_CREATE_SCHEMA"] = "false"
     os.environ["AKL_DATABASE_URL"] = database_url
     os.environ["AKL_MOCK_ROLES"] = json.dumps(["stratos_service"])
+    os.environ["AKL_WORKFLOW_MAINTENANCE_ENABLED"] = "false"
 
     sys.path.insert(0, str(SERVICE_DIR))
+    sys.path.insert(0, str(SERVICE_DIR / "tests"))
     from fastapi.testclient import TestClient  # noqa: WPS433
     from app.main import create_app  # noqa: WPS433
+    from app import api, document_profile_runtime
+    from document_profile_fixtures import VerifiedTestAuthority, root_profile
+    from document_policy_fixtures import admitted_policy
+
+    # This is an isolated database smoke, not proof of live STRATOS readiness.
+    # Only the upstream transport is simulated; production admission/hash/nonce
+    # validation and immutable profile persistence run without bypasses.
+    settings = api.get_settings()
+    settings.stratos_policy_service_token = "explicit-postgres-smoke-credential"
+    settings.stratos_information_resources_url = "https://test-authority.invalid/resources"
+    profile = root_profile(profile_id="akb.contract", owner="user_pg_owner", gestor="unit_pg_knowledge")
+    profile["provenance"] = {
+        "sourceSystem": "STRATOS_PROJECTFLOW",
+        "sourceRecordId": "contract:postgres-smoke:main",
+        "sourceGovernedResourceId": "gres_pg_smoke_source",
+    }
 
     payload = {
-        "tenant_id": "default",
+        "tenant_id": "org_stratos",
         # This smoke exercises the generic external-document contract. Budget
         # lineage has a dedicated fail-closed route and is covered separately.
         "external_system": "STRATOS_PROJECTFLOW",
@@ -206,18 +226,24 @@ def verify_external_document_api(database_url: str) -> None:
         "document_type": "contract",
         "title": "PostgreSQL smoke contract",
         "classification": "internal",
-        "owner": {"user_id": "svc_stratos", "display_name": "STRATOS Service"},
+        "owner": {"user_id": "user_pg_owner", "display_name": "PostgreSQL smoke owner"},
+        "gestor_unit": "unit_pg_knowledge",
+        "information_policy": admitted_policy(owner="user_pg_owner"),
+        "document_profile": profile,
         "metadata": {"contract_number": "PG-SMOKE"},
         "citation_base_url": "http://localhost:8001/api/v1/citations",
     }
     headers = {
-        "X-AKL-Subject": "svc_stratos",
-        "X-AKL-Roles": "stratos_service",
+        "X-AKL-Subject": "user_pg_operator",
+        "X-AKL-Roles": "admin",
         "X-Request-ID": "registry-postgres-smoke",
         "X-Correlation-ID": "registry-postgres-smoke",
     }
 
-    with TestClient(create_app()) as client:
+    with closing(VerifiedTestAuthority(settings)) as authority, \
+            patch.object(api, "governance_client", return_value=authority), \
+            patch.object(document_profile_runtime, "governance_client", return_value=authority), \
+            TestClient(create_app()) as client:
         first = client.post("/api/v1/external-documents/upsert", headers=headers, json=payload)
         if first.status_code != 200:
             raise RuntimeError(f"First upsert failed: {first.status_code} {first.text}")

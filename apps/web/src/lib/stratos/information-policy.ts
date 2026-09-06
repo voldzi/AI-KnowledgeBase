@@ -135,29 +135,40 @@ export function policyHash(policy: InformationPolicyBinding): string {
   })).digest("hex")}`;
 }
 
+/** AKB document admission is stricter than the shared, defensively nullable V2 reader. */
+export function parseDocumentInformationPolicy(value: unknown): InformationPolicyBinding {
+  const policy = parseInformationPolicy(value);
+  if (!policy.tlp) {
+    fail("DOCUMENT_TLP_REQUIRED", "Dokument musí mít výslovně určené TLP. Doplňte jeho pravidla ochrany.");
+  }
+  return policy;
+}
+
 export function createDefaultInformationPolicy(input: {
   classification: "public" | "internal" | "restricted" | "confidential";
   ownerSubjectId: string;
   contentCategories?: string[];
+  tlp: unknown;
+  recipientSubjectIds?: string[];
 }): InformationPolicyBinding {
   if (input.classification === "confidential") {
     fail("LEGAL_CLASSIFICATION_UNSUPPORTED", "The legacy confidential classification is not supported in Policy V2.");
   }
   const handlingClass = input.classification.toUpperCase() as "PUBLIC" | "INTERNAL" | "RESTRICTED";
-  return parseInformationPolicy({
+  return parseDocumentInformationPolicy({
     schemaVersion: INFORMATION_POLICY_SCHEMA,
     policyBindingId: `pol_${randomUUID().replaceAll("-", "")}`,
     policyVersion: INFORMATION_POLICY_VERSION,
     handlingClass,
     legalClassification: "NONE",
-    tlp: null,
+    tlp: input.tlp,
     pap: null,
     contentCategories: input.contentCategories ?? [],
     audience: {
       organizationId: STRATOS_ORGANIZATION_ID,
-      scopeType: "organization",
+      scopeType: input.tlp === "TLP:RED" ? "recipient_set" : "organization",
       scopeIds: [],
-      recipientSubjectIds: []
+      recipientSubjectIds: input.recipientSubjectIds ?? []
     },
     obligations: handlingClass === "PUBLIC" ? [] : ["AUDIT_ACCESS"],
     originatorId: input.ownerSubjectId,

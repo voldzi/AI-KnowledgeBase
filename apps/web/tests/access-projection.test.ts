@@ -10,6 +10,15 @@ const NOW = 1_000_000;
 describe("STRATOS access projection", () => {
   beforeEach(() => resetAccessProjectionCacheForTests());
 
+  it("forwards a read-only session probe to the central authority", async () => {
+    let probe: string | null = null;
+    await contextFromStratosAccessProjection(jwt({ sub: "user-123", exp: 2_000 }), config(), async (_url, init) => {
+      probe = new Headers(init?.headers).get("X-STRATOS-Session-Probe");
+      return Response.json({ tenantId: "org_stratos", applicationAccess: [] });
+    }, NOW, true, true);
+    assert.equal(probe, "1");
+  });
+
   it("preserves explicit application grants separately from the effective closure", async () => {
     const token = jwt({
       sub: "user-123",

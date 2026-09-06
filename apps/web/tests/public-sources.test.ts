@@ -10,6 +10,7 @@ import { publicSourceCollection, publicSourceTargetTotal } from "../src/lib/publ
 import { assertPublicSourceUrl, discoverPublicSourceCollection } from "../src/lib/public-sources/discovery";
 import { selectPublicSourceCandidates } from "../src/lib/public-sources/selection";
 import { synchronizePublicSource } from "../src/lib/public-sources/sync";
+import { prepareApprovedSourceFixture } from "./fixtures/public-source-approval";
 import { getUploadSettings } from "../src/lib/upload/preflight";
 
 test("official source catalog targets the requested pilot corpus size", () => {
@@ -153,6 +154,7 @@ test("ČSÚ HTML source is stored as an immutable controlled-document version", 
     });
     const created = await synchronizePublicSource(
       {
+        collectionRevision: "approved-collection-r1",
         collectionId: "cz-statistics",
         sourceUrl: "https://csu.gov.cz/katalog-produktu",
         title: "Katalog produktů Českého statistického úřadu",
@@ -170,6 +172,7 @@ test("ČSÚ HTML source is stored as an immutable controlled-document version", 
         });
       },
       transport,
+      prepareApprovedSourceFixture,
     );
     const details = created.version as typeof created.version & {
       file?: { mime_type?: string | null };
@@ -214,6 +217,7 @@ test("FitSM PPTX source keeps its presentation type instead of being mislabeled 
     });
     const created = await synchronizePublicSource(
       {
+        collectionRevision: "approved-collection-r1",
         collectionId: "open-itsm",
         sourceUrl: "https://www.fitsm.eu/download/1552/",
         title: "Advanced Training in Service Operation and Control",
@@ -232,6 +236,7 @@ test("FitSM PPTX source keeps its presentation type instead of being mislabeled 
         });
       },
       transport,
+      prepareApprovedSourceFixture,
     );
     const details = created.version as typeof created.version & {
       file?: { mime_type?: string | null };
@@ -264,6 +269,7 @@ test("FitSM PPTX source keeps its presentation type instead of being mislabeled 
 
     const repaired = await synchronizePublicSource(
       {
+        collectionRevision: "approved-collection-r1",
         collectionId: "open-itsm",
         sourceUrl: "https://www.fitsm.eu/download/1552/",
         title: "Advanced Training in Service Operation and Control",
@@ -279,6 +285,7 @@ test("FitSM PPTX source keeps its presentation type instead of being mislabeled 
         },
       }),
       transport,
+      prepareApprovedSourceFixture,
     );
     const repairedDetails = repaired.version as typeof repaired.version & {
       source_location?: { file_name?: string | null; content_type?: string | null };
@@ -403,10 +410,12 @@ test("official source sync stores, publishes, ingests and idempotently reuses on
       });
     };
     const input = {
-      collectionId: "eu-law",
+      collectionRevision: "approved-collection-r1",
+        collectionId: "eu-law",
       sourceUrl: "https://publications.europa.eu/resource/celex/32024R1689",
       canonicalUrl: "https://eur-lex.europa.eu/legal-content/CS/TXT/?uri=CELEX:32024R1689",
       title: "Nařízení o umělé inteligenci (AI Act)",
+      effectiveFrom: "2024-08-01",
     };
     const transport = async (correlationId: string) => ({
       ...context,
@@ -414,8 +423,8 @@ test("official source sync stores, publishes, ingests and idempotently reuses on
       correlationId,
     });
 
-    const created = await synchronizePublicSource(input, clients, context, fetcher, transport);
-    const replayed = await synchronizePublicSource(input, clients, context, fetcher, transport);
+    const created = await synchronizePublicSource(input, clients, context, fetcher, transport, prepareApprovedSourceFixture);
+    const replayed = await synchronizePublicSource(input, clients, context, fetcher, transport, prepareApprovedSourceFixture);
     const documents = await clients.registry.listDocuments(context, { tag: "official-public-reference" });
     const versions = await clients.registry.listDocumentVersions(created.document.document_id, context);
 
@@ -495,6 +504,7 @@ test("e-Sbírka sync downloads the official informative PDF through the public s
 
     const created = await synchronizePublicSource(
       {
+        collectionRevision: "approved-collection-r1",
         collectionId: "czech-law",
         sourceUrl: sourceUrl.toString(),
         canonicalUrl: "https://e-sbirka.gov.cz/sb/2016/134",
@@ -504,6 +514,7 @@ test("e-Sbírka sync downloads the official informative PDF through the public s
       context,
       fetcher,
       transport,
+      prepareApprovedSourceFixture,
     );
     const versions = await clients.registry.listDocumentVersions(created.document.document_id, context);
     const versionDetails = created.version as typeof created.version & {
@@ -526,7 +537,8 @@ test("e-Sbírka sync downloads the official informative PDF through the public s
     await assert.rejects(
       synchronizePublicSource(
         {
-          collectionId: "czech-law",
+          collectionRevision: "approved-collection-r1",
+        collectionId: "czech-law",
           sourceUrl: "https://e-sbirka.gov.cz/sb/2016/134?zalozka=text",
           canonicalUrl: "https://e-sbirka.gov.cz/sb/2016/134",
           title: "Neomezený dotaz",
@@ -535,6 +547,7 @@ test("e-Sbírka sync downloads the official informative PDF through the public s
         context,
         fetcher,
         transport,
+      prepareApprovedSourceFixture,
       ),
       /valid legal-act version|approved permanent legal-act URL/i,
     );
@@ -608,6 +621,7 @@ test("e-Sbírka sync accepts the documented asynchronous status response", async
 
     const created = await synchronizePublicSource(
       {
+        collectionRevision: "approved-collection-r1",
         collectionId: "czech-law",
         sourceUrl: "https://e-sbirka.gov.cz/sb/2016/134/2024-01-01",
         canonicalUrl: "https://e-sbirka.gov.cz/sb/2016/134",
@@ -617,6 +631,7 @@ test("e-Sbírka sync accepts the documented asynchronous status response", async
       context,
       fetcher,
       transport,
+      prepareApprovedSourceFixture,
     );
 
     assert.equal(created.action, "created");

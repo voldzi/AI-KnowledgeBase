@@ -72,7 +72,7 @@ test.describe("Document Workbench product paths", () => {
     await expect(page.getByRole("link", { name: "Nový koncept" })).toBeVisible();
   });
 
-  test("DW-02 new document flow creates first version and guides the operator onward", async ({ page }) => {
+  test("DW-02 new document flow creates first version and guides the operator onward", async ({ page }, testInfo) => {
     const now = new Date().toISOString();
     const documentId = "doc_e2e_new";
     const versionId = "ver_e2e_new_1";
@@ -88,6 +88,7 @@ test.describe("Document Workbench product paths", () => {
         body: JSON.stringify({
           document: {
             document_id: documentId,
+            current_root_metadata_revision: "e2e-root-revision-1",
             title: "E2E založení dokumentu",
             document_type: "methodology",
             status: "draft",
@@ -109,7 +110,7 @@ test.describe("Document Workbench product paths", () => {
         body: JSON.stringify({
           preflight: {
             upload_session_id: uploadSessionId,
-            upload_url: appPath(`/api/controlled-document/upload/sessions/${uploadSessionId}/content`),
+            upload_url: appPath(`/api/document-intake/v1/sessions/${uploadSessionId}/content`),
             upload_method: "PUT",
             source_file_uri: "s3://akl-documents/e2e/new-document.pdf",
             expires_at: now,
@@ -132,7 +133,7 @@ test.describe("Document Workbench product paths", () => {
         })
       });
     });
-    await page.route(`**${appPath(`/api/controlled-document/upload/sessions/${uploadSessionId}/content`)}`, async (route) => {
+    await page.route(`**${appPath(`/api/document-intake/v1/sessions/${uploadSessionId}/content`)}`, async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -197,6 +198,18 @@ test.describe("Document Workbench product paths", () => {
     await page.getByRole("button", { name: "admins" }).click();
     await expect(approverRegion).toContainText("admins");
     await page.locator("#title").fill("E2E založení dokumentu");
+    await page.locator("#profile-owner").click();
+    await page.getByRole("option", { name: "Jan Novák", exact: true }).click();
+    await page.locator("#profile-author-0").click();
+    await page.getByRole("option", { name: "Eva Horáková", exact: true }).click();
+    await page.locator("#profile-author-evidence-0").fill("record:authorship:e2e");
+    await page.locator("#profile-effectiveFrom").fill("2026-09-01");
+    await page.locator("#profile-reviewAt").fill("2027-09-01");
+    await page.locator("#profile-domain-contractReference").fill("contract:e2e");
+    await page.locator("#profile-domain-partyReferences").fill("organization:a\norganization:b");
+    await page.locator("#profile-domain-executionStatus").click();
+    await page.getByRole("option", { name: "Podepsaná", exact: true }).click();
+    await page.locator("#profile-domain-executionEvidenceReference").fill("contract:signature:e2e");
     await page.setInputFiles('input[type="file"]', {
       name: "new-document.pdf",
       mimeType: "application/pdf",
@@ -204,11 +217,21 @@ test.describe("Document Workbench product paths", () => {
     });
     await expect(page.locator("form").getByRole("status")).toHaveText("Soubor připraven");
 
+    await expect(page.getByRole("button", { name: "Založit dokument a spustit zpracování" })).toBeDisabled();
+    await page.locator("#document-tlp").click();
+    await page.getByRole("option", { name: "TLP:AMBER", exact: true }).click();
+
+    await page.locator("#profile-owner").scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath("document-profile-authorship.png") });
+    await page.locator("#profile-domain-executionEvidenceReference").scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath("document-profile-lifecycle.png") });
+
     await page.getByRole("button", { name: "Založit dokument a spustit zpracování" }).click();
 
     expect(documentPayload).toMatchObject({
       document_type: "contract",
       classification: "restricted",
+      tlp: "TLP:AMBER",
       tags: "controlled-document,akb,smlouva",
       assignments: [
         { role: "gestor", subject_id: "user_dev", display_label: "Aktuální uživatel" },

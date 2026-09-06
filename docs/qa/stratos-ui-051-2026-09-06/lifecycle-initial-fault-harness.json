@@ -1,0 +1,63 @@
+{
+  "five_parallel_authenticated_tabs": {
+    "status": "PASS",
+    "credentialEntries": 1,
+    "cookieNamespacesDistinct": true
+  },
+  "projectflow_real_grant_revocation_ui": {
+    "status": "PASS",
+    "elapsedMs": 55373
+  },
+  "akb_probe_401_ui": {
+    "status": "PASS",
+    "elapsedMs": 27,
+    "evidence": "controlled transport fault, not central revocation"
+  },
+  "akb_probe_403_ui": {
+    "status": "PASS",
+    "elapsedMs": 26,
+    "evidence": "controlled transport fault, not central revocation"
+  },
+  "akb_probe_503_ui": {
+    "status": "PASS",
+    "elapsedMs": 26,
+    "evidence": "controlled transport fault, not central revocation"
+  },
+  "chat_probe_401_ui": {
+    "status": "FAIL",
+    "reason": "TimeoutError",
+    "detail": "locator.waitFor: Timeout 15000ms exceeded. Call log: \u001b[2m  - waiting for getByTestId('session-authority-guard') to be visible\u001b[22m "
+  },
+  "chat_probe_403_ui": {
+    "status": "FAIL",
+    "reason": "TimeoutError",
+    "detail": "locator.waitFor: Timeout 15000ms exceeded. Call log: \u001b[2m  - waiting for getByTestId('session-authority-guard') to be visible\u001b[22m "
+  },
+  "chat_probe_503_ui": {
+    "status": "FAIL",
+    "reason": "TimeoutError",
+    "detail": "locator.waitFor: Timeout 15000ms exceeded. Call log: \u001b[2m  - waiting for getByTestId('session-authority-guard') to be visible\u001b[22m "
+  },
+  "central_membership_revocation_akb_chat_ui": {
+    "status": "PASS",
+    "elapsedMs": {
+      "akb": 377,
+      "chat": 462
+    }
+  },
+  "central_logout_all_bff_standard_policy": {
+    "status": "PASS",
+    "standardIdentityFreshness": true,
+    "denialAfterMs": {
+      "chat": 700,
+      "stratos": 244566,
+      "projectflow": 244879,
+      "archflow": 245188,
+      "akb": 291552
+    },
+    "uiHiddenAfterMs": {
+      "akb": 291665,
+      "chat": 291670
+    }
+  }
+}

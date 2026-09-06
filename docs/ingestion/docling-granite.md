@@ -8,7 +8,7 @@ tabulek, stránek a geometrické provenance. GraniteDocling je specializovaný
 PDF pipeline; nenahrazuje Registry, Information Policy, audit, embeddings,
 hybridní retrieval ani citace.
 
-Implementace je připnutá na zúžený profil `docling-slim==2.124.0` s explicitně
+Implementace je připnutá na zúžený profil `docling-slim==2.126.0` s explicitně
 vybranými formáty a lokálními modely. Produkční profil používá standardní
 Docling na CPU v režimu `prefer`; nativní parser zůstává auditovatelným
 fallbackem. GraniteDocling zůstává připravenou volbou pro pozdější

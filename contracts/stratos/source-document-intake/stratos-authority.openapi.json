@@ -1,0 +1,2107 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "STRATOS source authority required by AKB",
+    "version": "1.0.0"
+  },
+  "x-implementation-status": "REQUIRED_ON_STRATOS_NOT_YET_JOINTLY_VERIFIED",
+  "paths": {
+    "/api/v1/information-governance/source-document-intake/authorize": {
+      "post": {
+        "operationId": "authorizeSourceDocumentIntake",
+        "security": [
+          {
+            "sourceService": [],
+            "sourceActor": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceIntakeAuthorityRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Exact replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceIntakeAuthorityResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceIntakeError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceIntakeError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Denied actor, source or service",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceIntakeError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale or conflicting immutable source",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceIntakeError"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Upload token expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceIntakeError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "File or request too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceIntakeError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid mandatory source/profile/TLP",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceIntakeError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceIntakeError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Conflicting upstream response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceIntakeError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Required authority, scanner or ingestion unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceIntakeError"
+                }
+              }
+            }
+          }
+        },
+        "description": "STRATOS implementation required. Recompute request_hash over all request members except request_hash using recursively key-sorted compact UTF-8 JSON. Verify actual source record, revision, parent, attachment bytes/hash, actor token and effective policy/metadata. No echo-only authorization. Return nonce-bound decision with expiry >now and <=60 seconds."
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sourceService": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Existing fixed service:akb governance credential; source service is NOT the authority transport."
+      },
+      "sourceActor": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-STRATOS-Actor-Authorization",
+        "description": "Separate current person bearer including Bearer prefix."
+      }
+    },
+    "schemas": {
+      "SourceIntakeAccessPolicyCreate": {
+        "properties": {
+          "subjects": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Subjects",
+            "type": "array"
+          },
+          "actions": {
+            "items": {
+              "$ref": "#/components/schemas/SourceIntakeAction"
+            },
+            "minItems": 1,
+            "title": "Actions",
+            "type": "array"
+          },
+          "constraints": {
+            "additionalProperties": true,
+            "title": "Constraints",
+            "type": "object"
+          }
+        },
+        "required": [
+          "subjects",
+          "actions"
+        ],
+        "title": "AccessPolicyCreate",
+        "type": "object"
+      },
+      "SourceIntakeAction": {
+        "enum": [
+          "document.create",
+          "document.read",
+          "document.update",
+          "document.delete",
+          "document.version.create",
+          "document.version.publish",
+          "document.version.archive",
+          "document.ingest",
+          "document.reindex",
+          "rag.query",
+          "rag.compare",
+          "rag.check_compliance",
+          "rag.export",
+          "workflow.task.read",
+          "workflow.task.write",
+          "audit.read",
+          "audit.write",
+          "admin.manage"
+        ],
+        "title": "Action",
+        "type": "string"
+      },
+      "SourceIntakeAssignmentSubjectType": {
+        "enum": [
+          "user",
+          "group",
+          "unit",
+          "service"
+        ],
+        "title": "AssignmentSubjectType",
+        "type": "string"
+      },
+      "SourceIntakeClassification": {
+        "enum": [
+          "public",
+          "internal",
+          "restricted",
+          "confidential"
+        ],
+        "title": "Classification",
+        "type": "string"
+      },
+      "SourceIntakeContentCategory": {
+        "enum": [
+          "PERSONAL_DATA",
+          "FINANCIAL",
+          "CONTRACTUAL",
+          "SECURITY",
+          "CYBER_THREAT",
+          "SOURCE_CODE",
+          "AUTHENTICATION",
+          "AUDIT",
+          "PUBLIC_INFORMATION"
+        ],
+        "title": "ContentCategory",
+        "type": "string"
+      },
+      "SourceIntakeDocumentAccountability": {
+        "additionalProperties": false,
+        "properties": {
+          "ownerSubjectId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^\\S+$",
+            "title": "Ownersubjectid",
+            "type": "string"
+          },
+          "gestor": {
+            "$ref": "#/components/schemas/SourceIntakeDocumentGestor"
+          }
+        },
+        "required": [
+          "ownerSubjectId",
+          "gestor"
+        ],
+        "title": "DocumentAccountability",
+        "type": "object"
+      },
+      "SourceIntakeDocumentAssignmentCreate": {
+        "properties": {
+          "role": {
+            "$ref": "#/components/schemas/SourceIntakeDocumentAssignmentRole"
+          },
+          "subject_type": {
+            "$ref": "#/components/schemas/SourceIntakeAssignmentSubjectType",
+            "default": "user"
+          },
+          "subject_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Subject Id",
+            "type": "string"
+          },
+          "display_label": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Display Label"
+          },
+          "is_primary": {
+            "default": false,
+            "title": "Is Primary",
+            "type": "boolean"
+          },
+          "active": {
+            "default": true,
+            "title": "Active",
+            "type": "boolean"
+          },
+          "sla_days": {
+            "anyOf": [
+              {
+                "maximum": 365,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Sla Days"
+          },
+          "escalation_subject_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceIntakeAssignmentSubjectType"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "escalation_subject_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Escalation Subject Id"
+          },
+          "escalation_label": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Escalation Label"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          }
+        },
+        "required": [
+          "role",
+          "subject_id"
+        ],
+        "title": "DocumentAssignmentCreate",
+        "type": "object"
+      },
+      "SourceIntakeDocumentAssignmentRole": {
+        "enum": [
+          "owner",
+          "gestor",
+          "reviewer",
+          "approver",
+          "auditor",
+          "steward"
+        ],
+        "title": "DocumentAssignmentRole",
+        "type": "string"
+      },
+      "SourceIntakeDocumentAuthor": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "person",
+              "organization",
+              "external_authority"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^\\S+$",
+            "title": "Id",
+            "type": "string"
+          },
+          "evidenceReference": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^\\S+$",
+            "title": "Evidencereference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "evidenceReference"
+        ],
+        "title": "DocumentAuthor",
+        "type": "object"
+      },
+      "SourceIntakeDocumentGestor": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "person",
+              "organization_unit"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^\\S+$",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ],
+        "title": "DocumentGestor",
+        "type": "object"
+      },
+      "SourceIntakeDocumentInformationPolicyBinding": {
+        "allOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "schemaVersion": {
+                "const": "stratos-information-policy-2",
+                "title": "Schemaversion",
+                "type": "string"
+              },
+              "policyBindingId": {
+                "pattern": "^(?:pol|pb)_[A-Za-z0-9_-]{8,}$",
+                "title": "Policybindingid",
+                "type": "string"
+              },
+              "policyVersion": {
+                "const": "information-policy-2.0.0",
+                "title": "Policyversion",
+                "type": "string"
+              },
+              "handlingClass": {
+                "$ref": "#/components/schemas/SourceIntakeHandlingClass"
+              },
+              "legalClassification": {
+                "const": "NONE",
+                "title": "Legalclassification",
+                "type": "string"
+              },
+              "tlp": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/SourceIntakeTlpLabel"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "pap": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/SourceIntakePapLabel"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "contentCategories": {
+                "items": {
+                  "$ref": "#/components/schemas/SourceIntakeContentCategory"
+                },
+                "title": "Contentcategories",
+                "type": "array"
+              },
+              "audience": {
+                "$ref": "#/components/schemas/SourceIntakePolicyAudience"
+              },
+              "obligations": {
+                "items": {
+                  "$ref": "#/components/schemas/SourceIntakePolicyObligation"
+                },
+                "title": "Obligations",
+                "type": "array"
+              },
+              "originatorId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Originatorid"
+              },
+              "issuedAt": {
+                "format": "date-time",
+                "title": "Issuedat",
+                "type": "string"
+              },
+              "reviewAt": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Reviewat"
+              }
+            },
+            "required": [
+              "schemaVersion",
+              "policyBindingId",
+              "policyVersion",
+              "handlingClass",
+              "legalClassification",
+              "contentCategories",
+              "audience",
+              "obligations",
+              "issuedAt"
+            ],
+            "title": "InformationPolicyBinding",
+            "type": "object"
+          },
+          {
+            "properties": {
+              "tlp": {
+                "enum": [
+                  "TLP:RED",
+                  "TLP:AMBER+STRICT",
+                  "TLP:AMBER",
+                  "TLP:GREEN",
+                  "TLP:CLEAR"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "tlp"
+            ],
+            "type": "object"
+          }
+        ],
+        "description": "AKB admission profile; the shared STRATOS binding remains defensive nullable.",
+        "title": "DocumentInformationPolicyBinding"
+      },
+      "SourceIntakeDocumentLifecycle": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "enum": [
+              "fixed_interval",
+              "until_superseded",
+              "record"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "effectiveFrom": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effectivefrom"
+          },
+          "effectiveTo": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effectiveto"
+          },
+          "recordedOn": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recordedon"
+          },
+          "reviewAt": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewat"
+          },
+          "reviewRuleId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^\\S+$",
+            "title": "Reviewruleid",
+            "type": "string"
+          },
+          "retentionRuleId": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^\\S+$",
+            "title": "Retentionruleid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode",
+          "effectiveFrom",
+          "effectiveTo",
+          "recordedOn",
+          "reviewAt",
+          "reviewRuleId",
+          "retentionRuleId"
+        ],
+        "title": "DocumentLifecycle",
+        "type": "object"
+      },
+      "SourceIntakeDocumentProfileInput": {
+        "additionalProperties": false,
+        "properties": {
+          "profile": {
+            "$ref": "#/components/schemas/SourceIntakeDocumentProfileReference"
+          },
+          "authorship": {
+            "items": {
+              "$ref": "#/components/schemas/SourceIntakeDocumentAuthor"
+            },
+            "minItems": 1,
+            "title": "Authorship",
+            "type": "array"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/SourceIntakeDocumentProvenanceInput"
+          },
+          "accountability": {
+            "$ref": "#/components/schemas/SourceIntakeDocumentAccountability"
+          }
+        },
+        "required": [
+          "profile",
+          "authorship",
+          "provenance",
+          "accountability"
+        ],
+        "title": "DocumentProfileInput",
+        "type": "object"
+      },
+      "SourceIntakeDocumentProfileReference": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^\\S+$",
+            "title": "Id",
+            "type": "string"
+          },
+          "revision": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^\\S+$",
+            "title": "Revision",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "revision"
+        ],
+        "title": "DocumentProfileReference",
+        "type": "object"
+      },
+      "SourceIntakeDocumentProvenanceInput": {
+        "additionalProperties": false,
+        "properties": {
+          "sourceSystem": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^\\S+$",
+            "title": "Sourcesystem",
+            "type": "string"
+          },
+          "sourceRecordId": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "minLength": 1,
+                "pattern": "^\\S+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcerecordid"
+          },
+          "sourceGovernedResourceId": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "minLength": 1,
+                "pattern": "^\\S+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourcegovernedresourceid"
+          }
+        },
+        "required": [
+          "sourceSystem",
+          "sourceRecordId",
+          "sourceGovernedResourceId"
+        ],
+        "title": "DocumentProvenanceInput",
+        "type": "object"
+      },
+      "SourceIntakeDocumentType": {
+        "enum": [
+          "directive",
+          "regulation",
+          "methodology",
+          "policy",
+          "procedure",
+          "manual",
+          "knowledge_base_article",
+          "project_documentation",
+          "meeting_record",
+          "contract",
+          "attachment",
+          "ai_intake",
+          "ai_requirement_card",
+          "ai_security_appendix",
+          "ai_governance_evidence",
+          "other"
+        ],
+        "title": "DocumentType",
+        "type": "string"
+      },
+      "SourceIntakeExternalDocumentOwner": {
+        "properties": {
+          "user_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "User Id",
+            "type": "string"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Display Name"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "title": "ExternalDocumentOwner",
+        "type": "object"
+      },
+      "SourceIntakeGovernanceScope": {
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "enum": [
+              "own",
+              "organization",
+              "organization_unit",
+              "budget_scope",
+              "portfolio",
+              "project",
+              "document",
+              "recipient_set"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Id"
+          },
+          "ownerSubjectId": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ownersubjectid"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "title": "GovernanceScope",
+        "type": "object"
+      },
+      "SourceIntakeHandlingClass": {
+        "enum": [
+          "PUBLIC",
+          "INTERNAL",
+          "PROJECT_MANAGEMENT",
+          "RESTRICTED"
+        ],
+        "title": "HandlingClass",
+        "type": "string"
+      },
+      "SourceIntakeIntegrationActor": {
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "enum": [
+              "person",
+              "service"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "subjectId": {
+            "minLength": 1,
+            "title": "Subjectid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "subjectId"
+        ],
+        "title": "IntegrationActor",
+        "type": "object"
+      },
+      "SourceIntakeIntegrationClassification": {
+        "additionalProperties": false,
+        "properties": {
+          "handlingClass": {
+            "$ref": "#/components/schemas/SourceIntakeHandlingClass"
+          },
+          "legalClassification": {
+            "const": "NONE",
+            "title": "Legalclassification",
+            "type": "string"
+          },
+          "tlp": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceIntakeTlpLabel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pap": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceIntakePapLabel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "handlingClass",
+          "legalClassification",
+          "tlp",
+          "pap"
+        ],
+        "title": "IntegrationClassification",
+        "type": "object"
+      },
+      "SourceIntakeIntegrationEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "schemaVersion": {
+            "const": "stratos-integration-envelope-1",
+            "title": "Schemaversion",
+            "type": "string"
+          },
+          "organizationId": {
+            "const": "org_stratos",
+            "title": "Organizationid",
+            "type": "string"
+          },
+          "sourceSystem": {
+            "enum": [
+              "STRATOS_ARCHFLOW",
+              "STRATOS_BUDGET",
+              "STRATOS_PROJECTFLOW",
+              "STRATOS_AKB",
+              "STRATOS_SECURITY_PREFLIGHT"
+            ],
+            "title": "Sourcesystem",
+            "type": "string"
+          },
+          "externalRef": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Externalref",
+            "type": "string"
+          },
+          "actor": {
+            "$ref": "#/components/schemas/SourceIntakeIntegrationActor"
+          },
+          "correlationId": {
+            "maxLength": 200,
+            "minLength": 8,
+            "title": "Correlationid",
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "maxLength": 200,
+            "minLength": 8,
+            "title": "Idempotencykey",
+            "type": "string"
+          },
+          "policyBindingId": {
+            "minLength": 8,
+            "title": "Policybindingid",
+            "type": "string"
+          },
+          "policyVersion": {
+            "const": "information-policy-2.0.0",
+            "title": "Policyversion",
+            "type": "string"
+          },
+          "policyHash": {
+            "pattern": "^sha256:[a-f0-9]{64}$",
+            "title": "Policyhash",
+            "type": "string"
+          },
+          "classification": {
+            "$ref": "#/components/schemas/SourceIntakeIntegrationClassification"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "organizationId",
+          "sourceSystem",
+          "externalRef",
+          "actor",
+          "correlationId",
+          "idempotencyKey",
+          "policyBindingId",
+          "policyVersion",
+          "policyHash",
+          "classification",
+          "payload"
+        ],
+        "title": "IntegrationEnvelope",
+        "type": "object"
+      },
+      "SourceIntakePapLabel": {
+        "enum": [
+          "PAP:RED",
+          "PAP:AMBER",
+          "PAP:GREEN",
+          "PAP:CLEAR"
+        ],
+        "title": "PapLabel",
+        "type": "string"
+      },
+      "SourceIntakePolicyAudience": {
+        "additionalProperties": false,
+        "properties": {
+          "organizationId": {
+            "const": "org_stratos",
+            "title": "Organizationid",
+            "type": "string"
+          },
+          "scopeType": {
+            "enum": [
+              "organization",
+              "organization_unit",
+              "budget_scope",
+              "project",
+              "document",
+              "recipient_set",
+              "public"
+            ],
+            "title": "Scopetype",
+            "type": "string"
+          },
+          "scopeIds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scopeids",
+            "type": "array"
+          },
+          "recipientSubjectIds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Recipientsubjectids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "organizationId",
+          "scopeType"
+        ],
+        "title": "PolicyAudience",
+        "type": "object"
+      },
+      "SourceIntakePolicyObligation": {
+        "enum": [
+          "AUDIT_ACCESS",
+          "NO_EXTERNAL_AI",
+          "LOCAL_PROCESSING_ONLY",
+          "NO_PUBLIC_EXPORT",
+          "NO_EXPORT",
+          "WATERMARK",
+          "ENCRYPT_AT_REST",
+          "RECIPIENT_CONFIRMATION",
+          "ORIGINATOR_APPROVAL",
+          "PAP_ENFORCEMENT"
+        ],
+        "title": "PolicyObligation",
+        "type": "string"
+      },
+      "SourceIntakeSourceDocument": {
+        "additionalProperties": false,
+        "properties": {
+          "document_profile": {
+            "$ref": "#/components/schemas/SourceIntakeDocumentProfileInput"
+          },
+          "external_system": {
+            "enum": [
+              "STRATOS_PROJECTFLOW",
+              "STRATOS_ARCHFLOW"
+            ],
+            "title": "External System",
+            "type": "string"
+          },
+          "external_ref": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "External Ref",
+            "type": "string"
+          },
+          "entity_type": {
+            "enum": [
+              "project",
+              "task",
+              "status_report",
+              "need"
+            ],
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "entity_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Entity Id",
+            "type": "string"
+          },
+          "document_type": {
+            "$ref": "#/components/schemas/SourceIntakeDocumentType"
+          },
+          "title": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "classification": {
+            "$ref": "#/components/schemas/SourceIntakeClassification",
+            "default": "internal"
+          },
+          "information_policy": {
+            "$ref": "#/components/schemas/SourceIntakeDocumentInformationPolicyBinding",
+            "description": "Authoritative policy with explicit effective TLP; external and official imports have no unclassified admission mode."
+          },
+          "integration_envelope": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceIntakeIntegrationEnvelope"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "owner": {
+            "$ref": "#/components/schemas/SourceIntakeExternalDocumentOwner"
+          },
+          "tenant_id": {
+            "const": "org_stratos",
+            "default": "org_stratos",
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "gestor_unit": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Gestor Unit"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "source_location": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceIntakeSourceLocation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "akb_source_uri": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Akb Source Uri"
+          },
+          "citation_base_url": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Citation Base Url"
+          },
+          "preview_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Preview Url"
+          },
+          "access_policies": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SourceIntakeAccessPolicyCreate"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Access Policies"
+          },
+          "assignments": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SourceIntakeDocumentAssignmentCreate"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Assignments"
+          },
+          "governance_scope": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceIntakeGovernanceScope"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "parent_governed_resource_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Parent Governed Resource Id"
+          },
+          "source_document_id": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+            "title": "Source Document Id",
+            "type": "string"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Project Id"
+          }
+        },
+        "required": [
+          "document_profile",
+          "external_system",
+          "external_ref",
+          "entity_type",
+          "entity_id",
+          "document_type",
+          "title",
+          "information_policy",
+          "owner",
+          "source_document_id"
+        ],
+        "title": "SourceDocument",
+        "type": "object"
+      },
+      "SourceIntakeSourceFile": {
+        "additionalProperties": false,
+        "properties": {
+          "file_name": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "File Name",
+            "type": "string"
+          },
+          "file_size": {
+            "exclusiveMinimum": 0,
+            "maximum": 52428800,
+            "title": "File Size",
+            "type": "integer"
+          },
+          "file_type": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "File Type",
+            "type": "string"
+          },
+          "sha256": {
+            "pattern": "^sha256:[a-f0-9]{64}$",
+            "title": "Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_name",
+          "file_size",
+          "file_type",
+          "sha256"
+        ],
+        "title": "SourceFile",
+        "type": "object"
+      },
+      "SourceIntakeSourceLocation": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/SourceIntakeSourceLocationKind"
+          },
+          "uri": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Uri"
+          },
+          "file_name": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "File Name"
+          },
+          "content_type": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Content Type"
+          },
+          "sha256": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Sha256"
+          },
+          "storage_ref": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Storage Ref"
+          },
+          "captured_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Captured At"
+          },
+          "display_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Display Url"
+          },
+          "repository": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Repository"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Path"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Version"
+          },
+          "stratos_budget_upload": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Stratos Budget Upload"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "SourceLocation",
+        "type": "object"
+      },
+      "SourceIntakeSourceLocationKind": {
+        "enum": [
+          "url",
+          "uploaded_file",
+          "object_storage",
+          "generated_text",
+          "external_repository"
+        ],
+        "title": "SourceLocationKind",
+        "type": "string"
+      },
+      "SourceIntakeTlpLabel": {
+        "enum": [
+          "TLP:RED",
+          "TLP:AMBER+STRICT",
+          "TLP:AMBER",
+          "TLP:GREEN",
+          "TLP:CLEAR"
+        ],
+        "title": "TlpLabel",
+        "type": "string"
+      },
+      "SourceIntakeVersionDraft": {
+        "additionalProperties": false,
+        "properties": {
+          "lifecycle": {
+            "$ref": "#/components/schemas/SourceIntakeDocumentLifecycle"
+          },
+          "domain_evidence": {
+            "additionalProperties": true,
+            "title": "Domain Evidence",
+            "type": "object"
+          }
+        },
+        "required": [
+          "lifecycle",
+          "domain_evidence"
+        ],
+        "title": "VersionDraft",
+        "type": "object"
+      },
+      "SourceIntakeSourcePrepare": {
+        "additionalProperties": false,
+        "properties": {
+          "document": {
+            "$ref": "#/components/schemas/SourceIntakeSourceDocument"
+          },
+          "file": {
+            "$ref": "#/components/schemas/SourceIntakeSourceFile"
+          },
+          "source_revision": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Source Revision",
+            "type": "string"
+          },
+          "version_label": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Version Label",
+            "type": "string"
+          },
+          "version_profile": {
+            "$ref": "#/components/schemas/SourceIntakeVersionDraft"
+          },
+          "actor_subject_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Actor Subject Id",
+            "type": "string"
+          },
+          "correlation_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Correlation Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "document",
+          "file",
+          "source_revision",
+          "version_label",
+          "version_profile",
+          "actor_subject_id",
+          "correlation_id"
+        ],
+        "title": "SourcePrepare",
+        "type": "object"
+      },
+      "SourceIntakeSourceStatusRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "actor_subject_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Actor Subject Id",
+            "type": "string"
+          },
+          "correlation_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Correlation Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "actor_subject_id",
+          "correlation_id"
+        ],
+        "title": "SourceStatusRequest",
+        "type": "object"
+      },
+      "SourceIntakeSourceStatusResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "document_id": {
+            "title": "Document Id",
+            "type": "string"
+          },
+          "external_document_id": {
+            "title": "External Document Id",
+            "type": "string"
+          },
+          "document_version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Version Id"
+          },
+          "ingestion_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ingestion Job Id"
+          },
+          "ingestion_status": {
+            "title": "Ingestion Status",
+            "type": "string"
+          },
+          "document_status": {
+            "title": "Document Status",
+            "type": "string"
+          },
+          "document_version_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Version Status"
+          }
+        },
+        "required": [
+          "document_id",
+          "external_document_id",
+          "document_version_id",
+          "ingestion_job_id",
+          "ingestion_status",
+          "document_status",
+          "document_version_status"
+        ],
+        "title": "SourceStatusResponse",
+        "type": "object"
+      },
+      "SourceIntakeDocumentVersionProfileInput": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_root_metadata_revision": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^\\S+$",
+            "title": "Expected Root Metadata Revision",
+            "type": "string"
+          },
+          "lifecycle": {
+            "$ref": "#/components/schemas/SourceIntakeDocumentLifecycle"
+          },
+          "domain_evidence": {
+            "additionalProperties": true,
+            "title": "Domain Evidence",
+            "type": "object"
+          }
+        },
+        "required": [
+          "expected_root_metadata_revision",
+          "lifecycle",
+          "domain_evidence"
+        ],
+        "title": "DocumentVersionProfileInput",
+        "type": "object"
+      },
+      "SourceIntakeError": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message",
+              "trace_id"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "minLength": 1
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1
+              },
+              "trace_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "details": {
+                "type": "object"
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "SourceIntakeConfirmRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "upload_token": {
+            "type": "string",
+            "minLength": 1
+          },
+          "upload_receipt": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "upload_token",
+          "upload_receipt"
+        ]
+      },
+      "SourceIntakeConfirmResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "document_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "external_document_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "document_version_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ingestion_job_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ingestion_status": {
+            "type": "string",
+            "minLength": 1
+          },
+          "document_version_status": {
+            "type": "string",
+            "minLength": 1
+          },
+          "canonical_open_url": {
+            "type": "string",
+            "minLength": 1
+          },
+          "idempotent_replay": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "document_id",
+          "external_document_id",
+          "document_version_id",
+          "ingestion_job_id",
+          "ingestion_status",
+          "document_version_status",
+          "canonical_open_url",
+          "idempotent_replay"
+        ]
+      },
+      "SourceIntakePreflightResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "document_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "external_document_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "upload_session_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "upload_url": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_file_uri": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expires_at": {
+            "type": "string",
+            "minLength": 1
+          },
+          "bucket": {
+            "type": "string",
+            "minLength": 1
+          },
+          "object_key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "policy_binding_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "policy_version": {
+            "type": "string",
+            "minLength": 1
+          },
+          "policy_hash": {
+            "type": "string",
+            "minLength": 1
+          },
+          "upload_method": {
+            "const": "PUT",
+            "type": "string"
+          },
+          "document_profile": {
+            "$ref": "#/components/schemas/SourceIntakeDocumentVersionProfileInput"
+          },
+          "required_headers": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "Content-Type": {
+                "type": "string",
+                "minLength": 1
+              },
+              "X-AKL-Content-SHA256": {
+                "type": "string",
+                "minLength": 1
+              },
+              "X-AKL-Upload-Token": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "Content-Type",
+              "X-AKL-Content-SHA256",
+              "X-AKL-Upload-Token"
+            ]
+          },
+          "required_authentication": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "transport": {
+                "const": "server_to_server"
+              },
+              "service_bearer": {
+                "const": true
+              },
+              "actor_bearer": {
+                "const": true
+              }
+            },
+            "required": [
+              "transport",
+              "service_bearer",
+              "actor_bearer"
+            ]
+          },
+          "file": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "filename": {
+                "type": "string",
+                "minLength": 1
+              },
+              "mime_type": {
+                "type": "string",
+                "minLength": 1
+              },
+              "size_bytes": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "sha256": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "filename",
+              "mime_type",
+              "size_bytes",
+              "sha256"
+            ]
+          },
+          "limits": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "max_file_bytes": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "accepted_mime_types": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "required": [
+              "max_file_bytes",
+              "accepted_mime_types"
+            ]
+          }
+        },
+        "required": [
+          "document_id",
+          "external_document_id",
+          "upload_session_id",
+          "upload_url",
+          "source_file_uri",
+          "expires_at",
+          "bucket",
+          "object_key",
+          "policy_binding_id",
+          "policy_version",
+          "policy_hash",
+          "upload_method",
+          "document_profile",
+          "required_headers",
+          "required_authentication",
+          "file",
+          "limits"
+        ]
+      },
+      "SourceIntakeAuthorityRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "schema_version": {
+            "const": "stratos-source-intake-authorization-1"
+          },
+          "nonce": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$"
+          },
+          "stage": {
+            "enum": [
+              "prepare",
+              "upload",
+              "confirm"
+            ]
+          },
+          "document": {
+            "$ref": "#/components/schemas/SourceIntakeSourceDocument"
+          },
+          "file": {
+            "$ref": "#/components/schemas/SourceIntakeSourceFile"
+          },
+          "source_revision": {
+            "type": "string",
+            "minLength": 1
+          },
+          "version_profile": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceIntakeVersionDraft"
+              },
+              {
+                "$ref": "#/components/schemas/SourceIntakeDocumentVersionProfileInput"
+              }
+            ]
+          },
+          "actor_subject_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_client_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_service_subject_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "correlation_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "request_hash": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "schema_version",
+          "nonce",
+          "stage",
+          "document",
+          "file",
+          "source_revision",
+          "version_profile",
+          "actor_subject_id",
+          "source_client_id",
+          "source_service_subject_id",
+          "correlation_id",
+          "request_hash"
+        ]
+      },
+      "SourceIntakeAuthorityResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "schema_version": {
+            "const": "stratos-source-intake-authorization-1"
+          },
+          "allowed": {
+            "const": true
+          },
+          "nonce": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$"
+          },
+          "request_hash": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "schema_version",
+          "allowed",
+          "nonce",
+          "request_hash",
+          "expires_at"
+        ]
+      }
+    }
+  }
+}

@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { canonicalDocumentSnapshot } from "@/lib/documents/document-profile";
 import { NextRequest, NextResponse } from "next/server";
 
 import {
@@ -20,6 +22,8 @@ import {
 } from "@/lib/stratos/document-ai";
 import { ApiClientError, type ApiRequestContext } from "@/lib/types";
 import { createUploadPreflightDecision, validateUploadFileMetadata } from "@/lib/upload/preflight";
+import { parseDocumentVersionProfileInput } from "@/lib/documents/document-profile-validation";
+import { equalCanonicalJson } from "@/lib/stratos/canonical-json";
 
 import { stratosBridgeError } from "../../errors";
 
@@ -37,7 +41,7 @@ export async function POST(request: NextRequest) {
     const actorAuthorizationPresent = request.headers.get("X-STRATOS-Actor-Authorization") !== null;
     const workflow = stratosBudgetPreflightWorkflow(contract, actorAuthorizationPresent);
     if (workflow.mode === "interactive") {
-      await validateRequiredActor(request, contract.ownerSubjectId);
+      await validateRequiredActor(request, contract.actorSubjectId);
     }
 
     const uploadSettings = getStratosBudgetUploadSettings();
@@ -54,10 +58,15 @@ export async function POST(request: NextRequest) {
     const external = await upsertStratosBudgetExternalDocument({ contract, serviceContext });
     assertRegisteredBudgetDocument(external, contract);
     const document = external.document as StratosBudgetGovernedDocument;
+    const versionProfile = parseDocumentVersionProfileInput({
+      ...contract.documentVersionProfile,
+      expected_root_metadata_revision: document.document_profile?.metadataRevision,
+    }, contract.documentProfile);
 
     const preflight = createUploadPreflightDecision(
       {
         document_id: document.document_id,
+        document_profile: versionProfile,
         file_name: validatedFile.file_name,
         file_size: validatedFile.file_size,
         file_type: validatedFile.file_type,
@@ -78,7 +87,7 @@ export async function POST(request: NextRequest) {
           type: contract.governanceScope.type,
           id: contract.governanceScope.id,
         },
-        governance_actor_subject_id: contract.ownerSubjectId,
+        governance_actor_subject_id: contract.actorSubjectId,
         governance_registered_by_subject_id: service.subjectId,
         governance_correlation_id: contract.integrationEnvelope.correlationId,
         governance_idempotency_key: contract.integrationEnvelope.idempotencyKey,
@@ -97,8 +106,14 @@ export async function POST(request: NextRequest) {
         source_file_uri: preflight.source_file_uri,
         expires_at: preflight.expires_at,
         required_headers: preflight.required_headers,
+        required_authentication: {
+          transport: "server_to_server",
+          service_bearer: true,
+          actor_bearer: workflow.mode === "interactive",
+        },
         file: preflight.file,
         document_id: document.document_id,
+        document_profile: versionProfile,
         external_document_id: external.external_document.external_document_id,
         external_ref: contract.externalRef,
         policy_binding_id: contract.informationPolicy.policyBindingId,
@@ -106,7 +121,7 @@ export async function POST(request: NextRequest) {
         policy_hash: contract.integrationEnvelope.policyHash,
         canonical_open_url: canonicalDocumentUrl({ documentId: document.document_id }),
       },
-      { status: external.created ? 201 : 200 },
+      { status: external.created ? 201 : 200, headers: { "Cache-Control": "private, no-store" } },
     );
   } catch (error) {
     return stratosBridgeError(error);
@@ -157,7 +172,19 @@ function assertRegisteredBudgetDocument(
     || document.governance_scope_type !== contract.governanceScope.type
     || document.governance_scope_id !== contract.governanceScope.id
     || !document.governed_resource_id
-    || !["REGISTERED", "MOCK_BYPASSED"].includes(document.governance_registration_status ?? "")
+    || !document.current_root_metadata_revision
+    || !document.current_root_snapshot_hash
+    || !document.document_profile?.metadataRevision
+    || document.document_profile.metadataRevision !== document.current_root_metadata_revision
+    || `sha256:${createHash("sha256").update(canonicalDocumentSnapshot(document.document_profile)).digest("hex")}` !== document.current_root_snapshot_hash
+    || document.document_profile.documentId !== document.document_id
+    || !equalCanonicalJson(document.document_profile && {
+      profile: document.document_profile.profile,
+      authorship: document.document_profile.authorship,
+      provenance: document.document_profile.provenance,
+      accountability: document.document_profile.accountability,
+    }, contract.documentProfile)
+    || document.governance_registration_status !== "REGISTERED"
   ) {
     throw new ApiClientError(
       "Registry returned a conflicting STRATOS Budget document registration.",

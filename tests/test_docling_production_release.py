@@ -229,7 +229,7 @@ class DoclingProductionReleaseTests(unittest.TestCase):
         )
         self.assertEqual(manifest["schema"], "akb-docling-model-sources-1")
         self.assertEqual(manifest["profile"], "standard-cpu-v1")
-        self.assertEqual(manifest["docling_package"], "docling-slim==2.124.0")
+        self.assertEqual(manifest["docling_package"], "docling-slim==2.126.0")
         self.assertEqual(len(manifest["repositories"]), 2)
         self.assertTrue(
             all(

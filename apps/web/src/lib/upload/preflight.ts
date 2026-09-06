@@ -3,6 +3,10 @@ import { constants as fsConstants } from "node:fs";
 import { copyFile, link, mkdir, open, readFile, unlink } from "node:fs/promises";
 import path from "node:path";
 
+import { withAppBasePath } from "@/lib/app-url";
+import { ADMITTED_DOCUMENT_FORMATS, DOCUMENT_UPLOAD_EXTENSIONS, DOCUMENT_UPLOAD_MIME_TYPES, documentFormatForFilename } from "@/lib/documents/document-formats";
+import type { DocumentVersionProfileInput } from "@/lib/documents/document-profile";
+import { parseDocumentVersionProfileInput } from "@/lib/documents/document-profile-validation";
 import {
   headStoredObject,
   objectStorageSettingsFromEnv,
@@ -35,6 +39,7 @@ export interface UploadPreflightRequest {
   purpose?: string | null;
   workflow_mode?: string | null;
   workflow_context?: Record<string, string> | null;
+  document_profile?: DocumentVersionProfileInput | null;
 }
 
 export interface UploadPersistenceHooks {
@@ -55,6 +60,7 @@ export interface UploadPreflightDecision {
   policy_binding_id: string | null;
   policy_version: string | null;
   policy_hash: string | null;
+  document_profile: DocumentVersionProfileInput | null;
   file: {
     filename: string;
     mime_type: string;
@@ -96,6 +102,7 @@ export interface UploadTokenPayload {
   purpose: string | null;
   workflow_mode: string | null;
   workflow_context: Record<string, string> | null;
+  document_profile?: DocumentVersionProfileInput | null;
 }
 
 export interface UploadReceiptPayload {
@@ -164,81 +171,10 @@ const DEFAULT_EXPIRES_IN_SECONDS = 15 * 60;
 export const CONTROLLED_DOCUMENT_UPLOAD_TOKEN_PURPOSE = "controlled-document-upload";
 const SHA256_PATTERN = /^sha256:[a-fA-F0-9]{64}$/;
 
-const ACCEPTED_MIME_TYPES = [
-  "application/bpmn+xml",
-  "application/mermaid",
-  "application/json",
-  "application/msword",
-  "application/pdf",
-  "application/rtf",
-  "application/vnd.asyncapi",
-  "application/vnd.asyncapi+json",
-  "application/vnd.jgraph.mxfile",
-  "application/vnd.ms-excel.sheet.macroEnabled.12",
-  "application/vnd.oai.openapi",
-  "application/vnd.oai.openapi+json",
-  "application/vnd.opengroup.archimate.exchange+xml",
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/xhtml+xml",
-  "application/xml",
-  "application/x-yaml",
-  "application/yaml",
-  "image/gif",
-  "image/jpeg",
-  "image/png",
-  "image/svg+xml",
-  "image/webp",
-  "text/csv",
-  "text/html",
-  "text/markdown",
-  "text/plain",
-  "text/rtf",
-  "text/vnd.mermaid",
-  "text/xml",
-  "text/x-plantuml",
-  "text/x-yaml",
-  "text/yaml"
-];
-
-const EXTENSION_MIME_TYPES = new Map<string, string>([
-  [".archimate", "application/vnd.opengroup.archimate.exchange+xml"],
-  [".archimate3", "application/vnd.opengroup.archimate.exchange+xml"],
-  [".asyncapi", "application/vnd.asyncapi"],
-  [".bpmn", "application/bpmn+xml"],
-  [".csv", "text/csv"],
-  [".dio", "application/vnd.jgraph.mxfile"],
-  [".doc", "application/msword"],
-  [".docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
-  [".drawio", "application/vnd.jgraph.mxfile"],
-  [".gif", "image/gif"],
-  [".htm", "text/html"],
-  [".html", "text/html"],
-  [".jpeg", "image/jpeg"],
-  [".jpg", "image/jpeg"],
-  [".json", "application/json"],
-  [".md", "text/markdown"],
-  [".markdown", "text/markdown"],
-  [".mermaid", "text/vnd.mermaid"],
-  [".mmd", "text/vnd.mermaid"],
-  [".openapi", "application/vnd.oai.openapi"],
-  [".pdf", "application/pdf"],
-  [".plantuml", "text/x-plantuml"],
-  [".png", "image/png"],
-  [".pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"],
-  [".puml", "text/x-plantuml"],
-  [".rtf", "application/rtf"],
-  [".svg", "image/svg+xml"],
-  [".txt", "text/plain"],
-  [".webp", "image/webp"],
-  [".xlsm", "application/vnd.ms-excel.sheet.macroEnabled.12"],
-  [".xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
-  [".xhtml", "application/xhtml+xml"],
-  [".xml", "application/xml"],
-  [".yaml", "application/yaml"],
-  [".yml", "application/yaml"]
-]);
+const ACCEPTED_MIME_TYPES = DOCUMENT_UPLOAD_MIME_TYPES;
+const EXTENSION_MIME_TYPES = new Map<string, string>(ADMITTED_DOCUMENT_FORMATS.flatMap(
+  (format) => format.extensions.map((extension): [string, string] => [extension, format.mime_type]),
+));
 
 export function getUploadSettings(env: Record<string, string | undefined> = process.env): UploadSettings {
   const environment = env.AKL_ENV ?? "development";
@@ -262,7 +198,7 @@ export function getUploadSettings(env: Record<string, string | undefined> = proc
       (storage.storageMode === "s3" ? "./upload-quarantine" : objectStorageRoot),
     signingSecret: signingSecret || "akl-local-upload-signing-secret",
     maxFileBytes: parsePositiveInteger(env.AKL_WEB_UPLOAD_MAX_FILE_BYTES, DEFAULT_MAX_FILE_BYTES),
-    publicUploadBasePath: env.AKL_WEB_UPLOAD_PUBLIC_BASE_PATH ?? "/api/controlled-document/upload/sessions",
+    publicUploadBasePath: env.AKL_WEB_UPLOAD_PUBLIC_BASE_PATH ?? withAppBasePath("/api/document-intake/v1/sessions"),
     expiresInSeconds: parsePositiveInteger(env.AKL_WEB_UPLOAD_TOKEN_TTL_SECONDS, DEFAULT_EXPIRES_IN_SECONDS)
   };
 }
@@ -315,6 +251,7 @@ export function createUploadPreflightDecision(
     purpose: normalizeTokenMarker(request.purpose, "purpose"),
     workflow_mode: normalizeTokenMarker(request.workflow_mode, "workflow_mode"),
     workflow_context: normalizeWorkflowContext(request.workflow_context),
+    document_profile: normalizeUploadDocumentProfile(request.document_profile, request.purpose),
   };
   const uploadToken = signUploadToken(payload, settings);
 
@@ -334,6 +271,7 @@ export function createUploadPreflightDecision(
     policy_binding_id: payload.policy_binding_id,
     policy_version: payload.policy_version,
     policy_hash: payload.policy_hash,
+    document_profile: payload.document_profile ?? null,
     file: {
       filename,
       mime_type: mimeType,
@@ -390,6 +328,7 @@ export function verifyUploadToken(token: string, settings: UploadSettings = getU
   payload.purpose = normalizeTokenMarker(payload.purpose, "purpose", true);
   payload.workflow_mode = normalizeTokenMarker(payload.workflow_mode, "workflow_mode", true);
   payload.workflow_context = normalizeWorkflowContext(payload.workflow_context, true);
+  payload.document_profile = normalizeUploadDocumentProfile(payload.document_profile, payload.purpose, true);
   if (payload.bucket !== settings.bucket) {
     throw new UploadPreflightError(401, "INVALID_UPLOAD_TOKEN", "Upload token bucket is not valid.");
   }
@@ -1188,12 +1127,26 @@ function normalizeFilename(value: string): string {
   if (!filename) {
     throw new UploadPreflightError(400, "FILE_NAME_REQUIRED", "file_name is required.");
   }
-  if (!EXTENSION_MIME_TYPES.has(path.extname(filename).toLowerCase())) {
-    throw new UploadPreflightError(415, "FILE_EXTENSION_UNSUPPORTED", "File extension is not supported.", {
-      accepted_extensions: Array.from(EXTENSION_MIME_TYPES.keys())
-    });
+  const format = documentFormatForFilename(filename);
+  if (!format || format.admission !== "enabled") {
+    throw new UploadPreflightError(415, format ? "FILE_FORMAT_UNAVAILABLE" : "FILE_EXTENSION_UNSUPPORTED",
+      format?.limitation.en ?? "File extension is not supported.", {
+        accepted_extensions: DOCUMENT_UPLOAD_EXTENSIONS,
+      });
   }
   return filename;
+}
+
+function normalizeUploadDocumentProfile(value: unknown, purpose: string | null | undefined, tokenValidation = false): DocumentVersionProfileInput | null {
+  const required = ["controlled-document-upload", "stratos-budget-upload", "stratos-source-upload", "official-public-source-sync"].includes(purpose ?? "");
+  if (!required && value == null) return null;
+  try {
+    return parseDocumentVersionProfileInput(value);
+  } catch (error) {
+    if (!tokenValidation) throw error;
+    throw new UploadPreflightError(401, value == null ? "UPLOAD_TOKEN_PROFILE_REQUIRED" : "UPLOAD_TOKEN_PROFILE_INVALID",
+      value == null ? "Signed document_profile is required for this intake purpose." : "Signed document_profile is invalid.");
+  }
 }
 
 function normalizeTokenMarker(
@@ -1280,17 +1233,8 @@ function normalizeMimeType(filename: string, value?: string | null): string {
     return expected;
   }
 
-  if (
-    provided === expected ||
-    (extension === ".rtf" && provided === "text/rtf") ||
-    (extension === ".xml" && provided === "text/xml") ||
-    (extension === ".svg" && provided === "application/xml") ||
-    (extension === ".htm" && provided === "text/html") ||
-    (ARCHITECTURE_XML_EXTENSIONS.has(extension) && XML_MIME_ALIASES.has(provided)) ||
-    (ARCHITECTURE_TEXT_EXTENSIONS.has(extension) && TEXT_MIME_ALIASES.has(provided)) ||
-    (YAML_EXTENSIONS.has(extension) && YAML_MIME_ALIASES.has(provided)) ||
-    (API_SPEC_EXTENSIONS.has(extension) && API_SPEC_MIME_ALIASES.has(provided))
-  ) {
+  const format = documentFormatForFilename(filename)!;
+  if ([format.mime_type, ...format.mime_aliases].some((mime) => mime.toLowerCase() === provided)) {
     return provided;
   }
 
@@ -1299,31 +1243,6 @@ function normalizeMimeType(filename: string, value?: string | null): string {
     provided_mime_type: provided
   });
 }
-
-const ARCHITECTURE_XML_EXTENSIONS = new Set([".archimate", ".archimate3", ".bpmn", ".dio", ".drawio"]);
-const ARCHITECTURE_TEXT_EXTENSIONS = new Set([".mermaid", ".mmd", ".plantuml", ".puml"]);
-const YAML_EXTENSIONS = new Set([".yaml", ".yml"]);
-const API_SPEC_EXTENSIONS = new Set([".asyncapi", ".openapi"]);
-const XML_MIME_ALIASES = new Set([
-  "application/xml",
-  "text/xml",
-  "application/bpmn+xml",
-  "application/vnd.jgraph.mxfile",
-  "application/vnd.opengroup.archimate.exchange+xml"
-]);
-const TEXT_MIME_ALIASES = new Set(["application/mermaid", "text/plain", "text/vnd.mermaid", "text/x-plantuml"]);
-const YAML_MIME_ALIASES = new Set(["application/yaml", "application/x-yaml", "text/yaml", "text/x-yaml", "text/plain"]);
-const API_SPEC_MIME_ALIASES = new Set([
-  "application/json",
-  "application/vnd.asyncapi",
-  "application/vnd.asyncapi+json",
-  "application/vnd.oai.openapi",
-  "application/vnd.oai.openapi+json",
-  "application/yaml",
-  "application/x-yaml",
-  "text/yaml",
-  "text/x-yaml"
-]);
 
 function resolveObjectPath(payload: UploadTokenPayload, settings: UploadSettings): string {
   const root = path.resolve(settings.objectStorageRoot);

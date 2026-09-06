@@ -15,7 +15,7 @@ type ExactServiceProfile = {
   role: string;
 };
 
-export type StratosDocumentSourceSystem = "STRATOS_BUDGET";
+export type StratosDocumentSourceSystem = "STRATOS_BUDGET" | "STRATOS_PROJECTFLOW" | "STRATOS_ARCHFLOW";
 
 type StratosDocumentServiceProfile = ExactServiceProfile & {
   allowedSourceSystems: readonly StratosDocumentSourceSystem[];
@@ -33,7 +33,11 @@ const STRATOS_BUDGET_DOCUMENT_SERVICE: StratosDocumentServiceProfile = {
   allowedSourceSystems: ["STRATOS_BUDGET"],
 };
 
-const STRATOS_DOCUMENT_SERVICES = [STRATOS_BUDGET_DOCUMENT_SERVICE] as const;
+const STRATOS_DOCUMENT_SERVICES: readonly StratosDocumentServiceProfile[] = [
+  STRATOS_BUDGET_DOCUMENT_SERVICE,
+  { clientId: "stratos-projectflow-akb-service", audience: "akl-api", role: "service_ingestion", allowedSourceSystems: ["STRATOS_PROJECTFLOW"] },
+  { clientId: "stratos-archflow-akb-service", audience: "akl-api", role: "service_ingestion", allowedSourceSystems: ["STRATOS_ARCHFLOW"] },
+];
 
 export async function authenticateStratosDocumentServiceRequest(
   request: Request,
@@ -83,8 +87,8 @@ export function requireStratosDocumentSourceAllowed(
   sourceSystem: unknown,
 ): StratosDocumentSourceSystem {
   if (
-    sourceSystem !== "STRATOS_BUDGET"
-    || !principal.allowedSourceSystems.includes(sourceSystem)
+    typeof sourceSystem !== "string"
+    || !principal.allowedSourceSystems.includes(sourceSystem as StratosDocumentSourceSystem)
   ) {
     throw new ApiClientError(
       "The document service is not authorized for this STRATOS source system.",
@@ -93,7 +97,7 @@ export function requireStratosDocumentSourceAllowed(
       "web-stratos-document-service-auth",
     );
   }
-  return sourceSystem;
+  return sourceSystem as StratosDocumentSourceSystem;
 }
 
 type OidcJsonWebKey = JsonWebKey & { kid?: string; alg?: string };

@@ -9,6 +9,7 @@ import httpx
 
 from app.config import Settings
 from app.errors import IngestionError
+from app.document_policy import require_document_policy
 from app.schemas import DocumentChunk
 from intelligence.entities import intelligence_payload_fields
 
@@ -48,6 +49,9 @@ class QdrantIndexer:
             raise IngestionError("INDEXING_INPUT_INVALID", "Chunk and vector counts do not match", status_code=500)
         if not chunks:
             return IndexingResult(indexed_chunks=0)
+
+        for chunk in chunks:
+            require_document_policy(chunk)
 
         if self.settings.indexer_mode == "mock":
             self.mock_points = [

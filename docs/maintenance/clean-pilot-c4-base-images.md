@@ -28,7 +28,7 @@ SHA-256 references. The preflight rejects mutable upstream tags.
 All Python build dependencies come from committed `requirements.c4.lock` files
 with exact versions and SHA-256 hashes. Ingestion system packages come from the
 fixed Debian snapshot `20260824T000000Z` and direct packages are version-pinned.
-The web build downloads the exact pnpm 11.7.0 tarball with a Dockerfile SHA-256
+The web build downloads the exact pnpm 11.19.0 tarball with a Dockerfile SHA-256
 checksum, uses `pnpm-lock.yaml` in frozen mode, and does not install Alpine
 packages at build time. `scripts/ci/check_clean_pilot_c4_inputs.py` rejects a
 missing hash, mutable base image, unapproved package download, or build-policy

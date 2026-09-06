@@ -1,14 +1,9 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Activity,
-  ChevronDown,
-  Database,
-  LogOut,
   Menu,
-  Settings,
   X,
 } from "lucide-react";
 import {
@@ -171,25 +166,16 @@ export function ProjectTopbar({
     };
   }, [apiModeLabel, authModeLabel, healthLabel, language, standaloneChat]);
 
-  if (standaloneChat) {
-    return (
-      <StandaloneChatTopbar
-        language={language}
-        onLogout={onLogout}
-        onSettingsOpen={onSettingsOpen}
-        user={user}
-      />
-    );
-  }
-
   return (
     <GlobalTopbar
-      currentAppId="akb"
+      currentAppId={standaloneChat ? "chat" : "akb"}
       appAvailability={applyAkbStratosAppsVisibility(
         buildStratosAppsAvailabilityFromAccessProjection(applicationAccess),
         STRATOS_APP_DIRECTORY.map(({ id }) => id),
       )}
       appUrls={{
+        akb: process.env.NEXT_PUBLIC_AKB_URL,
+        chat: process.env.NEXT_PUBLIC_CHAT_URL,
         "budget-contract": process.env.NEXT_PUBLIC_STRATOS_HOME_URL,
         projectflow: process.env.NEXT_PUBLIC_PROJECTFLOW_URL,
         archflow: process.env.NEXT_PUBLIC_ARCHFLOW_URL,
@@ -248,7 +234,7 @@ export function ProjectTopbar({
           </span>
         ),
       }}
-      context={
+      context={standaloneChat ? undefined : (
         <GlobalTopbarBreadcrumb
           ariaLabel={language === "cs" ? "Aktuální umístění" : "Current location"}
           items={[
@@ -256,7 +242,7 @@ export function ProjectTopbar({
             { id: "project", label: projectName, current: true },
           ]}
         />
-      }
+      )}
       center={showCommandCenter ? (
         <CommandCenterTrigger
           label={commandCenterPlaceholder}
@@ -264,7 +250,7 @@ export function ProjectTopbar({
           onClick={onCommandCenterOpen}
         />
       ) : undefined}
-      status={
+      status={standaloneChat ? undefined : (
         <TopbarStatusGroup
           label={language === "cs" ? "Stav systému" : "System status"}
           ariaLive="polite"
@@ -278,139 +264,9 @@ export function ProjectTopbar({
             },
           ]}
         />
-      }
+      )}
       onLogout={onLogout}
       onSettings={onSettingsOpen}
     />
-  );
-}
-
-function StandaloneChatTopbar({
-  language,
-  onLogout,
-  onSettingsOpen,
-  user,
-}: {
-  language: AklLanguage;
-  onLogout: () => void;
-  onSettingsOpen?: () => void;
-  user: AklTopbarUserProfile;
-}) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRootRef = useRef<HTMLDivElement | null>(null);
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
-
-  useEffect(() => {
-    if (!menuOpen) {
-      return;
-    }
-    const closeOnOutside = (event: PointerEvent) => {
-      if (!menuRootRef.current?.contains(event.target as Node)) {
-        setMenuOpen(false);
-      }
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setMenuOpen(false);
-        triggerRef.current?.focus();
-      }
-    };
-    document.addEventListener("pointerdown", closeOnOutside);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeOnOutside);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [menuOpen]);
-
-  const labels = language === "cs"
-    ? {
-        app: "AKB Chat",
-        assistant: "Znalostní asistent",
-        menu: "Uživatelské menu",
-        settings: "Nastavení",
-        logout: "Odhlásit",
-      }
-    : {
-        app: "AKB Chat",
-        assistant: "Knowledge assistant",
-        menu: "User menu",
-        settings: "Settings",
-        logout: "Sign out",
-      };
-
-  return (
-    <header className="akb-standalone-topbar">
-      <Link
-        className="akb-standalone-topbar__brand"
-        href={withAppBasePath("/")}
-        aria-label={labels.app}
-      >
-        <span className="akb-standalone-topbar__mark" aria-hidden="true">
-          <Database size={20} strokeWidth={2.2} />
-        </span>
-        <span>
-          <strong>{labels.app}</strong>
-          <small>{labels.assistant}</small>
-        </span>
-      </Link>
-      <div className="akb-standalone-topbar__user" ref={menuRootRef}>
-        <button
-          ref={triggerRef}
-          type="button"
-          className="akb-standalone-topbar__user-trigger"
-          aria-label={labels.menu}
-          aria-haspopup="menu"
-          aria-expanded={menuOpen}
-          onClick={() => setMenuOpen((open) => !open)}
-        >
-          <span className="akb-standalone-topbar__user-name">
-            {user.name}
-          </span>
-          <span className="akb-standalone-topbar__avatar" aria-hidden="true">
-            {user.avatarImageUrl ? (
-              <img src={user.avatarImageUrl} alt="" />
-            ) : (
-              <span style={{ background: user.avatarColor ?? "#0f8c7f" }}>
-                {user.initials.slice(0, 2)}
-              </span>
-            )}
-          </span>
-          <ChevronDown size={16} aria-hidden="true" />
-        </button>
-        {menuOpen ? (
-          <div className="akb-standalone-topbar__menu" role="menu">
-            <div className="akb-standalone-topbar__identity">
-              <strong>{user.name}</strong>
-              {user.email ? <span>{user.email}</span> : null}
-            </div>
-            {onSettingsOpen ? (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  onSettingsOpen();
-                }}
-              >
-                <Settings size={17} aria-hidden="true" />
-                {labels.settings}
-              </button>
-            ) : null}
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
-                setMenuOpen(false);
-                onLogout();
-              }}
-            >
-              <LogOut size={17} aria-hidden="true" />
-              {labels.logout}
-            </button>
-          </div>
-        ) : null}
-      </div>
-    </header>
   );
 }

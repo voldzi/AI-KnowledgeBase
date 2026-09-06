@@ -21,6 +21,7 @@ class ContentSecurityAttestation:
     signature_version: str | None
     scanned_at: datetime
     receipt_sha256: str
+    upload_session_id: str | None = None
 
 
 def verify_content_security_attestation(
@@ -120,6 +121,7 @@ def verify_content_security_attestation(
         ),
         scanned_at=scanned_at,
         receipt_sha256="sha256:" + hashlib.sha256(receipt.encode("utf-8")).hexdigest(),
+        upload_session_id=_optional_string(payload.get("session_id")),
     )
 
 

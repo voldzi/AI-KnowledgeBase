@@ -1,4 +1,8 @@
 from types import SimpleNamespace
+from document_intake_fixtures import INTAKE_SECRET, _intake_receipt
+from document_profile_fixtures import root_profile, verified_profile_authority
+
+import pytest
 
 from app.access_governance import StratosGovernanceClient
 from app.config import Settings
@@ -25,6 +29,74 @@ PARENT_RESOURCE = "gres-budget-contract-123"
 EXTERNAL_REF = f"contract:{CONTRACT_ID}:document:signed"
 FILE_HASH = f"sha256:{'a' * 64}"
 FILE_HASH_2 = f"sha256:{'b' * 64}"
+
+def _create_attested_budget_version(client, monkeypatch):
+    from app import api
+
+    monkeypatch.setattr(api.get_settings(), "content_security_required", True)
+    monkeypatch.setattr(api.get_settings(), "content_security_attestation_secret", INTAKE_SECRET)
+    document = client.post(
+        "/api/v1/integrations/stratos-budget-upload/external-documents/upsert",
+        json=_preflight_payload(), headers=_service_headers(),
+    ).json()["document"]
+    payload = _version_payload(document=document)
+    payload["file"]["intake_receipt"] = _intake_receipt(document["document_id"], payload, session="original")
+    endpoint = f"/api/v1/integrations/stratos-budget-upload/documents/{document['document_id']}/versions"
+    response = client.put(endpoint, json=payload, headers=_service_headers())
+    assert response.status_code == 201, response.text
+    return document, payload, response.json()["version"], endpoint
+
+
+def test_budget_new_session_replay_preserves_original_file_and_scan_evidence(client, db_session, monkeypatch, verified_profile_authority):
+    document, payload, version, endpoint = _create_attested_budget_version(client, monkeypatch)
+    original_file = db_session.get(DocumentFile, version["file_id"])
+    original_proof = original_file.content_security_attestation_sha256
+    original_scan_time = original_file.content_security_scanned_at
+    payload["source_file_uri"] = "s3://akl-documents/budget/new-session/smlouva.pdf"
+    payload["source_location"]["uri"] = payload["source_file_uri"]
+    payload["file"]["intake_receipt"] = _intake_receipt(document["document_id"], payload, session="new")
+
+    replay = client.put(endpoint, json=payload, headers=_service_headers())
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["created"] is False
+    assert replay.json()["version"]["source_file_uri"] == version["source_file_uri"]
+    assert replay.json()["version"]["file_id"] == version["file_id"]
+    assert replay.json()["version"]["document_version_id"] == version["document_version_id"]
+    db_session.refresh(original_file)
+    assert original_file.content_security_attestation_sha256 == original_proof
+    assert original_file.content_security_scanned_at == original_scan_time
+    assert original_file.uri == version["source_file_uri"]
+    assert db_session.query(DocumentFile).count() == 1
+    assert db_session.query(DocumentVersion).count() == 1
+
+
+@pytest.mark.parametrize("field,value", [
+    ("content_security_status", "infected"),
+    ("content_security_engine", "disabled"),
+    ("content_security_attestation_sha256", None),
+    ("content_security_scanned_at", None),
+])
+def test_budget_replay_does_not_replace_missing_original_scan_evidence(client, db_session, monkeypatch, field, value, verified_profile_authority):
+    document, payload, version, endpoint = _create_attested_budget_version(client, monkeypatch)
+    original_file = db_session.get(DocumentFile, version["file_id"])
+    setattr(original_file, field, value)
+    db_session.commit()
+    payload["file"]["intake_receipt"] = _intake_receipt(document["document_id"], payload, session="rescan")
+    replay = client.put(endpoint, json=payload, headers=_service_headers())
+    assert replay.status_code == 409, replay.text
+    assert replay.json()["error"]["code"] == ("document_intake_attestation_required" if field == "content_security_engine" else "document_profile_verified_source_required")
+    db_session.refresh(original_file)
+    assert getattr(original_file, field) == value
+
+
+def test_budget_replay_still_rejects_receipt_for_another_uploaded_object(client, db_session, monkeypatch, verified_profile_authority):
+    _, payload, version, endpoint = _create_attested_budget_version(client, monkeypatch)
+    payload["source_file_uri"] = "s3://akl-documents/budget/unattested/smlouva.pdf"
+    payload["source_location"]["uri"] = payload["source_file_uri"]
+    replay = client.put(endpoint, json=payload, headers=_service_headers())
+    assert replay.status_code == 409, replay.text
+    assert replay.json()["error"]["code"] == "document_intake_attestation_invalid"
+    assert db_session.get(DocumentFile, version["file_id"]).uri == version["source_file_uri"]
 
 
 def test_budget_governance_client_preserves_explicit_null_classification(monkeypatch):
@@ -178,7 +250,10 @@ def _preflight_payload(
     contract_number: str = "S-2023-001",
     contract_name: str = "Smlouva o provozu IT služeb",
 ) -> dict:
+    profile = root_profile(profile_id="akb.contract", owner=ACTOR, gestor="unit_contracts")
+    profile["provenance"] = {"sourceSystem": "STRATOS_BUDGET", "sourceRecordId": CONTRACT_ID, "sourceGovernedResourceId": PARENT_RESOURCE}
     return {
+        "document_profile": profile,
         "tenant_id": "org_stratos",
         "external_system": "STRATOS_BUDGET",
         "external_ref": EXTERNAL_REF,
@@ -189,7 +264,7 @@ def _preflight_payload(
         "classification": "internal",
         "information_policy": _policy(),
         "integration_envelope": _envelope(file_hash, actor=actor),
-        "owner": {"user_id": actor, "display_name": "Správce smlouvy"},
+        "owner": {"user_id": ACTOR, "display_name": "Správce smlouvy"},
         "tags": ["contract", "historical-import"],
         "metadata": {
             "contract_id": CONTRACT_ID,
@@ -220,10 +295,16 @@ def _preflight_payload(
     }
 
 
-def _version_payload(file_hash: str = FILE_HASH, *, actor: str = ACTOR) -> dict:
+def _version_payload(file_hash: str = FILE_HASH, *, document: dict, actor: str = ACTOR) -> dict:
     filename = "smlouva.pdf" if file_hash == FILE_HASH else "smlouva-v2.pdf"
     uri = f"s3://akl-documents/budget/{filename}"
-    return {
+    payload = {
+        "document_profile": {
+            "expected_root_metadata_revision": document["current_root_metadata_revision"],
+            "lifecycle": {"mode": "fixed_interval", "effectiveFrom": "2023-01-01", "effectiveTo": "2025-12-31", "recordedOn": None,
+                          "reviewAt": "2026-12-31", "reviewRuleId": "akb.review.annual", "retentionRuleId": "akb.retention.organizational-record"},
+            "domain_evidence": {"family": "contract", "contractReference": CONTRACT_ID, "partyReferences": ["supplier-test", "org_stratos"],
+                                "executionStatus": "signed", "executionEvidenceReference": "signed-test-contract"}},
         "external_ref": EXTERNAL_REF,
         "version_label": "contract-file-v1",
         "valid_from": "2023-01-01",
@@ -263,6 +344,9 @@ def _version_payload(file_hash: str = FILE_HASH, *, actor: str = ACTOR) -> dict:
         },
     }
 
+    payload["file"]["intake_receipt"] = _intake_receipt(document["document_id"], payload, session="test-budget-version")
+    return payload
+
 
 def _create_document_and_version(client) -> tuple[dict, dict]:
     created = client.post(
@@ -274,7 +358,7 @@ def _create_document_and_version(client) -> tuple[dict, dict]:
     version = client.put(
         "/api/v1/integrations/stratos-budget-upload/documents/"
         f"{created.json()['document']['document_id']}/versions",
-        json=_version_payload(),
+        json=_version_payload(document=created.json()["document"]),
         headers=_service_headers(),
     )
     assert version.status_code == 201, version.text
@@ -307,7 +391,8 @@ def _select_current_version(client, created: dict, version_created: dict) -> Non
     assert response.status_code == 200, response.text
 
 
-def test_budget_bridge_exposes_exact_current_lineage_only_to_upload_service(client) -> None:
+def test_budget_bridge_exposes_exact_current_lineage_only_to_upload_service(client, verified_profile_authority
+) -> None:
     created, version_created = _create_document_and_version(client)
     document = created["document"]
     version = version_created["version"]
@@ -347,7 +432,7 @@ def test_budget_bridge_exposes_exact_current_lineage_only_to_upload_service(clie
 
 
 def test_budget_bridge_is_exact_idempotent_and_service_audited(
-    client, db_session, admin_headers
+    client, db_session, admin_headers, verified_profile_authority
 ) -> None:
     created, version_created = _create_document_and_version(client)
     document = created["document"]
@@ -431,20 +516,13 @@ def test_budget_bridge_is_exact_idempotent_and_service_audited(
     assert document_replay.json()["created"] is False
     assert document_replay.json()["document"]["document_id"] == document["document_id"]
 
+    retry_payload = _version_payload(document=document)
+    retry_payload["source_file_uri"] = "s3://akl-documents/budget/retry/smlouva.pdf"
+    retry_payload["source_location"].update(uri=retry_payload["source_file_uri"], storage_ref="budget/retry/smlouva.pdf", captured_at="2026-07-20T12:00:00Z")
+    retry_payload["file"]["intake_receipt"] = _intake_receipt(document["document_id"], retry_payload, session="retry")
     version_replay = client.put(
-        "/api/v1/integrations/stratos-budget-upload/documents/"
-        f"{document['document_id']}/versions",
-        json={
-            **_version_payload(),
-            "source_file_uri": "s3://akl-documents/budget/retry/smlouva.pdf",
-            "source_location": {
-                **_version_payload()["source_location"],
-                "uri": "s3://akl-documents/budget/retry/smlouva.pdf",
-                "storage_ref": "budget/retry/smlouva.pdf",
-                "captured_at": "2026-07-20T12:00:00Z",
-            },
-        },
-        headers=_service_headers(),
+        f"/api/v1/integrations/stratos-budget-upload/documents/{document['document_id']}/versions",
+        json=retry_payload, headers=_service_headers(),
     )
     assert version_replay.status_code == 200, version_replay.text
     assert version_replay.json()["created"] is False
@@ -490,6 +568,7 @@ def test_budget_bridge_is_exact_idempotent_and_service_audited(
     generic_version = client.post(
         f"/api/v1/documents/{document['document_id']}/versions",
         json={
+            "document_profile": _version_payload(document=document)["document_profile"],
             "version_label": "forged",
             "source_file_uri": "s3://akl-documents/budget/forged.pdf",
             "file_hash": FILE_HASH,
@@ -509,7 +588,7 @@ def test_budget_bridge_is_exact_idempotent_and_service_audited(
 
 
 def test_budget_bridge_allows_another_authorized_actor_to_update_descriptive_metadata_and_add_version(
-    client, db_session
+    client, db_session, verified_profile_authority
 ) -> None:
     created, first_version_created = _create_document_and_version(client)
     document = created["document"]
@@ -552,7 +631,7 @@ def test_budget_bridge_allows_another_authorized_actor_to_update_descriptive_met
         "title",
     ]
 
-    second_version_payload = _version_payload(FILE_HASH_2, actor=SECOND_ACTOR)
+    second_version_payload = _version_payload(FILE_HASH_2, document=corrected_document, actor=SECOND_ACTOR)
     second_version_payload["version_label"] = "contract-file-v2"
     second_version_payload["batch_lineage"] = {
         "batch_manifest_id": "budget-contract-documents-correction",
@@ -590,7 +669,7 @@ def test_budget_bridge_allows_another_authorized_actor_to_update_descriptive_met
         == "budget-contract-documents-correction"
     )
 
-    replay_with_other_batch = _version_payload()
+    replay_with_other_batch = _version_payload(document=document)
     replay_with_other_batch["batch_lineage"] = second_version_payload["batch_lineage"]
     replay = client.put(
         "/api/v1/integrations/stratos-budget-upload/documents/"
@@ -604,7 +683,7 @@ def test_budget_bridge_allows_another_authorized_actor_to_update_descriptive_met
 
 
 def test_budget_bridge_enforces_service_role_scope_parent_and_replay_conflicts(
-    client
+    client, verified_profile_authority
 ) -> None:
     missing_role = client.post(
         "/api/v1/integrations/stratos-budget-upload/external-documents/upsert",
@@ -645,15 +724,16 @@ def test_budget_bridge_enforces_service_role_scope_parent_and_replay_conflicts(
 
     parent_conflict = _preflight_payload()
     parent_conflict["parent_governed_resource_id"] = "gres-budget-other-contract"
+    parent_conflict["document_profile"]["provenance"]["sourceGovernedResourceId"] = "gres-budget-other-contract"
     parent_response = client.post(
         "/api/v1/integrations/stratos-budget-upload/external-documents/upsert",
         json=parent_conflict,
         headers=_service_headers(),
     )
     assert parent_response.status_code == 409
-    assert parent_response.json()["error"]["code"] == "stratos_budget_upload_lineage_conflict"
+    assert parent_response.json()["error"]["code"] == "document_profile_conflict"
 
-    version_hash_conflict = _version_payload(FILE_HASH_2)
+    version_hash_conflict = _version_payload(FILE_HASH_2, document=document)
     hash_response = client.put(
         "/api/v1/integrations/stratos-budget-upload/documents/"
         f"{document['document_id']}/versions",
@@ -684,7 +764,8 @@ def test_budget_bridge_enforces_service_role_scope_parent_and_replay_conflicts(
     assert invalid_pair.status_code == 422
 
 
-def test_budget_bridge_accepts_global_financial_scope(client) -> None:
+def test_budget_bridge_accepts_global_financial_scope(client, verified_profile_authority
+) -> None:
     payload = _preflight_payload()
     global_policy = _policy("budget-global")
     payload["information_policy"] = global_policy
@@ -704,7 +785,8 @@ def test_budget_bridge_accepts_global_financial_scope(client) -> None:
     assert created.json()["document"]["governance_scope_id"] == "budget-global"
 
 
-def test_budget_document_lifecycle_can_only_advance_to_archived(client) -> None:
+def test_budget_document_lifecycle_can_only_advance_to_archived(client, verified_profile_authority
+) -> None:
     current_payload = _preflight_payload()
     current_payload["metadata"].update(
         {
@@ -750,7 +832,8 @@ def test_budget_document_lifecycle_can_only_advance_to_archived(client) -> None:
     )
 
 
-def test_budget_bridge_attaches_only_authoritative_ingestion_job(client) -> None:
+def test_budget_bridge_attaches_only_authoritative_ingestion_job(client, verified_profile_authority
+) -> None:
     created, version_created = _create_document_and_version(client)
     document = created["document"]
     external = created["external_document"]
@@ -826,7 +909,7 @@ def test_budget_bridge_attaches_only_authoritative_ingestion_job(client) -> None
 
 
 def test_archived_batch_can_mint_only_exact_indexing_proof_without_budget_mutation(
-    client, db_session
+    client, db_session, verified_profile_authority
 ) -> None:
     created, version_created = _create_document_and_version(client)
     document = created["document"]
@@ -989,7 +1072,7 @@ def test_archived_batch_can_mint_only_exact_indexing_proof_without_budget_mutati
 
 
 def test_current_batch_can_mint_indexing_proof_but_invalid_lifecycle_cannot(
-    client, db_session
+    client, db_session, verified_profile_authority
 ) -> None:
     current_payload = _preflight_payload()
     current_payload["metadata"] = {
@@ -1005,7 +1088,7 @@ def test_current_batch_can_mint_indexing_proof_but_invalid_lifecycle_cannot(
         headers=_service_headers(),
     )
     assert created.status_code == 201, created.text
-    version_payload = _version_payload()
+    version_payload = _version_payload(document=created.json()["document"])
     version_payload["contract_status"] = "ACTIVE"
     version_created = client.put(
         "/api/v1/integrations/stratos-budget-upload/documents/"
@@ -1051,7 +1134,7 @@ def test_current_batch_can_mint_indexing_proof_but_invalid_lifecycle_cannot(
 
 
 def test_new_service_only_version_clears_predecessor_ingestion_state(
-    client,
+    client, verified_profile_authority
 ) -> None:
     created, first_version_created = _create_document_and_version(client)
     document = created["document"]
@@ -1091,7 +1174,7 @@ def test_new_service_only_version_clears_predecessor_ingestion_state(
         == document["document_id"]
     )
 
-    second_payload = _version_payload(FILE_HASH_2)
+    second_payload = _version_payload(FILE_HASH_2, document=document)
     second_payload["version_label"] = "contract-file-v2"
     second_version_created = client.put(
         "/api/v1/integrations/stratos-budget-upload/documents/"
@@ -1161,3 +1244,46 @@ def test_new_service_only_version_clears_predecessor_ingestion_state(
     )
     assert projected.status_code == 200, projected.text
     assert projected.json()["ingestion_attempt"] is None
+
+
+def test_budget_draft_with_distinct_owner_can_ingest_for_review_but_is_not_current_rag(client, db_session, admin_headers, verified_profile_authority):
+    from app import api
+    from app.models import Document
+
+    registration = _preflight_payload()
+    registration["owner"]["user_id"] = "accountable-contract-owner"
+    registration["document_profile"]["accountability"]["ownerSubjectId"] = "accountable-contract-owner"
+    registration["metadata"].update(contract_status="DRAFT", lifecycle="CURRENT", documentType="CONTRACT_PDF", document_type="CONTRACT_PDF")
+    root_response = client.post("/api/v1/integrations/stratos-budget-upload/external-documents/upsert",
+        json=registration, headers=_service_headers())
+    assert root_response.status_code == 201, root_response.text
+    created = root_response.json()
+    document = created["document"]
+    payload = _version_payload(document=document)
+    payload.update(contract_status="DRAFT", valid_from=None, valid_to=None)
+    payload["document_profile"]["lifecycle"].update(mode="record", recordedOn="2026-09-05", effectiveFrom=None, effectiveTo=None)
+    payload["document_profile"]["domain_evidence"].update(executionStatus="draft", executionEvidenceReference=None)
+    version_response = client.put(f"/api/v1/integrations/stratos-budget-upload/documents/{document['document_id']}/versions",
+        json=payload, headers=_service_headers())
+    assert version_response.status_code == 201, version_response.text
+    version = version_response.json()["version"]
+    assert version["status"] == "draft"
+    assert document["owner_id"] != ACTOR
+    proof = client.post(
+        f"/api/v1/integrations/stratos-budget-upload/documents/{document['document_id']}/versions/{version['document_version_id']}/ingestion-authorization",
+        json={"action":"document.ingest", "correlation_id":"corr-budget-upload-123",
+              "idempotency_key":f"confirm:{created['external_document']['external_document_id']}:{version['document_version_id']}"},
+        headers=_service_headers())
+    assert proof.status_code == 200, proof.text
+    assert proof.json()["confirmed_subject_id"] == ACTOR
+    assert api._current_valid_document_version(db_session, document["document_id"]) is None
+    assert db_session.get(Document, document["document_id"]).status == "draft"
+    filtered = client.post("/api/v1/authz/filter-documents", headers=admin_headers, json={
+        "subject_id":"user_admin", "roles":["admin"], "action":"rag.query", "effective_on":"2026-09-05",
+        "candidate_document_ids":[document["document_id"]],
+        "candidate_document_versions":{document["document_id"]:[version["document_version_id"]]},
+        "candidate_policy_hashes":{document["document_id"]:[document["policy_hash"]]},
+    })
+    assert filtered.status_code == 200, filtered.text
+    assert filtered.json()["allowed_document_ids"] == []
+    assert filtered.json()["denied_document_version_ids"] == {document["document_id"]:[version["document_version_id"]]}

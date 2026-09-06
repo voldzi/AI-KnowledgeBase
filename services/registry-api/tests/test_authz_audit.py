@@ -1,3 +1,9 @@
+import pytest
+from document_profile_fixtures import profiled_document_request, profiled_version_request, verified_profile_authority
+pytestmark = pytest.mark.usefixtures("verified_profile_authority")
+
+from tests.document_policy_fixtures import admitted_policy
+
 from types import SimpleNamespace
 
 import app.api as api_module
@@ -8,11 +14,12 @@ def test_authz_check_and_filter_documents(client, admin_headers):
     response = client.post(
         "/api/v1/documents",
         headers=admin_headers,
-        json={
+        json=profiled_document_request({
             "title": "Restricted policy",
             "document_type": "policy",
             "owner_id": "user_owner",
             "classification": "restricted",
+            "information_policy": admitted_policy(handling_class="RESTRICTED"),
             "access_policies": [
                 {
                     "subjects": ["user:user_allowed"],
@@ -20,7 +27,7 @@ def test_authz_check_and_filter_documents(client, admin_headers):
                     "constraints": {"classification_max": "restricted"},
                 }
             ],
-        },
+        }),
     )
     assert response.status_code == 201, response.text
     document_id = response.json()["document_id"]
@@ -67,6 +74,7 @@ def test_authz_check_and_filter_documents(client, admin_headers):
         "denied_document_ids": ["doc_missing"],
         "allowed_document_version_ids": {},
         "denied_document_version_ids": {},
+        "effective_on": None,
     }
 
 
@@ -74,12 +82,13 @@ def test_authz_caller_cannot_check_other_subject(client, reader_headers, admin_h
     created = client.post(
         "/api/v1/documents",
         headers=admin_headers,
-        json={
+        json=profiled_document_request({
             "title": "Internal document",
             "document_type": "manual",
             "owner_id": "user_owner",
             "classification": "internal",
-        },
+            "information_policy": admitted_policy(handling_class="INTERNAL"),
+        }),
     )
     document_id = created.json()["document_id"]
 
@@ -101,11 +110,12 @@ def test_authz_self_check_ignores_supplied_roles(client, admin_headers):
     created = client.post(
         "/api/v1/documents",
         headers=admin_headers,
-        json={
+        json=profiled_document_request({
             "title": "Internal reader policy",
             "document_type": "manual",
             "owner_id": "user_owner",
             "classification": "internal",
+            "information_policy": admitted_policy(handling_class="INTERNAL"),
             "access_policies": [
                 {
                     "subjects": ["role:reader"],
@@ -113,7 +123,7 @@ def test_authz_self_check_ignores_supplied_roles(client, admin_headers):
                     "constraints": {"classification_max": "internal"},
                 }
             ],
-        },
+        }),
     )
     document_id = created.json()["document_id"]
 
@@ -163,12 +173,13 @@ def test_document_gestor_can_prepare_sources_without_publish_rights(client, admi
     created = client.post(
         "/api/v1/documents",
         headers=admin_headers,
-        json={
+        json=profiled_document_request({
             "title": "Gestor directive",
             "document_type": "directive",
             "owner_id": "user_gestor",
             "classification": "restricted",
-        },
+            "information_policy": admitted_policy(handling_class="RESTRICTED"),
+        }),
     )
     assert created.status_code == 201, created.text
     document_id = created.json()["document_id"]
@@ -204,11 +215,12 @@ def test_document_list_and_detail_use_role_mapping(client, db_session, admin_hea
     created = client.post(
         "/api/v1/documents",
         headers=admin_headers,
-        json={
+        json=profiled_document_request({
             "title": "Mapped reader document",
             "document_type": "manual",
             "owner_id": "user_owner",
             "classification": "public",
+            "information_policy": admitted_policy(handling_class="PUBLIC"),
             "access_policies": [
                 {
                     "subjects": ["role:reader"],
@@ -216,7 +228,7 @@ def test_document_list_and_detail_use_role_mapping(client, db_session, admin_hea
                     "constraints": {"classification_max": "public"},
                 }
             ],
-        },
+        }),
     )
     assert created.status_code == 201, created.text
     document_id = created.json()["document_id"]
@@ -246,11 +258,12 @@ def test_document_list_paginates_after_authorization(client, db_session, admin_h
     accessible = client.post(
         "/api/v1/documents",
         headers=admin_headers,
-        json={
+        json=profiled_document_request({
             "title": "Older mapped reader document",
             "document_type": "manual",
             "owner_id": "user_owner",
             "classification": "public",
+            "information_policy": admitted_policy(handling_class="PUBLIC"),
             "access_policies": [
                 {
                     "subjects": ["role:reader"],
@@ -258,7 +271,7 @@ def test_document_list_paginates_after_authorization(client, db_session, admin_h
                     "constraints": {"classification_max": "public"},
                 }
             ],
-        },
+        }),
     )
     assert accessible.status_code == 201, accessible.text
     accessible_id = accessible.json()["document_id"]
@@ -266,11 +279,12 @@ def test_document_list_paginates_after_authorization(client, db_session, admin_h
     newer_inaccessible = client.post(
         "/api/v1/documents",
         headers=admin_headers,
-        json={
+        json=profiled_document_request({
             "title": "Newer admin-only document",
             "document_type": "manual",
             "owner_id": "user_owner",
             "classification": "confidential",
+            "information_policy": admitted_policy(handling_class="RESTRICTED"),
             "access_policies": [
                 {
                     "subjects": ["role:admin"],
@@ -278,7 +292,7 @@ def test_document_list_paginates_after_authorization(client, db_session, admin_h
                     "constraints": {"classification_max": "confidential"},
                 }
             ],
-        },
+        }),
     )
     assert newer_inaccessible.status_code == 201, newer_inaccessible.text
 
@@ -310,11 +324,12 @@ def test_reader_metadata_reports_exclude_restricted_and_confidential_documents(c
     visible = client.post(
         "/api/v1/documents",
         headers=admin_headers,
-        json={
+        json=profiled_document_request({
             "title": "Interní metodika digitalizace",
             "document_type": "methodology",
             "owner_id": "user_owner",
             "classification": "internal",
+            "information_policy": admitted_policy(handling_class="INTERNAL"),
             "tags": ["digitalizace"],
             "access_policies": [
                 {
@@ -323,18 +338,19 @@ def test_reader_metadata_reports_exclude_restricted_and_confidential_documents(c
                     "constraints": {"classification_max": "internal"},
                 }
             ],
-        },
+        }),
     )
     assert visible.status_code == 201, visible.text
 
     restricted = client.post(
         "/api/v1/documents",
         headers=admin_headers,
-        json={
+        json=profiled_document_request({
             "title": "Restricted digitalizace",
             "document_type": "methodology",
             "owner_id": "user_owner",
             "classification": "restricted",
+            "information_policy": admitted_policy(handling_class="RESTRICTED"),
             "tags": ["digitalizace"],
             "access_policies": [
                 {
@@ -343,18 +359,19 @@ def test_reader_metadata_reports_exclude_restricted_and_confidential_documents(c
                     "constraints": {"classification_max": "restricted"},
                 }
             ],
-        },
+        }),
     )
     assert restricted.status_code == 201, restricted.text
 
     confidential = client.post(
         "/api/v1/documents",
         headers=admin_headers,
-        json={
+        json=profiled_document_request({
             "title": "Confidential digitalizace",
             "document_type": "methodology",
             "owner_id": "user_owner",
             "classification": "confidential",
+            "information_policy": admitted_policy(handling_class="RESTRICTED"),
             "tags": ["digitalizace"],
             "access_policies": [
                 {
@@ -363,7 +380,7 @@ def test_reader_metadata_reports_exclude_restricted_and_confidential_documents(c
                     "constraints": {"classification_max": "confidential"},
                 }
             ],
-        },
+        }),
     )
     assert confidential.status_code == 201, confidential.text
 

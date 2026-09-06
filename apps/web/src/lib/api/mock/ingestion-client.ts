@@ -16,6 +16,8 @@ import type {
   IntelligenceScopeAuthorizationOptions,
 } from "@/lib/types";
 import { ApiClientError } from "@/lib/types";
+import { ingestionJobIdForIdempotencyKey } from "@/lib/ingestion/service-identity";
+import { canonicalDocumentSnapshot } from "@/lib/documents/document-profile";
 import {
   bindAuthorizedDocumentScope,
   coordinateByDocumentId,
@@ -26,6 +28,7 @@ import { cloneMock, mockIngestionJobs, mockReports } from "./data";
 export class MockIngestionClient implements IngestionApiClient {
   private readonly jobs = cloneMock(mockIngestionJobs);
   private readonly reports = cloneMock(mockReports);
+  private readonly createdRequests = new Map<string, string>();
 
   async listJobs(_context: ApiRequestContext): Promise<IngestionJob[]> {
     return cloneMock(this.jobs);
@@ -48,14 +51,24 @@ export class MockIngestionClient implements IngestionApiClient {
     _context: ApiRequestContext,
     _options: IngestionCreateOptions,
   ): Promise<IngestionJob> {
+    const jobId = ingestionJobIdForIdempotencyKey(request.idempotency_key);
+    const identity = canonicalDocumentSnapshot({ request: JSON.parse(JSON.stringify(request)), actor: _options.delegatedActorSubjectId });
+    const existing = this.jobs.find((job) => job.job_id === jobId);
+    if (existing) {
+      if (this.createdRequests.get(jobId) !== identity) {
+        throw new ApiClientError("Ingestion idempotency key conflicts with its original request.", 409, "INGESTION_IDEMPOTENCY_CONFLICT", "mock-trace");
+      }
+      return cloneMock(existing);
+    }
     const job: IngestionJob = {
-      job_id: `ing_${this.jobs.length + 400}`,
+      job_id: jobId,
       status: "queued",
       created_at: new Date().toISOString(),
       started_at: null,
       finished_at: null,
       ...request
     };
+    this.createdRequests.set(jobId, identity);
     this.jobs.unshift(job);
     return cloneMock(job);
   }

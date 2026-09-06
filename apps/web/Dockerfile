@@ -4,8 +4,8 @@ FROM node:26-alpine@sha256:2d984a15c9b54fd0aeb608b8e0d0d83529eb34d2966db27a1fb4f
 WORKDIR /app
 COPY apps/web/package.json apps/web/pnpm-lock.yaml apps/web/pnpm-workspace.yaml ./
 COPY apps/web/vendor/stratos-ui/ ./vendor/stratos-ui/
-ADD --checksum=sha256:deafa7ec98a1218b6a047289b92fbe2395c1e22d3495bb711653013218ee15ee \
-  https://registry.npmjs.org/pnpm/-/pnpm-11.7.0.tgz /tmp/pnpm.tgz
+ADD --checksum=sha256:b9e49603540d04107b98e93917a30e6114970d403c23e40309a44ea9c2bca7fd \
+  https://registry.npmjs.org/pnpm/-/pnpm-11.19.0.tgz /tmp/pnpm.tgz
 # Keep dependency downloads across BuildKit retries. The production image must
 # remain buildable when the public registry has a transient slow response.
 RUN --mount=type=cache,id=akb-web-pnpm-store,target=/pnpm/store \
@@ -36,7 +36,7 @@ ENV NEXT_PUBLIC_AKB_URL=$NEXT_PUBLIC_AKB_URL
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /usr/local/lib/node_modules/pnpm /usr/local/lib/node_modules/pnpm
 COPY apps/web/ ./
-COPY contracts/director-copilot/v2 /contracts/director-copilot/v2
+COPY contracts /contracts
 RUN node /usr/local/lib/node_modules/pnpm/bin/pnpm.cjs run build
 
 FROM node:26-alpine@sha256:2d984a15c9b54fd0aeb608b8e0d0d83529eb34d2966db27a1fb4f1edc3d298a3 AS runner

@@ -1,0 +1,215 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.akb.local/stratos/document-admission/v1/readiness.schema.json",
+  "$defs": {
+    "AdmissionReadinessConfirmation": {
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "const": "stratos-document-admission-readiness-confirmation-1",
+          "title": "Schemaversion",
+          "type": "string"
+        },
+        "application": {
+          "const": "AKB",
+          "title": "Application",
+          "type": "string"
+        },
+        "decision": {
+          "const": "ALLOW",
+          "title": "Decision",
+          "type": "string"
+        },
+        "confirmedBySubjectId": {
+          "const": "service:akb",
+          "title": "Confirmedbysubjectid",
+          "type": "string"
+        },
+        "serviceActive": {
+          "const": true,
+          "title": "Serviceactive",
+          "type": "boolean"
+        },
+        "requestNonce": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Requestnonce",
+          "type": "string"
+        },
+        "correlationId": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Correlationid",
+          "type": "string"
+        },
+        "catalogRevision": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Catalogrevision",
+          "type": "string"
+        },
+        "catalogHash": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Cataloghash",
+          "type": "string"
+        },
+        "approvedProfiles": {
+          "items": {
+            "$ref": "#/$defs/DocumentProfileReference"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "title": "Approvedprofiles",
+          "type": "array"
+        },
+        "capabilities": {
+          "items": {
+            "enum": [
+              "atomicRegister",
+              "freshRevalidate"
+            ],
+            "type": "string"
+          },
+          "title": "Capabilities",
+          "type": "array"
+        },
+        "checkedAt": {
+          "format": "date-time",
+          "title": "Checkedat",
+          "type": "string"
+        },
+        "expiresAt": {
+          "format": "date-time",
+          "title": "Expiresat",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "application",
+        "decision",
+        "confirmedBySubjectId",
+        "serviceActive",
+        "requestNonce",
+        "correlationId",
+        "catalogRevision",
+        "catalogHash",
+        "approvedProfiles",
+        "capabilities",
+        "checkedAt",
+        "expiresAt"
+      ],
+      "title": "AdmissionReadinessConfirmation",
+      "type": "object"
+    },
+    "AdmissionReadinessRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "const": "stratos-document-admission-readiness-request-1",
+          "title": "Schemaversion",
+          "type": "string"
+        },
+        "application": {
+          "const": "AKB",
+          "title": "Application",
+          "type": "string"
+        },
+        "requestNonce": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Requestnonce",
+          "type": "string"
+        },
+        "correlationId": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Correlationid",
+          "type": "string"
+        },
+        "catalogRevision": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Catalogrevision",
+          "type": "string"
+        },
+        "catalogHash": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Cataloghash",
+          "type": "string"
+        },
+        "profiles": {
+          "items": {
+            "$ref": "#/$defs/DocumentProfileReference"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "title": "Profiles",
+          "type": "array"
+        },
+        "requiredCapabilities": {
+          "items": {
+            "enum": [
+              "atomicRegister",
+              "freshRevalidate"
+            ],
+            "type": "string"
+          },
+          "title": "Requiredcapabilities",
+          "type": "array"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "application",
+        "requestNonce",
+        "correlationId",
+        "catalogRevision",
+        "catalogHash",
+        "profiles",
+        "requiredCapabilities"
+      ],
+      "title": "AdmissionReadinessRequest",
+      "type": "object"
+    },
+    "DocumentProfileReference": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "revision": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Revision",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "title": "DocumentProfileReference",
+      "type": "object"
+    }
+  },
+  "anyOf": [
+    {
+      "$ref": "#/$defs/AdmissionReadinessRequest"
+    },
+    {
+      "$ref": "#/$defs/AdmissionReadinessConfirmation"
+    }
+  ]
+}

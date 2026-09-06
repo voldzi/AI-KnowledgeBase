@@ -1,9 +1,18 @@
-from datetime import timedelta
+from datetime import date, timedelta
 from hashlib import sha256
+
+import pytest
 
 from fastapi.testclient import TestClient
 
 import app.api as registry_api
+import app.permissions as permissions
+from app.access_governance import GovernanceUnavailable
+from app.auth import Principal, get_current_principal
+from document_policy_fixtures import admitted_policy
+from document_profile_fixtures import verified_profile_authority, profiled_document_request, profiled_version_request, admit_orm_profile
+
+pytestmark = pytest.mark.usefixtures("verified_profile_authority")
 from app.assistant_retention import purge_expired_assistant_conversations
 from app.information_policy import InformationPolicyBinding, canonical_policy_hash
 from app.keycloak_directory import DirectoryUser
@@ -188,9 +197,7 @@ def test_conversation_list_exposes_only_bounded_derived_suggestion_signals(
                     "response_type": "answer",
                     "citations": [],
                     "metadata": {
-                        "director_copilot_history": {
-                            "intent": "project_portfolio_status",
-                        }
+                        "current_context": {"answer_source": "rag"}
                     },
                 },
             ],
@@ -235,8 +242,8 @@ def test_conversation_list_exposes_only_bounded_derived_suggestion_signals(
     )
     assert item["suggestion_signals"] == [
         {
-            "source_kind": "director_copilot_v2",
-            "intent": "project_portfolio_status",
+            "source_kind": "documents",
+            "intent": None,
             "prompt_fingerprint": sha256(
                 "jaký je stav projektového portfolia?".encode("utf-8")
             ).hexdigest(),
@@ -400,7 +407,7 @@ def test_history_redacts_answer_when_cited_version_is_not_available(
     assert redacted["availability"] == "source_access_changed"
     assert redacted["content"] == ""
     assert redacted["citations"] == []
-    assert redacted["metadata"] == {"history_access_changed": True}
+    assert redacted["metadata"] == {"history_access_changed": True, "history_source_refresh_required": True}
 
     fetched = client.get(
         "/api/v1/assistant/conversation-history/conv_redacted",
@@ -442,7 +449,7 @@ def test_history_keeps_answer_when_exact_cited_version_is_still_authorized(
     document = client.post(
         "/api/v1/documents",
         headers=owner_headers,
-        json={
+        json=profiled_document_request({
             "title": "Aktuální metodika",
             "document_type": "manual",
             "owner_id": "employee_1",
@@ -453,7 +460,7 @@ def test_history_keeps_answer_when_exact_cited_version_is_still_authorized(
                 "policyVersion": "information-policy-2.0.0",
                 "handlingClass": "INTERNAL",
                 "legalClassification": "NONE",
-                "tlp": None,
+                "tlp": "TLP:CLEAR",
                 "pap": None,
                 "contentCategories": ["CONTRACTUAL"],
                 "audience": {
@@ -467,18 +474,18 @@ def test_history_keeps_answer_when_exact_cited_version_is_still_authorized(
                 "issuedAt": "2026-07-18T08:00:00Z",
                 "reviewAt": None,
             },
-        },
+        }),
     )
     assert document.status_code == 201, document.text
     document_id = document.json()["document_id"]
     version = client.post(
         f"/api/v1/documents/{document_id}/versions",
         headers=owner_headers,
-        json={
+        json=profiled_version_request(document.json(), {
             "version_label": "1.0",
             "source_file_uri": "s3://akl-documents/history/authorized.pdf",
             "file_hash": f"sha256:{'a' * 64}",
-        },
+        }),
     )
     assert version.status_code == 201, version.text
     version_id = version.json()["document_version_id"]
@@ -520,6 +527,7 @@ def test_history_keeps_answer_when_exact_cited_version_is_still_authorized(
 def test_history_keeps_answer_for_exact_valid_official_public_reference(
     client: TestClient,
     db_session,
+    verified_profile_authority,
 ) -> None:
     policy = InformationPolicyBinding.model_validate(
         {
@@ -528,7 +536,7 @@ def test_history_keeps_answer_for_exact_valid_official_public_reference(
             "policyVersion": "information-policy-2.0.0",
             "handlingClass": "PUBLIC",
             "legalClassification": "NONE",
-            "tlp": None,
+            "tlp": "TLP:CLEAR",
             "pap": None,
             "contentCategories": ["PUBLIC_INFORMATION"],
             "audience": {
@@ -552,7 +560,7 @@ def test_history_keeps_answer_for_exact_valid_official_public_reference(
         document_type="regulation",
         status="valid",
         classification="public",
-        owner_id="service:akb",
+        owner_id="official_document_owner",
         organization_id="org_stratos",
         tags=["official-public-reference", "official-source-collection:czso"],
         document_metadata={
@@ -575,6 +583,7 @@ def test_history_keeps_answer_for_exact_valid_official_public_reference(
         document_version_id=version_id,
         document_id=document_id,
         version_label="1.0",
+        valid_from=date(2020, 1, 1),
         status="valid",
         organization_id="org_stratos",
         policy_binding_id=policy.policy_binding_id,
@@ -589,6 +598,7 @@ def test_history_keeps_answer_for_exact_valid_official_public_reference(
         file_hash=f"sha256:{'c' * 64}",
     )
     db_session.add_all([document, version])
+    admit_orm_profile(db_session, document, [version], verified_profile_authority)
     db_session.commit()
     public_headers = {
         "X-AKL-Subject": "employee_public",
@@ -1133,3 +1143,153 @@ def test_append_cannot_revive_expired_conversation(
     )
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "conversation_not_found"
+
+
+@pytest.mark.parametrize("operation", ["detail", "patch", "shares", "list"])
+@pytest.mark.parametrize("failure", ["revoked", "unavailable"])
+@pytest.mark.parametrize("citation_location", ["answer", "artifact"])
+def test_current_pdp_failure_hides_all_derived_history(
+    client, db_session, monkeypatch, operation, failure, citation_location,
+) -> None:
+    created = client.post("/api/v1/documents", json=profiled_document_request({
+        "title": "Source", "document_type": "manual", "owner_id": "user_dev",
+        "information_policy": admitted_policy(owner="user_dev"),
+    }))
+    assert created.status_code == 201, created.text
+    document_id = created.json()["document_id"]
+    created_version = client.post(f"/api/v1/documents/{document_id}/versions", json=profiled_version_request(created.json(), {
+        "version_label": "1.0", "source_file_uri": "s3://akl-documents/history/source.pdf",
+        "file_hash": f"sha256:{'a' * 64}",
+    }))
+    assert created_version.status_code == 201, created_version.text
+    version_id = created_version.json()["document_version_id"]
+    citation = {"document_id": document_id, "document_version_id": version_id, "chunk_id": "chunk_source"}
+    metadata = {"current_context": {"answer_source": "rag"}}
+    if citation_location == "artifact":
+        metadata["report_artifacts"] = [{"title": "Secret report", "rows": [{"citations": [citation]}]}]
+    appended = client.post("/api/v1/assistant/conversations/conv_pdp/messages", json={
+        "user_id": "user_dev", "title": "Secret title", "visibility": "shared",
+        "messages": [
+            {"role": "user", "content": "Secret prompt"},
+            {"role": "assistant", "content": "Secret answer", "metadata": metadata,
+             "citations": [citation] if citation_location == "answer" else []},
+            {"role": "user", "content": "Secret quoted follow-up"},
+            {"role": "assistant", "content": "Secret uncited derived answer"},
+        ],
+    })
+    assert appended.status_code == 201, appended.text
+    assert appended.json()["title"] == "Secret title"
+    document = db_session.get(Document, document_id)
+    version = db_session.get(DocumentVersion, version_id)
+    db_session.commit()
+    production_settings = permissions.get_settings().model_copy(update={"auth_mode": "oidc"})
+    monkeypatch.setattr(permissions, "get_settings", lambda: production_settings)
+    principal = Principal(
+        subject_id="user_dev", roles={"stratos_user"}, groups=set(),
+        capabilities={"akb:chat"}, scopes={"organization"},
+        dynamic_access_loaded=True, bearer_token="test-current-person-token",
+    )
+    client.app.dependency_overrides[get_current_principal] = lambda: principal
+
+    class CurrentPdp:
+        state = "allowed"
+        calls = 0
+
+        def decide(self, **kwargs):
+            self.calls += 1
+            assert kwargs["policy_hash"] == version.policy_hash
+            assert kwargs["credential_token"] == principal.bearer_token
+            if self.state == "unavailable":
+                raise GovernanceUnavailable("Current source decision unavailable")
+            return {"decision": "ALLOW" if self.state == "allowed" else "DENY", "reasonCodes": [], "obligations": []}
+
+    current_pdp = CurrentPdp()
+    monkeypatch.setattr(permissions, "governance_client", lambda _settings: current_pdp)
+    initial = client.get("/api/v1/assistant/conversation-history/conv_pdp")
+    assert initial.status_code == 200, initial.text
+    assert initial.json()["title"] == "Secret title"
+    assert current_pdp.calls == 1
+    current_pdp.state = failure
+    path = "/api/v1/assistant/conversation-history/conv_pdp"
+    response = (
+        client.get(path) if operation == "detail"
+        else client.patch(path, json={"pinned": True}) if operation == "patch"
+        else client.put(path + "/shares", json={"shares": []}) if operation == "shares"
+        else client.get("/api/v1/assistant/conversation-history?include_suggestion_signals=true")
+    )
+    assert response.status_code == 200, response.text
+    assert current_pdp.calls == 2  # no authorization retained across requests
+    assert "Secret" not in response.text
+    body = response.json()["items"][0] if operation == "list" else response.json()
+    assert body["title"] is None
+    if operation == "list":
+        assert body["suggestion_signals"] == []
+    else:
+        assert len(body["messages"]) == 4
+        assert all(message["content"] == "" and message["citations"] == [] for message in body["messages"])
+    db_session.expire_all()
+    stored = db_session.query(AssistantConversation).filter_by(conversation_id="conv_pdp").one()
+    assert stored.title == "Secret title"
+    assert [message.content for message in stored.messages] == [
+        "Secret prompt", "Secret answer", "Secret quoted follow-up", "Secret uncited derived answer",
+    ]
+
+
+@pytest.mark.parametrize("proof", [{"intent": "project_portfolio_status"}, None])
+def test_direct_registry_federated_history_is_a_content_free_refresh_receipt(
+    client, db_session, proof,
+) -> None:
+    path = "/api/v1/assistant/conversation-history/conv_federated"
+    appended = client.post("/api/v1/assistant/conversations/conv_federated/messages", json={
+        "user_id": "user_dev", "title": "Secret federated title", "visibility": "shared",
+        "messages": [
+            {"role": "user", "content": "Secret prompt"},
+            {"role": "assistant", "content": "Secret answer", "metadata": {"director_copilot_history": proof}},
+            {"role": "user", "content": "Secret quoted follow-up"},
+        ],
+    })
+    assert appended.status_code == 201, appended.text
+    for response in [appended, client.get(path), client.patch(path, json={"pinned": True}), client.put(path + "/shares", json={"shares": []})]:
+        assert response.status_code in {200, 201}, response.text
+        assert "Secret" not in response.text
+        assert response.json()["title"] is None
+        assert all(message["metadata"]["history_live_source_refresh_required"] for message in response.json()["messages"])
+    listed = client.get("/api/v1/assistant/conversation-history?include_suggestion_signals=true")
+    assert "Secret" not in listed.text
+    assert listed.json()["items"][0]["suggestion_signals"] == []
+    db_session.expire_all()
+    assert db_session.query(AssistantMessage).filter_by(content="Secret answer").count() == 1
+
+
+@pytest.mark.parametrize("marker", [
+    {"assistant_tool": "registry_document_report"},
+    {"current_context": {"answer_source": "registry_metadata"}},
+    {"current_context": {"answer_source": "registry_metadata_summary"}},
+    {"current_context": {"report_kind": "document_inventory_summary"}},
+    {"current_context": {"registry_report_kind": "document_list"}},
+    {"current_context": {"answer_source": "unknown_inventory_adapter"}},
+])
+def test_uncited_inventory_derivations_never_bypass_history_authorization(client, db_session, marker):
+    path = "/api/v1/assistant/conversation-history/conv_inventory"
+    metadata = {**marker, "report_artifacts": [{"rows": [{"cells": {
+        "title": "Secret document title", "owner": "Secret owner", "description": "Secret description",
+    }, "citations": []}]}]}
+    appended = client.post("/api/v1/assistant/conversations/conv_inventory/messages", json={
+        "user_id": "user_dev", "title": "Secret title", "visibility": "shared",
+        "messages": [
+            {"role": "user", "content": "Secret prompt"},
+            {"role": "assistant", "content": "Secret inventory summary", "metadata": metadata, "citations": []},
+            {"role": "user", "content": "Secret quoted follow-up"},
+        ],
+    })
+    assert appended.status_code == 201, appended.text
+    for response in [appended, client.get(path), client.patch(path, json={"pinned": True}), client.put(path + "/shares", json={"shares": []})]:
+        assert response.status_code in {200, 201}, response.text
+        assert "Secret" not in response.text
+        assert response.json()["title"] is None
+        assert all(message["metadata"]["history_source_refresh_required"] for message in response.json()["messages"])
+    listed = client.get("/api/v1/assistant/conversation-history?include_suggestion_signals=true")
+    assert "Secret" not in listed.text
+    assert listed.json()["items"][0]["suggestion_signals"] == []
+    db_session.expire_all()
+    assert db_session.query(AssistantMessage).filter_by(content="Secret inventory summary").count() == 1

@@ -66,7 +66,7 @@ RUN groupadd --gid 107 akbci-docker \
 COPY git.home.cz.crt /usr/local/share/ca-certificates/git.home.cz.crt
 RUN update-ca-certificates
 
-RUN npm install --global pnpm@11.7.0 \
+RUN npm install --global pnpm@11.19.0 \
     && node --version \
     && pnpm --version \
     && python3 --version \

@@ -1,0 +1,18 @@
+{
+  "description": "Public test key only; never use this fixture key for real intake.",
+  "signing_secret": "cleanup-test-signing-secret-at-least-32-characters",
+  "payload": {
+    "schema_version": "akb-intake-manifest-1",
+    "kid": "dc341e03549dabe1",
+    "session_id": "upl_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "document_id": "doc_cleanup",
+    "bucket": "test-bucket",
+    "object_key": "doc_cleanup/draft/2026-09-01/upl_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/source.pdf",
+    "source_file_uri": "s3://test-bucket/doc_cleanup/draft/2026-09-01/upl_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/source.pdf",
+    "file_name": "source.pdf",
+    "file_size": 37,
+    "sha256": "sha256:dd5f65881815902f80a2abf3cf98f50c349e64592a967bf7d79f1e6ead44bbaa",
+    "expires_at": "2026-09-03T00:00:00+00:00"
+  },
+  "manifest": "eyJzY2hlbWFfdmVyc2lvbiI6ImFrYi1pbnRha2UtbWFuaWZlc3QtMSIsImtpZCI6ImRjMzQxZTAzNTQ5ZGFiZTEiLCJzZXNzaW9uX2lkIjoidXBsX2FhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIiwiZG9jdW1lbnRfaWQiOiJkb2NfY2xlYW51cCIsImJ1Y2tldCI6InRlc3QtYnVja2V0Iiwib2JqZWN0X2tleSI6ImRvY19jbGVhbnVwL2RyYWZ0LzIwMjYtMDktMDEvdXBsX2FhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhL3NvdXJjZS5wZGYiLCJzb3VyY2VfZmlsZV91cmkiOiJzMzovL3Rlc3QtYnVja2V0L2RvY19jbGVhbnVwL2RyYWZ0LzIwMjYtMDktMDEvdXBsX2FhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhL3NvdXJjZS5wZGYiLCJmaWxlX25hbWUiOiJzb3VyY2UucGRmIiwiZmlsZV9zaXplIjozNywic2hhMjU2Ijoic2hhMjU2OmRkNWY2NTg4MTgxNTkwMmY4MGEyYWJmM2NmOThmNTBjMzQ5ZTY0NTkyYTk2N2JmN2Q3OWYxZTZlYWQ0NGJiYWEiLCJleHBpcmVzX2F0IjoiMjAyNi0wOS0wM1QwMDowMDowMCswMDowMCJ9.3rAKUrWvVerl_i1ae3YjEbswthr3KpU9687U3sHaRl0"
+}

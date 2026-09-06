@@ -13,7 +13,7 @@ def official_public_source_policy(policy: InformationPolicyBinding | None) -> bo
     return bool(
         policy.handling_class == "PUBLIC"
         and policy.legal_classification == "NONE"
-        and policy.tlp is None
+        and policy.tlp == "TLP:CLEAR"
         and policy.pap is None
         and list(policy.content_categories) == ["PUBLIC_INFORMATION"]
         and policy.audience.organization_id == "org_stratos"

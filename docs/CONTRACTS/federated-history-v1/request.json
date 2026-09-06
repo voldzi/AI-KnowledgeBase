@@ -1,0 +1,23 @@
+{
+  "schema_version": "akb-federated-history-auth-1",
+  "provider": "budget",
+  "tenant_id": "org_stratos",
+  "actor_subject_id": "subject_current_reader",
+  "read_id": "read_example_01",
+  "nonce": "43e85551-cd1c-41b1-894a-f6f2a8370662",
+  "evidence_manifest_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "purpose": "assistant.history.read",
+  "references": [
+    {
+      "evidence_id": "evidence_contract_01",
+      "kind": "record",
+      "source_system": "STRATOS_BUDGET",
+      "canonical_id": "contract_example_01",
+      "governed_resource_id": "resource_contract_example_01",
+      "source_version": "revision_7",
+      "policy_binding_id": "policy_contract_example_01",
+      "policy_version": "information-policy-2.0.0",
+      "policy_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  ]
+}

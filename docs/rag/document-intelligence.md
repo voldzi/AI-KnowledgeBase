@@ -592,7 +592,7 @@ Conversation history is persisted through Registry API when Registry is reachabl
 
 Unsupported location fields are returned as `null`; the system must not invent page, bbox, slide, sheet, or paragraph positions.
 
-`before_text` and `after_text` are assembled from neighboring chunks inside the same `document_version_id`. The default window is one chunk on each side and can be raised with `AKL_RAG_SOURCE_CONTEXT_WINDOW` when a deployment needs wider document context.
+`before_text` and `after_text` are assembled only after current chunk-level authorization, including the selected source again. Candidates must share the exact document/version, immutable file, policy coordinates and source page/Office locator. The default window is one chunk on each side (`AKL_RAG_SOURCE_CONTEXT_WINDOW`); see [source-context authorization and failure behavior](qdrant-retrieval.md#source-context-neighbours). Native worksheet/row and slide/table coordinates never imply a PDF rendition page.
 
 ## Insights Architecture
 

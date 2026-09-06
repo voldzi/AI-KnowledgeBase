@@ -9,6 +9,8 @@ from app.auth import Principal, get_current_principal
 from app.config import get_settings
 from app.information_policy import InformationPolicyBinding, canonical_policy_hash
 from app.models import Document, DocumentVersion
+from document_profile_fixtures import profiled_document_request, profiled_version_request, verified_profile_authority
+from document_intake_fixtures import _intake_receipt
 
 
 def _document_version(
@@ -29,7 +31,7 @@ def _document_version(
             "policyVersion": "information-policy-2.0.0",
             "handlingClass": "INTERNAL",
             "legalClassification": "NONE",
-            "tlp": None,
+            "tlp": "TLP:CLEAR",
             "pap": None,
             "contentCategories": ["AUDIT"],
             "audience": {
@@ -49,21 +51,30 @@ def _document_version(
     created = client.post(
         "/api/v1/documents",
         headers=headers,
-        json=payload,
+        json=profiled_document_request(payload),
     )
     assert created.status_code == 201, created.text
-    document_id = created.json()["document_id"]
+    document = created.json()
+    document_id = document["document_id"]
     version = client.post(
         f"/api/v1/documents/{document_id}/versions",
         headers=headers,
-        json={
+        json=_profiled_version(document, {
             "version_label": "1.0",
             "source_file_uri": "s3://akl-documents/test/source.pdf",
             "file_hash": "sha256:" + "a" * 64,
-        },
+        }),
     )
     assert version.status_code == 201, version.text
     return document_id, version.json()["document_version_id"]
+
+
+
+def _profiled_version(document, payload):
+    prepared = profiled_version_request(document, payload)
+    prepared["file"]["intake_receipt"] = _intake_receipt(document["document_id"], prepared,
+        session=f"ingestion-auth-{payload['version_label']}")
+    return prepared
 
 
 def _ingestion_service_headers(correlation_id: str) -> dict[str, str]:
@@ -78,10 +89,11 @@ def _ingestion_service_headers(correlation_id: str) -> dict[str, str]:
 
 def _restricted_historical_version(client, headers) -> tuple[str, str]:
     document_id, _ = _document_version(client, headers)
+    document = client.get(f"/api/v1/documents/{document_id}", headers=headers).json()
     version = client.post(
         f"/api/v1/documents/{document_id}/versions",
         headers=headers,
-        json={
+        json=_profiled_version(document, {
             "version_label": "0.9-restricted",
             "source_file_uri": "s3://akl-documents/test/restricted-history.pdf",
             "file_hash": "sha256:" + "b" * 64,
@@ -109,7 +121,7 @@ def _restricted_historical_version(client, headers) -> tuple[str, str]:
                 "issuedAt": "2026-07-14T08:30:00Z",
                 "reviewAt": None,
             },
-        },
+        }),
     )
     assert version.status_code == 201, version.text
     return document_id, version.json()["document_version_id"]
@@ -134,7 +146,7 @@ def _mark_indexed(client, headers, document_id: str, version_id: str, job_id: st
         assert response.status_code == 200, response.text
 
 
-def test_registry_issues_and_exactly_confirms_actor_bound_proof(client, admin_headers) -> None:
+def test_registry_issues_and_exactly_confirms_actor_bound_proof(client, admin_headers, verified_profile_authority) -> None:
     document_id, version_id = _document_version(client, admin_headers)
     correlation_id = "corr-ingestion-proof"
     idempotency_key = "proof:test:document-version"
@@ -199,6 +211,7 @@ def test_exact_version_policy_and_scope_are_authorized_centrally_and_bound_to_pr
     admin_headers,
     db_session,
     monkeypatch,
+    verified_profile_authority,
 ) -> None:
     document_id, version_id = _restricted_historical_version(client, admin_headers)
     document = db_session.get(Document, document_id)
@@ -292,6 +305,7 @@ def test_exact_version_policy_and_scope_are_authorized_centrally_and_bound_to_pr
 def test_restrictive_historical_version_denies_root_scoped_actor(
     client,
     admin_headers,
+    verified_profile_authority,
 ) -> None:
     document_id, version_id = _restricted_historical_version(client, admin_headers)
     correlation_id = "corr-version-restricted-denied"
@@ -322,6 +336,7 @@ def test_confirmation_rejects_tampered_and_stale_version_authority(
     client,
     admin_headers,
     db_session,
+    verified_profile_authority,
 ) -> None:
     document_id, version_id = _document_version(client, admin_headers)
     correlation_id = "corr-version-authority-stale"
@@ -410,7 +425,7 @@ def test_confirmation_rejects_tampered_and_stale_version_authority(
     assert stale.json()["error"]["code"] == "ingestion_authorization_invalid"
 
 
-def test_suspended_actor_cannot_mint_proof(client, admin_headers) -> None:
+def test_suspended_actor_cannot_mint_proof(client, admin_headers, verified_profile_authority) -> None:
     document_id, version_id = _document_version(client, admin_headers)
     correlation_id = "corr-suspended-proof"
     response = client.post(
@@ -432,7 +447,7 @@ def test_suspended_actor_cannot_mint_proof(client, admin_headers) -> None:
     assert response.json()["error"]["code"] == "ingestion_authorization_actor_inactive"
 
 
-def test_proof_is_bound_to_correlation_and_idempotency(client, admin_headers) -> None:
+def test_proof_is_bound_to_correlation_and_idempotency(client, admin_headers, verified_profile_authority) -> None:
     document_id, version_id = _document_version(client, admin_headers)
     correlation_id = "corr-bound-proof"
     issued = client.post(
@@ -487,6 +502,7 @@ def test_proof_is_bound_to_correlation_and_idempotency(client, admin_headers) ->
 def test_intelligence_scope_proof_is_exact_actor_and_document_set_bound(
     client,
     admin_headers,
+    verified_profile_authority,
 ) -> None:
     first_document_id, first_version_id = _document_version(client, admin_headers)
     second_document_id, second_version_id = _document_version(client, admin_headers)
@@ -594,6 +610,7 @@ def test_intelligence_scope_omits_readable_document_without_rag_access(
     client,
     admin_headers,
     reader_headers,
+    verified_profile_authority,
 ) -> None:
     read_only_id, read_only_version = _document_version(
         client,
@@ -642,6 +659,7 @@ def test_intelligence_scope_omits_readable_document_without_rag_access(
 def test_service_identity_cannot_mint_intelligence_scope(
     client,
     admin_headers,
+    verified_profile_authority,
 ) -> None:
     document_id, version_id = _document_version(client, admin_headers)
     _mark_indexed(client, admin_headers, document_id, version_id, "ing_scope_service")
@@ -664,6 +682,7 @@ def test_intelligence_scope_omits_archived_and_stale_indexed_coordinate(
     client,
     admin_headers,
     db_session,
+    verified_profile_authority,
 ) -> None:
     document_id, version_id = _document_version(client, admin_headers)
     _mark_indexed(client, admin_headers, document_id, version_id, "ing_scope_stale")

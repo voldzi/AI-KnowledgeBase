@@ -1,0 +1,46 @@
+{
+  "akb_health": {
+    "http_status": 200
+  },
+  "akb_ready": {
+    "http_status": 200
+  },
+  "chat_health": {
+    "http_status": 200
+  },
+  "stratos_health": {
+    "http_status": 200
+  },
+  "stratos_ready": {
+    "http_status": 200
+  },
+  "projectflow_ready": {
+    "http_status": 200
+  },
+  "stratos_web": {
+    "http_status": 200
+  },
+  "projectflow_web": {
+    "http_status": 200
+  },
+  "archflow_web": {
+    "http_status": 200
+  },
+  "stratos_admission": {
+    "valid_request_status": 503,
+    "reason_code": "DOCUMENT_ADMISSION_CATALOG_NOT_READY",
+    "invalid_request_status": 400,
+    "anonymous_status": 401
+  },
+  "akb_admission": {
+    "http_status": 503,
+    "reason_code": "document_profile_admission_unavailable",
+    "body_keys": [
+      "error"
+    ]
+  },
+  "antivirus": {
+    "clean_allowed": true,
+    "standard_test_detected": true
+  }
+}

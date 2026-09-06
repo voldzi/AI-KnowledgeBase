@@ -31,6 +31,8 @@ import type {
   Document,
   DocumentListPage,
   DocumentAuthorizationDecision,
+  BudgetIntakeAuthorizationRequest,
+  BudgetIntakeAuthorizationResponse,
   DocumentListOptions,
   DocumentAssignment,
   DocumentMetadataSummary,
@@ -410,18 +412,49 @@ export class ProductionRegistryClient implements RegistryApiClient {
   authorizeDocument(
     documentId: string,
     action: string,
-    context: ApiRequestContext
+    context: ApiRequestContext,
+    documentVersionId?: string,
   ): Promise<DocumentAuthorizationDecision> {
     return this.post<DocumentAuthorizationDecision>(
       "/authz/check",
       {
         subject_id: context.subjectId,
         action,
-        resource: { document_id: documentId }
+        resource: { document_id: documentId, ...(documentVersionId ? { document_version_id: documentVersionId } : {}) }
       },
       `authz:${action}:${documentId}`,
       context
     );
+  }
+
+  authorizeBudgetDocumentIntake(
+    documentId: string,
+    request: BudgetIntakeAuthorizationRequest,
+    serviceContext: ApiRequestContext,
+    actorAccessToken?: string,
+  ): Promise<BudgetIntakeAuthorizationResponse> {
+    if (!serviceContext.accessToken || serviceContext.accessToken === actorAccessToken) {
+      throw new ApiClientError(
+        "Separate service and actor credentials are required for Budget intake.",
+        403,
+        "STRATOS_BUDGET_TOKEN_SEPARATION_REQUIRED",
+        serviceContext.correlationId ?? "web-budget-intake",
+      );
+    }
+    return requestJson<BudgetIntakeAuthorizationResponse>({
+      service: "registry-api",
+      operation: "authorizeBudgetDocumentIntake",
+      baseUrl: this.baseUrl,
+      path: `/integrations/stratos-budget-upload/documents/${encodeURIComponent(documentId)}/intake-authorization`,
+      method: "POST",
+      body: request,
+      context: serviceContext,
+      extraHeaders: actorAccessToken
+        ? { "X-STRATOS-Actor-Authorization": `Bearer ${actorAccessToken}` }
+        : undefined,
+      fetcher: this.fetcher,
+      timeoutMs: 15_000,
+    });
   }
 
   createIngestionAuthorization(

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 from typing import Any
 
 import httpx
+import pytest
+from document_profile_fixtures import admit_orm_profile, verified_profile_authority
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
@@ -31,6 +33,8 @@ from app.permissions import (
     evaluate_runtime_document_access,
 )
 
+
+pytestmark = pytest.mark.usefixtures("verified_profile_authority")
 
 PUBLIC_SLUG = "public-governance-guide"
 SOURCE_HASH = f"sha256:{'a' * 64}"
@@ -63,7 +67,7 @@ def _public_policy() -> InformationPolicyBinding:
     )
 
 
-def _seed_public_version(db_session) -> tuple[Document, DocumentVersion]:
+def _seed_public_version(db_session, authority) -> tuple[Document, DocumentVersion]:
     binding = _public_policy()
     policy_hash = canonical_policy_hash(binding)
     policy_summary = binding.model_dump(mode="json", by_alias=True, exclude_none=False)
@@ -71,7 +75,7 @@ def _seed_public_version(db_session) -> tuple[Document, DocumentVersion]:
     document = Document(
         document_id="doc_public_guide",
         title="Public governance guide",
-        document_type="manual",
+        document_type="contract",
         status="valid",
         classification="public",
         organization_id="org_stratos",
@@ -109,6 +113,7 @@ def _seed_public_version(db_session) -> tuple[Document, DocumentVersion]:
         source_file_uri=SOURCE_URI,
         file_hash=SOURCE_HASH,
         change_summary="internal change summary must not be public",
+        valid_from=date(2020, 1, 1),
         published_at=now,
     )
     source = DocumentFile(
@@ -123,6 +128,8 @@ def _seed_public_version(db_session) -> tuple[Document, DocumentVersion]:
         uploaded_by="user-owner",
     )
     db_session.add_all([document, version, source])
+    db_session.flush()
+    admit_orm_profile(db_session, document, [version], authority, profile_id="akb.contract")
     db_session.commit()
     return document, version
 
@@ -277,10 +284,9 @@ def test_public_only_rag_requires_exact_local_publication_and_fresh_central_allo
     client,
     db_session,
     monkeypatch,
+    verified_profile_authority,
 ) -> None:
-    document, version = _seed_public_version(db_session)
-    document.document_type = "contract"
-    db_session.commit()
+    document, version = _seed_public_version(db_session, verified_profile_authority)
     central = _install_governance(monkeypatch, version)
     assert _publish(client).status_code == 200
 
@@ -309,8 +315,9 @@ def test_oidc_public_projection_runtime_uses_exact_public_contract_not_generic_s
     client,
     db_session,
     monkeypatch,
+    verified_profile_authority,
 ) -> None:
-    document, version = _seed_public_version(db_session)
+    document, version = _seed_public_version(db_session, verified_profile_authority)
     central = _install_governance(monkeypatch, version)
     assert _publish(client).status_code == 200
     db_session.expire_all()
@@ -384,8 +391,9 @@ def test_public_only_rag_denies_draft_and_revoked_publications(
     client,
     db_session,
     monkeypatch,
+    verified_profile_authority,
 ) -> None:
-    document, version = _seed_public_version(db_session)
+    document, version = _seed_public_version(db_session, verified_profile_authority)
     central = _install_governance(monkeypatch, version)
     draft = client.put(
         f"/api/v1/documents/{document.document_id}/versions/"
@@ -419,8 +427,9 @@ def test_public_only_scope_never_exposes_full_document_registry_views(
     client,
     db_session,
     monkeypatch,
+    verified_profile_authority,
 ) -> None:
-    document, version = _seed_public_version(db_session)
+    document, version = _seed_public_version(db_session, verified_profile_authority)
     _install_governance(monkeypatch, version)
     assert _publish(client).status_code == 200
     headers = _public_only_headers(capabilities="akb:chat,akb:read_document")
@@ -444,8 +453,9 @@ def test_public_scope_mixed_with_unrelated_scope_still_uses_exact_public_version
     client,
     db_session,
     monkeypatch,
+    verified_profile_authority,
 ) -> None:
-    document, published_version = _seed_public_version(db_session)
+    document, published_version = _seed_public_version(db_session, verified_profile_authority)
     central = _install_governance(monkeypatch, published_version)
     assert _publish(client).status_code == 200
     other_version = DocumentVersion(
@@ -521,8 +531,9 @@ def test_public_only_intelligence_scope_uses_only_active_published_version(
     client,
     db_session,
     monkeypatch,
+    verified_profile_authority,
 ) -> None:
-    document, published_version = _seed_public_version(db_session)
+    document, published_version = _seed_public_version(db_session, verified_profile_authority)
     _install_governance(monkeypatch, published_version)
     assert _publish(client).status_code == 200
     attempt = IngestionAttempt(
@@ -604,8 +615,9 @@ def test_active_publication_blocks_archive_and_logical_delete_until_revoke(
     client,
     db_session,
     monkeypatch,
+    verified_profile_authority,
 ) -> None:
-    document, version = _seed_public_version(db_session)
+    document, version = _seed_public_version(db_session, verified_profile_authority)
     _install_governance(monkeypatch, version)
     assert _publish(client).status_code == 200
 
@@ -670,8 +682,9 @@ def test_draft_publication_also_blocks_archive_and_logical_delete(
     client,
     db_session,
     monkeypatch,
+    verified_profile_authority,
 ) -> None:
-    document, version = _seed_public_version(db_session)
+    document, version = _seed_public_version(db_session, verified_profile_authority)
     _install_governance(monkeypatch, version)
     draft = client.put(
         f"/api/v1/documents/{document.document_id}/versions/"
@@ -732,8 +745,9 @@ def test_publish_requires_interactive_bearer_and_both_capabilities(
     client,
     db_session,
     monkeypatch,
+    verified_profile_authority,
 ) -> None:
-    _, version = _seed_public_version(db_session)
+    _, version = _seed_public_version(db_session, verified_profile_authority)
     central = _install_governance(monkeypatch, version)
     without_bearer = _publisher_headers()
     without_bearer.pop("Authorization")
@@ -768,8 +782,9 @@ def test_exact_version_publication_is_immutable_audited_and_sanitized(
     client,
     db_session,
     monkeypatch,
+    verified_profile_authority,
 ) -> None:
-    _, version = _seed_public_version(db_session)
+    _, version = _seed_public_version(db_session, verified_profile_authority)
     central = _install_governance(monkeypatch, version)
 
     published = _publish(client)
@@ -829,8 +844,9 @@ def test_revoke_requires_only_publish_capability_and_keeps_scope_rule(
     client,
     db_session,
     monkeypatch,
+    verified_profile_authority,
 ) -> None:
-    _, version = _seed_public_version(db_session)
+    _, version = _seed_public_version(db_session, verified_profile_authority)
     central = _install_governance(monkeypatch, version)
     assert _publish(client).status_code == 200
     endpoint = (
@@ -859,8 +875,9 @@ def test_every_public_read_rechecks_central_policy_and_never_leaks_storage(
     client,
     db_session,
     monkeypatch,
+    verified_profile_authority,
 ) -> None:
-    _, version = _seed_public_version(db_session)
+    _, version = _seed_public_version(db_session, verified_profile_authority)
     central = _install_governance(monkeypatch, version)
     assert _publish(client).status_code == 200
 
@@ -908,8 +925,9 @@ def test_public_audit_uses_deterministic_windows_and_prunes_only_anonymous_event
     client,
     db_session,
     monkeypatch,
+    verified_profile_authority,
 ) -> None:
-    _, version = _seed_public_version(db_session)
+    _, version = _seed_public_version(db_session, verified_profile_authority)
     _install_governance(monkeypatch, version)
     assert _publish(client).status_code == 200
     fixed_now = datetime(2026, 7, 13, 15, 30, 5, tzinfo=timezone.utc)
@@ -978,8 +996,9 @@ def test_public_delivery_fails_closed_on_outage_mismatch_tamper_and_revoke(
     client,
     db_session,
     monkeypatch,
+    verified_profile_authority,
 ) -> None:
-    _, version = _seed_public_version(db_session)
+    _, version = _seed_public_version(db_session, verified_profile_authority)
     central = _install_governance(monkeypatch, version)
     assert _publish(client).status_code == 200
 
@@ -1025,8 +1044,9 @@ def test_public_download_decision_is_fresh_and_invalid_response_fails_closed(
     client,
     db_session,
     monkeypatch,
+    verified_profile_authority,
 ) -> None:
-    _, version = _seed_public_version(db_session)
+    _, version = _seed_public_version(db_session, verified_profile_authority)
     central = _install_governance(monkeypatch, version)
     assert _publish(client).status_code == 200
 
@@ -1040,8 +1060,9 @@ def test_public_decision_rejects_stale_policy_version_and_foreign_or_extra_value
     client,
     db_session,
     monkeypatch,
+    verified_profile_authority,
 ) -> None:
-    _, version = _seed_public_version(db_session)
+    _, version = _seed_public_version(db_session, verified_profile_authority)
     central = _install_governance(monkeypatch, version)
     assert _publish(client).status_code == 200
 
@@ -1071,8 +1092,9 @@ def test_registry_public_endpoint_returns_429_before_repeating_central_work(
     client,
     db_session,
     monkeypatch,
+    verified_profile_authority,
 ) -> None:
-    _, version = _seed_public_version(db_session)
+    _, version = _seed_public_version(db_session, verified_profile_authority)
     central = _install_governance(monkeypatch, version)
     assert _publish(client).status_code == 200
     settings = api_module.get_settings().model_copy(
