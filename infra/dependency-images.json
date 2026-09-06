@@ -1,0 +1,39 @@
+{
+  "schemaVersion": "akb-dependency-images-1",
+  "reviewedAt": "2026-09-06",
+  "images": {
+    "caddy": "caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648",
+    "postgresql": "postgres:18.6-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2",
+    "qdrant": "qdrant/qdrant:v1.19.1@sha256:12364fe851b9f17356fc88189fc06d1b521262e04659ec7345975b00c9246a10",
+    "opensearch": "opensearchproject/opensearch:3.8.0@sha256:bcc1797519726ceb6d651d4a3e60b7c30da91793914a8dfe75fd441d4f641509",
+    "minio-local-s3": "minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e",
+    "keycloak": "quay.io/keycloak/keycloak:26.7.3@sha256:ff4257d0d64efbe99ed1ddfaf07765cc3c36dc7518bf8324d41961327f441c54",
+    "prometheus": "prom/prometheus:v3.14.0@sha256:5ce7540c3c00ef4ab0c9d2c995c6a5b9c421f44b4a115d97a2c7af3b1c21cbb0",
+    "grafana": "grafana/grafana:13.2.1@sha256:f772d434e8fab0049deb2b1b30abd43342bcfca1537614aa8d36080232cf4283",
+    "loki": "grafana/loki:3.7.7@sha256:d70e4659623f3e109af669cae76fe2a5dd5be54e2298fe8aed380d982fbc2500",
+    "ollama": "ollama/ollama:0.33.3@sha256:32931b46719f673c05fdbaa81ccb26da18ea4a1c57590a754874ab28ba269eb2",
+    "clamav": "clamav/clamav:1.5.4@sha256:f0954d679017eb6d48221e2b2be3ac5457bf278a844f39b672376f55a085f591",
+    "python": "python:3.12.14-slim@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea",
+    "node-alpine": "node:26.8.1-alpine@sha256:2d984a15c9b54fd0aeb608b8e0d0d83529eb34d2966db27a1fb4f1edc3d298a3",
+    "node-bookworm": "node:26.8.1-bookworm-slim@sha256:367679cf9792759492a486e4aa4b421764d71a9546a6dae8aab81a99eb797b3e",
+    "gitea-act-runner": "gitea/act_runner:0.3.0@sha256:8368754bb612a1deb07ed604e3b955338aefc01576d4d0d92e8dd82f29250fcd",
+    "docker-cli": "docker:29.7.2-cli@sha256:3f4743208d2338c934d7b8bcfbe1bb54c0b2355c510ad5e0f31c0c4a54bd704e",
+    "text-embeddings-inference": "ghcr.io/huggingface/text-embeddings-inference:cpu-1.9.3@sha256:ad950d30878eceb72aaf32024d26fa2b1d04a75304fa0b4776b49aa1941fea07",
+    "llama-cpp-server": "ghcr.io/ggml-org/llama.cpp:server@sha256:8459c3e6a16f4e1d92fecd0ad8d015169e9f108c1862a366eb44923192b576f8",
+    "socat": "alpine/socat:1.8.0.3@sha256:beb4a68d9e4fe6b0f21ea774a0fde6c31f580dde6368939ed70100c5385b015e"
+  },
+  "externalProductionServices": {
+    "objectStorage": {
+      "product": "SeaweedFS",
+      "endpoint": "storage.home.cz:8333",
+      "latestReviewedRelease": "4.45",
+      "releaseUrl": "https://github.com/seaweedfs/seaweedfs/releases/tag/4.45",
+      "runtimeVersion": "unverified",
+      "verification": "runtime version and S3 lifecycle smoke required before production promotion"
+    }
+  },
+  "exceptions": {
+    "minio-local-s3": "Local S3 compatibility fixture only. The last upstream release has no published official container; production uses SeaweedFS.",
+    "llama-cpp-server": "Upstream does not publish the stable v0.4.0 server tag; this is the reviewed immutable server digest from 2026-09-06."
+  }
+}

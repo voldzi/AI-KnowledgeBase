@@ -85,7 +85,7 @@ class CleanPilotC4RegistryTests(unittest.TestCase):
             publisher = fixture / "scripts/ci/publish_clean_pilot_c4_images.sh"
             publisher.write_text(
                 publisher.read_text().replace(
-                    "postgres@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685",
+                    "postgres:18.6-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2",
                     "postgres:16-alpine",
                 )
             )

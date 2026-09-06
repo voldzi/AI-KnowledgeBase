@@ -59,6 +59,9 @@ def private_json(path: Path, value: object) -> None:
 def prepare(stratos: Path) -> None:
     if not (stratos / "apps/api/Dockerfile").is_file():
         raise SystemExit("Expected the actual STRATOS checkout")
+    stratos_npmrc = stratos / ".npmrc"
+    if not stratos_npmrc.is_file():
+        raise SystemExit("STRATOS Docker build requires its protected .npmrc")
     STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
     prepare_tls()
     credential_path = STATE / "credentials.json"
@@ -100,10 +103,10 @@ def prepare(stratos: Path) -> None:
         e.update({k: v for k, v in {"AKB_POLICY_SERVICE_TOKEN": c["policy"], "AKL_WEB_SESSION_STORE_SECRET": c["session_store"], "AKL_WEB_SESSION_ENCRYPTION_KEY": c["session_encryption"], "AKL_WEB_UPLOAD_SIGNING_SECRET": c["upload"], "AKL_INGESTION_AUTHORIZATION_SECRET": c["ingestion"], "AKL_WEB_SESSION_SECRET": c["session"], "STRATOS_CONTENT_SECURITY_REQUIRED": "true", "AKL_OBJECT_STORAGE_MODE": "s3", "AKL_S3_ENDPOINT": "http://minio:9000", "AKL_S3_ACCESS_KEY_ID": "akb_acceptance", "AKL_S3_SECRET_ACCESS_KEY": c["minio"]}.items() if k in e})
     services["postgres"]["environment"].update(POSTGRES_PASSWORD=c["postgres"])
     services["postgres"]["ports"] = ["127.0.0.1:15440:5432"]
-    services["minio"].update(image="minio/minio:RELEASE.2025-09-07T16-13-09Z", ports=["127.0.0.1:19040:9000", "127.0.0.1:19041:9001"])
+    services["minio"].update(image="minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e", ports=["127.0.0.1:19040:9000", "127.0.0.1:19041:9001"])
     services["minio"]["environment"].update(MINIO_ROOT_USER="akb_acceptance", MINIO_ROOT_PASSWORD=c["minio"])
     services["opensearch"]["environment"].update(OPENSEARCH_JAVA_OPTS="-Xms512m -Xmx512m", DISABLE_SECURITY_PLUGIN="true", DISABLE_INSTALL_DEMO_CONFIG="true")
-    services["keycloak"].update(image="quay.io/keycloak/keycloak:26.1.5", ports=["127.0.0.1:18081:18081"], volumes=[f"{STATE / 'realm.json'}:/opt/keycloak/data/import/realm.json:ro"])
+    services["keycloak"].update(image="quay.io/keycloak/keycloak:26.7.3@sha256:ff4257d0d64efbe99ed1ddfaf07765cc3c36dc7518bf8324d41961327f441c54", ports=["127.0.0.1:18081:18081"], volumes=[f"{STATE / 'realm.json'}:/opt/keycloak/data/import/realm.json:ro"])
     services["keycloak"]["networks"] = {"app_zone": {"aliases": ["login.akb.localhost"]}, "data_zone": {}, "management_zone": {}}
     services["keycloak"]["environment"].update(KC_DB_PASSWORD=c["postgres"], KEYCLOAK_ADMIN_PASSWORD=c["keycloak"], KC_HTTP_PORT="18081", KC_HOSTNAME="http://login.akb.localhost:18081", JAVA_OPTS_KC_HEAP="-Xms128m -Xmx384m")
     services["keycloak"]["environment"].update(KC_HTTP_PORT="18080", KC_HTTPS_PORT="18081", KC_HOSTNAME="https://login.akb.localhost:18081", KC_HTTPS_CERTIFICATE_FILE="/run/akb-test/server.pem", KC_HTTPS_CERTIFICATE_KEY_FILE="/run/akb-test/server.key")
@@ -137,8 +140,8 @@ def prepare(stratos: Path) -> None:
     chat["ports"] = ["127.0.0.1:3221:3000"]
     chat["environment"].update(AKL_WEB_PROFILE="chat", AKL_WEB_BASE_PATH="", AKL_WEB_PUBLIC_BASE_URL="http://localhost:3221", AKL_WEB_OIDC_CLIENT_ID="akb-chat-web")
     chat["healthcheck"]["test"] = ["CMD-SHELL", "wget -qO- http://$${HOSTNAME}:3000/api/health >/dev/null || exit 1"]
-    services["clamav"] = {"image": "clamav/clamav:1.4", "platform": "linux/amd64", "restart": "unless-stopped", "volumes": ["clamav-data:/var/lib/clamav"], "networks": ["app_zone"], "healthcheck": {"test": ["CMD", "/usr/local/bin/clamdcheck.sh"], "interval": "10s", "timeout": "5s", "retries": 3, "start_period": "180s"}}
-    services["stratos-postgres"] = {"image": "postgres:18.6-alpine", "restart": "unless-stopped", "environment": {"POSTGRES_USER": "stratos", "POSTGRES_DB": "stratos", "POSTGRES_PASSWORD": c["postgres"]}, "volumes": ["stratos-postgres:/var/lib/postgresql"], "ports": ["127.0.0.1:15441:5432"], "networks": ["data_zone"], "healthcheck": {"test": ["CMD", "pg_isready", "-U", "stratos", "-d", "stratos"], "interval": "5s", "timeout": "5s", "retries": 20}}
+    services["clamav"] = {"image": "clamav/clamav:1.5.4@sha256:f0954d679017eb6d48221e2b2be3ac5457bf278a844f39b672376f55a085f591", "platform": "linux/amd64", "restart": "unless-stopped", "volumes": ["clamav-data:/var/lib/clamav"], "networks": ["app_zone"], "healthcheck": {"test": ["CMD", "/usr/local/bin/clamdcheck.sh"], "interval": "10s", "timeout": "5s", "retries": 3, "start_period": "180s"}}
+    services["stratos-postgres"] = {"image": "postgres:18.6-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2", "restart": "unless-stopped", "environment": {"POSTGRES_USER": "stratos", "POSTGRES_DB": "stratos", "POSTGRES_PASSWORD": c["postgres"]}, "volumes": ["stratos-postgres:/var/lib/postgresql"], "ports": ["127.0.0.1:15441:5432"], "networks": ["data_zone"], "healthcheck": {"test": ["CMD", "pg_isready", "-U", "stratos", "-d", "stratos"], "interval": "5s", "timeout": "5s", "retries": 20}}
     sb = yaml.safe_load((stratos / "docker-compose.yml").read_text())
     names = ["api", "web", "archflow", "projectflow-api", "projectflow-web", "report-renderer"]
     for name in names:
@@ -191,7 +194,13 @@ def prepare(stratos: Path) -> None:
             s["environment"].update(NODE_EXTRA_CA_CERTS="/run/akb-test-ca.pem", SSL_CERT_FILE="/run/akb-test-ca.pem", REQUESTS_CA_BUNDLE="/run/akb-test-ca.pem")
     volumes = {v: {} for v in base["volumes"]}
     volumes.update({"stratos-postgres": {}, "clamav-data": {}})
-    private_json(STATE / "compose.json", {"name": PROJECT, "services": services, "volumes": volumes, "networks": base["networks"]})
+    private_json(STATE / "compose.json", {
+        "name": PROJECT,
+        "services": services,
+        "volumes": volumes,
+        "networks": base["networks"],
+        "secrets": {"github-packages-npmrc": {"file": str(stratos_npmrc)}},
+    })
     realm = json.loads((ROOT / "infra/keycloak/realm-stratos.json").read_text())
     realm.update(realm="stratos", enabled=True, sslRequired="none", loginTheme="keycloak", registrationAllowed=False)
     realm["users"] = []

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 from pathlib import Path
@@ -20,6 +21,7 @@ PNPM_VERSION = "11.19.0"
 UV_VERSION = "0.12.9"
 PIP_AUDIT_VERSION = "2.10.0"
 PYTHON_VERSION = "3.12.14"
+IMAGE_MANIFEST = ROOT / "infra/dependency-images.json"
 PYTHON_LOCKS = {
     name: (ROOT / f"services/{name}/requirements.txt", ROOT / f"services/{name}/requirements.c4.lock")
     for name in (
@@ -77,6 +79,11 @@ def node_components(tree: object) -> dict[str, str]:
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--output", type=Path, default=ROOT / ".artifacts/quality")
+parser.add_argument(
+    "--verify-image-registry",
+    action="store_true",
+    help="Resolve every immutable infrastructure image in its source registry.",
+)
 args = parser.parse_args()
 output = args.output.resolve()
 output.mkdir(parents=True, exist_ok=True)
@@ -102,15 +109,62 @@ def require_text(path: Path, fragments: tuple[str, ...]) -> None:
         raise SystemExit(f"Dependency parity failed for {path.relative_to(ROOT)}: missing {missing}")
 
 
+image_manifest = json.loads(IMAGE_MANIFEST.read_text(encoding="utf-8"))
+images = image_manifest.get("images")
+if not isinstance(images, dict) or not images:
+    raise SystemExit("Infrastructure dependency image manifest is empty")
+for name, reference in images.items():
+    if not isinstance(reference, str) or not re.search(r"@sha256:[0-9a-f]{64}$", reference):
+        raise SystemExit(f"Infrastructure image is not immutable: {name}")
+    if ":latest" in reference:
+        raise SystemExit(f"Infrastructure image uses a floating latest tag: {name}")
+
 require_text(ROOT / ".node-version", (NODE_VERSION,))
 require_text(WEB / "package.json", (f'"packageManager": "pnpm@{PNPM_VERSION}"', f'"node": ">={NODE_VERSION} <27"'))
 for dockerfile in (WEB / "Dockerfile", ROOT / "infra/ci/local-fast-check/Dockerfile.web"):
-    require_text(dockerfile, ("node:26-alpine@sha256:", f"pnpm-{PNPM_VERSION}.tgz"))
+    require_text(dockerfile, (images["node-alpine"], f"pnpm-{PNPM_VERSION}.tgz"))
 for dockerfile in (
     ROOT / "infra/ci/local-fast-check/Dockerfile.python",
     *(ROOT / f"services/{name}/Dockerfile" for name in PYTHON_LOCKS),
 ):
-    require_text(dockerfile, ("python:3.12-slim@sha256:",))
+    require_text(dockerfile, (images["python"],))
+require_text(ROOT / "services/platform-infrastructure/Dockerfile", (images["python"],))
+require_text(
+    ROOT / "infra/ci/gitea-runner/Dockerfile",
+    (images["gitea-act-runner"], images["docker-cli"], images["node-bookworm"]),
+)
+env_example = (ROOT / ".env.example").read_text(encoding="utf-8")
+for name in (
+    "caddy", "postgresql", "qdrant", "opensearch", "minio-local-s3",
+    "keycloak", "prometheus", "grafana", "loki", "ollama",
+):
+    if images[name] not in env_example:
+        raise SystemExit(f".env.example is not aligned with image manifest: {name}")
+for compose_path in (
+    ROOT / "infra/docker-compose/docker-compose.dev.yml",
+    ROOT / "infra/docker-compose/docker-compose.prod-like.yml",
+):
+    require_text(
+        compose_path,
+        tuple(images[name] for name in (
+            "caddy", "postgresql", "qdrant", "minio-local-s3", "keycloak",
+            "prometheus", "grafana", "loki", "ollama",
+        )),
+    )
+require_text(ROOT / "infra/docker-compose/docker-compose.dev.yml", (images["opensearch"],))
+require_text(ROOT / "infra/docker-compose/docker-compose.docker-home.yml", (images["caddy"], images["qdrant"]))
+require_text(
+    ROOT / "scripts/local_acceptance.py",
+    (images["postgresql"], images["minio-local-s3"], images["keycloak"], images["clamav"]),
+)
+for path in ROOT.glob("infra/rerankers/docker-compose*.yml"):
+    content = path.read_text(encoding="utf-8")
+    if "text-embeddings-inference" in content and images["text-embeddings-inference"] not in content:
+        raise SystemExit(f"Reranker image drift in {path.relative_to(ROOT)}")
+    if "alpine/socat" in content and images["socat"] not in content:
+        raise SystemExit(f"Proxy image drift in {path.relative_to(ROOT)}")
+    if "llama.cpp" in content and images["llama-cpp-server"] not in content:
+        raise SystemExit(f"llama.cpp image drift in {path.relative_to(ROOT)}")
 require_text(
     ROOT / ".github/workflows/ci.yml",
     (
@@ -156,6 +210,34 @@ with tempfile.TemporaryDirectory(prefix="akb-dependency-quality-") as temp:
             raise SystemExit(f"Python dependencies are not current for {name}: {json.dumps(drift, sort_keys=True)}")
         python_freshness[name] = {"packages": len(current), "outdated": 0}
 
+    reranker_requirements = ROOT / "infra/rerankers/gte-native-requirements.txt"
+    reranker_versions = versions(reranker_requirements)
+    for package in ("sentence-transformers", "torch"):
+        with urlopen(f"https://pypi.org/pypi/{package}/json", timeout=30) as response:
+            latest = json.load(response)["info"]["version"]
+        if reranker_versions.get(package) != latest:
+            raise SystemExit(
+                f"Native reranker dependency is not current: {package} "
+                f"{reranker_versions.get(package)} -> {latest}"
+            )
+    reranker_lock = temporary / "gte-native.lock"
+    run([
+        "uv", "pip", "compile", "--upgrade", "--no-build", "--generate-hashes",
+        "--python-version", "3.12", "--output-file", str(reranker_lock),
+        str(reranker_requirements),
+    ])
+    reranker_audit = json.loads(run([
+        "pip-audit", "--disable-pip", "--no-deps", "-r", str(reranker_lock),
+        "--format", "json",
+    ]))
+    reranker_findings = [
+        finding
+        for item in reranker_audit.get("dependencies", [])
+        for finding in item.get("vulns", [])
+    ]
+    if reranker_findings:
+        raise SystemExit("Python dependency audit failed for native reranker")
+
 docling_input = (ROOT / "services/ingestion-service/requirements-docling.in").read_text(encoding="utf-8")
 match = re.search(r"docling-slim\[[^]]+\]==([0-9.]+)", docling_input)
 with urlopen("https://pypi.org/pypi/docling-slim/json", timeout=30) as response:
@@ -169,6 +251,14 @@ if docling_findings:
     raise SystemExit("Python dependency audit failed for Docling")
 
 node_tree = json.loads(run(["pnpm", "list", "--prod", "--depth", "Infinity", "--json"], cwd=WEB))
+registry_verified = False
+if args.verify_image_registry:
+    def verify_image(reference: str) -> None:
+        run(["docker", "buildx", "imagetools", "inspect", reference])
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        list(executor.map(verify_image, images.values()))
+    registry_verified = True
 components: dict[tuple[str, str, str], dict[str, str]] = {}
 for name, version in node_components(node_tree).items():
     encoded = "%40" + name[1:] if name.startswith("@") else name
@@ -189,10 +279,22 @@ evidence = {
     "locks": {str(path.relative_to(ROOT)): "sha256:" + sha256(path) for path in lock_files},
     "node": {"vulnerabilities": node_counts, "outdated": node_outdated},
     "python": {
-        "audits": {**python_audits, "docling": {"packages": len(docling_audit.get("dependencies", [])), "vulnerabilities": 0}},
+        "audits": {
+            **python_audits,
+            "docling": {"packages": len(docling_audit.get("dependencies", [])), "vulnerabilities": 0},
+            "native-reranker": {"packages": len(reranker_audit.get("dependencies", [])), "vulnerabilities": 0},
+        },
         "freshness": python_freshness,
     },
     "doclingSlim": {"current": match.group(1), "latest": docling_latest},
+    "infrastructureImages": {
+        "reviewedAt": image_manifest["reviewedAt"],
+        "count": len(images),
+        "immutable": True,
+        "registryVerified": registry_verified,
+        "externalProductionServices": image_manifest["externalProductionServices"],
+        "exceptions": image_manifest["exceptions"],
+    },
     "externalArtifacts": {"@voldzi/stratos-ui": "0.5.1; next immutable STRATOS handoff pending"},
 }
 (output / "dependency-security.json").write_text(json.dumps(evidence, indent=2) + "\n", encoding="utf-8")

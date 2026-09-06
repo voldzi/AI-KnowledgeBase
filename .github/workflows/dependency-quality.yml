@@ -42,8 +42,11 @@ jobs:
           python -m pip install uv==0.12.9 pip-audit==2.10.0
           pnpm --dir apps/web install --frozen-lockfile --store-dir "$PNPM_STORE_DIR"
 
-      - name: Verify dependency quality
-        run: python scripts/ci/quality_dependencies.py --output .artifacts/quality
+      - name: Verify dependency quality and image registries
+        run: >-
+          python scripts/ci/quality_dependencies.py
+          --verify-image-registry
+          --output .artifacts/quality
 
       - name: Preserve dependency evidence
         if: always()

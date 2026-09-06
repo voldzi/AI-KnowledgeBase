@@ -17,8 +17,8 @@ PYTHON_SERVICES = (
     "governance-service",
     "llm-gateway-service",
 )
-PYTHON_BASE = "python:3.12-slim@sha256:e5c9fa26ffb76e11e0f054f30dc2523a2f9693f0c36c0cf1e39b27e152d899fc"
-NODE_BASE = "node:26-alpine@sha256:2d984a15c9b54fd0aeb608b8e0d0d83529eb34d2966db27a1fb4f1edc3d298a3"
+PYTHON_BASE = "python:3.12.14-slim@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea"
+NODE_BASE = "node:26.8.1-alpine@sha256:2d984a15c9b54fd0aeb608b8e0d0d83529eb34d2966db27a1fb4f1edc3d298a3"
 PNPM_CHECKSUM = "sha256:b9e49603540d04107b98e93917a30e6114970d403c23e40309a44ea9c2bca7fd"
 DEBIAN_SNAPSHOT = "snapshot.debian.org/archive/debian/20260824T000000Z"
 DEBIAN_SECURITY_SNAPSHOT = "snapshot.debian.org/archive/debian-security/20260824T000000Z"

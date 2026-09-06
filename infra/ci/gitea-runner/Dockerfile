@@ -1,9 +1,9 @@
-FROM gitea/act_runner:0.2.11 AS act_runner
-FROM docker:27-cli AS docker_cli
+FROM gitea/act_runner:0.3.0@sha256:8368754bb612a1deb07ed604e3b955338aefc01576d4d0d92e8dd82f29250fcd AS act_runner
+FROM docker:29.7.2-cli@sha256:3f4743208d2338c934d7b8bcfbe1bb54c0b2355c510ad5e0f31c0c4a54bd704e AS docker_cli
 
 # Playwright's Linux browser binaries need glibc and the Debian browser
 # dependencies. Alpine can download the cache but cannot reliably execute it.
-FROM node:22-bookworm-slim AS ci-tools
+FROM node:26.8.1-bookworm-slim@sha256:367679cf9792759492a486e4aa4b421764d71a9546a6dae8aab81a99eb797b3e AS ci-tools
 
 USER root
 
@@ -77,6 +77,6 @@ RUN npm install --global pnpm@11.19.0 \
 FROM ci-tools AS runner
 
 COPY --from=act_runner /usr/local/bin/act_runner /usr/local/bin/act_runner
-COPY --from=act_runner /opt/act/run.sh /opt/act/run.sh
+COPY --from=act_runner /usr/local/bin/run.sh /usr/local/bin/run.sh
 
-ENTRYPOINT ["/usr/bin/tini", "--", "/opt/act/run.sh"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/run.sh"]

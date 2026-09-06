@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:26-alpine@sha256:2d984a15c9b54fd0aeb608b8e0d0d83529eb34d2966db27a1fb4f1edc3d298a3 AS deps
+FROM node:26.8.1-alpine@sha256:2d984a15c9b54fd0aeb608b8e0d0d83529eb34d2966db27a1fb4f1edc3d298a3 AS deps
 WORKDIR /app
 COPY apps/web/package.json apps/web/pnpm-lock.yaml apps/web/pnpm-workspace.yaml ./
 COPY apps/web/vendor/stratos-ui/ ./vendor/stratos-ui/
@@ -18,7 +18,7 @@ RUN --mount=type=cache,id=akb-web-pnpm-store,target=/pnpm/store \
   node /usr/local/lib/node_modules/pnpm/bin/pnpm.cjs config set network-concurrency 8 && \
   node /usr/local/lib/node_modules/pnpm/bin/pnpm.cjs install --frozen-lockfile
 
-FROM node:26-alpine@sha256:2d984a15c9b54fd0aeb608b8e0d0d83529eb34d2966db27a1fb4f1edc3d298a3 AS builder
+FROM node:26.8.1-alpine@sha256:2d984a15c9b54fd0aeb608b8e0d0d83529eb34d2966db27a1fb4f1edc3d298a3 AS builder
 WORKDIR /app
 ARG NEXT_PUBLIC_AKL_BASE_PATH=""
 ARG NEXT_PUBLIC_STRATOS_HOME_URL=""
@@ -39,7 +39,7 @@ COPY apps/web/ ./
 COPY contracts /contracts
 RUN node /usr/local/lib/node_modules/pnpm/bin/pnpm.cjs run build
 
-FROM node:26-alpine@sha256:2d984a15c9b54fd0aeb608b8e0d0d83529eb34d2966db27a1fb4f1edc3d298a3 AS runner
+FROM node:26.8.1-alpine@sha256:2d984a15c9b54fd0aeb608b8e0d0d83529eb34d2966db27a1fb4f1edc3d298a3 AS runner
 WORKDIR /app
 ARG NEXT_PUBLIC_AKL_BASE_PATH=""
 ARG AKL_IMAGE_SERVICE="web"
