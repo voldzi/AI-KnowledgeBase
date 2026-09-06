@@ -66,9 +66,9 @@ def prepare(stratos: Path) -> None:
     prepare_tls()
     credential_path = STATE / "credentials.json"
     credentials = json.loads(credential_path.read_text()) if credential_path.exists() else {}
-    for key in ("budget_session", "pf_session", "postgres", "minio", "keycloak", "operator", "break_glass", "policy", "session", "session_store", "session_encryption", "upload", "ingestion", "ticket", "jwt", "renderer", "budget_cursor", "pf_cursor", "pf_policy", "pf_availability", "pf_budget", "svc-ingestion", "svc-akb-web-ingestion", "akb-rag-service", "stratos-akb-service"):
+    for key in ("budget_session", "pf_session", "postgres", "minio", "keycloak", "operator", "break_glass", "policy", "session", "session_store", "session_encryption", "upload", "ingestion", "ticket", "jwt", "renderer", "budget_cursor", "pf_cursor", "pf_policy", "pf_availability", "pf_budget", "projectflow_source_state", "archflow_source_state", "svc-ingestion", "svc-akb-web-ingestion", "akb-rag-service", "stratos-akb-service", "stratos-projectflow-akb-service", "stratos-archflow-akb-service"):
         credentials.setdefault(key, secrets.token_hex(32))
-    for key in ("operator_subject", "break_glass_subject"):
+    for key in ("operator_subject", "break_glass_subject", "projectflow_service_subject", "archflow_service_subject"):
         credentials.setdefault(key, str(uuid.uuid4()))
     private_json(credential_path, credentials)
     c = credentials
@@ -111,7 +111,14 @@ def prepare(stratos: Path) -> None:
     services["keycloak"]["environment"].update(KC_DB_PASSWORD=c["postgres"], KEYCLOAK_ADMIN_PASSWORD=c["keycloak"], KC_HTTP_PORT="18081", KC_HOSTNAME="http://login.akb.localhost:18081", JAVA_OPTS_KC_HEAP="-Xms128m -Xmx384m")
     services["keycloak"]["environment"].update(KC_HTTP_PORT="18080", KC_HTTPS_PORT="18081", KC_HOSTNAME="https://login.akb.localhost:18081", KC_HTTPS_CERTIFICATE_FILE="/run/akb-test/server.pem", KC_HTTPS_CERTIFICATE_KEY_FILE="/run/akb-test/server.key")
     services["keycloak"]["volumes"] += [f"{STATE / 'tls/server.pem'}:/run/akb-test/server.pem:ro", f"{STATE / 'tls/server.key'}:/run/akb-test/server.key:ro"]
-    services["registry-api"]["environment"].update(AKL_DATABASE_URL=f"postgresql+psycopg://akl_platform:{c['postgres']}@postgres:5432/akl_registry", AKL_AUTO_CREATE_SCHEMA="false", AKL_TRUSTED_SERVICE_CLIENT_IDS="akb-rag-service,stratos-akb-service,svc-budget-controlled-rules,svc-ingestion", AKL_SERVICE_CLIENT_ROUTE_GRANTS="akb-rag-service=authz|audit|idempotency,stratos-akb-service=stratos-budget-upload,svc-budget-controlled-rules=controlled-rules-read,svc-ingestion=authz|audit|documents-read|ingestion-status")
+    services["registry-api"]["environment"].update(
+        AKL_DATABASE_URL=f"postgresql+psycopg://akl_platform:{c['postgres']}@postgres:5432/akl_registry",
+        AKL_AUTO_CREATE_SCHEMA="false",
+        AKL_TRUSTED_SERVICE_CLIENT_IDS="akb-rag-service,stratos-akb-service,stratos-projectflow-akb-service,stratos-archflow-akb-service,svc-budget-controlled-rules,svc-ingestion",
+        AKL_SERVICE_CLIENT_ROUTE_GRANTS="akb-rag-service=authz|audit|idempotency,stratos-akb-service=stratos-budget-upload,stratos-projectflow-akb-service=stratos-source-intake,stratos-archflow-akb-service=stratos-source-intake,svc-budget-controlled-rules=controlled-rules-read,svc-ingestion=authz|audit|documents-read|ingestion-status",
+        AKL_STRATOS_SOURCE_INTAKE_AUTHORITY_URL="http://stratos-api:4000/api/v1/information-governance/source-document-intake/authorize",
+        AKB_POLICY_SERVICE_TOKEN=c["policy"],
+    )
     services["registry-api"]["ports"] = ["127.0.0.1:18001:8000"]
     services["registry-api"]["environment"].update(AKL_OIDC_ISSUER=ISSUER, AKL_OIDC_JWKS_URL=ISSUER + "/protocol/openid-connect/certs")
     services["registry-api"]["build"]["args"] = {"SOURCE_DATE_EPOCH": subprocess.check_output(["git", "show", "-s", "--format=%ct", "HEAD"], cwd=ROOT, text=True).strip()}
@@ -159,11 +166,31 @@ def prepare(stratos: Path) -> None:
         services["stratos-" + name] = s
     api = services["stratos-api"]
     api["ports"] = ["127.0.0.1:14001:4000"]
-    api["environment"].update(DATABASE_URL=f"postgresql://stratos:{c['postgres']}@stratos-postgres:5432/stratos?schema=public", APP_ENV="test", JWT_SECRET=c["jwt"], BUDGET_AUTH_MODE="oidc", BUDGET_OIDC_ISSUER=ISSUER, BUDGET_OIDC_JWKS_URL=ISSUER + "/protocol/openid-connect/certs", BUDGET_OIDC_AUDIENCE="budget-web", APP_BASE_URL="http://localhost:3240", BUDGET_PUBLIC_BASE_URL="http://localhost:3240", ARCHFLOW_PUBLIC_BASE_URL="http://localhost:3232", APP_ALLOWED_ORIGINS="http://localhost:3240,http://localhost:3231,http://localhost:3232,http://localhost:3220,http://localhost:3221", AKL_REGISTRY_BASE_URL="http://registry-api:8000/api/v1", AKL_RAG_BASE_URL="http://rag-retrieval-service:8080/api/v1", BUDGET_AKB_RAG_BASE_URL="http://rag-retrieval-service:8080/api/v1", AKB_POLICY_SERVICE_TOKEN=c["policy"], BUDGET_AKB_UPLOAD_TICKET_KEY=c["ticket"], BUDGET_AKB_DOCUMENT_INTAKE_ENABLED="false", STRATOS_BOOTSTRAP_ADMIN_SUBJECT=c["operator_subject"], STRATOS_BOOTSTRAP_ADMIN_EMAIL="operator@acceptance.invalid", STRATOS_BOOTSTRAP_ADMIN_DISPLAY_NAME="Správce lokálního testu", STRATOS_BREAK_GLASS_ADMIN_SUBJECT=c["break_glass_subject"], STRATOS_BREAK_GLASS_ADMIN_EMAIL="break-glass@acceptance.invalid", STRATOS_BREAK_GLASS_ADMIN_DISPLAY_NAME="Nouzový správce lokálního testu")
+    api["environment"].update(DATABASE_URL=f"postgresql://stratos:{c['postgres']}@stratos-postgres:5432/stratos?schema=public", APP_ENV="test", JWT_SECRET=c["jwt"], BUDGET_AUTH_MODE="oidc", BUDGET_OIDC_ISSUER=ISSUER, BUDGET_OIDC_JWKS_URL=ISSUER + "/protocol/openid-connect/certs", BUDGET_OIDC_AUDIENCE="budget-web", APP_BASE_URL="http://localhost:3240", BUDGET_PUBLIC_BASE_URL="http://localhost:3240", ARCHFLOW_PUBLIC_BASE_URL="http://localhost:3232", APP_ALLOWED_ORIGINS="http://localhost:3240,http://localhost:3231,http://localhost:3232,http://localhost:3220,http://localhost:3221", AKL_REGISTRY_BASE_URL="http://registry-api:8000/api/v1", AKL_RAG_BASE_URL="http://rag-retrieval-service:8080/api/v1", BUDGET_AKB_RAG_BASE_URL="http://rag-retrieval-service:8080/api/v1", AKB_POLICY_SERVICE_TOKEN=c["policy"], BUDGET_AKB_UPLOAD_TICKET_KEY=c["ticket"], BUDGET_AKB_DOCUMENT_INTAKE_ENABLED="true", STRATOS_BOOTSTRAP_ADMIN_SUBJECT=c["operator_subject"], STRATOS_BOOTSTRAP_ADMIN_EMAIL="operator@acceptance.invalid", STRATOS_BOOTSTRAP_ADMIN_DISPLAY_NAME="Správce lokálního testu", STRATOS_BREAK_GLASS_ADMIN_SUBJECT=c["break_glass_subject"], STRATOS_BREAK_GLASS_ADMIN_EMAIL="break-glass@acceptance.invalid", STRATOS_BREAK_GLASS_ADMIN_DISPLAY_NAME="Nouzový správce lokálního testu")
     api["depends_on"]["stratos-postgres"] = {"condition": "service_healthy"}
     api["environment"]["BUDGET_DIRECTOR_CURSOR_HMAC_SECRET"] = c["budget_cursor"]
     api["environment"]["BUDGET_SESSION_ENCRYPTION_KEY"] = base64.b64encode(bytes.fromhex(c["budget_session"])).decode()
-    api["environment"].update(BUDGET_AKB_WEB_BASE_URL="http://web:3000/akb", BUDGET_AKB_OIDC_TOKEN_URL=ISSUER + "/protocol/openid-connect/token", BUDGET_AKB_OIDC_CLIENT_ID="stratos-akb-service", BUDGET_AKB_OIDC_CLIENT_SECRET=c["stratos-akb-service"], PROJECTFLOW_POLICY_SERVICE_TOKEN=c["pf_policy"], PROJECTFLOW_AVAILABILITY_SERVICE_TOKEN=c["pf_availability"], PROJECTFLOW_SERVICE_TOKEN=c["pf_budget"])
+    api["environment"].update(
+        BUDGET_AKB_WEB_BASE_URL="http://web:3000/akb",
+        BUDGET_AKB_OIDC_TOKEN_URL=ISSUER + "/protocol/openid-connect/token",
+        BUDGET_AKB_OIDC_CLIENT_ID="stratos-akb-service",
+        BUDGET_AKB_OIDC_CLIENT_SECRET=c["stratos-akb-service"],
+        PROJECTFLOW_POLICY_SERVICE_TOKEN=c["pf_policy"],
+        PROJECTFLOW_AVAILABILITY_SERVICE_TOKEN=c["pf_availability"],
+        PROJECTFLOW_SERVICE_TOKEN=c["pf_budget"],
+        PROJECTFLOW_AKB_SOURCE_INTAKE_ENABLED="true",
+        PROJECTFLOW_AKB_SERVICE_SUBJECT_ID=c["projectflow_service_subject"],
+        PROJECTFLOW_SOURCE_INTAKE_AUTHORITY_URL="http://stratos-projectflow-api:4010/api/internal/source-document-intake/authorize",
+        ARCHFLOW_AKB_SOURCE_INTAKE_ENABLED="true",
+        ARCHFLOW_AKB_SOURCE_INTAKE_BASE_URL="http://web:3000/akb",
+        ARCHFLOW_AKB_SERVICE_SUBJECT_ID=c["archflow_service_subject"],
+        ARCHFLOW_AKB_UPLOAD_STATE_KEY=c["archflow_source_state"],
+        ARCHFLOW_AKB_OIDC_TOKEN_URL=ISSUER + "/protocol/openid-connect/token",
+        ARCHFLOW_AKB_OIDC_CLIENT_ID="stratos-archflow-akb-service",
+        ARCHFLOW_AKB_OIDC_CLIENT_SECRET=c["stratos-archflow-akb-service"],
+        ARCHFLOW_AKB_OIDC_AUDIENCE="akl-api",
+        ARCHFLOW_AKB_OIDC_SCOPE="service_ingestion",
+    )
     api["healthcheck"] = {"test": ["CMD-SHELL", "wget -qO- http://127.0.0.1:4000/health/ready >/dev/null"], "interval": "20s", "timeout": "5s", "retries": 10}
     sw = services["stratos-web"]
     sw["ports"] = ["127.0.0.1:3240:3000"]
@@ -182,7 +209,20 @@ def prepare(stratos: Path) -> None:
     pf["depends_on"]["stratos-postgres"] = {"condition": "service_healthy"}
     pf["environment"]["PROJECTFLOW_DIRECTOR_CURSOR_HMAC_SECRET"] = c["pf_cursor"]
     pf["environment"]["PROJECTFLOW_SESSION_ENCRYPTION_KEY"] = base64.b64encode(bytes.fromhex(c["pf_session"])).decode()
-    pf["environment"].update(PROJECTFLOW_POLICY_SERVICE_TOKEN=c["pf_policy"], PROJECTFLOW_AVAILABILITY_SERVICE_TOKEN=c["pf_availability"], PROJECTFLOW_SERVICE_TOKEN=c["pf_budget"])
+    pf["environment"].update(
+        PROJECTFLOW_POLICY_SERVICE_TOKEN=c["pf_policy"],
+        PROJECTFLOW_AVAILABILITY_SERVICE_TOKEN=c["pf_availability"],
+        PROJECTFLOW_SERVICE_TOKEN=c["pf_budget"],
+        PROJECTFLOW_AKB_SOURCE_INTAKE_ENABLED="true",
+        PROJECTFLOW_AKB_SOURCE_INTAKE_BASE_URL="http://web:3000/akb",
+        PROJECTFLOW_AKB_SERVICE_SUBJECT_ID=c["projectflow_service_subject"],
+        PROJECTFLOW_AKB_UPLOAD_STATE_KEY=c["projectflow_source_state"],
+        PROJECTFLOW_AKB_OIDC_TOKEN_URL=ISSUER + "/protocol/openid-connect/token",
+        PROJECTFLOW_AKB_OIDC_CLIENT_ID="stratos-projectflow-akb-service",
+        PROJECTFLOW_AKB_OIDC_CLIENT_SECRET=c["stratos-projectflow-akb-service"],
+        PROJECTFLOW_AKB_OIDC_AUDIENCE="akl-api",
+        PROJECTFLOW_AKB_OIDC_SCOPE="service_ingestion",
+    )
     pw = services["stratos-projectflow-web"]
     pw["ports"] = ["127.0.0.1:3231:3010"]
     pa = {"NEXT_PUBLIC_STRATOS_HOME_URL": "http://localhost:3240", "NEXT_PUBLIC_ARCHFLOW_URL": "http://localhost:3232", "NEXT_PUBLIC_AKB_URL": "http://localhost:3220/akb", "NEXT_PUBLIC_CHAT_URL": "http://localhost:3221", "NEXT_PUBLIC_PROJECTFLOW_API_URL": "", "NEXT_PUBLIC_PROJECTFLOW_BASE_PATH": "", "NEXT_PUBLIC_PROJECTFLOW_OIDC_ISSUER": ISSUER, "NEXT_PUBLIC_PROJECTFLOW_OIDC_CLIENT_ID": "projectflow-web", "NEXT_PUBLIC_PROJECTFLOW_OIDC_SCOPES": "openid profile email", "PROJECTFLOW_API_INTERNAL_URL": "http://stratos-projectflow-api:4010"}
@@ -206,13 +246,23 @@ def prepare(stratos: Path) -> None:
     realm["users"] = []
     clients = []
     audience_mapper = lambda audience: {"name": "aud-" + audience, "protocol": "openid-connect", "protocolMapper": "oidc-audience-mapper", "config": {"included.custom.audience": audience, "access.token.claim": "true", "id.token.claim": "false"}}
+    realm["clientScopes"] = [{
+        "name": "service_ingestion",
+        "description": "Explicit OAuth scope requested by AKB ingestion service clients.",
+        "protocol": "openid-connect",
+        "attributes": {"include.in.token.scope": "true", "display.on.consent.screen": "false"},
+    }]
     for client_id, port, path in [("akl-web", 3220, "/akb"), ("akb-chat-web", 3221, ""), ("budget-web", 3240, ""), ("projectflow-web", 3231, "")]:
         origin = f"http://localhost:{port}"
         clients.append({"clientId": client_id, "enabled": True, "protocol": "openid-connect", "publicClient": True, "standardFlowEnabled": True, "directAccessGrantsEnabled": False, "redirectUris": [origin + path + "/*"], "webOrigins": [origin], "attributes": {"post.logout.redirect.uris": origin + path + "/*", "pkce.code.challenge.method": "S256"}, "defaultClientScopes": ["basic", "profile", "email", "roles"], "protocolMappers": [audience_mapper(a) for a in ["akl-api", "budget-web", "projectflow-web", "stratos-access-api"]] + [{"name": "identity-audience", "protocol": "openid-connect", "protocolMapper": "oidc-hardcoded-claim-mapper", "config": {"claim.value": "employees", "claim.name": "identity_audience", "jsonType.label": "String", "access.token.claim": "true", "id.token.claim": "false"}}]})
-    for client_id in ["svc-ingestion", "svc-akb-web-ingestion", "akb-rag-service", "stratos-akb-service"]:
-        clients.append({"clientId": client_id, "enabled": True, "protocol": "openid-connect", "publicClient": False, "secret": c[client_id], "serviceAccountsEnabled": True, "standardFlowEnabled": False, "directAccessGrantsEnabled": False, "defaultClientScopes": ["roles"], "protocolMappers": [audience_mapper(a) for a in ["akl-api", "llm-gateway-service"]]})
-        roles = {"svc-ingestion": ["service_ingestion"], "svc-akb-web-ingestion": ["service_akb_web_ingestion"], "akb-rag-service": ["service_rag"], "stratos-akb-service": ["service_ingestion"]}[client_id]
-        realm["users"].append({"username": "service-account-" + client_id, "serviceAccountClientId": client_id, "enabled": True, "realmRoles": roles})
+    service_subjects = {
+        "stratos-projectflow-akb-service": c["projectflow_service_subject"],
+        "stratos-archflow-akb-service": c["archflow_service_subject"],
+    }
+    for client_id in ["svc-ingestion", "svc-akb-web-ingestion", "akb-rag-service", "stratos-akb-service", "stratos-projectflow-akb-service", "stratos-archflow-akb-service"]:
+        clients.append({"clientId": client_id, "enabled": True, "protocol": "openid-connect", "publicClient": False, "secret": c[client_id], "serviceAccountsEnabled": True, "standardFlowEnabled": False, "directAccessGrantsEnabled": False, "defaultClientScopes": ["roles"], "optionalClientScopes": ["service_ingestion"] if client_id in service_subjects else [], "protocolMappers": [audience_mapper(a) for a in ["akl-api", "llm-gateway-service"]]})
+        roles = {"svc-ingestion": ["service_ingestion"], "svc-akb-web-ingestion": ["service_akb_web_ingestion"], "akb-rag-service": ["service_rag"], "stratos-akb-service": ["service_ingestion"], "stratos-projectflow-akb-service": ["service_ingestion"], "stratos-archflow-akb-service": ["service_ingestion"]}[client_id]
+        realm["users"].append({**({"id": service_subjects[client_id]} if client_id in service_subjects else {}), "username": "service-account-" + client_id, "serviceAccountClientId": client_id, "enabled": True, "realmRoles": roles})
     realm["clients"] = clients
     for user, key in [("operator", "operator"), ("break-glass", "break_glass")]:
         realm["users"].append({"id": c[key + "_subject"], "username": user, "email": user + "@acceptance.invalid", "emailVerified": True, "enabled": True, "firstName": "Lokální", "lastName": "test", "attributes": {"identity_audience": ["employees"]}, "realmRoles": ["stratos_user"], "credentials": [{"type": "password", "value": c[key], "temporary": False}]})

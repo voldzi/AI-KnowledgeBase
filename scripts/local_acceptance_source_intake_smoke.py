@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Read-only proof of real source bridge boundaries in the shared Docker stack.
+"""Read-only proof of live source identities and boundaries in the shared stack.
 
-Uses the existing Budget test service only to prove it cannot impersonate the
-new sources. Does not provision identities, store files, admit documents or
-claim positive ProjectFlow/ArchFlow acceptance.
+Does not store files or admit documents. A valid source service without the
+separate current actor bearer must reach the source boundary and fail closed.
 """
 import json
 import subprocess
@@ -54,6 +53,32 @@ results['budget_cannot_impersonate_source']=inside('stratos-api','node',r'''
   console.log(JSON.stringify({token_status:200,status:response.status,code:result.error?.code}));
 })().catch(()=>{console.log(JSON.stringify({error:'unavailable'}));process.exitCode=1;});
 ''')
+results['projectflow_source_identity']=inside('stratos-projectflow-api','node',r'''
+(async()=>{
+  const e=process.env;
+  const tokenResponse=await fetch(e.PROJECTFLOW_AKB_OIDC_TOKEN_URL,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:new URLSearchParams({grant_type:'client_credentials',client_id:e.PROJECTFLOW_AKB_OIDC_CLIENT_ID,client_secret:e.PROJECTFLOW_AKB_OIDC_CLIENT_SECRET,scope:e.PROJECTFLOW_AKB_OIDC_SCOPE})});
+  if(!tokenResponse.ok) { console.log(JSON.stringify({token_status:tokenResponse.status}));return; }
+  const token=(await tokenResponse.json()).access_token;
+  const claims=JSON.parse(Buffer.from(token.split('.')[1],'base64url'));
+  const response=await fetch(e.PROJECTFLOW_AKB_SOURCE_INTAKE_BASE_URL+'/api/stratos/source-upload/preflight',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:'{}'});
+  const result=await response.json(); const audiences=Array.isArray(claims.aud)?claims.aud:[claims.aud];
+  console.log(JSON.stringify({token_status:200,audience_ok:audiences.includes('akl-api'),role_ok:(claims.realm_access?.roles??[]).includes('service_ingestion'),subject_ok:claims.sub===e.PROJECTFLOW_AKB_SERVICE_SUBJECT_ID,status:response.status,code:result.error?.code}));
+})().catch(()=>{console.log(JSON.stringify({error:'unavailable'}));process.exitCode=1;});
+''')
+results['archflow_source_identity']=inside('stratos-api','node',r'''
+(async()=>{
+  const e=process.env;
+  const tokenResponse=await fetch(e.ARCHFLOW_AKB_OIDC_TOKEN_URL,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:new URLSearchParams({grant_type:'client_credentials',client_id:e.ARCHFLOW_AKB_OIDC_CLIENT_ID,client_secret:e.ARCHFLOW_AKB_OIDC_CLIENT_SECRET,scope:e.ARCHFLOW_AKB_OIDC_SCOPE})});
+  if(!tokenResponse.ok) { console.log(JSON.stringify({token_status:tokenResponse.status}));return; }
+  const token=(await tokenResponse.json()).access_token;
+  const claims=JSON.parse(Buffer.from(token.split('.')[1],'base64url'));
+  const response=await fetch(e.ARCHFLOW_AKB_SOURCE_INTAKE_BASE_URL+'/api/stratos/source-upload/preflight',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:'{}'});
+  const result=await response.json(); const audiences=Array.isArray(claims.aud)?claims.aud:[claims.aud];
+  console.log(JSON.stringify({token_status:200,audience_ok:audiences.includes('akl-api'),role_ok:(claims.realm_access?.roles??[]).includes('service_ingestion'),subject_ok:claims.sub===e.ARCHFLOW_AKB_SERVICE_SUBJECT_ID,status:response.status,code:result.error?.code}));
+})().catch(()=>{console.log(JSON.stringify({error:'unavailable'}));process.exitCode=1;});
+''')
 results['registry_boundary']=inside('registry-api','python',r'''
 import json,urllib.request,urllib.error
 from app.config import get_settings
@@ -68,5 +93,8 @@ print(json.dumps({"source_authority_configured":bool(s.stratos_source_intake_aut
 print(json.dumps(results,indent=2))
 expected=all(results[name]['status']==401 for name in ('anonymous_prepare','anonymous_confirm','anonymous_status'))
 expected=expected and results['budget_cannot_impersonate_source']=={'token_status':200,'status':403,'code':'SOURCE_SYSTEM_NOT_ALLOWED'}
-expected=expected and results['registry_boundary']['auth_mode']=='oidc' and not results['registry_boundary']['source_authority_configured']
+identity_expected={'token_status':200,'audience_ok':True,'role_ok':True,'subject_ok':True,'status':403,'code':'AUTH_FORBIDDEN'}
+expected=expected and results['projectflow_source_identity']==identity_expected
+expected=expected and results['archflow_source_identity']==identity_expected
+expected=expected and results['registry_boundary']['auth_mode']=='oidc' and results['registry_boundary']['source_authority_configured']
 raise SystemExit(0 if expected else 1)

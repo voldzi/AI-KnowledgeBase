@@ -140,10 +140,29 @@ a teprve potom propagace stejné ověřené verze do produkce.
 
 ## Source intake checkpoint 2026-09-06
 
-AKB implements ProjectFlow/ArchFlow source intake; [the STRATOS handoff](../integration/STRATOS_SOURCE_DOCUMENT_INTAKE_V1.md) supplies exact connector and authority contracts. Central source authority, new source identities/writer fixtures and joint positive document/Chat acceptance remain pending. `AKL_STRATOS_SOURCE_INTAKE_AUTHORITY_URL` stays empty until the delivered authority is ready. Budget intake remains disabled.
+AKB and STRATOS implement the matching ProjectFlow/ArchFlow source intake,
+connector and authority contracts. The shared test generator enables these two
+source adapters only inside `akb-stratos-test`. It configures the live STRATOS
+authority URL, separate ProjectFlow and ArchFlow state keys, and two dedicated
+OIDC service clients with audience `akl-api`, role and optional OAuth scope
+`service_ingestion`, and only the Registry route grant `stratos-source-intake`.
+The existing Budget adapter is also enabled only in this isolated project so
+one joint run can cover contracts/finance, ProjectFlow and ArchFlow. Repository
+and production defaults remain disabled until the complete acceptance passes.
 
 Use `.venv/bin/python scripts/local_acceptance.py build web chat-web registry-api` to build affected images sequentially. The observed Docker VM has 8 GB RAM; parallel production builds alongside the running suite exhausted memory and killed the ClamAV daemon. This local build action reduces peak memory without skipping any image. Do not weaken scan enforcement. After a build, run the real ClamAV clean/EICAR smoke; container state alone is insufficient.
 
-The local generator now assigns `service_ingestion` and the `roles` client scope to the Budget service account. The existing local Budget account was repaired through Keycloak administration without credential rotation or granting generic Registry writes. ClamAV retains its signature volume; its healthcheck now reports sustained failure after three probes instead of fifteen, while preserving the startup grace period.
+The local generator assigns `service_ingestion` and the `roles` client scope to
+the Budget service account. The new source clients additionally receive the
+explicit `service_ingestion` OAuth scope requested by the STRATOS adapters.
+Their actual Keycloak service-account subjects must match the generated STRATOS
+configuration. ClamAV retains its signature volume; its healthcheck reports
+sustained failure after three probes while preserving the startup grace period.
 
-Read-only bridge boundary smoke: `.venv/bin/python scripts/local_acceptance_source_intake_smoke.py`. This proves anonymous rejection and that the real Budget service cannot impersonate a new source; it explicitly does not prove positive ProjectFlow/ArchFlow ingestion.
+Read-only bridge boundary smoke:
+`.venv/bin/python scripts/local_acceptance_source_intake_smoke.py`. It proves
+anonymous rejection, denies Budget source impersonation, validates both source
+token audiences, roles and subjects, and confirms that each valid source
+service still fails closed without a separate current actor bearer. Positive
+acceptance then uses a real ProjectFlow project/task/report and ArchFlow need
+with explicit policy, TLP, author, owner and gestor.

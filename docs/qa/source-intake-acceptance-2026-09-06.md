@@ -44,7 +44,33 @@ Docker VM má přibližně 8 GB RAM. Při souběžném sestavování obrazů do�
 
 ## Omezení a navazující práce
 
-STRATOS musí implementovat nové source authority rozhraní, aktuální source-aware admission/revalidation a adaptéry podle předaných kontraktů. Společné ProjectFlow/ArchFlow servisní identity a skuteční pisatelé/vlastníci/gestoři budou připraveni pro společný pozitivní test; reader SSO identity nejsou náhradou. Podněty mimo skutečnou entitu ArchFlow `need` vyžadují explicitní mapování/rozšíření kontraktu.
+### Aktualizace po předání STRATOS `5ae5618`
+
+STRATOS dodal ProjectFlow a ArchFlow adaptéry i obě části zdrojové autority.
+Kopie kontraktů přesně odpovídají AKB `0241286`; pozdější změna AKB se týkala
+jen závislostí a jejich OpenAPI otisky zůstaly stejné. Cílené testy byly
+zopakovány: ProjectFlow 204 prošlo, 6 explicitních DB testů bylo vynecháno;
+centrální API a ArchFlow 47 prošlo, 16 explicitních DB testů bylo vynecháno.
+
+Společný projekt používá source-intake implementaci STRATOS `5ae5618`; aktuální
+HEAD `b996018` nad ní mění pouze instrukce AGENTS/CLAUDE pro přístup k Chroma a
+nemění sestavený runtime. Prostředí má dvě skutečné lokální servisní identity,
+jejich přesné subjecty, audience `akl-api`, roli a OAuth scope
+`service_ingestion` a jediný route grant `stratos-source-intake`. Source
+authority je nakonfigurována a oba source přepínače jsou aktivní pouze v
+`akb-stratos-test`; stejným způsobem je pro společnou akceptaci dočasně aktivní
+i existující Budget adaptér. Read-only boundary smoke prošel: anonymní volání 401,
+Budget impersonace 403 a oba validní source klienty bez odděleného actor beareru
+403. Registry před pozitivním testem obsahuje 0 dokumentů a 0 verzí.
+
+Prostředí je připravené pro společnou pozitivní akceptaci. Jejím zbývajícím
+důkazem je uživatelský průchod projekt/task/report/need → ClamAV → draft →
+schválení → indexace → Chat s přesnou citací a následné odebrání přístupu.
+
+Pro pozitivní test musí být použiti skuteční pisatelé, vlastníci a gestoři s
+aktuálním oprávněním; reader SSO identity nejsou náhradou. Podněty mimo
+skutečnou entitu ArchFlow `need` nadále vyžadují explicitní mapování a rozšíření
+kontraktu.
 
 Zůstává ověřit reálný zdroj → příjem → schválení → indexace → Chat s přesnou citací a odebráním přístupu po indexaci. V této etapě se znovu neměřily lhůty globálního logoutu; předchozí měření 0.5.1 není zárukou okamžitého odhlášení.
 
