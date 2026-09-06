@@ -3,6 +3,7 @@
 FROM node:26-alpine@sha256:2d984a15c9b54fd0aeb608b8e0d0d83529eb34d2966db27a1fb4f1edc3d298a3 AS deps
 WORKDIR /app
 COPY apps/web/package.json apps/web/pnpm-lock.yaml apps/web/pnpm-workspace.yaml ./
+COPY apps/web/vendor/stratos-ui/ ./vendor/stratos-ui/
 ADD --checksum=sha256:deafa7ec98a1218b6a047289b92fbe2395c1e22d3495bb711653013218ee15ee \
   https://registry.npmjs.org/pnpm/-/pnpm-11.7.0.tgz /tmp/pnpm.tgz
 # Keep dependency downloads across BuildKit retries. The production image must
@@ -20,8 +21,18 @@ RUN --mount=type=cache,id=akb-web-pnpm-store,target=/pnpm/store \
 FROM node:26-alpine@sha256:2d984a15c9b54fd0aeb608b8e0d0d83529eb34d2966db27a1fb4f1edc3d298a3 AS builder
 WORKDIR /app
 ARG NEXT_PUBLIC_AKL_BASE_PATH=""
+ARG NEXT_PUBLIC_STRATOS_HOME_URL=""
+ARG NEXT_PUBLIC_PROJECTFLOW_URL=""
+ARG NEXT_PUBLIC_ARCHFLOW_URL=""
+ARG NEXT_PUBLIC_CHAT_URL=""
+ARG NEXT_PUBLIC_AKB_URL=""
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_PUBLIC_AKL_BASE_PATH=$NEXT_PUBLIC_AKL_BASE_PATH
+ENV NEXT_PUBLIC_STRATOS_HOME_URL=$NEXT_PUBLIC_STRATOS_HOME_URL
+ENV NEXT_PUBLIC_PROJECTFLOW_URL=$NEXT_PUBLIC_PROJECTFLOW_URL
+ENV NEXT_PUBLIC_ARCHFLOW_URL=$NEXT_PUBLIC_ARCHFLOW_URL
+ENV NEXT_PUBLIC_CHAT_URL=$NEXT_PUBLIC_CHAT_URL
+ENV NEXT_PUBLIC_AKB_URL=$NEXT_PUBLIC_AKB_URL
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /usr/local/lib/node_modules/pnpm /usr/local/lib/node_modules/pnpm
 COPY apps/web/ ./
