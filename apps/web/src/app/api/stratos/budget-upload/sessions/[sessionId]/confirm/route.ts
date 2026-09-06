@@ -240,22 +240,36 @@ export async function POST(request: NextRequest, routeContext: RouteContext) {
       body: normalizedBody,
       expectedCurrentIngestionJobId: payload.expected_current_ingestion_job_id ?? null,
     });
-    let ingestionJob: IngestionJob = await clients.ingestion.createJob(
-      ingestionRequest,
-      ingestionContext,
-      {
-        delegatedActorSubjectId: authorization.confirmed_subject_id,
-        authorizationToken: authorization.authorization_token,
-      },
-    );
+    const ingestionDelegation = {
+      delegatedActorSubjectId: authorization.confirmed_subject_id,
+      authorizationToken: authorization.authorization_token,
+    };
+    const priorAttempt = priorStatus.ingestion_attempt?.ingestion_job_id === ingestionJobId
+      ? priorStatus.ingestion_attempt
+      : null;
+    let ingestionJob: IngestionJob = priorAttempt
+      ? {
+          job_id: priorAttempt.ingestion_job_id,
+          document_id: priorAttempt.document_id,
+          document_version_id: priorAttempt.document_version_id,
+          status: priorAttempt.ingestion_status === "INDEXED" ? "completed"
+            : priorAttempt.ingestion_status === "FAILED" ? "failed"
+              : priorAttempt.ingestion_status === "QUEUED" ? "queued" : "running",
+          parser_profile: ingestionRequest.parser_profile,
+          ocr_enabled: ingestionRequest.ocr_enabled,
+          chunking_strategy: ingestionRequest.chunking_strategy,
+          embedding_profile: ingestionRequest.embedding_profile,
+          created_at: priorAttempt.created_at,
+          started_at: null,
+          finished_at: priorAttempt.ingestion_status === "INDEXED" || priorAttempt.ingestion_status === "FAILED"
+            ? priorAttempt.updated_at : null,
+        }
+      : await clients.ingestion.createJob(ingestionRequest, ingestionContext, ingestionDelegation);
     if (["pending_authorization", "claiming"].includes(ingestionJob.status)) {
       ingestionJob = await clients.ingestion.createJob(
         ingestionRequest,
         ingestionContext,
-        {
-          delegatedActorSubjectId: authorization.confirmed_subject_id,
-          authorizationToken: authorization.authorization_token,
-        },
+        ingestionDelegation,
       );
     }
     if (

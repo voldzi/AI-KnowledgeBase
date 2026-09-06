@@ -221,7 +221,19 @@ beforeEach(async () => {
       });
     }
     if (url.endsWith(`/documents/${documentId}/status`)) {
-      return Response.json({ document_id: documentId, updated: 0, items: [reference], ingestion_attempt: null });
+      return Response.json({
+        document_id: documentId,
+        updated: 0,
+        items: [reference],
+        ingestion_attempt: ingestionRequests.length === 0 ? null : {
+          ingestion_job_id: jobId,
+          document_id: documentId,
+          document_version_id: versionId,
+          ingestion_status: "INDEXED",
+          created_at: canonicalVersion.created_at,
+          updated_at: canonicalVersion.published_at,
+        },
+      });
     }
     if (url.endsWith(`/external-documents/${externalDocumentId}/current`)) {
       return Response.json({
@@ -275,6 +287,7 @@ describe("Budget confirmation recovery across upload sessions", () => {
     const retried = await confirm();
     assert.equal(retried.status, 200, JSON.stringify(retried.body));
     assert.equal(retried.body.ingestion_job_id, jobId);
+    assert.equal(ingestionRequests.length, 1, "exact replay must reuse the authoritative Registry attempt");
   });
 
   it("ingests an explicit draft record for review and returns its real draft status", async () => {

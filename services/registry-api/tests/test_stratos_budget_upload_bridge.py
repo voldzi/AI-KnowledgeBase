@@ -449,6 +449,12 @@ def test_budget_bridge_is_exact_idempotent_and_service_audited(
     assert version_created["created"] is True
     assert version_created["external_document"]["document"]["status"] == "valid"
     assert version["status"] == "valid"
+    activation_checks = [
+        body for method, _url, body in verified_profile_authority.requests
+        if method == "POST" and body.get("auditActorSubjectId")
+    ]
+    assert activation_checks
+    assert activation_checks[-1]["auditActorSubjectId"] == ACTOR
     assert version["governed_parent_resource_id"] == document["governed_resource_id"]
     assert (
         version["source_location"]["stratos_budget_upload"]
@@ -530,6 +536,11 @@ def test_budget_bridge_is_exact_idempotent_and_service_audited(
     assert version_replay.json()["version"]["file_id"] == version["file_id"]
     assert db_session.query(DocumentVersion).count() == 1
     assert db_session.query(DocumentFile).count() == 1
+    replay_checks = [
+        body for method, _url, body in verified_profile_authority.requests
+        if method == "POST" and body.get("auditActorSubjectId")
+    ]
+    assert replay_checks[-1]["auditActorSubjectId"] == ACTOR
 
     stored_only = client.patch(
         "/api/v1/integrations/stratos-budget-upload/external-documents/"
@@ -585,6 +596,70 @@ def test_budget_bridge_is_exact_idempotent_and_service_audited(
     )
     assert generic_current.status_code == 409
     assert generic_current.json()["error"]["code"] == "stratos_budget_upload_dedicated_route_required"
+
+
+def test_budget_assignment_update_preserves_exact_admitted_profile_without_generic_reregistration(
+    client, admin_headers, verified_profile_authority
+) -> None:
+    created, _version = _create_document_and_version(client)
+    document = created["document"]
+    assignments_response = client.get(
+        f"/api/v1/documents/{document['document_id']}/assignments",
+        headers=admin_headers,
+    )
+    assert assignments_response.status_code == 200, assignments_response.text
+    allowed_keys = {
+        "role", "subject_type", "subject_id", "display_label", "is_primary",
+        "active", "sla_days", "escalation_subject_type", "escalation_subject_id",
+        "escalation_label", "metadata",
+    }
+    assignments = [
+        {key: value for key, value in item.items() if key in allowed_keys}
+        for item in assignments_response.json()["items"]
+        if item["role"] not in {"approver", "reviewer"}
+    ]
+    assignments.append({
+        "role": "approver",
+        "subject_type": "user",
+        "subject_id": SECOND_ACTOR,
+        "display_label": "Independent Budget approver",
+        "is_primary": True,
+        "active": True,
+    })
+    profile = {
+        key: document["document_profile"][key]
+        for key in ("profile", "authorship", "provenance", "accountability")
+    }
+    authority_requests_before = len(verified_profile_authority.requests)
+    updated = client.put(
+        f"/api/v1/documents/{document['document_id']}/assignments",
+        headers=admin_headers,
+        json={
+            "document_profile": profile,
+            "expected_root_metadata_revision": document["current_root_metadata_revision"],
+            "assignments": assignments,
+        },
+    )
+    assert updated.status_code == 200, updated.text
+    assert len(verified_profile_authority.requests) == authority_requests_before
+    current = client.get(
+        f"/api/v1/documents/{document['document_id']}", headers=admin_headers
+    ).json()
+    assert current["current_root_metadata_revision"] == document["current_root_metadata_revision"]
+
+    changed_profile = {**profile, "authorship": [dict(profile["authorship"][0])]}
+    changed_profile["authorship"][0]["evidenceReference"] = "forged-budget-evidence"
+    rejected = client.put(
+        f"/api/v1/documents/{document['document_id']}/assignments",
+        headers=admin_headers,
+        json={
+            "document_profile": changed_profile,
+            "expected_root_metadata_revision": document["current_root_metadata_revision"],
+            "assignments": assignments,
+        },
+    )
+    assert rejected.status_code == 409, rejected.text
+    assert rejected.json()["error"]["code"] == "source_provenance_immutable"
 
 
 def test_budget_bridge_allows_another_authorized_actor_to_update_descriptive_metadata_and_add_version(

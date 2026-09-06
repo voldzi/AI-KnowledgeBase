@@ -3818,7 +3818,7 @@ def upsert_stratos_budget_document_version(
             db,
             document=document,
             version=existing,
-            actor_id=principal.subject_id,
+            actor_id=payload.integration_envelope.actor.subject_id,
             owner_subject_id=document.owner_id,
             allow_supersede=False,
         )
@@ -3859,7 +3859,7 @@ def upsert_stratos_budget_document_version(
         db,
         document=document,
         version=version,
-        actor_id=principal.subject_id,
+        actor_id=payload.integration_envelope.actor.subject_id,
         owner_subject_id=document.owner_id,
         allow_supersede=True,
     )
@@ -7603,6 +7603,7 @@ def patch_document(
     profile_root = None
     profile_registrations = []
     metadata_update = bool(set(changes) - {"status"})
+    budget_assignment_only = False
     if not withdrawal_only:
         current_profile = require_current_root(document)
         if metadata_update:
@@ -7625,6 +7626,18 @@ def patch_document(
                 raise problem(422, "document_profile_assignment_mismatch", "Owner must match the explicit profile")
             if "gestor_unit" in changes and payload.gestor_unit != (profile_root.accountability.gestor.id if profile_root.accountability.gestor.kind == "organization_unit" else None):
                 raise problem(422, "document_profile_assignment_mismatch", "Gestor must match the explicit profile")
+            budget_assignment_only = (
+                current_profile.provenance.source_system == "STRATOS_BUDGET"
+                and set(changes) <= {"document_profile", "expected_root_metadata_revision", "assignments"}
+            )
+            if budget_assignment_only:
+                current_value = current_profile.model_dump(mode="json", by_alias=True)
+                proposed_value = profile_root.model_dump(mode="json", by_alias=True)
+                current_value.pop("metadataRevision", None)
+                proposed_value.pop("metadataRevision", None)
+                if proposed_value != current_value:
+                    raise problem(409, "source_provenance_immutable", "Budget assignment updates must preserve the exact admitted document profile")
+                profile_root = None
         else:
             require_fresh_document_profile(document, version=_latest_document_version(db, document_id), actor_id=principal.subject_id)
     if payload.title is not None:
@@ -7637,7 +7650,7 @@ def patch_document(
         document.gestor_unit = payload.gestor_unit
     if payload.classification is not None:
         document.classification = payload.classification.value
-    governance_update_requested = metadata_update
+    governance_update_requested = metadata_update and not budget_assignment_only
     if governance_update_requested:
         official_public_source = _is_official_public_source_document(document)
         if official_public_source:

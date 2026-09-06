@@ -1,5 +1,15 @@
 # STRATOS handoff: AKB Document Intake V1
 
+Aktualizace 7. 9. 2026: skutečný Budget & Contract průchod v izolované
+`akb-stratos-test` sestavě prošel povinným TLP, organization i recipient-set
+audience, ClamAV, nezávislým schválením, publikací/indexací, přesnou Chat
+citací a odebráním přístupu ve stejné relaci. Přesný confirm replay používá
+existující autoritativní Registry ingestion attempt. Aktivace verze se auditně
+váže na potvrzeného lidského aktéra; profile-preserving změna assignmentů
+nemění přijatou provenance a její změna selže uzavřeně. Aktivní access
+projection 2.1.0 vyžaduje katalog `capabilities-1.12.1`; shadow 2.0.0 zůstává
+na `capabilities-1.12.0`.
+
 Aktualizace 6. 9. 2026: AKB implementovalo source preflight, společný binární příjem, confirm a status pro ProjectFlow/ArchFlow. Aktuální pokyn a kontrakty: [STRATOS source intake](../integration/STRATOS_SOURCE_DOCUMENT_INTAKE_V1.md). Následuje implementace autority/adaptérů na STRATOS a společná akceptace; příjem zůstává uzavřený. Starší položka „AKB musí dodat source OpenAPI“ je tímto nahrazena.
 
 ## Joint verification update — stratos-ui 0.5.1, 2026-09-06
@@ -13,10 +23,10 @@ with unchanged freshness; it is not immediate back-channel logout.
 
 AKB accepts organization and explicit recipient_set Budget audiences while
 preserving the financial source scope, exact policy hash, fresh actor/PDP,
-central source registration and current profile validation. This is implemented
-and regression-tested, not evidence of a real uploaded/indexed document.
-The related OpenAPI description changed; consumers must synchronize their
-pinned contract before the next coordinated source release.
+central source registration and current profile validation. The joint local
+acceptance now includes a real uploaded and indexed synthetic Budget document,
+an exact citation and same-session revocation. The related contract is pinned
+to capability catalog `capabilities-1.12.1`.
 
 AKB has implemented the PF/ArchFlow source contract and runtime. STRATOS must
 now implement the source authority and adapters from the linked source handoff.
@@ -123,11 +133,10 @@ ideas, but must not copy those roles into AKB document assignments.
 | Official source collector | Manager approved the source collection and URL allowlist. | Downloaded bytes pass through the same intake core; a public origin does not bypass scanning. |
 
 Implementation status: Budget, ProjectFlow and ArchFlow have explicit AKB
-endpoints and exact service profiles. ProjectFlow/ArchFlow central authority
-and STRATOS adapters still require the linked implementation handoff and joint
-acceptance. SecurityPreflight remains a target profile without an implemented
-upload endpoint. Never send their documents under a
-Budget source identity. Live Chat federation is a separate integration.
+endpoints, exact service profiles and completed joint local intake acceptance.
+SecurityPreflight remains a target profile without an implemented upload
+endpoint. Never send its documents under a Budget source identity. Live Chat
+federation remains a separate integration boundary.
 
 The [document-model assessment](../ARCHITECTURE/document-model-readiness-2026-09-05.md)
 also requires agreed versioned document profiles and truthful format capabilities

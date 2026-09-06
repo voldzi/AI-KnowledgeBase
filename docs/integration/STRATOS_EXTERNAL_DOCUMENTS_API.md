@@ -151,6 +151,11 @@ verze odpovídá schválenému execution/lifecycle profilu; návrh smlouvy zůst
 záměnou za právní účinnost ani anonymní/public publikaci.
 Confirm vrací také přesné `governance_confirmation` pro dokument a verzi a
 skutečný `document_version_status` (`draft` nebo `valid`).
+Přesné opakování confirm používá uložený autoritativní Registry ingestion
+attempt a nezakládá druhý job. Aktivace interaktivní Budget verze předává jako
+auditního aktéra potvrzený lidský subject z integračního envelope, nikoli
+transportní service account. Změna assignmentů smí zachovat pouze přesný již
+přijatý document profile; pokus změnit jeho provenance končí fail-closed.
 
 Webový bridge má pro tento řízený provoz oddělený rate limit. Produkční hodnoty
 se nastavují pomocí `AKL_WEB_STRATOS_BUDGET_SERVICE_RATE_LIMIT` a
