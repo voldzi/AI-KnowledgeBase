@@ -93,6 +93,76 @@ fi
             self.assertNotEqual(bad.returncode, 0)
             self.assertFalse((root / "release/prebuilt" / f"{other_sha}.env").exists())
 
+    def test_first_akb_cutover_restores_legacy_containers_after_failed_bootstrap(self) -> None:
+        sha = "a" * 40
+        legacy_id = "b" * 64
+        target_id = "c" * 64
+        gateway = ROOT / "infra/ci/gitea-runner/host/akb-gitea-deploy-gateway.sh"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            docker = fake_bin / "docker"
+            docker.write_text(f"""#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' \"$*\" >>\"$FAKE_DOCKER_LOG\"
+if [[ \"$1 ${'{'}2:-{'}'}\" == \"ps -aq\" ]]; then
+  if [[ \"$*\" == *'project=akl'* ]]; then printf '{legacy_id}\\n'
+  elif [[ \"$*\" == *'project=akb'* ]]; then printf '{target_id}\\n'
+  fi
+elif [[ \"$1\" == \"stop\" || \"$1\" == \"start\" ]]; then exit 0
+else exit 2
+fi
+""")
+            docker.chmod(0o755)
+            sync = fake_bin / "sync"
+            sync.write_text("#!/usr/bin/env bash\\nexit 0\\n")
+            sync.chmod(0o755)
+            release = root / "release"
+            (release / "git" / "AI-KnowledgeBase.git").mkdir(parents=True)
+            archive_path = root / "target.tar"
+            with tarfile.open(archive_path, mode="w") as archive:
+                script = b"#!/usr/bin/env bash\nexit 1\n"
+                info = tarfile.TarInfo("scripts/bootstrap_docker_home_target.sh")
+                info.mode = 0o755
+                info.size = len(script)
+                archive.addfile(info, io.BytesIO(script))
+            git = fake_bin / "git"
+            git.write_text("""#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$*" == *" archive "* ]]; then cat "$FAKE_GIT_ARCHIVE"; fi
+""")
+            git.chmod(0o755)
+            operation = release / "ci-deployments" / f"20260907T120000Z-{sha[:12]}-123"
+            operation.mkdir(parents=True)
+            (operation / "release-sha").write_text(f"{sha}\n")
+            log = root / "docker.log"
+            environment = {
+                **os.environ,
+                "AKL_RELEASE_ROOT": str(release),
+                "PATH": f"{fake_bin}:{os.environ['PATH']}",
+                "FAKE_DOCKER_LOG": str(log),
+                "FAKE_GIT_ARCHIVE": str(archive_path),
+            }
+            result = subprocess.run(
+                ["bash", str(gateway), "--internal-run", operation.name, sha],
+                capture_output=True,
+                text=True,
+                env=environment,
+            )
+            diagnostic = result.stderr
+            if log.exists():
+                diagnostic += log.read_text(encoding="utf-8")
+            if (operation / "status").exists():
+                diagnostic += (operation / "status").read_text(encoding="utf-8")
+            self.assertEqual(result.returncode, 0, diagnostic)
+            actions = log.read_text(encoding="utf-8")
+            self.assertIn(f"stop --time 30 {legacy_id}", actions)
+            self.assertIn(f"stop --time 30 {target_id}", actions)
+            self.assertIn(f"start {legacy_id}", actions)
+            self.assertLess(actions.index(f"stop --time 30 {legacy_id}"), actions.index(f"start {legacy_id}"))
+            self.assertIn("state=failed", (operation / "status").read_text(encoding="utf-8"))
+
     def test_api_client_uses_system_ca_without_token_in_process_args(self) -> None:
         token = "a" * 40
 
