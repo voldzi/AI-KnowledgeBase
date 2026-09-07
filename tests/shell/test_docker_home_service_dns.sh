@@ -12,10 +12,10 @@ grep -Fq "AKL_IMAGE_TAG=docker-home" "$ENV_EXAMPLE" \
   }
 
 for expected in \
-  "image: \${WEB_IMAGE:-akl/web:\${AKL_IMAGE_TAG:-docker-home}}" \
-  "image: \${CHAT_WEB_IMAGE:-akl/chat-web:\${AKL_IMAGE_TAG:-docker-home}}" \
-  "image: \${REGISTRY_API_IMAGE:-akl/registry-api:\${AKL_IMAGE_TAG:-docker-home}}" \
-  "image: \${INGESTION_SERVICE_IMAGE:-akl/ingestion-service:\${AKL_IMAGE_TAG:-docker-home}}"
+  "image: \${WEB_IMAGE:-akb/web:\${AKL_IMAGE_TAG:-docker-home}}" \
+  "image: \${CHAT_WEB_IMAGE:-akb/chat-web:\${AKL_IMAGE_TAG:-docker-home}}" \
+  "image: \${REGISTRY_API_IMAGE:-akb/registry-api:\${AKL_IMAGE_TAG:-docker-home}}" \
+  "image: \${INGESTION_SERVICE_IMAGE:-akb/ingestion-service:\${AKL_IMAGE_TAG:-docker-home}}"
 do
   grep -Fq "$expected" "$COMPOSE_FILE" \
     || {
