@@ -131,7 +131,7 @@ for dockerfile in (
 require_text(ROOT / "services/platform-infrastructure/Dockerfile", (images["python"],))
 require_text(
     ROOT / "infra/ci/gitea-runner/Dockerfile",
-    (images["gitea-act-runner"], images["docker-cli"], images["node-bookworm"]),
+    (images["gitea-act-runner"], images["docker-cli"], images["node-bookworm"], images["python"]),
 )
 env_example = (ROOT / ".env.example").read_text(encoding="utf-8")
 for name in (

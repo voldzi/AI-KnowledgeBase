@@ -8,7 +8,8 @@ This Dockerfile builds two non-production AKB CI images for VM125:
 
 They intentionally use Debian Bookworm rather than Alpine: the Playwright
 Chromium binaries used by `apps/web` require a glibc runtime and the standard
-Linux browser libraries.
+Linux browser libraries. The CI tool image combines the pinned Node runtime
+with the same pinned Python 3.12 runtime used by AKB services and locked tests.
 
 The job image includes both Docker Compose and Docker Buildx CLI plugins from
 the same Docker CLI build stage. Buildx is mandatory for immutable release

@@ -139,6 +139,13 @@ class CachedPythonEnvironmentTests(unittest.TestCase):
         self.assertEqual(workflow.count('${python_env}/bin/python" -m pytest'), 6)
         self.assertEqual(workflow.count("trap 'rm -rf \"${python_env}\"' EXIT"), 6)
 
+    def test_ci_tool_image_uses_the_locked_python_runtime(self) -> None:
+        dockerfile = (ROOT / "infra/ci/gitea-runner/Dockerfile").read_text()
+        images = json.loads((ROOT / "infra/dependency-images.json").read_text())["images"]
+        self.assertIn(f"FROM {images['python']} AS ci-tools", dockerfile)
+        self.assertIn("COPY --from=node_runtime /usr/local /usr/local", dockerfile)
+        self.assertNotIn("        python3 \\\n", dockerfile)
+
     def test_validate_only_does_not_create_cache(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             cache_root = Path(temporary) / "akb" / "python-envs"
