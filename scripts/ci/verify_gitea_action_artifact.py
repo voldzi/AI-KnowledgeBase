@@ -97,7 +97,6 @@ def validate_run_response(payload: Any, expected: dict[str, Any]) -> None:
     branch = expected["ref"].removeprefix("refs/heads/")
     checks = {
         "id": expected["run_id"],
-        "run_attempt": expected["run_attempt"],
         "head_sha": expected["commit"],
         "head_branch": branch,
         "event": expected["event"],
@@ -105,6 +104,13 @@ def validate_run_response(payload: Any, expected: dict[str, Any]) -> None:
     for key, value in checks.items():
         if payload.get(key) != value:
             raise ValueError(f"workflow run {key} does not match")
+    # Gitea 1.27 keeps `gitea.run_attempt` at its original value when a
+    # workflow run is rerun.  The server API increments it, so it cannot be
+    # compared with the runner-supplied value.  The exact run id, commit,
+    # branch, event and freshly returned artifact id above bind this artifact
+    # to the running trusted workflow; still reject a malformed API response.
+    if not isinstance(payload.get("run_attempt"), int) or payload["run_attempt"] < 1:
+        raise ValueError("workflow run run_attempt must be a positive integer")
 
 
 def fetch_payload(expected: dict[str, Any], token: str) -> tuple[Any, Any]:
