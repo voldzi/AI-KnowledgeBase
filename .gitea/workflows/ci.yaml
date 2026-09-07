@@ -150,7 +150,13 @@ jobs:
             python3 scripts/ci/ensure_cached_python_test_env.py \
               --validate-only --service "${service}"
           done
-          npx --yes --prefer-offline @redocly/cli@2.51.1 lint openapi/openapi.json
+          # Keep the version-pinned OpenAPI linter cache separate from npm's
+          # shared transient cache.  A damaged transient entry must not block
+          # a reviewed release candidate or cause the runner to fall back to
+          # an unpinned network install.
+          npx --yes --prefer-offline \
+            --cache "${AKB_CI_CACHE_ROOT}/npm-redocly-2.51.1" \
+            @redocly/cli@2.51.1 lint openapi/openapi.json
       - name: Scan committed history for secrets
         run: |
           set -euo pipefail
