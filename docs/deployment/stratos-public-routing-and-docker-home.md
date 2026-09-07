@@ -546,7 +546,8 @@ Aktualni pilot:
 - env: `/srv/akb/env/akb.prod.env`,
 - compose: `/srv/akb/current/infra/docker-compose/docker-compose.docker-home.yml`,
 - AKB proxy port: `3220`,
-- Docker subnets: `10.246.240.0/24` az `10.246.244.0/24`,
+- Docker subnets: `10.246.245.0/24` az `10.246.249.0/24` (vyhrazeno pro AKB;
+  legacy AKL pouziva `10.246.240.0/24` az `10.246.244.0/24`),
 - PostgreSQL: `haproxy.home.cz:5000`,
 - Ollama: preferovany endpoint `http://192.168.200.3:11434`, rizeny failover
   na `192.168.200.2` a `192.168.1.176`,
