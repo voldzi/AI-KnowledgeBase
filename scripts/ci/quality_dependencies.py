@@ -295,7 +295,7 @@ evidence = {
         "externalProductionServices": image_manifest["externalProductionServices"],
         "exceptions": image_manifest["exceptions"],
     },
-    "externalArtifacts": {"@voldzi/stratos-ui": "0.5.1; next immutable STRATOS handoff pending"},
+    "externalArtifacts": {"@voldzi/stratos-ui": "0.5.3; immutable STRATOS handoff 6170bbc"},
 }
 (output / "dependency-security.json").write_text(json.dumps(evidence, indent=2) + "\n", encoding="utf-8")
 (output / "sbom.cdx.json").write_text(json.dumps({

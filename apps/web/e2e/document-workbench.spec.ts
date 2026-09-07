@@ -61,7 +61,7 @@ test.describe("Document Workbench product paths", () => {
 
     await expect(page.getByRole("link", { name: "Nový koncept" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Nahrát verzi" })).toBeDisabled();
-    await page.getByRole("checkbox", { name: "Select row 2" }).check();
+    await page.getByRole("checkbox", { name: "Vybrat řádek 2" }).check();
     await expect(page.getByRole("button", { name: "Nový koncept" })).toBeDisabled();
     await expect(page.getByRole("link", { name: "Nahrát verzi" })).toHaveAttribute(
       "href",

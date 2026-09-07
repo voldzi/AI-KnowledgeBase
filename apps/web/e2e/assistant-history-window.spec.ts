@@ -37,8 +37,10 @@ test("CHAT-WINDOW pages all history with bounded DOM, keyboard focus and matchin
   await expect(navigation).toContainText("Zprávy 66–125 z 125");
   const panel = page.getByRole("complementary", { name: "Zdroje odpovědi" });
   await panel.getByRole("button", { name: "Otevřít citaci", exact: true }).click();
-  await expect(page.getByRole("dialog")).toContainText("Náhled posledního zdroje");
+  const citationDialog = page.getByRole("dialog");
+  await expect(citationDialog).toContainText("Náhled posledního zdroje");
   await page.keyboard.press("Escape");
+  await expect(citationDialog).toHaveCount(0);
   await navigation.getByRole("button", { name: "Starší zprávy", exact: true }).focus();
   await page.keyboard.press("Enter");
   await expect(navigation).toContainText("Zprávy 6–65 z 125");

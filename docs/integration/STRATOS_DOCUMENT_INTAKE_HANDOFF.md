@@ -1,5 +1,12 @@
 # STRATOS handoff: AKB Document Intake V1
 
+Aktualizace 7. 9. 2026: AKB přebírá lokální neměnný artefakt
+`@voldzi/stratos-ui` 0.5.3 z předávacího commitu STRATOS `6170bbc`. Sdílený
+Dialog obsluhuje Escape v capture fázi, takže jej dřívější hostitelský listener
+nemůže spotřebovat před zavřením nejvyšší modalní vrstvy. Regresní scénář
+zahrnuje zavření, odstranění dialogu z DOM, obnovení focusu, nové otevření,
+celoobrazovkový režim a zavření přes Escape.
+
 Aktualizace 7. 9. 2026: skutečný Budget & Contract průchod v izolované
 `akb-stratos-test` sestavě prošel povinným TLP, organization i recipient-set
 audience, ClamAV, nezávislým schválením, publikací/indexací, přesnou Chat
