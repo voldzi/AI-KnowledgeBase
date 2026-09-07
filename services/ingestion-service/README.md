@@ -205,7 +205,7 @@ Nativní parsery:
 - PDF přes layout-aware PyMuPDF v režimu `AKL_INGESTION_PDF_ENGINE=auto|pymupdf`, s fallbackem na `pypdf`,
 - DOCX přes `python-docx`.
 
-Volitelná strukturální vrstva Docling 2.124.0 je feature-gated a nativní parsery
+Volitelná strukturální vrstva Docling 2.126.0 je feature-gated a nativní parsery
 neodstraňuje. `shadow` zachová nativní výsledek jako autoritativní a uloží pouze
 obsahově bezpečné srovnávací metriky. `prefer` použije Docling a při jeho selhání
 se transparentně, ale auditovatelně vrátí k nativnímu parseru. `enforce` žádný

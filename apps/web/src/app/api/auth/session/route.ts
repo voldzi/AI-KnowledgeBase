@@ -1,8 +1,9 @@
+import { authCookieNames } from "@/lib/auth/cookies";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getAklConfig } from "@/lib/api/config";
 import { getOptionalResolvedServerSession, getOptionalServerRequestContext } from "@/lib/api/server";
-import { SERVER_SESSION_COOKIE, serverSessionCookieOptions } from "@/lib/auth/server-session";
+import { serverSessionCookieOptions } from "@/lib/auth/server-session";
 import { canUseAdminSurface } from "@/lib/auth/authorization";
 import { openRolePreview, ROLE_PREVIEW_COOKIE, ROLE_PREVIEW_PROFILES } from "@/lib/auth/role-preview";
 
@@ -16,7 +17,7 @@ export async function GET(request: NextRequest) {
     const session = resolved?.oidc;
     if (!session) {
       const response = NextResponse.json({ authenticated: false }, { status: 401, headers: { "cache-control": "no-store" } });
-      response.cookies.set(SERVER_SESSION_COOKIE, "", { ...serverSessionCookieOptions(config, false), maxAge: 0 });
+      response.cookies.set(authCookieNames(config.webProfile).session, "", { ...serverSessionCookieOptions(config, false), maxAge: 0 });
       return response;
     }
     const actualContext = await getOptionalServerRequestContext(request);
@@ -46,8 +47,8 @@ export async function GET(request: NextRequest) {
         profiles: ROLE_PREVIEW_PROFILES
       }
     }, { headers: { "cache-control": "no-store" } });
-    const selector = request.cookies.get(SERVER_SESSION_COOKIE)?.value;
-    if (selector && resolved) response.cookies.set(SERVER_SESSION_COOKIE, selector, serverSessionCookieOptions(config, resolved.persistent, resolved.absoluteExpiresAt));
+    const selector = request.cookies.get(authCookieNames(config.webProfile).session)?.value;
+    if (selector && resolved) response.cookies.set(authCookieNames(config.webProfile).session, selector, serverSessionCookieOptions(config, resolved.persistent, resolved.absoluteExpiresAt));
     return response;
   }
 

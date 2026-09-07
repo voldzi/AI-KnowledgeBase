@@ -216,7 +216,7 @@ def _policy_chunk(
         "policyVersion": "information-policy-2.0.0",
         "handlingClass": handling_class,
         "legalClassification": "NONE",
-        "tlp": None,
+        "tlp": "TLP:AMBER",
         "pap": None,
         "obligations": obligations,
         "contentCategories": ["CONTRACTUAL"],

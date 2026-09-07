@@ -852,7 +852,7 @@ Web bridge pro upload dokumentu vystavuje pouze aplikacni boundary endpointy:
 
 ```text
 POST /api/controlled-document/upload/preflight
-PUT  /api/controlled-document/upload/sessions/{sessionId}/content
+PUT  /api/document-intake/v1/sessions/{sessionId}/content
 POST /api/controlled-document/ingestion
 ```
 

@@ -1,0 +1,2 @@
+AKB source connector acceptance fixture.
+Document status must remain draft until reviewed.

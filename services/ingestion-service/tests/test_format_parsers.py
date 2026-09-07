@@ -96,7 +96,8 @@ def test_xlsx_parser_extracts_sheet_rows_as_table_blocks() -> None:
     result = parser.parse(source, parser_profile="default")
 
     assert result.tables_detected == 1
-    assert result.pages_processed == 2
+    assert result.pages_processed == 0
+    assert result.metadata["sheets_processed"] == 2
     assert len(result.blocks) == 1
     block = result.blocks[0]
     assert block.block_type == "table"
@@ -217,14 +218,16 @@ def test_pptx_parser_extracts_slides_with_titles_and_notes() -> None:
     assert parser.supports(source)
     result = parser.parse(source, parser_profile="default")
 
-    assert result.pages_processed == 2
+    assert result.pages_processed == 0
+    assert result.metadata["slides_processed"] == 2
     assert result.tables_detected == 1
 
-    slide1_blocks = [block for block in result.blocks if block.page_number == 1]
+    assert all(block.page_number is None for block in result.blocks)
+    slide1_blocks = [block for block in result.blocks if block.metadata["source_locator"]["slide_number"] == 1]
     assert any(block.block_type == "heading" and block.text == "Architektura platformy" for block in slide1_blocks)
     assert any("dokumentového registru" in block.text for block in slide1_blocks)
     assert any(block.text.startswith("Poznámky:") for block in slide1_blocks)
-    assert all(block.section_path == ["Architektura platformy"] for block in slide1_blocks)
+    assert all(block.section_path == ["Snímek 1", "Architektura platformy"] for block in slide1_blocks)
 
     table_blocks = [block for block in result.blocks if block.block_type == "table"]
     assert len(table_blocks) == 1

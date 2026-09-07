@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { authorizeAssistantHistoryResponse } from "@/lib/assistant/history-authorization";
 
 import { getOptionalServerRequestContext, getServerApiClients } from "@/lib/api/server";
 
@@ -22,7 +23,9 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     const body = await request.json();
     const clients = getServerApiClients();
     const conversation = await clients.registry.replaceAssistantConversationShares(conversationId, body, requestContext);
-    return NextResponse.json({ conversation });
+    return NextResponse.json({
+      conversation: await authorizeAssistantHistoryResponse(conversation, requestContext, clients),
+    }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return assistantBridgeError(error);
   }

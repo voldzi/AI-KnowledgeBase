@@ -43,6 +43,8 @@ import {
 } from "lucide-react";
 
 import { StatusBadge } from "@/components/status-badge";
+import { profileWithAssignments } from "@/lib/documents/document-profile";
+import { InformationPolicyNotice } from "@/components/information-policy-notice";
 import {
   StratosButton,
   StratosButtonLink,
@@ -85,7 +87,7 @@ import type {
 import { documentTypeLabel, formatDate, formatDateTime } from "@/lib/format";
 import { accessAuditToneForSeverity } from "@/features/audit/access-audit-items";
 import { DocumentReviewPanel } from "./document-review-panel";
-import { latestDocumentVersion, selectedDocumentVersion } from "@/lib/documents/review-version";
+import { documentVersionPublicationLabel, documentVersionTimeline, latestDocumentVersion, selectedDocumentVersion } from "@/lib/documents/review-version";
 import { documentReviewError } from "@/lib/documents/review-errors";
 import {
   documentInformationPolicyDetails,
@@ -249,7 +251,7 @@ const detailCopy = {
     classification: "Klasifikace",
     gestor: "Gestor",
     updated: "Aktualizováno",
-    currentVersion: "Aktuální verze",
+    currentVersion: "Zobrazená verze",
     validFrom: "platná od",
     noVersion: "Žádná verze",
     source: "Zdroj",
@@ -521,7 +523,7 @@ const detailCopy = {
     classification: "Classification",
     gestor: "Gestor",
     updated: "Updated",
-    currentVersion: "Current version",
+    currentVersion: "Displayed version",
     validFrom: "valid from",
     noVersion: "No version",
     source: "Source",
@@ -1112,12 +1114,17 @@ export function DocumentDetail({
     setSavingAssignments(true);
     setAssignmentFeedback(null);
     try {
+      if (!document.document_profile || !document.current_root_metadata_revision) {
+        throw new Error(language === "cs" ? "Dokument nemá ověřený aktuální profil." : "This document has no verified current profile.");
+      }
+      const profile = profileWithAssignments(document.document_profile, payloadAssignments);
       const response = await fetch(withAppBasePath(`/api/documents/${encodeURIComponent(document.document_id)}/assignments`), {
         method: "PUT",
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ assignments: payloadAssignments })
+        body: JSON.stringify({ assignments: payloadAssignments, document_profile: profile,
+          expected_root_metadata_revision: document.current_root_metadata_revision })
       });
       if (!response.ok) {
         throw new Error(await readDocumentWorkflowError(response));
@@ -1359,6 +1366,11 @@ export function DocumentDetail({
               <StatusBadge value={document.status} />
               <span className="tag">{document.classification}</span>
             </div>
+            <InformationPolicyNotice
+              policy={currentVersion ? versionPolicy : documentPolicy}
+              language={language}
+              title={language === "cs" ? "Pravidla vybraného obsahu" : "Rules for the selected content"}
+            />
             <p className="notice">{copy.registryNotice}</p>
           </div>
           <div className="stack">
@@ -1374,7 +1386,7 @@ export function DocumentDetail({
               <strong>{copy.currentVersion}</strong>
               <span>
                 {currentVersion
-                  ? `${currentVersion.version_label} ${copy.validFrom} ${formatDate(currentVersion.valid_from, language)}`
+                  ? `${currentVersion.version_label} · ${documentVersionTimeline(currentVersion, language)}`
                   : copy.noVersion}
               </span>
             </div>
@@ -1509,7 +1521,7 @@ export function DocumentDetail({
                   }
                 />
               </div>
-              <StatusBadge value={document.status} />
+              <StatusBadge value={document.status} label={document.status === "valid" ? documentVersionPublicationLabel(currentVersion, language) : undefined} />
             </div>
             <div className="panel__body detail-kv-grid">
               <KeyValue label={copy.type} value={documentTypeLabel(document.document_type, language)} />
@@ -1521,7 +1533,7 @@ export function DocumentDetail({
                 label={copy.currentVersion}
                 value={
                   currentVersion
-                    ? `${currentVersion.version_label} - ${formatDate(currentVersion.valid_from, language)}`
+                    ? `${currentVersion.version_label} · ${documentVersionTimeline(currentVersion, language)}`
                     : copy.noVersion
                 }
               />
@@ -2332,14 +2344,14 @@ export function DocumentDetail({
                 width: 130,
                 sortable: true,
                 sortAccessor: (version) => version.status,
-                render: (version) => <StatusBadge value={version.status} />
+                render: (version) => <StatusBadge value={version.status} label={documentVersionPublicationLabel(version, language)} />
               },
               {
                 id: "validity",
                 label: copy.validity,
                 sortable: true,
                 sortAccessor: (version) => version.valid_from,
-                render: (version) => `${formatDate(version.valid_from, language)} - ${formatDate(version.valid_to, language)}`
+                render: (version) => documentVersionTimeline(version, language)
               },
               {
                 id: "changeSummary",

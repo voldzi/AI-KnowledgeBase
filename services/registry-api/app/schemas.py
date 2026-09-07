@@ -3,13 +3,39 @@ from enum import Enum
 import re
 from typing import Any, Literal
 
+from pydantic.json_schema import SkipJsonSchema
+
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
+from app.document_profile import DocumentRootSnapshot, DocumentVersionSnapshot
+from app.document_profile_inputs import DocumentProfileInput, DocumentVersionProfileInput
+
 from app.information_policy import (
+    budget_audience_matches_source,
     InformationPolicyBinding,
     IntegrationEnvelope,
+    TlpLabel,
     canonical_policy_hash,
 )
+
+
+class DocumentInformationPolicyBinding(InformationPolicyBinding):
+    """AKB admission profile; the shared STRATOS binding remains defensive nullable."""
+
+    tlp: TlpLabel = Field(description="Explicit effective TLP is mandatory for admitted AKB documents.")
+
+    @classmethod
+    def __get_pydantic_json_schema__(cls, core_schema, handler):
+        base = handler(InformationPolicyBinding.__pydantic_core_schema__)
+        return {
+            "title": cls.__name__,
+            "description": cls.__doc__,
+            "allOf": [base, {
+                "type": "object",
+                "required": ["tlp"],
+                "properties": {"tlp": {"type": "string", "enum": [label.value for label in TlpLabel]}},
+            }],
+        }
 
 
 class DocumentType(str, Enum):
@@ -322,16 +348,23 @@ class DocumentAssignmentListResponse(BaseModel):
 
 
 class DocumentAssignmentReplaceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    document_profile: DocumentProfileInput
+    expected_root_metadata_revision: str = Field(min_length=1, max_length=160)
     assignments: list[DocumentAssignmentCreate] = Field(min_length=1, max_length=50)
 
 
 class DocumentCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    document_profile: DocumentProfileInput
     title: str = Field(min_length=1, max_length=300)
     document_type: DocumentType
     owner_id: str = Field(min_length=1, max_length=128)
     gestor_unit: str | None = Field(default=None, max_length=128)
     classification: Classification = Classification.internal
-    information_policy: InformationPolicyBinding | None = None
+    information_policy: DocumentInformationPolicyBinding = Field(
+        description="Authoritative Policy V2 binding with one explicit effective TLP; missing/null TLP is rejected for every actor and import channel."
+    )
     tags: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
     access_policies: list[AccessPolicyCreate] | None = None
@@ -341,13 +374,19 @@ class DocumentCreate(BaseModel):
 
 
 class DocumentPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    document_profile: DocumentProfileInput | None = None
+    expected_root_metadata_revision: str | None = Field(default=None, min_length=1, max_length=160)
     title: str | None = Field(default=None, min_length=1, max_length=300)
     document_type: DocumentType | None = None
     status: DocumentStatus | None = None
     owner_id: str | None = Field(default=None, min_length=1, max_length=128)
     gestor_unit: str | None = Field(default=None, max_length=128)
     classification: Classification | None = None
-    information_policy: InformationPolicyBinding | None = None
+    information_policy: DocumentInformationPolicyBinding | SkipJsonSchema[None] = Field(
+        default=None,
+        description="When supplied, must be a complete binding with explicit TLP. Omit to retain the current admissible policy; explicit null cannot clear it."
+    )
     tags: list[str] | None = None
     metadata: dict[str, Any] | None = None
     access_policies: list[AccessPolicyCreate] | None = None
@@ -377,6 +416,9 @@ class DocumentResponse(BaseModel):
     governance_scope_owner_subject_id: str | None = None
     governance_registration_status: str = "LEGACY_UNREGISTERED"
     governance_registered_at: datetime | None = None
+    current_root_metadata_revision: str | None = None
+    current_root_snapshot_hash: str | None = None
+    document_profile: DocumentRootSnapshot | None = None
     owner_id: str
     owner: str
     gestor_unit: str | None
@@ -468,6 +510,7 @@ class ExternalDocumentOwner(BaseModel):
 
 
 class ExternalDocumentUpsertRequest(BaseModel):
+    document_profile: DocumentProfileInput
     external_system: ExternalSourceSystem
     external_ref: str = Field(min_length=1, max_length=240)
     entity_type: str = Field(min_length=1, max_length=80)
@@ -475,7 +518,9 @@ class ExternalDocumentUpsertRequest(BaseModel):
     document_type: DocumentType
     title: str = Field(min_length=1, max_length=300)
     classification: Classification = Classification.internal
-    information_policy: InformationPolicyBinding | None = None
+    information_policy: DocumentInformationPolicyBinding = Field(
+        description="Authoritative policy with explicit effective TLP; external and official imports have no unclassified admission mode."
+    )
     integration_envelope: IntegrationEnvelope | None = None
     owner: ExternalDocumentOwner
     tenant_id: str = Field(default="org_stratos", min_length=1, max_length=128)
@@ -665,6 +710,7 @@ class StratosBudgetUploadMetadata(BaseModel):
 
 
 class StratosBudgetUploadExternalDocumentUpsertRequest(BaseModel):
+    document_profile: DocumentProfileInput
     """Closed server-to-server contract for governed Budget contract uploads."""
 
     model_config = ConfigDict(extra="forbid")
@@ -677,7 +723,7 @@ class StratosBudgetUploadExternalDocumentUpsertRequest(BaseModel):
     document_type: Literal["contract"]
     title: str = Field(min_length=1, max_length=300)
     classification: Classification
-    information_policy: InformationPolicyBinding
+    information_policy: DocumentInformationPolicyBinding
     integration_envelope: IntegrationEnvelope
     owner: ExternalDocumentOwner
     tags: list[str] = Field(default_factory=list)
@@ -710,8 +756,12 @@ class StratosBudgetUploadExternalDocumentUpsertRequest(BaseModel):
         }[handling_class]
         if self.classification != expected_classification:
             raise ValueError("classification does not match information_policy")
-        if self.owner.user_id != self.integration_envelope.actor.subject_id:
-            raise ValueError("owner does not match the STRATOS envelope actor")
+        if self.owner.user_id != self.document_profile.accountability.owner_subject_id:
+            raise ValueError("owner does not match the explicit accountable profile owner")
+        provenance = self.document_profile.provenance
+        if (provenance.source_system != "STRATOS_BUDGET" or provenance.source_record_id != self.entity_id
+            or provenance.source_governed_resource_id != self.parent_governed_resource_id):
+            raise ValueError("document profile provenance must match the exact Budget source")
         if (
             self.metadata.contract_id != self.entity_id
             or self.metadata.financial_scope_key
@@ -727,6 +777,7 @@ class StratosBudgetUploadExternalDocumentUpsertRequest(BaseModel):
 
 
 class StratosBudgetUploadDocumentVersionCreate(BaseModel):
+    document_profile: DocumentVersionProfileInput
     model_config = ConfigDict(extra="forbid")
 
     external_ref: str = Field(min_length=1, max_length=240)
@@ -743,7 +794,7 @@ class StratosBudgetUploadDocumentVersionCreate(BaseModel):
     contract_status: Literal["DRAFT", "ACTIVE", "AT_RISK", "EXPIRED", "TERMINATED"]
     contract_start_date: date
     contract_end_date: date
-    information_policy: InformationPolicyBinding
+    information_policy: DocumentInformationPolicyBinding
     integration_envelope: IntegrationEnvelope
     governance_scope: GovernanceScope
     parent_governed_resource_id: str = Field(min_length=1, max_length=128)
@@ -784,6 +835,63 @@ class StratosBudgetGovernanceConfirmation(BaseModel):
     version: dict[str, Any]
 
 
+class StratosBudgetIntakeAuthorizationRequest(BaseModel):
+    document_profile: DocumentVersionProfileInput
+    model_config = ConfigDict(extra="forbid")
+
+    upload_session_id: str = Field(min_length=1, max_length=160)
+    external_document_id: str = Field(min_length=1, max_length=64)
+    governed_document_resource_id: str = Field(min_length=1, max_length=128)
+    source_governed_resource_id: str = Field(min_length=1, max_length=128)
+    source_resource_id: str = Field(min_length=1, max_length=128)
+    source_version: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    policy_binding_id: str = Field(min_length=8, max_length=160)
+    policy_version: Literal["information-policy-2.0.0"]
+    policy_hash: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    governance_scope: GovernanceScope
+    actor_subject_id: str = Field(min_length=1, max_length=160)
+    registered_by_subject_id: str = Field(min_length=1, max_length=160)
+    correlation_id: str = Field(min_length=8, max_length=200)
+    idempotency_key: str = Field(min_length=8, max_length=200)
+    workflow_mode: Literal["interactive", "historical_batch"]
+    workflow_context: dict[str, str]
+
+    @model_validator(mode="after")
+    def validate_intake_workflow(self) -> "StratosBudgetIntakeAuthorizationRequest":
+        expected = {
+            "original_file_name", "contract_status", "contract_start_date", "contract_end_date",
+        }
+        if self.workflow_mode == "historical_batch":
+            expected |= {"batch_manifest_id", "batch_entries_sha256", "release_revision"}
+            StratosBudgetBatchLineage.model_validate({
+                key: self.workflow_context.get(key)
+                for key in ("batch_manifest_id", "batch_entries_sha256", "release_revision")
+            })
+        if set(self.workflow_context) != expected or any(
+            not value.strip() or len(value) > 300 for value in self.workflow_context.values()
+        ):
+            raise ValueError("workflow_context must contain exactly the bounded fields for its mode")
+        if self.governance_scope.type != "budget_scope" or not self.governance_scope.id:
+            raise ValueError("Budget intake requires an explicit budget_scope")
+        return self
+
+
+class StratosBudgetIntakeAuthorizationResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    allowed: Literal[True] = True
+    document_id: str
+    upload_session_id: str
+    confirmed_subject_id: str
+    registered_by_subject_id: str
+    policy_binding_id: str
+    policy_version: str
+    policy_hash: str
+    source_governed_resource_id: str
+    source_version: str
+    reason_codes: list[str] = Field(default_factory=list)
+
+
 class StratosBudgetUploadDocumentVersionCreateResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -808,7 +916,7 @@ class StratosBudgetUploadExternalDocumentCurrentUpdateRequest(BaseModel):
     ingestion_job_id: str | None = Field(default=None, min_length=1, max_length=128)
     ingestion_status: Literal["VERSION_CREATED", "INGESTING", "INDEXED", "FAILED"]
     external_ref: str = Field(min_length=1, max_length=240)
-    information_policy: InformationPolicyBinding
+    information_policy: DocumentInformationPolicyBinding
     integration_envelope: IntegrationEnvelope
     governance_scope: GovernanceScope
     parent_governed_resource_id: str = Field(min_length=1, max_length=128)
@@ -908,12 +1016,9 @@ def _validate_budget_upload_scope(
         raise ValueError(
             "STRATOS_BUDGET governance_scope must identify payload.financialScopeKey"
         )
-    if (
-        information_policy.audience.scope_type != "budget_scope"
-        or information_policy.audience.scope_ids != [scope_key]
-    ):
+    if not budget_audience_matches_source(information_policy, scope_key):
         raise ValueError(
-            "STRATOS_BUDGET information_policy audience must identify the exact financial scope"
+            "STRATOS_BUDGET audience must be organization, recipient_set or the exact financial scope"
         )
 
 
@@ -1413,13 +1518,15 @@ class DocumentFileCreate(BaseModel):
     @field_validator("sha256")
     @classmethod
     def validate_sha256(cls, value: str | None) -> str | None:
-        if value is not None and not value.startswith("sha256:"):
-            raise ValueError("sha256 must use the sha256:<hash> format")
+        if value is not None and not re.fullmatch(r"sha256:[a-f0-9]{64}", value):
+            raise ValueError("sha256 must contain exactly 64 lowercase hexadecimal digits")
         return value
 
 
 
 class DocumentVersionCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    document_profile: DocumentVersionProfileInput
     version_label: str = Field(min_length=1, max_length=80)
     valid_from: date | None = None
     valid_to: date | None = None
@@ -1427,21 +1534,25 @@ class DocumentVersionCreate(BaseModel):
     source_location: SourceLocation | None = None
     file_hash: str | None = Field(default=None, max_length=128)
     change_summary: str | None = None
-    information_policy: InformationPolicyBinding | None = None
+    information_policy: DocumentInformationPolicyBinding | None = Field(
+        default=None,
+        description="Explicit Policy V2 binding or inheritance from the document; the resulting effective policy must contain one of the five TLP values."
+    )
     file: DocumentFileCreate | None = None
     governance_scope: GovernanceScope | None = None
 
     @field_validator("file_hash")
     @classmethod
     def validate_file_hash(cls, value: str | None) -> str | None:
-        if value is not None and not value.startswith("sha256:"):
-            raise ValueError("file_hash must use the sha256:<hash> format")
+        if value is not None and not re.fullmatch(r"sha256:[a-f0-9]{64}", value):
+            raise ValueError("file_hash must contain exactly 64 lowercase hexadecimal digits")
         return value
 
 
 class DocumentVersionResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
+    idempotent_replay: bool = Field(default=False, description="True only when native intake creation returned the same immutable version after fresh exact authorization; not persisted version state.")
     document_version_id: str
     document_id: str
     file_id: str | None = None
@@ -1460,6 +1571,11 @@ class DocumentVersionResponse(BaseModel):
     governance_scope_owner_subject_id: str | None = None
     governance_registration_status: str = "LEGACY_UNREGISTERED"
     governance_registered_at: datetime | None = None
+    root_metadata_revision: str | None = None
+    root_snapshot_hash: str | None = None
+    version_snapshot_hash: str | None = None
+    document_profile: DocumentRootSnapshot | None = None
+    document_profile_snapshot: DocumentVersionSnapshot | None = None
     valid_from: date | None
     valid_to: date | None
     source_file_uri: str
@@ -1583,7 +1699,10 @@ class PublicDocumentSourceResolutionResponse(BaseModel):
 
 class AuthzResource(BaseModel):
     document_id: str | None = None
-    document_version_id: str | None = None
+    document_version_id: str | None = Field(
+        default=None,
+        description="When supplied, requires document_id and current person authority; checks both root and exact immutable version with the current PDP. Missing, mismatched or unauthorized versions deny access. Service-only version authorization is unavailable. Successful constraints echo exact document/version and version policy coordinates and retain root/version obligations.",
+    )
     classification: Classification | None = None
 
 
@@ -1732,6 +1851,10 @@ class AuthzFilterDocumentsRequest(BaseModel):
     candidate_document_ids: list[str] = Field(min_length=1, max_length=1000)
     candidate_policy_hashes: dict[str, list[str]] = Field(default_factory=dict)
     candidate_document_versions: dict[str, list[str]] = Field(default_factory=dict)
+    effective_on: date | None = Field(
+        default=None,
+        description="When set, intersect authorization with the single effective published version for each document, using its complete Registry publication timeline.",
+    )
     roles: list[str] = Field(default_factory=list)
     groups: list[str] = Field(default_factory=list)
     capabilities: list[str] = Field(default_factory=list)
@@ -1741,8 +1864,18 @@ class AuthzFilterDocumentsRequest(BaseModel):
     membership_active: bool = True
     application_access_active: bool = True
 
+    @model_validator(mode="after")
+    def validate_temporal_candidates(self) -> "AuthzFilterDocumentsRequest":
+        if self.effective_on is not None:
+            if self.action not in {Action.rag_query, Action.document_read}:
+                raise ValueError("effective_on is only valid for rag.query or document.read")
+            if any(not self.candidate_document_versions.get(item) for item in self.candidate_document_ids):
+                raise ValueError("effective_on requires exact candidate versions for every document")
+        return self
+
 
 class AuthzFilterDocumentsResponse(BaseModel):
+    effective_on: date | None = Field(default=None, description="Echoes the applied publication-timeline date; null for ordinary exact-source authorization.")
     allowed_document_ids: list[str]
     denied_document_ids: list[str]
     allowed_document_version_ids: dict[str, list[str]] = Field(default_factory=dict)

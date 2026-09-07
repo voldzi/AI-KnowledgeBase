@@ -557,7 +557,7 @@ def test_qdrant_fusion_prefers_chunk_present_in_both_rankings() -> None:
     assert fused[0].chunk_id == "chunk_both"
 
 
-def test_get_neighbors_returns_adjacent_chunk_texts(monkeypatch) -> None:
+def test_get_context_chunks_returns_coordinates_for_authorization(monkeypatch) -> None:
     settings = load_settings({"AKL_RAG_DEPENDENCY_MODE": "mock"})
     retriever = QdrantHybridRetriever(settings)
 
@@ -579,9 +579,9 @@ def test_get_neighbors_returns_adjacent_chunk_texts(monkeypatch) -> None:
         return {
             "result": {
                 "points": [
-                    {"payload": {"text": "Predchozi cast.", "metadata": {"chunk_index": 4}}},
-                    {"payload": {"text": "Prostredni cast.", "metadata": {"chunk_index": 5}}},
-                    {"payload": {"text": "Nasledujici cast.", "metadata": {"chunk_index": 6}}},
+                    {"payload": {"chunk_id": "chunk_4", "document_id": "doc_n", "document_version_id": "ver_n", "text": "Predchozi cast.", "metadata": {"chunk_index": 4}}},
+                    {"payload": {"chunk_id": "chunk_5", "document_id": "doc_n", "document_version_id": "ver_n", "text": "Prostredni cast.", "metadata": {"chunk_index": 5}}},
+                    {"payload": {"chunk_id": "chunk_6", "document_id": "doc_n", "document_version_id": "ver_n", "text": "Nasledujici cast.", "metadata": {"chunk_index": 6}}},
                 ]
             }
         }
@@ -589,13 +589,13 @@ def test_get_neighbors_returns_adjacent_chunk_texts(monkeypatch) -> None:
     import retrievers.qdrant as qdrant_module
 
     monkeypatch.setattr(qdrant_module, "request_json_with_retry", fake_scroll)
-    before, after = asyncio.run(retriever.get_neighbors(chunk))
+    neighbors = asyncio.run(retriever.get_context_chunks(chunk, window=settings.source_context_window))
 
-    assert before == "Predchozi cast."
-    assert after == "Nasledujici cast."
+    assert [item.text for item in neighbors] == ["Predchozi cast.", "Prostredni cast.", "Nasledujici cast."]
+    assert all(item.citation.document_version_id == "ver_n" for item in neighbors)
 
 
-def test_get_neighbors_without_chunk_index_returns_empty(monkeypatch) -> None:
+def test_get_context_chunks_without_chunk_index_retains_only_seed(monkeypatch) -> None:
     settings = load_settings({"AKL_RAG_DEPENDENCY_MODE": "mock"})
     retriever = QdrantHybridRetriever(settings)
     chunk = _point_to_chunk(
@@ -610,13 +610,12 @@ def test_get_neighbors_without_chunk_index_returns_empty(monkeypatch) -> None:
         sparse_score=0.9,
     )
 
-    before, after = asyncio.run(retriever.get_neighbors(chunk))
+    neighbors = asyncio.run(retriever.get_context_chunks(chunk, window=settings.source_context_window))
 
-    assert before == ""
-    assert after == ""
+    assert neighbors == [chunk]
 
 
-def test_get_neighbors_uses_configured_context_window(monkeypatch) -> None:
+def test_get_context_chunks_uses_requested_context_window(monkeypatch) -> None:
     settings = load_settings({"AKL_RAG_DEPENDENCY_MODE": "mock", "AKL_RAG_SOURCE_CONTEXT_WINDOW": "2"})
     retriever = QdrantHybridRetriever(settings)
 
@@ -639,11 +638,11 @@ def test_get_neighbors_uses_configured_context_window(monkeypatch) -> None:
         return {
             "result": {
                 "points": [
-                    {"payload": {"text": "Cast 3.", "metadata": {"chunk_index": 3}}},
-                    {"payload": {"text": "Cast 4.", "metadata": {"chunk_index": 4}}},
-                    {"payload": {"text": "Cast 5.", "metadata": {"chunk_index": 5}}},
-                    {"payload": {"text": "Cast 6.", "metadata": {"chunk_index": 6}}},
-                    {"payload": {"text": "Cast 7.", "metadata": {"chunk_index": 7}}},
+                    {"payload": {"chunk_id": "chunk_3", "document_id": "doc_n", "document_version_id": "ver_n", "text": "Cast 3.", "metadata": {"chunk_index": 3}}},
+                    {"payload": {"chunk_id": "chunk_4", "document_id": "doc_n", "document_version_id": "ver_n", "text": "Cast 4.", "metadata": {"chunk_index": 4}}},
+                    {"payload": {"chunk_id": "chunk_5", "document_id": "doc_n", "document_version_id": "ver_n", "text": "Cast 5.", "metadata": {"chunk_index": 5}}},
+                    {"payload": {"chunk_id": "chunk_6", "document_id": "doc_n", "document_version_id": "ver_n", "text": "Cast 6.", "metadata": {"chunk_index": 6}}},
+                    {"payload": {"chunk_id": "chunk_7", "document_id": "doc_n", "document_version_id": "ver_n", "text": "Cast 7.", "metadata": {"chunk_index": 7}}},
                 ]
             }
         }
@@ -651,7 +650,6 @@ def test_get_neighbors_uses_configured_context_window(monkeypatch) -> None:
     import retrievers.qdrant as qdrant_module
 
     monkeypatch.setattr(qdrant_module, "request_json_with_retry", fake_scroll)
-    before, after = asyncio.run(retriever.get_neighbors(chunk))
+    neighbors = asyncio.run(retriever.get_context_chunks(chunk, window=settings.source_context_window))
 
-    assert before == "Cast 3.\n\nCast 4."
-    assert after == "Cast 6.\n\nCast 7."
+    assert [item.metadata["chunk_index"] for item in neighbors] == [3, 4, 5, 6, 7]

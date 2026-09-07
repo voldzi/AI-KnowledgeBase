@@ -29,16 +29,17 @@ export async function recoverPersistedAssistantTurn(input: {
   wait?: (milliseconds: number) => Promise<void>;
   intervalMs?: number;
   maxWaitMs?: number;
+  signal?: AbortSignal;
 }): Promise<AssistantConversationDetail | null> {
-  const wait = input.wait ?? ((milliseconds: number) => new Promise((resolve) => {
-    setTimeout(resolve, milliseconds);
-  }));
+  const wait = input.wait ?? ((milliseconds: number) => waitForRecovery(milliseconds, input.signal));
   const intervalMs = input.intervalMs ?? 1_500;
   const maxWaitMs = input.maxWaitMs ?? 30_000;
   const attempts = Math.max(1, Math.ceil(maxWaitMs / intervalMs));
 
   for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (input.signal?.aborted) return null;
     const conversation = await input.loadConversation(input.conversationId).catch(() => null);
+    if (input.signal?.aborted) return null;
     if (conversation && hasPersistedAssistantTurn({
       conversation,
       submittedQuestion: input.submittedQuestion,
@@ -51,4 +52,17 @@ export async function recoverPersistedAssistantTurn(input: {
     }
   }
   return null;
+}
+
+function waitForRecovery(milliseconds: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) return resolve();
+    const finish = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", finish);
+      resolve();
+    };
+    const timer = setTimeout(finish, milliseconds);
+    signal?.addEventListener("abort", finish, { once: true });
+  });
 }

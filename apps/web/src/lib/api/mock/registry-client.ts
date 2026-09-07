@@ -1,7 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
+import { parseDocumentInformationPolicy, policyHash } from "@/lib/stratos/information-policy";
+import { canonicalDocumentSnapshot, profileWithAssignments, type DocumentRootSnapshot } from "@/lib/documents/document-profile";
+import { parseDocumentProfileInput, parseDocumentVersionProfileInput } from "@/lib/documents/document-profile-validation";
 
 import type {
   ApiRequestContext,
+  BudgetIntakeAuthorizationRequest,
+  BudgetIntakeAuthorizationResponse,
   ApplyWorkflowTaskActionRequest,
   AuditEvent,
   AuditEventListOptions,
@@ -311,20 +316,43 @@ export class MockRegistryClient implements RegistryApiClient {
     _context: ApiRequestContext,
   ): Promise<Document> {
     const now = new Date().toISOString();
+    const policy = request.information_policy ? parseDocumentInformationPolicy(request.information_policy) : null;
     const {
       access_policies: _accessPolicies,
       assignments: assignmentRequests,
+      document_profile: requestedProfile,
       metadata,
       ...documentRequest
     } = request;
+    const profileInput = parseDocumentProfileInput(requestedProfile, { documentType: request.document_type });
+    if (request.owner_id !== profileInput.accountability.ownerSubjectId
+      || (request.gestor_unit ?? null) !== (profileInput.accountability.gestor.kind === "organization_unit"
+        ? profileInput.accountability.gestor.id : null)) {
+      throw new ApiClientError("Owner and gestor must match the explicit document profile", 422, "DOCUMENT_PROFILE_ASSIGNMENT_MISMATCH", "mock-trace");
+    }
     const documentId = `doc_${this.documents.length + 201}`;
+    const profile: DocumentRootSnapshot | null = profileInput ? {
+      ...profileInput, schemaVersion: "stratos-document-root-1", organizationId: "org_stratos",
+      documentId, metadataRevision: `meta_${randomUUID().replaceAll("-", "")}`,
+      documentType: request.document_type,
+      provenance: { ...profileInput.provenance, sourceRecordId: profileInput.provenance.sourceSystem === "AKB" ? documentId : profileInput.provenance.sourceRecordId },
+    } : null;
     const document: Document = {
       ...documentRequest,
       document_id: documentId,
+      document_profile: profile,
+      current_root_metadata_revision: profile?.metadataRevision ?? null,
+      current_root_snapshot_hash: profile ? `sha256:${createHash("sha256").update(canonicalDocumentSnapshot(profile)).digest("hex")}` : null,
       status: "draft",
       created_at: now,
       updated_at: now,
       owner: request.owner_id,
+      ...(policy ? {
+        policy_summary: policy,
+        policy_binding_id: policy.policyBindingId,
+        policy_version: policy.policyVersion,
+        policy_hash: policyHash(policy),
+      } : {}),
       metadata,
       assignments: assignmentRequests?.map((assignment, index) => ({
         assignment_id: `assign_${documentId}_${index + 1}`,
@@ -357,7 +385,22 @@ export class MockRegistryClient implements RegistryApiClient {
     _context: ApiRequestContext,
   ): Promise<Document> {
     const document = this.requireDocument(documentId);
-    Object.assign(document, request, { updated_at: new Date().toISOString() });
+    const { document_profile: requestedProfile, expected_root_metadata_revision: expectedRevision, ...fields } = request;
+    if (Object.keys(fields).some((key) => key !== "status") || requestedProfile) {
+      const profile = parseDocumentProfileInput(requestedProfile, { documentType: request.document_type ?? document.document_type });
+      if (!expectedRevision || expectedRevision !== document.current_root_metadata_revision) {
+        throw new ApiClientError("Document metadata changed", 409, "DOCUMENT_ROOT_METADATA_REVISION_CONFLICT", "mock-trace");
+      }
+      const snapshot: DocumentRootSnapshot = {
+        ...profile, schemaVersion: "stratos-document-root-1", organizationId: "org_stratos", documentId,
+        metadataRevision: `meta_${randomUUID().replaceAll("-", "")}`, documentType: request.document_type ?? document.document_type,
+        provenance: { ...profile.provenance, sourceRecordId: profile.provenance.sourceSystem === "AKB" ? documentId : profile.provenance.sourceRecordId },
+      };
+      document.document_profile = snapshot;
+      document.current_root_metadata_revision = snapshot.metadataRevision;
+      document.current_root_snapshot_hash = `sha256:${createHash("sha256").update(canonicalDocumentSnapshot(snapshot)).digest("hex")}`;
+    }
+    Object.assign(document, fields, { updated_at: new Date().toISOString() });
     if (request.owner_id) document.owner = request.owner_id;
     return cloneMock(document);
   }
@@ -384,6 +427,13 @@ export class MockRegistryClient implements RegistryApiClient {
     }
 
     const document = this.requireDocument(documentId);
+    if (!document.document_profile) throw new ApiClientError("Document profile is unavailable", 503, "DOCUMENT_PROFILE_UNAVAILABLE", "mock-trace");
+    const profile = parseDocumentProfileInput(request.document_profile, { documentType: document.document_type });
+    const accountable = profileWithAssignments(document.document_profile, request.assignments).accountability;
+    if (canonicalDocumentSnapshot(accountable) !== canonicalDocumentSnapshot(profile.accountability)) {
+      throw new ApiClientError("Assignments must match profile accountability", 422, "DOCUMENT_PROFILE_INVALID", "mock-trace");
+    }
+    await this.updateDocument(documentId, { document_profile: profile, expected_root_metadata_revision: request.expected_root_metadata_revision }, context);
     const now = new Date().toISOString();
     document.assignments = request.assignments.map((assignment, index) => ({
       assignment_id: `assign_${documentId}_${index + 1}`,
@@ -406,17 +456,17 @@ export class MockRegistryClient implements RegistryApiClient {
       updated_at: now,
     }));
     const owner = document.assignments.find(
-      (assignment) => assignment.role === "owner" && assignment.active,
+      (assignment) => assignment.role === "owner" && assignment.active && assignment.is_primary,
     );
     const gestor = document.assignments.find(
-      (assignment) => assignment.role === "gestor" && assignment.active,
+      (assignment) => assignment.role === "gestor" && assignment.active && assignment.is_primary,
     );
     if (owner) {
       document.owner_id = owner.subject_id;
       document.owner = owner.display_label ?? owner.subject_id;
     }
     if (gestor) {
-      document.gestor_unit = gestor.display_label ?? gestor.subject_id;
+      document.gestor_unit = gestor.subject_type === "unit" ? gestor.subject_id : null;
     }
     document.updated_at = now;
     return cloneMock(document.assignments);
@@ -450,14 +500,43 @@ export class MockRegistryClient implements RegistryApiClient {
     _context: ApiRequestContext,
   ): Promise<DocumentVersion> {
     const now = new Date().toISOString();
+    const document = this.requireDocument(documentId);
+    const { document_profile: requestedProfile, ...versionRequest } = request;
+    const profile = parseDocumentVersionProfileInput(requestedProfile, document.document_profile ?? undefined);
+    if (!document.document_profile || !document.current_root_metadata_revision || !document.current_root_snapshot_hash) {
+      throw new ApiClientError("Document profile is unavailable", 503, "DOCUMENT_PROFILE_UNAVAILABLE", "mock-trace");
+    }
+    if (profile.expected_root_metadata_revision !== document.current_root_metadata_revision) {
+      throw new ApiClientError("Document metadata changed", 409, "DOCUMENT_ROOT_METADATA_REVISION_CONFLICT", "mock-trace");
+    }
+    const versionId = `ver_${documentId.replace("doc_", "")}_${this.versions.length + 1}`;
+    const snapshot = {
+      schemaVersion: "stratos-document-version-1", organizationId: "org_stratos", documentId,
+      documentVersionId: versionId, rootMetadataRevision: document.current_root_metadata_revision,
+      rootSnapshotHash: document.current_root_snapshot_hash,
+      sourceLineage: { ...document.document_profile.provenance,
+        sourceVersion: document.document_profile.provenance.sourceSystem === "AKB" ? versionId : request.source_location?.version ?? versionId,
+        contentSha256: request.file_hash ?? `sha256:${"0".repeat(64)}`,
+        contentUri: request.source_file_uri, intakeReceiptId: `mock_receipt_${versionId}`, capturedAt: now },
+      lifecycle: profile.lifecycle, domainEvidence: profile.domain_evidence,
+    };
     const version: DocumentVersion = {
-      document_version_id: `ver_${documentId.replace("doc_", "")}_${this.versions.length + 1}`,
+      document_version_id: versionId,
       document_id: documentId,
       status: "draft",
       file_hash: "sha256:mock-pending",
       created_at: now,
       published_at: null,
-      ...request,
+      policy_summary: document.policy_summary,
+      policy_binding_id: document.policy_binding_id,
+      policy_version: document.policy_version,
+      policy_hash: document.policy_hash,
+      ...versionRequest,
+      document_profile: cloneMock(document.document_profile),
+      root_metadata_revision: document.current_root_metadata_revision,
+      root_snapshot_hash: document.current_root_snapshot_hash,
+      version_snapshot_hash: `sha256:${createHash("sha256").update(canonicalDocumentSnapshot(snapshot)).digest("hex")}`,
+      document_profile_snapshot: snapshot,
     };
     this.versions.unshift(version);
     return cloneMock(version);
@@ -504,7 +583,8 @@ export class MockRegistryClient implements RegistryApiClient {
       if (
         activeVersion.document_id === documentId &&
         activeVersion.document_version_id !== versionId &&
-        activeVersion.status === "valid"
+        activeVersion.status === "valid" &&
+        (activeVersion.valid_from ?? null) === (version.valid_from ?? null)
       ) {
         activeVersion.status = "superseded";
       }
@@ -741,24 +821,46 @@ export class MockRegistryClient implements RegistryApiClient {
     documentId: string,
     _action: string,
     _context: ApiRequestContext,
+    documentVersionId?: string,
   ) {
     const document = this.documents.find(
       (candidate) => candidate.document_id === documentId,
     );
+    const version = documentVersionId ? this.versions.find((item) => item.document_id === documentId && item.document_version_id === documentVersionId) : undefined;
+    if (documentVersionId && !version) return {
+      allowed: false, reason: "Mock version was not found", reason_codes: ["VERSION_NOT_FOUND"], constraints: {},
+    };
     return {
       allowed: Boolean(document),
       reason: document ? "Mock document is visible" : "Mock document was not found",
       reason_codes: document ? ["MOCK_ALLOW"] : ["DOCUMENT_NOT_FOUND"],
       constraints: document
         ? {
-            policy_binding_id: document.policy_binding_id,
-            policy_hash: document.policy_hash,
+            document_id: documentId,
+            ...(documentVersionId ? { document_version_id: documentVersionId } : {}),
+            policy_binding_id: version ? version.policy_binding_id : document.policy_binding_id,
+            policy_version: version ? version.policy_version : document.policy_version,
+            policy_hash: version ? version.policy_hash : document.policy_hash,
             obligations: Array.isArray(document.policy_summary?.obligations)
               ? document.policy_summary.obligations
               : [],
           }
         : {},
     };
+  }
+
+  async authorizeBudgetDocumentIntake(
+    _documentId: string,
+    _request: BudgetIntakeAuthorizationRequest,
+    context: ApiRequestContext,
+    _actorAccessToken?: string,
+  ): Promise<BudgetIntakeAuthorizationResponse> {
+    throw new ApiClientError(
+      "Budget intake requires the live governed integration boundary.",
+      503,
+      "STRATOS_BUDGET_INTAKE_AUTHORIZATION_UNAVAILABLE",
+      context.correlationId ?? "mock-budget-intake",
+    );
   }
 
   async createIngestionAuthorization(

@@ -1,5 +1,7 @@
 "use client";
 
+import { SessionAuthorityBoundary } from "@/components/session-authority-boundary";
+
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -321,6 +323,7 @@ export function AppShell({
 }: AppShellProps) {
   return (
     <LanguageProvider>
+      <SessionAuthorityBoundary authMode={authMode} webProfile={webProfile} initialUser={initialUser}>
       <AppShellContent
         apiMode={apiMode}
         authMode={authMode}
@@ -329,6 +332,7 @@ export function AppShell({
       >
         {children}
       </AppShellContent>
+      </SessionAuthorityBoundary>
     </LanguageProvider>
   );
 }

@@ -5,6 +5,52 @@ import { describe, it } from "node:test";
 import { buildNativeSourcePreview } from "../src/lib/upload/ooxml-preview";
 
 describe("OOXML source preview", () => {
+  it("bounds actual XML inflation even when the ZIP directory lies about its size", () => {
+    const bytes = Buffer.from(makeZip({ "word/document.xml": "a".repeat(9 * 1024 * 1024) }));
+    const directory = bytes.readUInt32LE(bytes.length - 6);
+    bytes.writeUInt32LE(1, directory + 24);
+    assert.throws(() => buildNativeSourcePreview({ bytes, filename: "source.docx", mimeType: "application/octet-stream" }), /OOXML_ZIP_EXPANSION_REJECTED/);
+  });
+
+  it("rejects an oversized advertised XML before inflation", () => {
+    const bytes = Buffer.from(makeZip({ "word/document.xml": "small" }));
+    const directory = bytes.readUInt32LE(bytes.length - 6);
+    bytes.writeUInt32LE(9 * 1024 * 1024, directory + 24);
+    assert.throws(() => buildNativeSourcePreview({ bytes, filename: "source.docx", mimeType: "application/octet-stream" }), /OOXML_PREVIEW_SIZE_LIMIT/);
+  });
+
+  it("rejects file data overlapping the ZIP directory even if inflation would ignore the trailing bytes", () => {
+    const bytes = Buffer.from(makeZip({ "word/document.xml": "text" }));
+    const directory = bytes.readUInt32LE(bytes.length - 6);
+    bytes.writeUInt32LE(bytes.readUInt32LE(directory + 20) + 1, directory + 20);
+    assert.throws(() => buildNativeSourcePreview({ bytes, filename: "source.docx", mimeType: "application/octet-stream" }), /OOXML_ZIP_ENTRY_INVALID/);
+  });
+
+  it("never inflates embedded binaries to produce a text preview", () => {
+    const bytes = Buffer.from(makeZip({ "word/document.xml": "<w:p><w:t>Safe preview</w:t></w:p>", "word/media/image1.png": "compressed image" }));
+    const directory = bytes.readUInt32LE(bytes.length - 6);
+    const secondEntry = directory + 46 + Buffer.byteLength("word/document.xml");
+    const local = bytes.readUInt32LE(secondEntry + 42);
+    const start = local + 30 + bytes.readUInt16LE(local + 26);
+    bytes[start] = 0xff; // An invalid compressed binary would throw if expanded.
+    const preview = buildNativeSourcePreview({ bytes, filename: "source.docx", mimeType: "application/octet-stream" });
+    assert.equal(preview.kind, "docx");
+    assert.equal(preview.paragraphs[0]?.text, "Safe preview");
+  });
+
+  for (const path of ["../word/document.xml", "/word/document.xml", "word\\document.xml"]) {
+    it(`rejects unsafe ZIP names: ${path}`, () => {
+      const bytes = makeZip({ [path]: "text" });
+      assert.throws(() => buildNativeSourcePreview({ bytes, filename: "source.docx", mimeType: "application/octet-stream" }), /OOXML_ZIP_ENTRY_INVALID/);
+    });
+  }
+
+  it("rejects a forged directory entry count instead of returning partial content", () => {
+    const bytes = Buffer.from(makeZip({ "word/document.xml": "text" }));
+    bytes.writeUInt16LE(4097, bytes.length - 14);
+    bytes.writeUInt16LE(4097, bytes.length - 12);
+    assert.throws(() => buildNativeSourcePreview({ bytes, filename: "source.docx", mimeType: "application/octet-stream" }), /OOXML_ZIP_DIRECTORY_INVALID/);
+  });
   it("extracts DOCX paragraphs", () => {
     const bytes = makeZip({
       "word/document.xml":

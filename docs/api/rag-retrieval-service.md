@@ -16,6 +16,13 @@ Implemented:
   `archflow_goal_extraction_v1`.
 - scoped RAG over authorized and indexed STRATOS-compatible external documents.
 
+Source context uses verified physical page coordinates or native Office
+sheet/row and slide/table locators in existing `SourceLocation` fields. The
+selected chunk and eligible before/after chunks require current authorization;
+revocation and incomplete policy cannot be bypassed through contextual text.
+See [source-context semantics](../rag/qdrant-retrieval.md#source-context-neighbours)
+and [native Office limitations](../ingestion/native-office-extraction.md).
+
 Contract stubs still present:
 
 - compare documents,

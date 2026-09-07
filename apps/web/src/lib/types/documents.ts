@@ -1,3 +1,5 @@
+import type { DocumentProfileInput, DocumentRootSnapshot, DocumentVersionProfileInput } from "@/lib/documents/document-profile";
+
 export type DocumentType =
   | "directive"
   | "regulation"
@@ -92,11 +94,16 @@ export interface DocumentAssignmentInput {
 }
 
 export interface ReplaceDocumentAssignmentsRequest {
+  document_profile: DocumentProfileInput;
+  expected_root_metadata_revision: string;
   assignments: DocumentAssignmentInput[];
 }
 
 export interface Document {
   document_id: string;
+  current_root_metadata_revision?: string | null;
+  current_root_snapshot_hash?: string | null;
+  document_profile?: DocumentRootSnapshot | null;
   title: string;
   document_type: DocumentType;
   status: DocumentStatus;
@@ -216,7 +223,13 @@ export interface DocumentReadinessReportOptions extends DocumentMetadataSummaryO
 }
 
 export interface DocumentVersion {
+  idempotent_replay?: boolean;
   document_version_id: string;
+  root_metadata_revision?: string | null;
+  root_snapshot_hash?: string | null;
+  version_snapshot_hash?: string | null;
+  document_profile?: DocumentRootSnapshot | null;
+  document_profile_snapshot?: Record<string, unknown> | null;
   document_id: string;
   file_id?: string | null;
   version_label: string;
@@ -305,10 +318,11 @@ export interface DocumentSourceOpenDecision {
 }
 
 export interface CreateDocumentRequest {
+  document_profile: DocumentProfileInput;
   title: string;
   document_type: DocumentType;
   owner_id: string;
-  gestor_unit: string;
+  gestor_unit: string | null;
   classification: Classification;
   information_policy?: InformationPolicyBindingSummary;
   tags: string[];
@@ -322,6 +336,8 @@ export interface CreateDocumentRequest {
 }
 
 export interface UpdateDocumentRequest {
+  document_profile?: DocumentProfileInput;
+  expected_root_metadata_revision?: string;
   title?: string;
   document_type?: DocumentType;
   owner_id?: string;
@@ -340,8 +356,9 @@ export interface UpdateDocumentRequest {
 }
 
 export interface CreateVersionRequest {
+  document_profile: DocumentVersionProfileInput;
   version_label: string;
-  valid_from: string;
+  valid_from: string | null;
   valid_to: string | null;
   source_file_uri: string;
   source_location?: {

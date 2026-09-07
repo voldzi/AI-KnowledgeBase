@@ -28,6 +28,7 @@ export async function contextFromStratosAccessProjection(
   fetcher: typeof fetch = fetch,
   nowMs = Date.now(),
   bypassCache = false,
+  sessionProbe = false,
 ): Promise<ApiRequestContext> {
   const oidc = config.oidc;
   if (!oidc) throw projectionUnavailable("OIDC access projection is not configured.");
@@ -52,6 +53,7 @@ export async function contextFromStratosAccessProjection(
       method: "GET",
       headers: {
         Accept: "application/json",
+        ...(sessionProbe ? { "X-STRATOS-Session-Probe": "1" } : {}),
         Authorization: `Bearer ${accessToken}`,
       },
       cache: "no-store",

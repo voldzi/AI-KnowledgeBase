@@ -16,6 +16,7 @@ import {
   type UploadTokenPayload,
 } from "@/lib/upload/preflight";
 import { withAppBasePath } from "@/lib/app-url";
+import { persistIntakeManifest } from "@/lib/upload/intake-manifest";
 
 export const DOCUMENT_INTAKE_CONTENT_BASE_PATH = "/api/document-intake/v1/sessions";
 
@@ -23,6 +24,7 @@ const SUPPORTED_UPLOAD_PURPOSES = new Set([
   "controlled-document-upload",
   "official-public-source-sync",
   "stratos-budget-upload",
+  "stratos-source-upload",
 ]);
 
 export interface DocumentIntakeAcceptedUpload {
@@ -100,6 +102,7 @@ export async function acceptDocumentIntakeBytes(input: {
     );
   }
 
+  await persistIntakeManifest(payload, settings);
   const quarantined = await persistQuarantinedUploadObject(payload, content, settings);
   let securityResult: ContentSecurityResult;
   try {

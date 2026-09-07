@@ -63,6 +63,19 @@ from app.content_security import (
     verify_content_security_attestation,
 )
 from app.database import get_db
+from app.document_profile import DocumentAdmissionExpectation
+from app.document_profile_inputs import build_root_snapshot as _build_root_snapshot, build_version_snapshot
+from app.document_profile_catalog import validate_profile_version
+from app.document_profile_runtime import (
+    require_current_root, require_profile_assignments, require_fresh_document_profile,
+    source_lineage_from_verified_file, requires_independent_profile_approval,
+)
+from app.document_profile_storage import (
+    DocumentProfileConflict, persist_root_revision as _persist_root_revision,
+    persist_version_snapshot as _persist_version_snapshot,
+)
+from app.document_temporal import document_calendar_today, effective_document_version
+from app.native_intake_replay import find_native_intake, native_intake_identity, require_exact_native_replay
 from app.document_workflow import (
     assignment_matches,
     personal_roles,
@@ -72,6 +85,7 @@ from app.document_workflow import (
 )
 from app.errors import problem
 from app.information_policy import (
+    budget_audience_matches_source,
     InformationPolicyBinding,
     POLICY_VERSION,
     canonical_policy_hash,
@@ -112,6 +126,8 @@ from app.models import (
     make_id,
     utcnow,
 )
+from app.document_admission import DOCUMENT_ADMISSION_RESPONSES, has_explicit_document_tlp, require_document_admission_policy
+from app.document_admission_readiness import DocumentIntakeReadinessResponse
 from app.official_public_sources import (
     is_official_public_source_create as _is_official_public_source_create,
     is_official_public_source_document as _is_official_public_source_document,
@@ -148,10 +164,14 @@ from app.permissions import (
     require_document_version_action,
     require_global_action,
     resolve_document_version_authority,
+    evaluate_document_version_access,
+    evaluate_runtime_document_version_access,
 )
 from app.schemas import (
     Action,
     StratosBudgetUploadDocumentVersionCreate,
+    StratosBudgetIntakeAuthorizationRequest,
+    StratosBudgetIntakeAuthorizationResponse,
     StratosBudgetUploadDocumentVersionCreateResponse,
     StratosBudgetUploadDocumentVersionLineageResponse,
     StratosBudgetUploadExternalDocumentCurrentUpdateRequest,
@@ -513,13 +533,14 @@ def _default_assignment_payloads(payload: DocumentCreate) -> list[DocumentAssign
             metadata={"source": "document.owner_id"},
         )
     ]
-    if payload.gestor_unit:
+    if payload.document_profile.accountability.gestor:
+        gestor = payload.document_profile.accountability.gestor
         assignments.append(
             DocumentAssignmentCreate(
                 role=DocumentAssignmentRole.gestor,
-                subject_type="unit",
-                subject_id=payload.gestor_unit,
-                display_label=payload.gestor_unit,
+                subject_type="unit" if gestor.kind == "organization_unit" else "user",
+                subject_id=gestor.id,
+                display_label=gestor.id,
                 is_primary=True,
                 sla_days=DEFAULT_ASSIGNMENT_SLA_DAYS[DocumentAssignmentRole.gestor.value],
                 metadata={"source": "document.gestor_unit"},
@@ -663,7 +684,7 @@ def _sync_document_assignment_denormalized_fields(document: Document) -> None:
     if owner is not None and owner.subject_type == "user":
         document.owner_id = owner.subject_id
     if gestor is not None:
-        document.gestor_unit = gestor.display_label or gestor.subject_id
+        document.gestor_unit = gestor.subject_id if gestor.subject_type == "unit" else None
 
 
 def _select_assignment(
@@ -1089,6 +1110,10 @@ def _require_document_read_or_ingestion_metadata(
 ) -> None:
     if principal.service_identity:
         _require_ingestion_service_route(principal, "documents-read")
+        # Background ingestion has already consumed a nonce-bound Registry
+        # authorization proof for the delegated person.  The exact
+        # svc-ingestion route grant replaces a human freshness check here:
+        # service identities have no active person profile to revalidate.
         return
     require_document_action(principal, Action.document_read, document, db)
 
@@ -1147,6 +1172,8 @@ def _service_action_decision(
             "service_subject_delegation_forbidden",
             "A service policy decision cannot synthesize another subject",
         )
+    if document is not None and not has_explicit_document_tlp(document.policy_summary):
+        return Decision(False, "Document TLP is missing or invalid", {}, ("DOCUMENT_TLP_REQUIRED",))
     settings = get_settings()
     if settings.auth_mode == "mock":
         return Decision(
@@ -1255,19 +1282,10 @@ def _audit_service_decision_coordinates(event_type: str) -> tuple[str, str]:
     return "akb:access", "access"
 
 
-def _require_v2_policy(principal: Principal, policy) -> None:
-    if principal.access_v2 and policy is None:
-        raise problem(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
-            "policy_unavailable",
-            "Information Policy V2 binding is required for this operation",
-            {"reason_codes": ["POLICY_UNAVAILABLE"]},
-        )
-
-
 def _ensure_policy_binding_registered(policy) -> None:
     if policy is None:
         return
+    require_document_admission_policy(policy)
     try:
         governance_client(get_settings()).ensure_binding_registered(policy)
     except GovernanceDenied as exc:
@@ -1381,6 +1399,32 @@ def _require_official_public_source_operator(context: SubjectContext) -> None:
         )
 
 
+def build_root_snapshot(*args, **kwargs):
+    try:
+        return _build_root_snapshot(*args, **kwargs)
+    except ValueError as exc:
+        raise problem(422, "document_profile_invalid", "The document profile does not match its type or source") from exc
+
+
+def _persist_document_profile(operation, db, **kwargs):
+    try:
+        return operation(db, **kwargs)
+    except GovernanceUnavailable as exc:
+        db.rollback()
+        raise problem(503, "document_profile_admission_unavailable", "The exact profile confirmation expired or became invalid") from exc
+    except (DocumentProfileConflict, IntegrityError) as exc:
+        db.rollback()
+        raise problem(409, "document_profile_conflict", "The immutable profile or current metadata revision changed") from exc
+
+
+def persist_root_revision(db, **kwargs):
+    return _persist_document_profile(_persist_root_revision, db, **kwargs)
+
+
+def persist_version_snapshot(db, **kwargs):
+    return _persist_document_profile(_persist_version_snapshot, db, **kwargs)
+
+
 def _register_governed_resource(
     *,
     principal: Principal,
@@ -1397,7 +1441,10 @@ def _register_governed_resource(
     fallback_scope_type: str | None = None,
     fallback_scope_id: str | None = None,
     fallback_scope_owner_subject_id: str | None = None,
+    document_admission: DocumentAdmissionExpectation | None = None,
+    admission_registration: list | None = None,
 ) -> dict[str, object]:
+    require_document_admission_policy(policy)
     scope = _governance_scope(
         policy,
         requested_scope,
@@ -1406,7 +1453,7 @@ def _register_governed_resource(
         fallback_owner_subject_id=fallback_scope_owner_subject_id,
     )
     settings = get_settings()
-    if settings.auth_mode == "mock":
+    if settings.auth_mode == "mock" and document_admission is None:
         return {
             "governed_resource_id": None,
             "governed_source_version": source_version,
@@ -1445,6 +1492,7 @@ def _register_governed_resource(
             parent_resource_id=parent_resource_id,
             reason=reason,
             metadata={"repository": "AKB", "correlationId": get_correlation_id()},
+            document_admission=document_admission,
         )
     except GovernanceDenied as exc:
         raise problem(
@@ -1458,6 +1506,10 @@ def _register_governed_resource(
             "governed_resource_registration_unavailable",
             "STRATOS governed resource registration is unavailable",
         ) from exc
+    except ValueError as exc:
+        raise problem(422, "document_profile_invalid", "The document profile conflicts with its source or protection policy") from exc
+    if admission_registration is not None:
+        admission_registration.append(registration)
     return {
         "governed_resource_id": registration.resource_id,
         "governed_source_version": registration.source_version,
@@ -1913,6 +1965,8 @@ def _add_days(value, days: int):
 
 
 def _transition_document_status(document: Document, target_status: DocumentStatus) -> None:
+    if target_status in {DocumentStatus.review, DocumentStatus.approved, DocumentStatus.valid}:
+        require_document_admission_policy(document.policy_summary, status_code=409)
     target = target_status.value
     current = document.status
     if target == current:
@@ -1937,28 +1991,11 @@ def _latest_document_version(db: Session, document_id: str) -> DocumentVersion |
 
 
 def _current_valid_document_version(db: Session, document_id: str) -> DocumentVersion | None:
-    current_date = date.today()
-    return db.execute(
-        select(DocumentVersion)
-        .where(
-            DocumentVersion.document_id == document_id,
-            DocumentVersion.status == DocumentStatus.valid.value,
-            (
-                DocumentVersion.valid_from.is_(None)
-                | (DocumentVersion.valid_from <= current_date)
-            ),
-            (
-                DocumentVersion.valid_to.is_(None)
-                | (DocumentVersion.valid_to >= current_date)
-            ),
-        )
-        .order_by(
-            DocumentVersion.valid_from.desc().nullslast(),
-            desc(DocumentVersion.published_at),
-            desc(DocumentVersion.created_at),
-        )
-        .limit(1)
-    ).scalar_one_or_none()
+    document = db.get(Document, document_id)
+    if document is None or document.status in {"superseded", "archived", "cancelled"}:
+        return None
+    versions = db.scalars(select(DocumentVersion).where(DocumentVersion.document_id == document_id))
+    return effective_document_version(versions, document_calendar_today())
 
 
 def _workflow_action_version(
@@ -1982,11 +2019,15 @@ def _workflow_action_version(
 
 
 def _approve_document_for_publication(
-    db: Session, document: Document, version: DocumentVersion | None = None,
+    db: Session, document: Document, version: DocumentVersion | None = None, *, actor_id: str,
 ) -> DocumentVersion | None:
+    require_document_admission_policy(document.policy_summary, status_code=409)
+    version = version or _latest_document_version(db, document.document_id)
+    require_fresh_document_profile(document, version=version, actor_id=actor_id)
+    if version is not None:
+        require_document_admission_policy(version.policy_summary, status_code=409)
     if document.status != DocumentStatus.valid.value:
         _transition_document_status(document, DocumentStatus.approved)
-    version = version or _latest_document_version(db, document.document_id)
     if version is not None and version.status in {DocumentStatus.draft.value, DocumentStatus.review.value}:
         version.status = DocumentStatus.approved.value
     return version
@@ -2007,8 +2048,11 @@ def _review_assignment(document: Document) -> DocumentAssignment | None:
 
 
 def _require_review_source(db: Session, version: DocumentVersion) -> None:
-    if not version.source_file_uri or not version.file_hash or version.valid_from is None:
-        raise problem(409, "review_source_incomplete", "Source, hash and effective date are required for review")
+    lifecycle = (version.document_profile_snapshot or {}).get("lifecycle") or {}
+    is_record = lifecycle.get("mode") == "record"
+    has_lifecycle_date = bool(lifecycle.get("recordedOn")) if is_record else version.valid_from is not None
+    if not version.source_file_uri or not version.file_hash or not has_lifecycle_date:
+        raise problem(409, "review_source_incomplete", "Source, hash and lifecycle date are required for review")
     files = list(db.scalars(select(DocumentFile).where(
         DocumentFile.document_version_id == version.document_version_id,
     )))
@@ -2091,6 +2135,9 @@ def _publish_version(
     version: DocumentVersion,
     actor_id: str,
 ) -> None:
+    require_document_admission_policy(document.policy_summary, status_code=409)
+    require_document_admission_policy(version.policy_summary, status_code=409)
+    require_fresh_document_profile(document, version=version, actor_id=actor_id)
     if version.status == DocumentStatus.valid.value:
         return
     if version.status in {
@@ -2109,6 +2156,8 @@ def _publish_version(
         WorkflowTask.kind == WorkflowTaskKind.review.value,
     ).order_by(desc(WorkflowTask.created_at), desc(WorkflowTask.task_id))))
     bound_reviews = [task for task in review_tasks if (task.task_metadata or {}).get("review_snapshot")]
+    if requires_independent_profile_approval(document) and not bound_reviews:
+        raise problem(409, "document_profile_independent_approval_required", "The selected profile requires completed approval of this exact version")
     if bound_reviews:
         approval = next((task for task in bound_reviews if task.document_version_id == version.document_version_id), None)
         if (
@@ -2139,7 +2188,13 @@ def _publish_version(
         )
     ).scalars()
     for active_version in active_versions:
-        if _validity_intervals_overlap(active_version, version):
+        # Different effective starts form a timeline. Preserve earlier releases
+        # for current/historical selection and their original review snapshots.
+        # Only a correction with the same effective start replaces that release.
+        if active_version.valid_from == version.valid_from and (
+            version.valid_from is not None
+            or active_version.document_profile_snapshot["lifecycle"].get("recordedOn") == version.document_profile_snapshot["lifecycle"].get("recordedOn")
+        ):
             active_version.status = DocumentStatus.superseded.value
 
     version.status = DocumentStatus.valid.value
@@ -2154,19 +2209,6 @@ def _publish_version(
         resource_id=version.document_version_id,
         metadata={"document_id": document.document_id},
     )
-
-
-def _validity_intervals_overlap(
-    left: DocumentVersion,
-    right: DocumentVersion,
-) -> bool:
-    if left.valid_to is not None and right.valid_from is not None:
-        if left.valid_to < right.valid_from:
-            return False
-    if right.valid_to is not None and left.valid_from is not None:
-        if right.valid_to < left.valid_from:
-            return False
-    return True
 
 
 def _archive_version(
@@ -2588,12 +2630,19 @@ def ready(db: Session = Depends(get_db)) -> dict[str, str]:
     return {"status": "ready", "service": "registry-api"}
 
 
-@router.get("/integrations/ingestion/readiness")
+@router.get(
+    "/integrations/ingestion/readiness",
+    response_model=DocumentIntakeReadinessResponse,
+    responses={503: {
+        "description": "Fresh nonce-bound STRATOS service/catalog/admission support is unavailable, denied or conflicting. Infrastructure/read-only readiness is separate; readiness never admits a document.",
+        "content": DOCUMENT_ADMISSION_RESPONSES[409]["content"],
+    }},
+)
 def ingestion_service_readiness(
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
-) -> dict[str, str]:
-    client_id = _require_service_route(principal, "authz")
+) -> DocumentIntakeReadinessResponse:
+    _require_service_route(principal, "authz")
     decision = _service_action_decision(
         principal=principal,
         subject_id=principal.subject_id,
@@ -2607,12 +2656,18 @@ def ingestion_service_readiness(
             "The ingestion service identity is not ready for Registry reads",
         )
     db.execute(text("SELECT 1"))
-    return {
-        "status": "ready",
-        "service": "registry-api",
-        "client_id": client_id,
-        "capability": "akb:read_document",
-    }
+    try:
+        proof = governance_client(get_settings()).document_admission_readiness(correlation_id=get_correlation_id())
+    except (GovernanceDenied, GovernanceUnavailable) as exc:
+        raise problem(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "document_profile_admission_unavailable",
+            "Fresh central document profile admission readiness is unavailable",
+            {"status": "blocked", "document_profile_admission": "unsupported",
+             "reason_codes": ["STRATOS_DOCUMENT_ADMISSION_CONTRACT_PENDING"]},
+        ) from exc
+    return DocumentIntakeReadinessResponse(status="ready", service="registry-api",
+        document_profile_admission="ready", catalog_revision=proof.catalog_revision, catalog_hash=proof.catalog_hash)
 
 
 @router.post(
@@ -2782,67 +2837,13 @@ def _register_budget_akb_authoritatively(
     title: str,
     parent_resource_id: str,
     inherited_from_resource_id: str,
+    document_admission: DocumentAdmissionExpectation,
     payload: StratosBudgetUploadExternalDocumentUpsertRequest
     | StratosBudgetUploadDocumentVersionCreate,
 ) -> BudgetAkbGovernedResourceRegistration:
+    require_document_admission_policy(payload.information_policy)
     settings = get_settings()
     scope = _budget_upload_scope(payload)
-    if settings.auth_mode == "mock":
-        governed_resource_id = _stable_budget_upload_id(
-            "gres", resource_type, resource_id, source_version
-        )
-        effective_policy = {
-            "policyBindingId": payload.information_policy.policy_binding_id,
-            "policyVersion": payload.information_policy.policy_version,
-            "policyHash": payload.integration_envelope.policy_hash,
-            "originatorId": payload.information_policy.originator_id,
-            "issuedAt": payload.information_policy.issued_at.isoformat(),
-            "reviewAt": (
-                payload.information_policy.review_at.isoformat()
-                if payload.information_policy.review_at is not None
-                else None
-            ),
-        }
-        confirmation = {
-            "id": governed_resource_id,
-            "application": "AKB",
-            "resourceType": resource_type,
-            "resourceId": resource_id,
-            "sourceVersion": source_version,
-            "title": title,
-            "parentId": parent_resource_id,
-            "scope": scope,
-            "isActive": True,
-            "policyAssignment": "INHERITED",
-            "explicitPolicyBindingId": None,
-            "inheritedFromResourceId": inherited_from_resource_id,
-            "effectivePolicy": effective_policy,
-            "registeredBySubjectId": "service:akb",
-            "confirmedBySubjectId": "service:akb",
-            "registeredByName": "AKB service",
-            "reason": "Register immutable STRATOS Budget contract document lineage",
-            "createdAt": utcnow().isoformat(),
-            "updatedAt": utcnow().isoformat(),
-            "correlation_id": payload.integration_envelope.correlation_id,
-            "idempotency_key": payload.integration_envelope.idempotency_key,
-        }
-        return BudgetAkbGovernedResourceRegistration(
-            governed_resource_id=governed_resource_id,
-            resource_type=resource_type,  # type: ignore[arg-type]
-            resource_id=resource_id,
-            source_version=source_version,
-            parent_id=parent_resource_id,
-            scope=scope,
-            inherited_from_resource_id=inherited_from_resource_id,
-            policy_binding_id=payload.information_policy.policy_binding_id,
-            policy_version=payload.information_policy.policy_version,
-            policy_hash=payload.integration_envelope.policy_hash,
-            registered_by_subject_id="service:akb",
-            confirmed_by_subject_id="service:akb",
-            correlation_id=payload.integration_envelope.correlation_id,
-            idempotency_key=payload.integration_envelope.idempotency_key,
-            confirmation=confirmation,
-        )
     try:
         return governance_client(settings).register_budget_akb_resource(
             resource_type=resource_type,  # type: ignore[arg-type]
@@ -2854,6 +2855,7 @@ def _register_budget_akb_authoritatively(
             scope=scope,
             envelope=payload.integration_envelope,
             binding=payload.information_policy,
+            document_admission=document_admission,
             reason="Register immutable STRATOS Budget contract document lineage",
         )
     except GovernanceDenied as exc:
@@ -2889,6 +2891,8 @@ def _budget_normalized_external_payload(
     payload: StratosBudgetUploadExternalDocumentUpsertRequest,
 ) -> ExternalDocumentUpsertRequest:
     return ExternalDocumentUpsertRequest(
+        document_profile=payload.document_profile,
+        gestor_unit=payload.document_profile.accountability.gestor.id if payload.document_profile.accountability.gestor.kind == "organization_unit" else None,
         tenant_id=payload.tenant_id,
         external_system=ExternalSourceSystem.stratos_budget,
         external_ref=payload.external_ref,
@@ -2932,7 +2936,8 @@ def _budget_document_metadata(
             "financial_scope_key": str(
                 payload.integration_envelope.payload["financialScopeKey"]
             ),
-            "owner_subject_id": payload.integration_envelope.actor.subject_id,
+            "owner_subject_id": payload.document_profile.accountability.owner_subject_id,
+            "actor_subject_id": payload.integration_envelope.actor.subject_id,
             "governance_scope": payload.governance_scope.model_dump(
                 mode="json", by_alias=True, exclude_none=True
             ),
@@ -3064,6 +3069,8 @@ def _assert_budget_document_matches(
     | StratosBudgetUploadDocumentVersionCreate
     | StratosBudgetUploadExternalDocumentCurrentUpdateRequest,
 ) -> None:
+    require_document_admission_policy(payload.information_policy)
+    require_document_admission_policy(external_ref.document.policy_summary, status_code=409)
     document = external_ref.document
     envelope = payload.integration_envelope
     expected_scope = _budget_upload_scope(payload)
@@ -3104,6 +3111,7 @@ def _assert_budget_version_matches(
     payload: StratosBudgetUploadDocumentVersionCreate
     | StratosBudgetUploadExternalDocumentCurrentUpdateRequest,
 ) -> None:
+    require_document_admission_policy(version.policy_summary, status_code=409)
     expected_scope = _budget_upload_scope(payload)
     actual_scope: dict[str, str] = {
         "type": version.governance_scope_type or "organization"
@@ -3151,6 +3159,14 @@ def _activate_budget_version_for_retrieval(
 ) -> None:
     """Make a confirmed governed Budget version retrievable without public publication."""
 
+    require_document_admission_policy(document.policy_summary, status_code=409)
+    require_document_admission_policy(version.policy_summary, status_code=409)
+    require_fresh_document_profile(document, version=version, actor_id=actor_id)
+    if version.document_profile_snapshot["domainEvidence"].get("executionStatus") == "draft":
+        # A verified draft may be processed for review, while temporal RAG
+        # selection still excludes it from published authoritative sources.
+        return
+
     if version.status == DocumentStatus.valid.value:
         if document.status != DocumentStatus.valid.value:
             document.status = DocumentStatus.valid.value
@@ -3181,7 +3197,11 @@ def _activate_budget_version_for_retrieval(
             "A newer confirmed Budget version is already active",
         )
     for active_version in active_versions:
-        active_version.status = DocumentStatus.superseded.value
+        if active_version.valid_from == version.valid_from and (
+            version.valid_from is not None
+            or active_version.document_profile_snapshot["lifecycle"].get("recordedOn") == version.document_profile_snapshot["lifecycle"].get("recordedOn")
+        ):
+            active_version.status = DocumentStatus.superseded.value
     version.status = DocumentStatus.valid.value
     version.published_at = version.published_at or utcnow()
     document.status = DocumentStatus.valid.value
@@ -3200,16 +3220,208 @@ def _activate_budget_version_for_retrieval(
     )
 
 
+def _budget_intake_actor_principal(
+    request: Request,
+    payload: StratosBudgetIntakeAuthorizationRequest,
+) -> Principal:
+    authorization = request.headers.get("X-STRATOS-Actor-Authorization", "")
+    if not authorization.startswith("Bearer ") or not authorization[7:].strip():
+        raise problem(403, "stratos_budget_intake_actor_required", "A fresh person bearer is required")
+    settings = get_settings()
+    if settings.auth_mode == "mock":
+        # Development-only identity simulation; no caller-forwarded roles are trusted.
+        actor = Principal(payload.actor_subject_id, {"document_manager"}, set())
+    else:
+        actor_request = Request({
+            "type": "http", "method": "POST", "path": request.url.path,
+            "headers": [(b"authorization", authorization.encode("latin-1"))],
+        })
+        try:
+            actor = get_authenticated_principal(actor_request, settings)
+        except HTTPException as exc:
+            if exc.status_code == 401:
+                raise problem(403, "stratos_budget_intake_actor_invalid", "The person bearer is invalid") from exc
+            raise
+    if actor.service_identity or actor.subject_id != payload.actor_subject_id:
+        raise problem(403, "stratos_budget_intake_actor_mismatch", "The current person does not match the upload actor")
+    return actor
+
+
+@router.post(
+    "/integrations/stratos-budget-upload/documents/{document_id}/intake-authorization",
+    response_model=StratosBudgetIntakeAuthorizationResponse,
+    responses={**{403: {"description": "Current actor or service is denied"},
+               409: {"description": "The signed upload lineage is stale or conflicting"},
+               503: {"description": "Current policy authority is unavailable"}}, **DOCUMENT_ADMISSION_RESPONSES},
+    openapi_extra={
+        "parameters": [{
+            "name": "X-STRATOS-Actor-Authorization",
+            "in": "header",
+            "required": False,
+            "schema": {"type": "string"},
+            "description": (
+                "A fresh person bearer (Bearer <token>), required when workflow_mode "
+                "is interactive and forbidden when workflow_mode is historical_batch. "
+                "This is separate from the Budget service bearer in Authorization; "
+                "the authenticated person must match actor_subject_id."
+            ),
+        }],
+    },
+)
+def authorize_stratos_budget_document_intake(
+    document_id: str,
+    payload: StratosBudgetIntakeAuthorizationRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> StratosBudgetIntakeAuthorizationResponse:
+    """Revalidate signed BFF claims before binary acceptance, without local writes.
+
+    The exact Budget transport validates the upload token and its new-file hash.
+    Registry stores contract-level provenance, so source_version and filename
+    cannot be compared with a previous file. STRATOS resource confirmation is an
+    idempotent upstream call that rechecks the current parent/inherited policy;
+    this operation is not described as globally read-only.
+
+    Organization and explicit-recipient audiences retain the Budget source scope;
+    a budget_scope audience must match that source. Every audience requires fresh
+    actor, source, policy and document-profile authorization before binary intake.
+    """
+    _require_stratos_budget_upload_service(principal)
+    if principal.subject_id != payload.registered_by_subject_id:
+        raise problem(403, "stratos_budget_intake_service_mismatch", "The current service does not match the signed upload")
+    if payload.workflow_mode == "historical_batch" and request.headers.get("X-STRATOS-Actor-Authorization") is not None:
+        raise problem(403, "stratos_budget_intake_batch_actor_forbidden", "Historical batch intake must use only its service identity")
+    external = db.execute(
+        select(ExternalDocumentRef).where(
+            ExternalDocumentRef.external_document_id == payload.external_document_id,
+            ExternalDocumentRef.document_id == document_id,
+            ExternalDocumentRef.tenant_id == "org_stratos",
+            ExternalDocumentRef.external_system == ExternalSourceSystem.stratos_budget.value,
+        ).options(
+            selectinload(ExternalDocumentRef.document).selectinload(Document.access_policies),
+            selectinload(ExternalDocumentRef.document).selectinload(Document.assignments),
+        )
+    ).scalar_one_or_none()
+    if external is None:
+        raise problem(409, "stratos_budget_intake_lineage_conflict", "The registered Budget document does not match the upload")
+    document = external.document
+    require_document_admission_policy(document.policy_summary, status_code=409)
+    profile_root = require_current_root(document)
+    if payload.document_profile.expected_root_metadata_revision != profile_root.metadata_revision:
+        raise problem(409, "document_profile_conflict", "The signed root profile revision is stale")
+    try:
+        validate_profile_version(profile_root, payload.document_profile)
+    except ValueError as exc:
+        raise problem(422, "document_profile_invalid", "The signed version evidence does not match the root profile") from exc
+    metadata = document.document_metadata or {}
+    external_metadata = external.ref_metadata or {}
+    budget = metadata.get("stratos_budget_upload")
+    scope = payload.governance_scope.model_dump(mode="json", by_alias=True, exclude_none=True)
+    allowed_registration_statuses = {"REGISTERED"}
+    if (
+        not isinstance(budget, dict)
+        or document.organization_id != "org_stratos"
+        or document.document_type != DocumentType.contract.value
+        or external.entity_type != "Contract"
+        or external.entity_id != payload.source_resource_id
+        or metadata.get("contract_id") != external.entity_id
+        or external_metadata.get("contract_id") != external.entity_id
+        or budget.get("contract_id") != external.entity_id
+        or metadata.get("financial_scope_key") != payload.governance_scope.id
+        or external_metadata.get("financial_scope_key") != payload.governance_scope.id
+        or budget.get("financial_scope_key") != payload.governance_scope.id
+        or budget.get("governance_scope") != scope
+        or document_governance_scope(document) != scope
+        or budget.get("parent_governed_resource_id") != payload.source_governed_resource_id
+        or document.governed_parent_resource_id != payload.source_governed_resource_id
+        or document.governed_resource_id != payload.governed_document_resource_id
+        or document.governed_source_version != profile_root.metadata_revision
+        or document.governance_registration_status not in allowed_registration_statuses
+    ):
+        raise problem(409, "stratos_budget_intake_lineage_conflict", "The registered Budget lineage or scope changed")
+    try:
+        policy = InformationPolicyBinding.model_validate(document.policy_summary)
+    except ValueError as exc:
+        raise problem(503, "stratos_budget_intake_policy_unavailable", "The registered document policy is unavailable") from exc
+    if (
+        payload.policy_binding_id != document.policy_binding_id
+        or payload.policy_version != document.policy_version
+        or payload.policy_hash != document.policy_hash
+        or policy.policy_binding_id != document.policy_binding_id
+        or policy.policy_version != document.policy_version
+        or canonical_policy_hash(policy) != document.policy_hash
+        or not budget_audience_matches_source(policy, payload.governance_scope.id)
+    ):
+        raise problem(409, "stratos_budget_intake_policy_conflict", "The signed upload policy is stale or inconsistent")
+    context_fields = {"contract_status", "contract_start_date", "contract_end_date"}
+    batch_fields = {"batch_manifest_id", "batch_entries_sha256", "release_revision"}
+    if payload.workflow_mode == "historical_batch":
+        context_fields |= batch_fields
+        if budget.get("actor_subject_id") != payload.actor_subject_id:
+            raise problem(403, "stratos_budget_intake_batch_owner_mismatch", "The historical batch owner changed")
+    elif any(metadata.get(key) is not None or external_metadata.get(key) is not None for key in batch_fields):
+        raise problem(409, "stratos_budget_intake_mode_conflict", "Historical batch lineage cannot authorize interactive intake")
+    if any(
+        payload.workflow_context.get(key) != metadata.get(key)
+        or payload.workflow_context.get(key) != external_metadata.get(key)
+        for key in context_fields
+    ):
+        raise problem(409, "stratos_budget_intake_workflow_conflict", "The signed workflow no longer matches the registered document")
+    if payload.workflow_mode == "interactive":
+        actor = _budget_intake_actor_principal(request, payload)
+        require_document_action(actor, Action.document_version_create, document, db)
+    envelope = IntegrationEnvelope.model_validate({
+        "schemaVersion": "stratos-integration-envelope-1", "organizationId": "org_stratos",
+        "sourceSystem": "STRATOS_BUDGET", "externalRef": external.external_ref,
+        "actor": {"type": "person", "subjectId": payload.actor_subject_id},
+        "correlationId": payload.correlation_id, "idempotencyKey": payload.idempotency_key,
+        "policyBindingId": policy.policy_binding_id, "policyVersion": policy.policy_version,
+        "policyHash": canonical_policy_hash(policy),
+        "classification": {"handlingClass": policy.handling_class, "legalClassification": policy.legal_classification,
+                           "tlp": policy.tlp, "pap": policy.pap},
+        "payload": {"contractId": external.entity_id, "financialScopeKey": payload.governance_scope.id,
+                    "fileHash": payload.source_version},
+    })
+    try:
+        registration = governance_client(get_settings()).register_budget_akb_resource(
+            resource_type="document", resource_id=document.document_id,
+            source_version=document.governed_source_version, title=document.title,
+            parent_id=document.governed_parent_resource_id,
+            inherited_from_resource_id=document.governed_parent_resource_id, scope=scope,
+            envelope=envelope, binding=policy,
+            document_admission=DocumentAdmissionExpectation(root_snapshot=profile_root,
+                current_root_snapshot=profile_root, correlation_id=payload.correlation_id),
+            reason="Revalidate exact Budget intake source, service and policy before binary intake",
+        )
+    except GovernanceDenied as exc:
+        raise problem(403, "stratos_budget_intake_governance_denied", "Current Budget source authority denies intake") from exc
+    except GovernanceUnavailable as exc:
+        raise problem(503, "stratos_budget_intake_governance_unavailable", "Current Budget source authority is unavailable") from exc
+    if registration.governed_resource_id != document.governed_resource_id:
+        raise problem(409, "stratos_budget_intake_registration_conflict", "The current governed Budget identity changed")
+    require_fresh_document_profile(document, actor_id=payload.actor_subject_id)
+    return StratosBudgetIntakeAuthorizationResponse(
+        document_id=document.document_id, upload_session_id=payload.upload_session_id,
+        confirmed_subject_id=payload.actor_subject_id,
+        registered_by_subject_id=principal.subject_id,
+        policy_binding_id=policy.policy_binding_id, policy_version=policy.policy_version,
+        policy_hash=canonical_policy_hash(policy),
+        source_governed_resource_id=document.governed_parent_resource_id,
+        source_version=payload.source_version,
+    )
+
+
 @router.post(
     "/integrations/stratos-budget-upload/external-documents/upsert",
     response_model=ExternalDocumentResponse,
     status_code=status.HTTP_201_CREATED,
-    responses={
+    responses={**{
         status.HTTP_200_OK: {
             "model": ExternalDocumentResponse,
             "description": "Exact idempotent replay of the registered Budget document",
         }
-    },
+    }, **DOCUMENT_ADMISSION_RESPONSES},
 )
 def upsert_stratos_budget_external_document(
     payload: StratosBudgetUploadExternalDocumentUpsertRequest,
@@ -3218,6 +3430,7 @@ def upsert_stratos_budget_external_document(
     principal: Principal = Depends(get_current_principal),
 ) -> ExternalDocumentResponse:
     _require_stratos_budget_upload_service(principal)
+    require_document_admission_policy(payload.information_policy)
     _lock_budget_upload_identity(
         db,
         f"document:{payload.tenant_id}:{payload.external_system}:{payload.external_ref}",
@@ -3239,6 +3452,8 @@ def upsert_stratos_budget_external_document(
             ),
         )
     ).scalar_one_or_none()
+    if existing_ref is not None:
+        require_document_admission_policy(existing_ref.document.policy_summary, status_code=409)
     document_id = (
         existing_ref.document_id
         if existing_ref is not None
@@ -3246,14 +3461,20 @@ def upsert_stratos_budget_external_document(
             "doc", payload.tenant_id, payload.external_system, payload.external_ref
         )
     )
+    profile_root = build_root_snapshot(payload.document_profile, document_id=document_id,
+        metadata_revision=existing_ref.document.profile_metadata_revision if existing_ref else _budget_root_source_version(payload), document_type="contract")
+    if existing_ref and profile_root != require_current_root(existing_ref.document):
+        raise problem(409, "document_profile_conflict", "Budget replay cannot replace current root metadata")
     governance_registration = _register_budget_akb_authoritatively(
         resource_type="document",
         resource_id=document_id,
-        source_version=_budget_root_source_version(payload),
+        source_version=profile_root.metadata_revision,
         title=payload.title,
         parent_resource_id=payload.parent_governed_resource_id,
         inherited_from_resource_id=payload.parent_governed_resource_id,
         payload=payload,
+        document_admission=DocumentAdmissionExpectation(root_snapshot=profile_root,
+            current_root_snapshot=profile_root, correlation_id=payload.integration_envelope.correlation_id),
     )
     governance_columns = _budget_governance_columns(governance_registration)
     if existing_ref is not None:
@@ -3340,8 +3561,8 @@ def upsert_stratos_budget_external_document(
         document_type=DocumentType.contract.value,
         status=DocumentStatus.draft.value,
         classification=legacy_classification(payload.information_policy),
-        owner_id=payload.integration_envelope.actor.subject_id,
-        gestor_unit=None,
+        owner_id=profile_root.accountability.owner_subject_id,
+        gestor_unit=profile_root.accountability.gestor.id if profile_root.accountability.gestor.kind == "organization_unit" else None,
         tags=sorted({*payload.tags, "external", "stratos_budget"}),
         document_metadata=_budget_document_metadata(payload),
         **policy_columns(payload.information_policy),
@@ -3352,15 +3573,18 @@ def upsert_stratos_budget_external_document(
         document=document,
         payloads=_default_assignment_payloads(
             DocumentCreate(
+                document_profile=payload.document_profile,
                 title=payload.title,
                 document_type=DocumentType.contract,
-                owner_id=payload.integration_envelope.actor.subject_id,
+                owner_id=profile_root.accountability.owner_subject_id,
+                information_policy=payload.information_policy,
                 classification=payload.classification,
                 tags=payload.tags,
             )
         ),
         actor_id=principal.subject_id,
     )
+    require_profile_assignments(profile_root, document.assignments)
     _sync_document_assignment_denormalized_fields(document)
     external_ref = ExternalDocumentRef(
         external_document_id=_stable_budget_upload_id(
@@ -3381,6 +3605,8 @@ def upsert_stratos_budget_external_document(
         ref_metadata=payload.metadata.model_dump(mode="json", exclude_none=True),
     )
     db.add(document)
+    persist_root_revision(db, document=document, registration=governance_registration,
+        expected_current_revision=None, actor_subject_id=principal.subject_id)
     db.add(external_ref)
     audit_event = add_audit_event(
         db,
@@ -3408,12 +3634,12 @@ def upsert_stratos_budget_external_document(
     "/integrations/stratos-budget-upload/documents/{document_id}/versions",
     response_model=StratosBudgetUploadDocumentVersionCreateResponse,
     status_code=status.HTTP_201_CREATED,
-    responses={
+    responses={**{
         status.HTTP_200_OK: {
             "model": StratosBudgetUploadDocumentVersionCreateResponse,
             "description": "Exact idempotent replay of the Budget document version",
         }
-    },
+    }, **DOCUMENT_ADMISSION_RESPONSES},
 )
 def upsert_stratos_budget_document_version(
     document_id: str,
@@ -3423,6 +3649,7 @@ def upsert_stratos_budget_document_version(
     principal: Principal = Depends(get_current_principal),
 ) -> StratosBudgetUploadDocumentVersionCreateResponse:
     _require_stratos_budget_upload_service(principal)
+    require_document_admission_policy(payload.information_policy)
     _lock_budget_upload_identity(
         db, f"version:{document_id}:{payload.version_label}"
     )
@@ -3481,14 +3708,43 @@ def upsert_stratos_budget_document_version(
             "ver", document_id, payload.version_label, payload.file_hash
         )
     )
+    profile_root = require_current_root(document)
+    candidate_version = existing or DocumentVersion(
+        document_version_id=version_id, document_id=document.document_id,
+        version_label=payload.version_label, status=DocumentStatus.draft.value,
+        valid_from=payload.valid_from, valid_to=payload.valid_to, source_file_uri=payload.source_file_uri,
+        source_location=_budget_version_source_location(payload), file_hash=payload.file_hash,
+        change_summary=payload.change_summary, **policy_columns(payload.information_policy))
+    candidate_file = (existing.files[0] if existing and len(existing.files) == 1 else None)
+    if existing is None:
+        candidate_file = DocumentFile(
+            file_id=_stable_budget_upload_id("file", document.document_id, version_id, payload.file_hash),
+            document_id=document.document_id, document_version_id=version_id,
+            document_version=candidate_version, uri=payload.source_file_uri,
+            filename=payload.file.filename, mime_type=payload.file.mime_type, size_bytes=payload.file.size_bytes,
+            sha256=payload.file.sha256, uploaded_by=payload.integration_envelope.actor.subject_id)
+        _apply_document_intake_attestation(candidate_file, intake_attestation)
+    if candidate_file is None:
+        raise problem(409, "document_profile_verified_source_required", "One exact original Budget source is required")
+    source_lineage = source_lineage_from_verified_file(profile_root, candidate_version, candidate_file,
+        source_version=payload.integration_envelope.payload["fileHash"])
+    try:
+        profile_snapshot = build_version_snapshot(payload.document_profile, root=profile_root,
+            document_version_id=version_id, verified_source=source_lineage)
+    except ValueError as exc:
+        raise problem(422, "document_profile_invalid", "Budget version evidence must match the current admitted profile") from exc
+    if payload.valid_from != profile_snapshot.lifecycle.effective_from or payload.valid_to != profile_snapshot.lifecycle.effective_to:
+        raise problem(422, "document_profile_lifecycle_mismatch", "Budget validity must match its explicit source evidence")
     document_governance_registration = _register_budget_akb_authoritatively(
         resource_type="document",
         resource_id=document.document_id,
-        source_version=_budget_root_source_version(payload),
+        source_version=profile_root.metadata_revision,
         title=document.title,
         parent_resource_id=payload.parent_governed_resource_id,
         inherited_from_resource_id=payload.parent_governed_resource_id,
         payload=payload,
+        document_admission=DocumentAdmissionExpectation(root_snapshot=profile_root,
+            current_root_snapshot=profile_root, correlation_id=payload.integration_envelope.correlation_id),
     )
     if document_governance_registration.governed_resource_id != document.governed_resource_id:
         raise problem(
@@ -3504,6 +3760,9 @@ def upsert_stratos_budget_document_version(
         parent_resource_id=str(document.governed_resource_id),
         inherited_from_resource_id=payload.parent_governed_resource_id,
         payload=payload,
+        document_admission=DocumentAdmissionExpectation(root_snapshot=profile_root,
+            current_root_snapshot=profile_root, version_snapshot=profile_snapshot,
+            correlation_id=payload.integration_envelope.correlation_id),
     )
     governance_columns = _budget_governance_columns(version_governance_registration)
     governance_confirmation = {
@@ -3517,8 +3776,6 @@ def upsert_stratos_budget_document_version(
             key=lambda item: (item.uploaded_at, item.file_id),
             default=None,
         )
-        if current_file is not None:
-            _apply_document_intake_attestation(current_file, intake_attestation)
         expected_source = _budget_version_source_location(payload)
         if (
             existing.governed_resource_id
@@ -3543,12 +3800,32 @@ def upsert_stratos_budget_document_version(
                 "stratos_budget_upload_version_payload_conflict",
                 "The persisted Budget contract version differs from the immutable replay",
             )
+        # The incoming receipt attests the newly uploaded object. A replay keeps
+        # the original file and its original, already verified scan evidence.
+        # In particular, a new session must not re-attest a different stored URI.
+        if get_settings().content_security_required and (
+            current_file.content_security_status != "clean"
+            or current_file.content_security_engine != "clamav"
+            or not current_file.content_security_scanned_at
+            or not re.fullmatch(
+                r"sha256:[a-f0-9]{64}",
+                current_file.content_security_attestation_sha256 or "",
+            )
+        ):
+            raise problem(
+                status.HTTP_409_CONFLICT,
+                "document_intake_attestation_required",
+                "The original immutable Budget file must retain its own clean intake attestation",
+            )
+        persist_version_snapshot(db, document=document, version=existing, file=current_file,
+            registration=version_governance_registration, expected_current_revision=profile_root.metadata_revision,
+            actor_subject_id=principal.subject_id)
         _activate_budget_version_for_retrieval(
             db,
             document=document,
             version=existing,
-            actor_id=principal.subject_id,
-            owner_subject_id=payload.integration_envelope.actor.subject_id,
+            actor_id=payload.integration_envelope.actor.subject_id,
+            owner_subject_id=document.owner_id,
             allow_supersede=False,
         )
         add_audit_event(
@@ -3575,46 +3852,21 @@ def upsert_stratos_budget_document_version(
             governance_confirmation=governance_confirmation,
         )
 
-    version = DocumentVersion(
-        document_version_id=version_id,
-        document_id=document.document_id,
-        version_label=payload.version_label,
-        status=DocumentStatus.draft.value,
-        valid_from=payload.valid_from,
-        valid_to=payload.valid_to,
-        source_file_uri=payload.source_file_uri,
-        source_location=_budget_version_source_location(payload),
-        file_hash=payload.file_hash,
-        change_summary=payload.change_summary,
-        **policy_columns(payload.information_policy),
-        **governance_columns,
-    )
-    file = DocumentFile(
-        file_id=_stable_budget_upload_id(
-            "file",
-            document.document_id,
-            version.document_version_id,
-            payload.file_hash,
-        ),
-        document_id=document.document_id,
-        document_version=version,
-        uri=payload.source_file_uri,
-        filename=payload.file.filename,
-        mime_type=payload.file.mime_type,
-        size_bytes=payload.file.size_bytes,
-        sha256=payload.file.sha256,
-        uploaded_by=payload.integration_envelope.actor.subject_id,
-    )
-    _apply_document_intake_attestation(file, intake_attestation)
+    version, file = candidate_version, candidate_file
+    for field, value in governance_columns.items():
+        setattr(version, field, value)
     db.add(version)
     db.add(file)
     db.flush()
+    persist_version_snapshot(db, document=document, version=version, file=file,
+        registration=version_governance_registration, expected_current_revision=profile_root.metadata_revision,
+        actor_subject_id=principal.subject_id)
     _activate_budget_version_for_retrieval(
         db,
         document=document,
         version=version,
-        actor_id=principal.subject_id,
-        owner_subject_id=payload.integration_envelope.actor.subject_id,
+        actor_id=payload.integration_envelope.actor.subject_id,
+        owner_subject_id=document.owner_id,
         allow_supersede=True,
     )
     add_audit_event(
@@ -3995,15 +4247,22 @@ def get_stratos_budget_document_version_lineage(
     "/external-documents/upsert",
     response_model=ExternalDocumentResponse,
     status_code=status.HTTP_200_OK,
+    responses=DOCUMENT_ADMISSION_RESPONSES,
 )
 def upsert_external_document(
     payload: ExternalDocumentUpsertRequest,
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> ExternalDocumentResponse:
+    if payload.external_system.value in {"STRATOS_PROJECTFLOW", "STRATOS_ARCHFLOW"}:
+        raise problem(409, "source_intake_required", "Use the dedicated source document intake")
+    return _upsert_external_document(payload, db, principal)
+
+
+def _upsert_external_document(payload, db, principal, *, source_document_id=None, policy_binding_prevalidated=False):
     if payload.external_system == ExternalSourceSystem.stratos_budget:
         _reject_generic_budget_write()
-    _require_v2_policy(principal, payload.information_policy)
+    require_document_admission_policy(payload.information_policy)
     _require_own_scope_owner(
         payload.governance_scope,
         owner_subject_id=payload.owner.user_id,
@@ -4021,11 +4280,19 @@ def upsert_external_document(
         )
     ).scalar_one_or_none()
     if existing_ref is not None:
+        require_document_admission_policy(existing_ref.document.policy_summary, status_code=409)
         require_document_action(principal, Action.document_read, existing_ref.document, db)
+        current_root = require_current_root(existing_ref.document)
+        candidate = build_root_snapshot(payload.document_profile, document_id=current_root.document_id,
+            metadata_revision=current_root.metadata_revision, document_type=payload.document_type.value)
+        if candidate != current_root:
+            raise problem(409, "document_profile_conflict", "External replay cannot overwrite admitted root metadata")
+        require_fresh_document_profile(existing_ref.document, actor_id=principal.subject_id)
         return _external_document_response(existing_ref, created=False)
 
     require_global_action(principal, Action.document_create, db)
-    _ensure_policy_binding_registered(payload.information_policy)
+    if not policy_binding_prevalidated:
+        _ensure_policy_binding_registered(payload.information_policy)
     if payload.information_policy is not None and payload.tenant_id not in {
         "org_stratos",
         payload.information_policy.audience.organization_id,
@@ -4036,18 +4303,28 @@ def upsert_external_document(
             "tenant_id must identify org_stratos for Information Policy V2 documents",
         )
     binding_columns = policy_columns(payload.information_policy)
-    document_id = make_id("doc")
+    document_id = source_document_id or make_id("doc")
+    profile_root = build_root_snapshot(payload.document_profile, document_id=document_id,
+        metadata_revision="document-v1" if source_document_id else make_id("dpr"), document_type=payload.document_type.value)
+    if (profile_root.provenance.source_system != payload.external_system.value
+        or profile_root.accountability.owner_subject_id != payload.owner.user_id
+        or payload.gestor_unit != (profile_root.accountability.gestor.id if profile_root.accountability.gestor.kind == "organization_unit" else None)):
+        raise problem(422, "document_profile_assignment_mismatch", "External source, owner and gestor must match the explicit profile")
+    profile_registrations = []
     governance_columns = (
         _register_governed_resource(
             principal=principal,
             resource_type="document",
             resource_id=document_id,
-            source_version=make_id("gresver"),
+            source_version=profile_root.metadata_revision,
             title=payload.title,
             policy=payload.information_policy,
             requested_scope=payload.governance_scope,
             parent_resource_id=payload.parent_governed_resource_id,
             reason="Register external AKB document policy root",
+            document_admission=DocumentAdmissionExpectation(root_snapshot=profile_root,
+                current_root_snapshot=profile_root, correlation_id=get_correlation_id()),
+            admission_registration=profile_registrations,
             delegated_actor_subject_id=(
                 payload.integration_envelope.actor.subject_id
                 if payload.integration_envelope is not None
@@ -4080,9 +4357,11 @@ def upsert_external_document(
         if payload.assignments is not None
         else _default_assignment_payloads(
             DocumentCreate(
+                document_profile=payload.document_profile,
                 title=payload.title,
                 document_type=payload.document_type,
                 owner_id=payload.owner.user_id,
+                information_policy=payload.information_policy,
                 gestor_unit=payload.gestor_unit,
                 classification=payload.classification,
                 tags=payload.tags,
@@ -4090,6 +4369,7 @@ def upsert_external_document(
             )
         )
     )
+    require_profile_assignments(profile_root, assignment_payloads)
     document.assignments = _assignment_models(
         document=document,
         payloads=assignment_payloads,
@@ -4116,6 +4396,8 @@ def upsert_external_document(
         ref_metadata=payload.metadata,
     )
     db.add(document)
+    persist_root_revision(db, document=document, registration=profile_registrations[0],
+        expected_current_revision=None, actor_subject_id=principal.subject_id)
     db.add(external_ref)
     audit_event = add_audit_event(
         db,
@@ -4171,6 +4453,8 @@ def update_external_document_current(
     principal: Principal = Depends(get_current_principal),
 ) -> ExternalDocumentResponse:
     external_ref = _get_external_document_ref(db, external_document_id)
+    if external_ref.external_system in {"STRATOS_PROJECTFLOW", "STRATOS_ARCHFLOW"}:
+        raise problem(409, "source_intake_required", "Use the dedicated source document intake")
     if external_ref.external_system == ExternalSourceSystem.stratos_budget.value:
         _reject_generic_budget_write()
     if {
@@ -4184,7 +4468,7 @@ def update_external_document_current(
             "Ingestion attempt state may change only through the authoritative service route",
         )
     require_document_action(principal, Action.document_ingest, external_ref.document, db)
-    _apply_external_document_current(db, external_ref, payload)
+    _apply_external_document_current(db, external_ref, payload, actor_id=principal.subject_id)
     _audit_external_document_current(db, external_ref, principal.subject_id, source="external-document")
     _commit_or_conflict(db)
     db.refresh(external_ref)
@@ -4220,8 +4504,12 @@ def update_document_external_references_current(
         )
     else:
         require_document_action(principal, Action.document_ingest, document, db)
+    if payload.current_ingestion_status != "FAILED":
+        require_document_admission_policy(document.policy_summary, status_code=409)
     if payload.current_document_version_id is not None:
-        _get_version(db, document_id, payload.current_document_version_id)
+        selected_version = _get_version(db, document_id, payload.current_document_version_id)
+        if payload.current_ingestion_status != "FAILED":
+            require_document_admission_policy(selected_version.policy_summary, status_code=409)
     dedicated_external_system = db.execute(
         select(ExternalDocumentRef.external_system).where(
             ExternalDocumentRef.document_id == document_id,
@@ -4587,10 +4875,14 @@ def _apply_external_document_current(
     db: Session,
     external_ref: ExternalDocumentRef,
     payload: ExternalDocumentCurrentUpdateRequest,
+    *, actor_id: str,
 ) -> None:
+    require_document_admission_policy(external_ref.document.policy_summary, status_code=409)
     if "current_document_version_id" in payload.model_fields_set:
         if payload.current_document_version_id is not None:
-            _get_version(db, external_ref.document_id, payload.current_document_version_id)
+            selected_version = _get_version(db, external_ref.document_id, payload.current_document_version_id)
+            require_document_admission_policy(selected_version.policy_summary, status_code=409)
+            require_fresh_document_profile(external_ref.document, version=selected_version, actor_id=actor_id)
         external_ref.current_document_version_id = payload.current_document_version_id
 
     if "current_file_id" in payload.model_fields_set:
@@ -4648,6 +4940,7 @@ def _audit_external_document_current(
     "/controlled-documentation/packages",
     response_model=ControlledDocumentPackageResponse,
     status_code=status.HTTP_201_CREATED,
+    responses=DOCUMENT_ADMISSION_RESPONSES,
 )
 def create_controlled_document_package(
     payload: ControlledDocumentPackageCreate,
@@ -4661,6 +4954,9 @@ def create_controlled_document_package(
         payload.primary_document_id,
         payload.primary_document_version_id,
     )
+    require_document_admission_policy(primary_document.policy_summary, status_code=409)
+    require_document_admission_policy(primary_version.policy_summary, status_code=409)
+    require_fresh_document_profile(primary_document, version=primary_version, actor_id=principal.subject_id)
     if payload.source_type in {
         ControlledDocumentSourceType.law,
         ControlledDocumentSourceType.implementing_regulation,
@@ -4683,7 +4979,9 @@ def create_controlled_document_package(
     for member in payload.members:
         document = _get_document(db, member.document_id)
         require_document_action(principal, Action.document_read, document, db)
-        _get_version(db, member.document_id, member.document_version_id)
+        member_version = _get_version(db, member.document_id, member.document_version_id)
+        require_document_admission_policy(member_version.policy_summary, status_code=409)
+        require_fresh_document_profile(document, version=member_version, actor_id=principal.subject_id)
         member_models.append(
             ControlledDocumentPackageMember(
                 member_id=make_id("cdmember"),
@@ -4742,6 +5040,7 @@ def create_controlled_document_package(
     "/controlled-documentation/official-legal-packages",
     response_model=OfficialLegalPackageCreateResponse,
     status_code=status.HTTP_201_CREATED,
+    responses=DOCUMENT_ADMISSION_RESPONSES,
 )
 def materialize_official_legal_packages(
     payload: OfficialLegalPackageCreate,
@@ -4788,7 +5087,9 @@ def materialize_official_legal_packages(
                 "The official legal source has no published effective versions",
             )
         for version in versions:
+            require_document_admission_policy(version.policy_summary, status_code=409)
             _require_official_legal_source(document, version)
+            require_fresh_document_profile(document, version=version, actor_id=principal.subject_id)
             package = db.execute(
                 select(ControlledDocumentPackage)
                 .where(
@@ -4867,6 +5168,7 @@ def materialize_official_legal_packages(
 @router.post(
     "/controlled-documentation/packages/{package_id}/status",
     response_model=ControlledDocumentPackageResponse,
+    responses=DOCUMENT_ADMISSION_RESPONSES,
 )
 def transition_controlled_document_package(
     package_id: str,
@@ -4899,6 +5201,18 @@ def transition_controlled_document_package(
         )
     else:
         require_document_action(principal, Action.document_update, primary_document, db)
+
+    if target in {ControlledDocumentPackageStatus.approved.value, ControlledDocumentPackageStatus.valid.value}:
+        require_document_admission_policy(primary_document.policy_summary, status_code=409)
+        primary_version = _get_version(db, package.primary_document_id, package.primary_document_version_id)
+        require_document_admission_policy(primary_version.policy_summary, status_code=409)
+        require_fresh_document_profile(primary_document, version=primary_version, actor_id=principal.subject_id)
+        for member in package.members:
+            source = _get_document(db, member.document_id)
+            source_version = _get_version(db, member.document_id, member.document_version_id)
+            require_document_admission_policy(source.policy_summary, status_code=409)
+            require_document_admission_policy(source_version.policy_summary, status_code=409)
+            require_fresh_document_profile(source, version=source_version, actor_id=principal.subject_id)
 
     if target == ControlledDocumentPackageStatus.approved.value:
         package.approved_by = principal.subject_id
@@ -6163,13 +6477,14 @@ def store_document_extraction_feedback(
     "/documents",
     response_model=DocumentResponse,
     status_code=status.HTTP_201_CREATED,
+    responses=DOCUMENT_ADMISSION_RESPONSES,
 )
 def create_document(
     payload: DocumentCreate,
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> Document:
-    _require_v2_policy(principal, payload.information_policy)
+    require_document_admission_policy(payload.information_policy)
     _require_own_scope_owner(
         payload.governance_scope,
         owner_subject_id=payload.owner_id,
@@ -6181,12 +6496,25 @@ def create_document(
     _ensure_policy_binding_registered(payload.information_policy)
     binding_columns = policy_columns(payload.information_policy)
     document_id = make_id("doc")
+    metadata_revision = make_id("dpr")
+    try:
+        profile_root = build_root_snapshot(payload.document_profile, document_id=document_id,
+            metadata_revision=metadata_revision, document_type=payload.document_type.value)
+    except ValueError as exc:
+        raise problem(422, "document_profile_invalid", "The document profile does not match its type or source") from exc
+    if (payload.owner_id != profile_root.accountability.owner_subject_id
+        or payload.gestor_unit != (profile_root.accountability.gestor.id if profile_root.accountability.gestor.kind == "organization_unit" else None)):
+        raise problem(422, "document_profile_assignment_mismatch", "Owner and gestor must match the explicit document profile")
+    assignment_payloads = _validated_assignment_payloads(
+        payload.assignments if payload.assignments is not None else _default_assignment_payloads(payload))
+    require_profile_assignments(profile_root, assignment_payloads)
+    profile_registrations = []
     governance_columns = (
         _register_governed_resource(
             principal=principal,
             resource_type="document",
             resource_id=document_id,
-            source_version=make_id("gresver"),
+            source_version=metadata_revision,
             title=payload.title,
             policy=payload.information_policy,
             requested_scope=payload.governance_scope,
@@ -6196,6 +6524,9 @@ def create_document(
                 principal.subject_id if official_public_source else None
             ),
             use_fixed_akb_identity=official_public_source,
+            document_admission=DocumentAdmissionExpectation(root_snapshot=profile_root,
+                current_root_snapshot=profile_root, correlation_id=get_correlation_id()),
+            admission_registration=profile_registrations,
         )
         if payload.information_policy is not None
         else {}
@@ -6228,6 +6559,8 @@ def create_document(
     )
     _sync_document_assignment_denormalized_fields(document)
     db.add(document)
+    persist_root_revision(db, document=document, registration=profile_registrations[0],
+                          expected_current_revision=None, actor_subject_id=principal.subject_id)
     audit_event = add_audit_event(
         db,
         actor_id=principal.subject_id,
@@ -7229,46 +7562,24 @@ def replace_document_assignments(
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> DocumentAssignmentListResponse:
-    document = _get_document(db, document_id)
-    _lock_publication_source(db, document_id=document_id)
-    db.refresh(document)
-    require_document_action(principal, Action.document_update, document, db)
-    assignment_payloads = _validated_assignment_payloads(payload.assignments)
-
-    document.assignments.clear()
-    db.flush()
-    document.assignments = _assignment_models(
-        document=document,
-        payloads=assignment_payloads,
-        actor_id=principal.subject_id,
-    )
-    _sync_document_assignment_denormalized_fields(document)
-    audit_event = add_audit_event(
-        db,
-        actor_id=principal.subject_id,
-        event_type="document.assignments.updated",
-        resource_type="document",
-        resource_id=document.document_id,
-        metadata={
-            "assignment_count": len(document.assignments),
-            "roles": sorted({assignment.role for assignment in document.assignments}),
-        },
-    )
-    for assignment in document.assignments:
-        assignment.last_audit_event_id = audit_event.audit_event_id
-
-    _commit_or_conflict(db)
-    db.refresh(document)
+    document = patch_document(document_id, DocumentPatch(
+        document_profile=payload.document_profile,
+        expected_root_metadata_revision=payload.expected_root_metadata_revision,
+        assignments=payload.assignments), db=db, principal=principal)
     return DocumentAssignmentListResponse(items=document.assignments)
 
 
-@router.patch("/documents/{document_id}", response_model=DocumentResponse)
+@router.patch("/documents/{document_id}", response_model=DocumentResponse, responses=DOCUMENT_ADMISSION_RESPONSES)
 def patch_document(
     document_id: str,
     payload: DocumentPatch,
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> Document:
+    """Update admitted metadata. STRATOS source provenance is immutable;
+    changing its system, source record or governed source returns 409
+    source_provenance_immutable, including attempts to relabel it as native AKB.
+    """
     document = _get_document(db, document_id)
     _lock_publication_source(db, document_id=document_id)
     db.refresh(document)
@@ -7279,29 +7590,74 @@ def patch_document(
     changes = payload.model_dump(exclude_unset=True)
     if not changes:
         raise problem(status.HTTP_400_BAD_REQUEST, "empty_patch", "PATCH body must contain at least one field")
+    withdrawal_only = set(changes) == {"status"} and payload.status in {
+        DocumentStatus.archived, DocumentStatus.cancelled,
+    }
+    if not withdrawal_only:
+        require_document_admission_policy(
+            payload.information_policy if "information_policy" in changes else document.policy_summary,
+            status_code=422 if "information_policy" in changes else 409,
+        )
     if payload.status in {DocumentStatus.approved, DocumentStatus.valid} and payload.status.value != document.status:
+        if requires_independent_profile_approval(document):
+            raise problem(409, "document_profile_independent_approval_required", "Use the exact version-bound independent review workflow")
         reviews = db.scalars(select(WorkflowTask).where(
             WorkflowTask.document_id == document_id, WorkflowTask.kind == WorkflowTaskKind.review.value,
         ))
         if any((task.task_metadata or {}).get("review_snapshot") for task in reviews):
             raise problem(409, "review_action_required", "Use the version-bound review and publication actions")
 
+    profile_root = None
+    profile_registrations = []
+    metadata_update = bool(set(changes) - {"status"})
+    budget_assignment_only = False
+    if not withdrawal_only:
+        current_profile = require_current_root(document)
+        if metadata_update:
+            if payload.document_profile is None or payload.expected_root_metadata_revision is None:
+                raise problem(422, "document_profile_required", "Metadata updates require the full profile and expected current revision")
+            if payload.expected_root_metadata_revision != document.profile_metadata_revision:
+                raise problem(409, "document_profile_conflict", "The document metadata revision changed")
+            try:
+                profile_root = build_root_snapshot(payload.document_profile, document_id=document.document_id,
+                    metadata_revision=make_id("dpr"), document_type=payload.document_type.value if payload.document_type else document.document_type)
+            except ValueError as exc:
+                raise problem(422, "document_profile_invalid", "The proposed root profile is invalid") from exc
+            source_systems = {"STRATOS_BUDGET", "STRATOS_PROJECTFLOW", "STRATOS_ARCHFLOW"}
+            if (current_profile.provenance.source_system in source_systems
+                or profile_root.provenance.source_system in source_systems) and profile_root.provenance != current_profile.provenance:
+                raise problem(409, "source_provenance_immutable", "Source document provenance cannot change through metadata updates")
+            proposed_assignments = payload.assignments if payload.assignments is not None else document.assignments
+            require_profile_assignments(profile_root, proposed_assignments)
+            if payload.owner_id is not None and payload.owner_id != profile_root.accountability.owner_subject_id:
+                raise problem(422, "document_profile_assignment_mismatch", "Owner must match the explicit profile")
+            if "gestor_unit" in changes and payload.gestor_unit != (profile_root.accountability.gestor.id if profile_root.accountability.gestor.kind == "organization_unit" else None):
+                raise problem(422, "document_profile_assignment_mismatch", "Gestor must match the explicit profile")
+            budget_assignment_only = (
+                current_profile.provenance.source_system == "STRATOS_BUDGET"
+                and set(changes) <= {"document_profile", "expected_root_metadata_revision", "assignments"}
+            )
+            if budget_assignment_only:
+                current_value = current_profile.model_dump(mode="json", by_alias=True)
+                proposed_value = profile_root.model_dump(mode="json", by_alias=True)
+                current_value.pop("metadataRevision", None)
+                proposed_value.pop("metadataRevision", None)
+                if proposed_value != current_value:
+                    raise problem(409, "source_provenance_immutable", "Budget assignment updates must preserve the exact admitted document profile")
+                profile_root = None
+        else:
+            require_fresh_document_profile(document, version=_latest_document_version(db, document_id), actor_id=principal.subject_id)
     if payload.title is not None:
         document.title = payload.title
     if payload.document_type is not None:
         document.document_type = payload.document_type.value
-    if payload.status is not None:
-        _transition_document_status(document, payload.status)
     if payload.owner_id is not None:
         document.owner_id = payload.owner_id
     if "gestor_unit" in changes:
         document.gestor_unit = payload.gestor_unit
     if payload.classification is not None:
         document.classification = payload.classification.value
-    governance_update_requested = any(
-        key in changes
-        for key in ("information_policy", "governance_scope", "parent_governed_resource_id")
-    )
+    governance_update_requested = metadata_update and not budget_assignment_only
     if governance_update_requested:
         official_public_source = _is_official_public_source_document(document)
         if official_public_source:
@@ -7320,12 +7676,16 @@ def patch_document(
                     "policy_unavailable",
                     "A valid Information Policy V2 binding is required to change governance coordinates",
                 ) from exc
-        _ensure_policy_binding_registered(effective_policy)
+        source_policy_prevalidated = current_profile.provenance.source_system in {
+            "STRATOS_PROJECTFLOW", "STRATOS_ARCHFLOW"
+        }
+        if not source_policy_prevalidated:
+            _ensure_policy_binding_registered(effective_policy)
         governance_columns = _register_governed_resource(
             principal=principal,
             resource_type="document",
             resource_id=document.document_id,
-            source_version=make_id("gresver"),
+            source_version=profile_root.metadata_revision,
             title=payload.title or document.title,
             policy=effective_policy,
             requested_scope=payload.governance_scope,
@@ -7339,6 +7699,9 @@ def patch_document(
                 principal.subject_id if official_public_source else None
             ),
             use_fixed_akb_identity=official_public_source,
+            document_admission=DocumentAdmissionExpectation(root_snapshot=profile_root,
+                current_root_snapshot=profile_root, correlation_id=get_correlation_id()),
+            admission_registration=profile_registrations,
             fallback_scope_type=document.governance_scope_type,
             fallback_scope_id=document.governance_scope_id,
             fallback_scope_owner_subject_id=document.governance_scope_owner_subject_id,
@@ -7346,10 +7709,20 @@ def patch_document(
         for field, value in governance_columns.items():
             setattr(document, field, value)
     if payload.information_policy is not None:
-        _ensure_policy_binding_registered(payload.information_policy)
+        if not (
+            current_profile.provenance.source_system
+            in {"STRATOS_PROJECTFLOW", "STRATOS_ARCHFLOW"}
+        ):
+            _ensure_policy_binding_registered(payload.information_policy)
         for field, value in policy_columns(payload.information_policy).items():
             setattr(document, field, value)
         document.classification = legacy_classification(payload.information_policy)
+    if payload.status is not None:
+        if payload.status in {DocumentStatus.approved, DocumentStatus.valid}:
+            latest_version = _latest_document_version(db, document_id)
+            if latest_version is not None:
+                require_document_admission_policy(latest_version.policy_summary, status_code=409)
+        _transition_document_status(document, payload.status)
     if payload.tags is not None:
         document.tags = payload.tags
     if payload.metadata is not None:
@@ -7367,6 +7740,11 @@ def patch_document(
         )
         _sync_document_assignment_denormalized_fields(document)
 
+    if profile_root is not None:
+        document.owner_id = profile_root.accountability.owner_subject_id
+        document.gestor_unit = profile_root.accountability.gestor.id if profile_root.accountability.gestor.kind == "organization_unit" else None
+        persist_root_revision(db, document=document, registration=profile_registrations[0],
+            expected_current_revision=payload.expected_root_metadata_revision, actor_subject_id=principal.subject_id)
     audit_event = add_audit_event(
         db,
         actor_id=principal.subject_id,
@@ -7413,13 +7791,25 @@ def delete_document(
     "/documents/{document_id}/versions",
     response_model=DocumentVersionResponse,
     status_code=status.HTTP_201_CREATED,
+    responses={**DOCUMENT_ADMISSION_RESPONSES, 200: {"model": DocumentVersionResponse,
+        "description": "The same native intake session returned its exact immutable version after fresh root and version authorization; idempotent_replay is true."}},
 )
 def create_document_version(
     document_id: str,
     payload: DocumentVersionCreate,
+    response: Response,
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> DocumentVersionResponse:
+    source = db.scalar(select(ExternalDocumentRef.external_system).where(
+        ExternalDocumentRef.document_id == document_id,
+        ExternalDocumentRef.external_system.in_(["STRATOS_PROJECTFLOW", "STRATOS_ARCHFLOW"])))
+    if source:
+        raise problem(409, "source_intake_required", "Use the dedicated source document intake")
+    return _create_document_version(document_id, payload, response, db, principal)
+
+
+def _create_document_version(document_id, payload, response, db, principal, *, source_intake_identity=None):
     document = _get_document(db, document_id)
     _lock_publication_source(db, document_id=document_id)
     db.refresh(document)
@@ -7434,6 +7824,10 @@ def create_document_version(
         _reject_generic_budget_write()
     subject_context = require_document_action(
         principal, Action.document_version_create, document, db
+    )
+    require_document_admission_policy(
+        payload.information_policy if payload.information_policy is not None else document.policy_summary,
+        status_code=422 if payload.information_policy is not None else 409,
     )
     official_public_source = _is_official_public_source_document(document)
     if official_public_source:
@@ -7473,9 +7867,28 @@ def create_document_version(
             "A file and clean AKB Document Intake attestation are required",
         )
 
+    profile_root = require_current_root(document)
+    native_session_hash = source_intake_identity or native_intake_identity(profile_root, intake_attestation,
+        uploaded_by=payload.file.uploaded_by if payload.file is not None else None,
+        actor_id=principal.subject_id)
+
+    def replay(existing, current_document):
+        current_binding = policy_columns(payload.information_policy) if payload.information_policy is not None else {
+            key: getattr(current_document, key) for key in binding_columns
+        }
+        require_exact_native_replay(db, document=current_document, version=existing, payload=payload,
+            attestation=intake_attestation, principal=principal, binding_columns=current_binding)
+        response.status_code = status.HTTP_200_OK
+        return _document_version_response(existing).model_copy(update={"idempotent_replay": True})
+
+    existing = find_native_intake(db, document_id, native_session_hash)
+    if existing is not None:
+        return replay(existing, document)
+
     version = DocumentVersion(
         document_version_id=make_id("ver"),
         document_id=document.document_id,
+        native_intake_session_hash=native_session_hash,
         version_label=payload.version_label,
         status=DocumentStatus.draft.value,
         valid_from=payload.valid_from,
@@ -7490,38 +7903,12 @@ def create_document_version(
         change_summary=payload.change_summary,
         **binding_columns,
     )
-    effective_policy = payload.information_policy
-    if effective_policy is None and document.policy_summary:
-        effective_policy = InformationPolicyBinding.model_validate(document.policy_summary)
-    governance_columns = (
-        _register_governed_resource(
-            principal=principal,
-            resource_type="document_version",
-            resource_id=version.document_version_id,
-            source_version=version.document_version_id,
-            title=f"{document.title} — {payload.version_label}",
-            policy=effective_policy,
-            requested_scope=payload.governance_scope,
-            parent_resource_id=document.governed_resource_id,
-            reason="Register immutable AKB document version",
-            delegated_actor_subject_id=(
-                principal.subject_id if official_public_source else None
-            ),
-            use_fixed_akb_identity=official_public_source,
-            fallback_scope_type=document.governance_scope_type,
-            fallback_scope_id=document.governance_scope_id,
-            fallback_scope_owner_subject_id=document.governance_scope_owner_subject_id,
-        )
-        if effective_policy is not None
-        else {}
-    )
-    for field, value in governance_columns.items():
-        setattr(version, field, value)
-    db.add(version)
     file: DocumentFile | None = None
     if payload.file is not None:
         file = DocumentFile(
+            file_id=make_id("file"),
             document_id=document.document_id,
+            document_version_id=version.document_version_id,
             document_version=version,
             uri=payload.source_file_uri,
             filename=payload.file.filename,
@@ -7532,19 +7919,87 @@ def create_document_version(
         )
         _apply_document_intake_attestation(file, intake_attestation)
         db.add(file)
-    add_audit_event(
-        db,
-        actor_id=principal.subject_id,
-        event_type="document.version.created",
-        resource_type="document_version",
-        resource_id=version.document_version_id,
-        metadata={
-            "document_id": document.document_id,
-            "version_label": version.version_label,
-            **_document_intake_audit_metadata(intake_attestation),
-        },
-    )
-    _commit_or_conflict(db)
+    if file is None:
+        raise problem(409, "document_profile_verified_source_required", "A verified immutable source file is required")
+    source_version = file.sha256 if profile_root.provenance.source_system != "AKB" else None
+    source_lineage = source_lineage_from_verified_file(profile_root, version, file, source_version=source_version)
+    try:
+        profile_snapshot = build_version_snapshot(payload.document_profile, root=profile_root,
+            document_version_id=version.document_version_id, verified_source=source_lineage)
+    except ValueError as exc:
+        raise problem(422, "document_profile_invalid", "Version evidence or metadata revision does not match the document profile") from exc
+    if version.valid_from != profile_snapshot.lifecycle.effective_from or version.valid_to != profile_snapshot.lifecycle.effective_to:
+        raise problem(422, "document_profile_lifecycle_mismatch", "Version validity must match its explicit lifecycle evidence")
+    if native_session_hash is not None:
+        # Reserve the durable identity before calling central registration. The
+        # PostgreSQL root lock serializes native confirms; the unique constraint
+        # also protects independent writers and alternate database adapters.
+        db.add(version)
+        try:
+            db.flush()
+        except IntegrityError as exc:
+            db.rollback()
+            _lock_publication_source(db, document_id=document_id)
+            current_document = _get_document(db, document_id)
+            db.refresh(current_document)
+            existing = find_native_intake(db, document_id, native_session_hash)
+            if existing is None:
+                raise problem(409, "conflict", "The immutable version identity conflicts with an existing version") from exc
+            return replay(existing, current_document)
+    profile_registrations = []
+    effective_policy = payload.information_policy
+    if effective_policy is None and document.policy_summary:
+        effective_policy = InformationPolicyBinding.model_validate(document.policy_summary)
+    try:
+        governance_columns = (
+            _register_governed_resource(
+                principal=principal,
+                resource_type="document_version",
+                resource_id=version.document_version_id,
+                source_version=version.document_version_id,
+                title=f"{document.title} — {payload.version_label}",
+                policy=effective_policy,
+                requested_scope=payload.governance_scope,
+                parent_resource_id=document.governed_resource_id,
+                reason="Register immutable AKB document version",
+                delegated_actor_subject_id=(
+                    principal.subject_id if official_public_source else None
+                ),
+                use_fixed_akb_identity=official_public_source,
+                document_admission=DocumentAdmissionExpectation(root_snapshot=profile_root,
+                    current_root_snapshot=profile_root, version_snapshot=profile_snapshot, correlation_id=get_correlation_id()),
+                admission_registration=profile_registrations,
+                fallback_scope_type=document.governance_scope_type,
+                fallback_scope_id=document.governance_scope_id,
+                fallback_scope_owner_subject_id=document.governance_scope_owner_subject_id,
+            )
+            if effective_policy is not None
+            else {}
+        )
+        for field, value in governance_columns.items():
+            setattr(version, field, value)
+        db.add(version)
+        persist_version_snapshot(db, document=document, version=version, file=file,
+            registration=profile_registrations[0], expected_current_revision=payload.document_profile.expected_root_metadata_revision,
+            actor_subject_id=principal.subject_id)
+        add_audit_event(
+            db,
+            actor_id=principal.subject_id,
+            event_type="document.version.created",
+            resource_type="document_version",
+            resource_id=version.document_version_id,
+            metadata={
+                "document_id": document.document_id,
+                "version_label": version.version_label,
+                **_document_intake_audit_metadata(intake_attestation),
+            },
+        )
+        _commit_or_conflict(db)
+    except Exception:
+        # In particular, release a native identity reserved before a denied or
+        # interrupted central admission; no incomplete version may be retained.
+        db.rollback()
+        raise
     db.refresh(version)
     return _document_version_response(version)
 
@@ -7555,12 +8010,28 @@ def list_document_versions(
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
     status_filter: DocumentStatus | None = Query(default=None, alias="status"),
-    valid_on: date | None = None,
+    valid_on: date | None = Query(default=None, description="Resolve the single published version effective on this date; withdrawn or expired successors never revive an earlier release."),
     limit: Limit = 100,
     offset: Offset = 0,
 ) -> DocumentVersionListResponse:
     document = _get_document(db, document_id)
     require_document_action(principal, Action.document_read, document, db)
+
+    if valid_on is not None:
+        versions = db.scalars(select(DocumentVersion).where(DocumentVersion.document_id == document_id))
+        effective = effective_document_version(versions, valid_on)
+        items = [effective] if (
+            effective is not None
+            and document.status not in {"superseded", "archived", "cancelled"}
+            and (status_filter is None or status_filter == DocumentStatus.valid)
+        ) else []
+        for item in items:
+            require_fresh_document_profile(document, version=item, actor_id=principal.subject_id)
+        return DocumentVersionListResponse(
+            items=[_document_version_response(item) for item in items[offset:offset + limit]],
+            limit=limit,
+            offset=offset,
+        )
 
     stmt = (
         select(DocumentVersion)
@@ -7571,12 +8042,10 @@ def list_document_versions(
     )
     if status_filter:
         stmt = stmt.where(DocumentVersion.status == status_filter.value)
-    if valid_on:
-        stmt = stmt.where(
-            (DocumentVersion.valid_from.is_(None) | (DocumentVersion.valid_from <= valid_on)),
-            (DocumentVersion.valid_to.is_(None) | (DocumentVersion.valid_to >= valid_on)),
-        )
     versions = list(db.execute(stmt).scalars())
+    if not principal.service_identity:
+        for version in versions:
+            require_fresh_document_profile(document, version=version, actor_id=principal.subject_id)
     return DocumentVersionListResponse(
         items=[_document_version_response(version) for version in versions],
         limit=limit,
@@ -7596,7 +8065,10 @@ def get_document_version(
 ) -> DocumentVersionResponse:
     document = _get_document(db, document_id)
     _require_document_read_or_ingestion_metadata(principal, document, db)
-    return _document_version_response(_get_version(db, document_id, version_id))
+    version = _get_version(db, document_id, version_id)
+    if not principal.service_identity:
+        require_fresh_document_profile(document, version=version, actor_id=principal.subject_id)
+    return _document_version_response(version)
 
 
 @router.post(
@@ -7858,7 +8330,7 @@ def _budget_historical_batch_ingestion_authority(
         or not (is_initial_confirmation or is_exact_failed_retry)
         or not isinstance(actor, dict)
         or actor.get("type") != "person"
-        or actor.get("subjectId") != document.owner_id
+        or actor.get("subjectId") != (document.document_metadata or {}).get("stratos_budget_upload", {}).get("actor_subject_id")
         or version.governed_parent_resource_id != document.governed_resource_id
     ):
         raise problem(
@@ -7867,6 +8339,7 @@ def _budget_historical_batch_ingestion_authority(
             "Only an exact signed CURRENT or ARCHIVED Budget batch version may be indexed without a live actor",
         )
     try:
+        require_fresh_document_profile(document, version=version, actor_id=principal.subject_id)
         authorization_basis = (
             "stratos_budget_historical_retry"
             if is_exact_failed_retry
@@ -7874,7 +8347,7 @@ def _budget_historical_batch_ingestion_authority(
         )
         return (
             resolve_document_version_authority(document, version),
-            document.owner_id,
+            actor["subjectId"],
             authorization_basis,
         )
     except ValueError as exc:
@@ -8067,6 +8540,7 @@ def create_ingestion_authorization_proof(
 @router.post(
     "/documents/{document_id}/versions/{version_id}/publish",
     response_model=DocumentVersionResponse,
+    responses=DOCUMENT_ADMISSION_RESPONSES,
 )
 def publish_document_version(
     document_id: str,
@@ -8141,6 +8615,7 @@ def get_document_publication(
 @router.put(
     "/documents/{document_id}/versions/{version_id}/publication",
     response_model=DocumentPublicationResponse,
+    responses=DOCUMENT_ADMISSION_RESPONSES,
 )
 def put_document_publication(
     document_id: str,
@@ -8181,6 +8656,9 @@ def put_document_publication(
         policy_hash = existing.policy_hash
         public_slug = existing.public_slug
     else:
+        require_document_admission_policy(document.policy_summary, status_code=409)
+        require_document_admission_policy(version.policy_summary, status_code=409)
+        require_fresh_document_profile(document, version=version, actor_id=principal.subject_id)
         if (
             version.status != DocumentStatus.valid.value
             or version.published_at is None
@@ -8606,7 +9084,11 @@ def resolve_public_document_source(
         lease.release()
 
 
-@router.post("/authz/check", response_model=AuthzCheckResponse)
+@router.post(
+    "/authz/check", response_model=AuthzCheckResponse,
+    description="Evaluate current authority. With resource.document_version_id, require current person authority and matching document_id, evaluate root and exact immutable version policies, and return exact source/policy coordinates plus combined obligations. Denied or invalid versions return allowed=false; a required PDP outage returns 503. No source contents are returned.",
+    responses={503: {"description": "Required current document or exact-version policy authority is unavailable"}},
+)
 def check_authorization(
     payload: AuthzCheckRequest,
     db: Session = Depends(get_db),
@@ -8670,6 +9152,46 @@ def check_authorization(
             )
             classification = payload.resource.classification.value if payload.resource.classification else None
             decision = evaluate_global_action(context, payload.action.value, classification)
+
+    if payload.resource.document_version_id:
+        if not payload.resource.document_id or principal.service_identity:
+            decision = Decision(
+                False, "Exact-version authorization requires a document and current person authority",
+                {}, ("VERSION_AUTHORITY_REQUIRED",),
+            )
+        elif decision.allowed:
+            version = db.get(DocumentVersion, payload.resource.document_version_id)
+            if version is None or version.document_id != document.document_id:
+                decision = Decision(False, "The exact source version is unavailable", {}, ("VERSION_NOT_FOUND",))
+            else:
+                try:
+                    authority = resolve_document_version_authority(document, version)
+                    version_decision = evaluate_runtime_document_version_access(
+                        principal, payload.action.value, document, version, authority,
+                        evaluate_document_version_access(
+                            context_for_principal(principal, db), payload.action.value, version, authority,
+                        ),
+                    )
+                except ValueError:
+                    decision = Decision(False, "The exact version policy is incomplete", {}, ("VERSION_AUTHORITY_INVALID",))
+                except HTTPException as exc:
+                    if exc.status_code >= 500:
+                        raise
+                    decision = Decision(False, "Current exact-version authority denies access", {}, ("VERSION_ACCESS_DENIED",))
+                else:
+                    if not version_decision.allowed:
+                        decision = version_decision
+                    else:
+                        obligations = sorted(set(decision.constraints.get("obligations", [])) | set(version_decision.constraints.get("obligations", [])) | set(authority.policy_binding.obligations))
+                        decision = Decision(True, "Current root and exact-version authority allow access", {
+                            **decision.constraints, **version_decision.constraints,
+                            "document_id": document.document_id,
+                            "document_version_id": version.document_version_id,
+                            "policy_binding_id": authority.policy_binding_id,
+                            "policy_version": authority.policy_version,
+                            "policy_hash": authority.policy_hash,
+                            "obligations": obligations,
+                        }, ("VERSION_AUTHORITY_ALLOW",))
 
     return AuthzCheckResponse(
         allowed=decision.allowed,
@@ -8781,6 +9303,19 @@ def filter_authorized_documents(
             action=payload.action.value,
         )
         allowed_versions.update(employee_directive_allowed_versions)
+        if payload.effective_on is not None:
+            effective = effective_document_version(document.versions, payload.effective_on)
+            effective_ids = {effective.document_version_id} if (
+                effective is not None
+                and has_explicit_document_tlp(effective.policy_summary)
+                and document.status not in {"superseded", "archived", "cancelled"}
+            ) else set()
+            allowed_versions.intersection_update(effective_ids)
+        for candidate_id in tuple(allowed_versions):
+            try:
+                require_fresh_document_profile(document, version=versions_by_id[candidate_id], actor_id=payload.subject_id)
+            except HTTPException:
+                allowed_versions.discard(candidate_id)
         denied_versions = candidate_versions - allowed_versions
         coordinates_allowed = (
             _candidate_document_policy_allowed(
@@ -8792,6 +9327,11 @@ def filter_authorized_documents(
             if not candidate_versions
             else bool(allowed_versions)
         )
+        if coordinates_allowed and not candidate_versions:
+            try:
+                require_fresh_document_profile(document, actor_id=payload.subject_id)
+            except HTTPException:
+                coordinates_allowed = False
         if coordinates_allowed:
             allowed_document_ids.append(document_id)
             if allowed_versions:
@@ -8802,6 +9342,7 @@ def filter_authorized_documents(
             denied_document_version_ids[document_id] = sorted(denied_versions)
 
     return AuthzFilterDocumentsResponse(
+        effective_on=payload.effective_on,
         allowed_document_ids=allowed_document_ids,
         denied_document_ids=denied_document_ids,
         allowed_document_version_ids=allowed_document_version_ids,
@@ -8826,6 +9367,12 @@ def _allowed_candidate_document_versions(
         candidate_hashes=candidate_hashes,
     ) or not candidate_versions:
         return set()
+    candidate_versions = {
+        version_id for version_id in candidate_versions
+        if (version := versions_by_id.get(version_id)) is not None
+        and version.document_id == document.document_id
+        and has_explicit_document_tlp(version.policy_summary)
+    }
     if decision.constraints.get("public_version_ids"):
         active_public_versions = {
             item
@@ -8900,6 +9447,7 @@ def _candidate_document_coordinates_allowed(
 @router.post(
     "/documents/{document_id}/versions/{version_id}/submit-review",
     response_model=WorkflowTaskResponse,
+    responses=DOCUMENT_ADMISSION_RESPONSES,
 )
 def submit_document_review(
     document_id: str,
@@ -8919,6 +9467,9 @@ def submit_document_review(
         raise problem(403, "review_human_required", "A document review requires an authenticated person")
     if context.access_v2:
         require_document_version_action(principal, Action.document_update, document, version, db)
+    require_document_admission_policy(document.policy_summary, status_code=409)
+    require_document_admission_policy(version.policy_summary, status_code=409)
+    require_fresh_document_profile(document, version=version, actor_id=principal.subject_id)
     latest = _latest_document_version(db, document_id)
     if (
         latest is None or latest.document_version_id != version_id
@@ -9079,7 +9630,9 @@ def _personal_workflow_document(
         versions.append(version)
     versions.sort(key=lambda item: (item.created_at, item.document_version_id), reverse=True)
     latest = versions[0] if versions else None
-    published = next((item for item in versions if item.status == DocumentStatus.valid.value), None)
+    published = effective_document_version(document.versions, document_calendar_today())
+    if published not in versions or document.status in {"superseded", "archived", "cancelled"}:
+        published = None
     review_date, invalid_review_date = review_due_date(document)
     return WorkflowDocumentResponse(
         document_id=document.document_id, title=document.title, document_type=document.document_type,
@@ -9261,7 +9814,7 @@ def apply_workflow_task_action(
         if document is None or task.kind != WorkflowTaskKind.review.value:
             raise problem(409, "review_task_required", "Only a document review can be approved")
         version = _require_review_decision(db, principal, task, document)
-        _approve_document_for_publication(db, document, version)
+        _approve_document_for_publication(db, document, version, actor_id=principal.subject_id)
         task.status = WorkflowTaskStatus.resolved.value
         task.resolved_at = now
     elif payload.action.value == "publish":
@@ -10164,6 +10717,90 @@ def _assistant_citation_version_allowed(
     return True
 
 
+def _assistant_message_has_federated_source(message: AssistantMessage) -> bool:
+    metadata = message.message_metadata
+    context = metadata.get("current_context")
+    return bool(
+        "director_copilot_history" in metadata
+        or (
+            isinstance(context, dict)
+            and (
+                context.get("answer_source") in ("director_copilot", "director_copilot_v2")
+                or context.get("active_source_application") in ("budget", "projectflow", "archflow")
+                or "director_copilot_v2_snapshot" in context
+            )
+        )
+    )
+
+
+def _assistant_message_sources_allowed(
+    message: AssistantMessage,
+    *,
+    db: Session,
+    principal: Principal,
+    access_cache: dict[tuple[str, str], bool],
+) -> bool:
+    # Registry has no current federated source verifier or authenticated
+    # delegated read proof. Never return its persisted text to a direct caller.
+    # The live Chat path remains authorized independently; this is a read-time
+    # refresh receipt, not deletion or permission inferred from thread sharing.
+    if _assistant_message_has_federated_source(message) or _assistant_message_has_registry_inventory(message):
+        return False
+    citations = list(message.citations)
+    # Report rows may carry source coordinates independently of answer citations.
+    artifacts = message.message_metadata.get("report_artifacts", [])
+    if isinstance(artifacts, list):
+        for artifact in artifacts:
+            if not isinstance(artifact, dict) or not isinstance(artifact.get("rows"), list):
+                continue
+            for row in artifact["rows"]:
+                if isinstance(row, dict) and isinstance(row.get("citations"), list):
+                    citations.extend(row["citations"])
+    return all(
+        isinstance(citation, dict)
+        and _assistant_citation_version_allowed(
+            citation, db=db, principal=principal, access_cache=access_cache,
+        )
+        for citation in citations
+    )
+
+
+def _assistant_message_has_registry_inventory(message: AssistantMessage) -> bool:
+    metadata = message.message_metadata
+    context = metadata.get("current_context")
+    report_kinds = ("document_inventory_summary", "document_list", "document_type_count")
+    return bool(
+        _assistant_message_has_unverifiable_report(message)
+        or metadata.get("assistant_tool") == "registry_document_report"
+        or (
+            isinstance(context, dict)
+            and (
+                context.get("answer_source") in ("registry_metadata", "registry_metadata_summary")
+                or context.get("report_kind") in report_kinds
+                or context.get("registry_report_kind") in report_kinds
+            )
+        )
+    )
+
+
+def _assistant_message_has_unverifiable_report(message: AssistantMessage) -> bool:
+    artifacts = message.message_metadata.get("report_artifacts", [])
+    if not isinstance(artifacts, list):
+        return True
+    for artifact in artifacts:
+        rows = artifact.get("rows") if isinstance(artifact, dict) else None
+        if not isinstance(rows, list) or not rows:
+            return True
+        for row in rows:
+            citations = row.get("citations") if isinstance(row, dict) else None
+            if not isinstance(citations, list) or not citations:
+                return True
+            if any(not isinstance(citation, dict) or not citation.get("document_id")
+                   or not citation.get("document_version_id") for citation in citations):
+                return True
+    return False
+
+
 def _assistant_message_response(
     message: AssistantMessage,
     *,
@@ -10184,18 +10821,8 @@ def _assistant_message_response(
         for citation in message.citations
         if isinstance(citation, dict)
     ]
-    source_access_changed = (
-        message.role == "assistant"
-        and bool(citations)
-        and not all(
-            _assistant_citation_version_allowed(
-                citation,
-                db=db,
-                principal=principal,
-                access_cache=access_cache,
-            )
-            for citation in citations
-        )
+    source_access_changed = not _assistant_message_sources_allowed(
+        message, db=db, principal=principal, access_cache=access_cache,
     )
     return AssistantMessageResponse(
         message_id=message.message_id,
@@ -10224,7 +10851,7 @@ def _assistant_message_response(
                 created_at=viewer_feedback.created_at,
                 updated_at=viewer_feedback.updated_at,
             )
-            if viewer_feedback is not None
+            if viewer_feedback is not None and not source_access_changed
             else None
         ),
         created_at=message.created_at,
@@ -10265,11 +10892,36 @@ def _conversation_response(
         message.availability == "source_access_changed"
         for message in messages
     )
+    if redacted_message_count:
+        live_source_refresh_required = any(
+            _assistant_message_has_federated_source(message)
+            for message in conversation.messages
+        )
+        source_refresh_required = any(
+            _assistant_message_has_registry_inventory(message)
+            for message in conversation.messages
+        )
+        # Prompts, titles and later uncited replies can contain quotations from
+        # revoked sources. There is no complete dependency graph in stored turns.
+        messages = [
+            message.model_copy(update={
+                "content": "", "citations": [], "viewer_feedback": None,
+                "metadata": {
+                    "history_access_changed": True,
+                    **({"history_live_source_refresh_required": True}
+                       if live_source_refresh_required else {}),
+                    **({"history_source_refresh_required": True}
+                       if source_refresh_required else {}),
+                },
+                "availability": "source_access_changed",
+            })
+            for message in messages
+        ]
     response = AssistantConversationDetailResponse(
         conversation_id=conversation.conversation_id,
         user_id=conversation.user_id,
         status=conversation.status,
-        title=conversation.title,
+        title=None if redacted_message_count else conversation.title,
         visibility=conversation.visibility,
         retention_until=conversation.retention_until,
         archived_at=conversation.archived_at,
@@ -10386,13 +11038,22 @@ def _assistant_suggestion_signals(
 def _conversation_list_item_response(
     conversation: AssistantConversation,
     *,
+    db: Session,
+    principal: Principal,
+    access_cache: dict[tuple[str, str], bool],
     include_suggestion_signals: bool = False,
 ) -> AssistantConversationListItemResponse:
+    sources_allowed = all(
+        _assistant_message_sources_allowed(
+            message, db=db, principal=principal, access_cache=access_cache,
+        )
+        for message in conversation.messages
+    )
     return AssistantConversationListItemResponse(
         conversation_id=conversation.conversation_id,
         user_id=conversation.user_id,
         status=conversation.status,
-        title=conversation.title,
+        title=conversation.title if sources_allowed else None,
         visibility=conversation.visibility,
         retention_until=conversation.retention_until,
         archived_at=conversation.archived_at,
@@ -10403,7 +11064,7 @@ def _conversation_list_item_response(
         message_count=len(conversation.messages),
         suggestion_signals=(
             _assistant_suggestion_signals(conversation)
-            if include_suggestion_signals
+            if include_suggestion_signals and sources_allowed
             else []
         ),
     )
@@ -10531,10 +11192,14 @@ def list_assistant_conversations(
             continue
         if _conversation_subject_allowed(conversation, context):
             visible.append(conversation)
+    access_cache: dict[tuple[str, str], bool] = {}
     return AssistantConversationListResponse(
         items=[
             _conversation_list_item_response(
                 conversation,
+                db=db,
+                principal=principal,
+                access_cache=access_cache,
                 include_suggestion_signals=(
                     include_suggestion_signals
                     and conversation.user_id == context.subject_id

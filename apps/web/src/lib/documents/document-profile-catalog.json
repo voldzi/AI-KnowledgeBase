@@ -1,0 +1,569 @@
+{
+  "schemaVersion": "akb-document-profile-catalog-1",
+  "catalogRevision": "1",
+  "centralApprovalRequired": true,
+  "status": "implementation-contract-awaiting-central-approval",
+  "description": {
+    "cs": "Katalog definuje povinná metadata. Použití vyžaduje aktuální centrální schválení profilu a dokumentu.",
+    "en": "The catalog defines required metadata. Use requires current central approval of the profile and document."
+  },
+  "rootFields": [
+    "profile",
+    "authorship",
+    "provenance",
+    "accountability"
+  ],
+  "lifecycleFields": [
+    {
+      "name": "mode",
+      "type": "enum",
+      "required": true,
+      "nullable": false,
+      "label": {
+        "cs": "Platnost",
+        "en": "Validity"
+      },
+      "options": [
+        {
+          "value": "fixed_interval",
+          "label": {
+            "cs": "Pevné období",
+            "en": "Fixed interval"
+          }
+        },
+        {
+          "value": "until_superseded",
+          "label": {
+            "cs": "Do nahrazení",
+            "en": "Until superseded"
+          }
+        },
+        {
+          "value": "record",
+          "label": {
+            "cs": "Záznam události",
+            "en": "Event record"
+          }
+        }
+      ]
+    },
+    {
+      "name": "effectiveFrom",
+      "type": "date",
+      "required": true,
+      "nullable": true,
+      "label": {
+        "cs": "Účinnost od",
+        "en": "Effective from"
+      }
+    },
+    {
+      "name": "effectiveTo",
+      "type": "date",
+      "required": true,
+      "nullable": true,
+      "label": {
+        "cs": "Účinnost do",
+        "en": "Effective to"
+      }
+    },
+    {
+      "name": "recordedOn",
+      "type": "date",
+      "required": true,
+      "nullable": true,
+      "label": {
+        "cs": "Datum záznamu",
+        "en": "Recorded on"
+      }
+    },
+    {
+      "name": "reviewAt",
+      "type": "date",
+      "required": true,
+      "nullable": true,
+      "label": {
+        "cs": "Další kontrola",
+        "en": "Next review"
+      }
+    },
+    {
+      "name": "reviewRuleId",
+      "type": "reference",
+      "required": true,
+      "nullable": false,
+      "label": {
+        "cs": "Pravidlo kontroly",
+        "en": "Review rule"
+      }
+    },
+    {
+      "name": "retentionRuleId",
+      "type": "reference",
+      "required": true,
+      "nullable": false,
+      "label": {
+        "cs": "Pravidlo uchování",
+        "en": "Retention rule"
+      }
+    }
+  ],
+  "rules": {
+    "review": [
+      {
+        "id": "akb.review.annual",
+        "label": {
+          "cs": "Pravidelná roční kontrola",
+          "en": "Annual review"
+        }
+      },
+      {
+        "id": "akb.review.on-change",
+        "label": {
+          "cs": "Kontrola při změně",
+          "en": "Review on change"
+        }
+      }
+    ],
+    "retention": [
+      {
+        "id": "akb.retention.organizational-record",
+        "label": {
+          "cs": "Organizační spisové pravidlo",
+          "en": "Organizational records rule"
+        },
+        "durationDefinedBy": "central-approved-retention-schedule"
+      }
+    ]
+  },
+  "profiles": [
+    {
+      "id": "akb.knowledge-note",
+      "revision": "1",
+      "family": "knowledge_note",
+      "label": {
+        "cs": "Poznámka a znalostní článek",
+        "en": "Note and knowledge article"
+      },
+      "documentTypes": [
+        "knowledge_base_article",
+        "other",
+        "attachment"
+      ],
+      "sourceSystems": [
+        "AKB",
+        "STRATOS_BUDGET",
+        "STRATOS_PROJECTFLOW",
+        "STRATOS_ARCHFLOW",
+        "STRATOS_PROCESSFORGE",
+        "STRATOS_EXECUTIVE",
+        "STRATOS_PLATFORM",
+        "STRATOS_AKB"
+      ],
+      "lifecycle": {
+        "modes": [
+          "record",
+          "until_superseded"
+        ],
+        "reviewAtRequired": true,
+        "reviewRuleIds": [
+          "akb.review.annual",
+          "akb.review.on-change"
+        ],
+        "retentionRuleIds": [
+          "akb.retention.organizational-record"
+        ]
+      },
+      "domainFields": [
+        {
+          "name": "subject",
+          "type": "string",
+          "required": true,
+          "nullable": false,
+          "label": {
+            "cs": "Téma",
+            "en": "Subject"
+          }
+        },
+        {
+          "name": "createdOn",
+          "type": "date",
+          "required": true,
+          "nullable": false,
+          "label": {
+            "cs": "Datum vzniku",
+            "en": "Created on"
+          }
+        }
+      ]
+    },
+    {
+      "id": "akb.controlled-document",
+      "revision": "1",
+      "family": "controlled_document",
+      "label": {
+        "cs": "Řízený dokument",
+        "en": "Controlled document"
+      },
+      "documentTypes": [
+        "directive",
+        "manual",
+        "methodology",
+        "policy",
+        "procedure",
+        "ai_intake",
+        "ai_requirement_card",
+        "ai_security_appendix",
+        "ai_governance_evidence",
+        "attachment"
+      ],
+      "sourceSystems": [
+        "AKB",
+        "STRATOS_BUDGET",
+        "STRATOS_PROJECTFLOW",
+        "STRATOS_ARCHFLOW",
+        "STRATOS_PROCESSFORGE",
+        "STRATOS_EXECUTIVE",
+        "STRATOS_PLATFORM",
+        "STRATOS_AKB"
+      ],
+      "lifecycle": {
+        "modes": [
+          "fixed_interval",
+          "until_superseded"
+        ],
+        "reviewAtRequired": true,
+        "reviewRuleIds": [
+          "akb.review.annual",
+          "akb.review.on-change"
+        ],
+        "retentionRuleIds": [
+          "akb.retention.organizational-record"
+        ]
+      },
+      "domainFields": [
+        {
+          "name": "issuerReference",
+          "type": "reference",
+          "required": true,
+          "nullable": false,
+          "label": {
+            "cs": "Vydavatel",
+            "en": "Issuer"
+          }
+        },
+        {
+          "name": "applicability",
+          "type": "string",
+          "required": true,
+          "nullable": false,
+          "label": {
+            "cs": "Oblast platnosti",
+            "en": "Applicability"
+          }
+        },
+        {
+          "name": "effectiveDateEvidenceReference",
+          "type": "reference",
+          "required": true,
+          "nullable": false,
+          "label": {
+            "cs": "Doklad účinnosti",
+            "en": "Effectivity evidence"
+          }
+        }
+      ],
+      "publicationRequiresIndependentApproval": true
+    },
+    {
+      "id": "akb.meeting-project-record",
+      "revision": "1",
+      "family": "meeting_project_record",
+      "label": {
+        "cs": "Zápis a projektový záznam",
+        "en": "Meeting and project record"
+      },
+      "documentTypes": [
+        "meeting_record",
+        "project_documentation",
+        "attachment"
+      ],
+      "sourceSystems": [
+        "AKB",
+        "STRATOS_BUDGET",
+        "STRATOS_PROJECTFLOW",
+        "STRATOS_ARCHFLOW",
+        "STRATOS_PROCESSFORGE",
+        "STRATOS_EXECUTIVE",
+        "STRATOS_PLATFORM",
+        "STRATOS_AKB"
+      ],
+      "lifecycle": {
+        "modes": [
+          "record"
+        ],
+        "reviewAtRequired": false,
+        "reviewRuleIds": [
+          "akb.review.annual",
+          "akb.review.on-change"
+        ],
+        "retentionRuleIds": [
+          "akb.retention.organizational-record"
+        ]
+      },
+      "domainFields": [
+        {
+          "name": "eventDate",
+          "type": "date",
+          "required": true,
+          "nullable": false,
+          "label": {
+            "cs": "Datum události",
+            "en": "Event date"
+          }
+        },
+        {
+          "name": "recordReference",
+          "type": "reference",
+          "required": true,
+          "nullable": false,
+          "label": {
+            "cs": "Identifikátor záznamu",
+            "en": "Record reference"
+          }
+        },
+        {
+          "name": "projectReference",
+          "type": "reference",
+          "required": true,
+          "nullable": true,
+          "label": {
+            "cs": "Projekt",
+            "en": "Project"
+          }
+        }
+      ]
+    },
+    {
+      "id": "akb.contract",
+      "revision": "1",
+      "family": "contract",
+      "label": {
+        "cs": "Smlouva a dodatek",
+        "en": "Contract and addendum"
+      },
+      "documentTypes": [
+        "contract",
+        "attachment"
+      ],
+      "sourceSystems": [
+        "AKB",
+        "STRATOS_BUDGET",
+        "STRATOS_PROJECTFLOW",
+        "STRATOS_ARCHFLOW",
+        "STRATOS_PROCESSFORGE",
+        "STRATOS_EXECUTIVE",
+        "STRATOS_PLATFORM",
+        "STRATOS_AKB"
+      ],
+      "lifecycle": {
+        "modes": [
+          "fixed_interval",
+          "until_superseded",
+          "record"
+        ],
+        "reviewAtRequired": true,
+        "reviewRuleIds": [
+          "akb.review.annual",
+          "akb.review.on-change"
+        ],
+        "retentionRuleIds": [
+          "akb.retention.organizational-record"
+        ]
+      },
+      "domainFields": [
+        {
+          "name": "contractReference",
+          "type": "reference",
+          "required": true,
+          "nullable": false,
+          "label": {
+            "cs": "Identifikátor smlouvy",
+            "en": "Contract reference"
+          }
+        },
+        {
+          "name": "partyReferences",
+          "type": "reference_list",
+          "required": true,
+          "nullable": false,
+          "label": {
+            "cs": "Smluvní strany",
+            "en": "Contract parties"
+          }
+        },
+        {
+          "name": "executionStatus",
+          "type": "enum",
+          "required": true,
+          "nullable": false,
+          "label": {
+            "cs": "Stav uzavření",
+            "en": "Execution status"
+          },
+          "options": [
+            {
+              "value": "draft",
+              "label": {
+                "cs": "Návrh",
+                "en": "Draft"
+              }
+            },
+            {
+              "value": "signed",
+              "label": {
+                "cs": "Podepsaná",
+                "en": "Signed"
+              }
+            },
+            {
+              "value": "effective",
+              "label": {
+                "cs": "Účinná",
+                "en": "Effective"
+              }
+            },
+            {
+              "value": "terminated",
+              "label": {
+                "cs": "Ukončená",
+                "en": "Terminated"
+              }
+            }
+          ]
+        },
+        {
+          "name": "executionEvidenceReference",
+          "type": "reference",
+          "required": true,
+          "nullable": true,
+          "label": {
+            "cs": "Doklad uzavření",
+            "en": "Execution evidence"
+          }
+        }
+      ]
+    },
+    {
+      "id": "akb.official-public-reference",
+      "revision": "1",
+      "family": "official_public_reference",
+      "label": {
+        "cs": "Veřejný předpis a ověřený zdroj",
+        "en": "Public regulation and verified reference"
+      },
+      "documentTypes": [
+        "regulation",
+        "methodology",
+        "manual",
+        "other",
+        "attachment"
+      ],
+      "sourceSystems": [
+        "AKB_OFFICIAL_SOURCE",
+        "STRATOS_AKB"
+      ],
+      "lifecycle": {
+        "modes": [
+          "fixed_interval",
+          "until_superseded",
+          "record"
+        ],
+        "reviewAtRequired": true,
+        "reviewRuleIds": [
+          "akb.review.annual",
+          "akb.review.on-change"
+        ],
+        "retentionRuleIds": [
+          "akb.retention.organizational-record"
+        ]
+      },
+      "domainFields": [
+        {
+          "name": "authorityReference",
+          "type": "reference",
+          "required": true,
+          "nullable": false,
+          "label": {
+            "cs": "Vydávající autorita",
+            "en": "Issuing authority"
+          }
+        },
+        {
+          "name": "canonicalSourceUrl",
+          "type": "https_url",
+          "required": true,
+          "nullable": false,
+          "label": {
+            "cs": "Oficiální zdroj",
+            "en": "Official source"
+          }
+        },
+        {
+          "name": "collectionId",
+          "type": "reference",
+          "required": true,
+          "nullable": false,
+          "label": {
+            "cs": "Schválená kolekce",
+            "en": "Approved collection"
+          }
+        },
+        {
+          "name": "sourceKind",
+          "type": "enum",
+          "required": true,
+          "nullable": false,
+          "label": {
+            "cs": "Druh zdroje",
+            "en": "Source kind"
+          },
+          "options": [
+            {
+              "value": "regulation",
+              "label": {
+                "cs": "Právní předpis",
+                "en": "Regulation"
+              }
+            },
+            {
+              "value": "reference",
+              "label": {
+                "cs": "Referenční materiál",
+                "en": "Reference material"
+              }
+            }
+          ]
+        },
+        {
+          "name": "effectiveDateEvidenceReference",
+          "type": "reference",
+          "required": true,
+          "nullable": true,
+          "label": {
+            "cs": "Doklad právní účinnosti",
+            "en": "Legal effectivity evidence"
+          }
+        }
+      ],
+      "protection": {
+        "handlingClasses": [
+          "PUBLIC"
+        ],
+        "tlpValues": [
+          "TLP:CLEAR"
+        ]
+      }
+    }
+  ]
+}

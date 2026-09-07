@@ -6,6 +6,11 @@ is `akb-documents`; path-style addressing is mandatory. Public AKB upload,
 download, preview, ingestion, authorization, malware scanning, and audit APIs do
 not change.
 
+The newest SeaweedFS release reviewed on 6 September 2026 is `4.45`. The
+version actually running at `storage.home.cz` must be read on the storage host
+before production promotion; the public S3 endpoint does not expose it. AKB
+does not infer the runtime version from endpoint availability.
+
 ## Security and data model
 
 - S3 is reachable only from the server VLAN. It is not a public document API.
@@ -93,3 +98,10 @@ The repository provides two layers of verification:
 
 Operational output contains counts, byte totals, status, and key fingerprints,
 not document names or contents.
+
+Production readiness additionally requires the deployed SeaweedFS version to
+be recorded and compared with the reviewed release in
+`infra/dependency-images.json`. An older version needs a documented security
+and compatibility decision. A successful HTTP response from the S3 gateway is
+not sufficient evidence: run the complete object lifecycle smoke with the
+production credential-file boundary.

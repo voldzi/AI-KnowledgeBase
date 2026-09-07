@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "stratos-document-root-1",
+  "organizationId": "org_stratos",
+  "documentId": "doc_profile_example01",
+  "metadataRevision": "document-v1",
+  "profile": {
+    "id": "akb.controlled-document",
+    "revision": "1"
+  },
+  "documentType": "manual",
+  "authorship": [
+    {
+      "kind": "person",
+      "id": "example-author",
+      "evidenceReference": "example-authoring-workflow"
+    }
+  ],
+  "provenance": {
+    "sourceSystem": "AKB",
+    "sourceRecordId": "doc_profile_example01",
+    "sourceGovernedResourceId": null
+  },
+  "accountability": {
+    "ownerSubjectId": "example-owner",
+    "gestor": {
+      "kind": "organization_unit",
+      "id": "example-knowledge-ops"
+    }
+  }
+}

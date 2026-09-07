@@ -42,6 +42,9 @@ def review_snapshot(document: Document, version: DocumentVersion) -> str:
     # A changed source, authority, validity or assignment requires a new review.
     payload = {
         "document_id": document.document_id,
+        "current_root_snapshot_hash": document.current_root_snapshot_hash,
+        "root_snapshot_hash": version.root_snapshot_hash,
+        "version_snapshot_hash": version.version_snapshot_hash,
         "title": document.title,
         "type": document.document_type,
         "classification": document.classification,

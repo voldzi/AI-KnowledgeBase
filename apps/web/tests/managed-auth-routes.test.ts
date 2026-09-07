@@ -39,11 +39,11 @@ describe("managed browser auth routes", () => {
       };
       globalThis.fetch = f.fetcher;
       const response = await callback(new NextRequest(`https://akb.example/akb/api/auth/callback?code=synthetic-code&state=${state}`, {
-        headers: { cookie: `akl_oidc_state=${state}; akl_oidc_pkce=${"v".repeat(64)}` },
+        headers: { cookie: `akb_platform_oidc_state=${state}; akb_platform_oidc_pkce=${"v".repeat(64)}` },
       }));
       assert.equal(response.status, 303);
       assert.equal(response.headers.get("location"), "https://akb.example/akb/chat");
-      const cookie = response.cookies.get("akl_session")!;
+      const cookie = response.cookies.get("akb_platform_session")!;
       assert.match(cookie.value, /^[A-Za-z0-9_-]{43}$/);
       assert.equal(cookie.httpOnly, true);
       assert.equal(cookie.secure, true);
@@ -51,8 +51,8 @@ describe("managed browser auth routes", () => {
       assert.equal(cookie.path, "/akb");
       assert.equal(Boolean(cookie.maxAge), remember);
       assert.equal(stored.persistent, remember);
-      assert.equal(response.cookies.get("akl_oidc_pkce")?.path, "/akb");
-      assert.equal(response.cookies.get("akl_oidc_state")?.maxAge, 0);
+      assert.equal(response.cookies.get("akb_platform_oidc_pkce")?.path, "/akb");
+      assert.equal(response.cookies.get("akb_platform_oidc_state")?.maxAge, 0);
       const output = JSON.stringify([...response.headers]);
       assert.equal(output.includes("synthetic-refresh-token"), false);
       assert.equal(output.includes("encrypted_payload"), false);
@@ -65,12 +65,12 @@ describe("managed browser auth routes", () => {
     const state = createState("/chat");
     globalThis.fetch = f.fetcher;
     const response = await callback(new NextRequest(`https://akb.example/akb/api/auth/callback?code=synthetic-code&state=${state}`, {
-      headers: { cookie: `akl_oidc_state=${state}; akl_oidc_pkce=${"v".repeat(64)}` },
+      headers: { cookie: `akb_platform_oidc_state=${state}; akb_platform_oidc_pkce=${"v".repeat(64)}` },
     }));
     assert.match(response.headers.get("location") ?? "", /\/api\/auth\/login\?/);
     assert.equal(f.requests.some((request) => request.url.includes("/web-sessions")), false);
-    assert.equal(response.cookies.get("akl_session")?.path, "/akb");
-    assert.equal(response.cookies.get("akl_session")?.maxAge, 0);
+    assert.equal(response.cookies.get("akb_platform_session")?.path, "/akb");
+    assert.equal(response.cookies.get("akb_platform_session")?.maxAge, 0);
   });
 
   it("does not silently recreate a missing or revoked application session", async () => {
@@ -84,10 +84,10 @@ describe("managed browser auth routes", () => {
     };
     globalThis.fetch = f.fetcher;
     const response = await callback(new NextRequest(`https://akb.example/akb/api/auth/callback?code=synthetic-code&state=${state}`, {
-      headers: { cookie: `akl_oidc_state=${state}; akl_oidc_pkce=${"v".repeat(64)}; akl_session=${"a".repeat(43)}` },
+      headers: { cookie: `akb_platform_oidc_state=${state}; akb_platform_oidc_pkce=${"v".repeat(64)}; akb_platform_session=${"a".repeat(43)}` },
     }));
     assert.match(response.headers.get("location") ?? "", /retry=required/);
-    assert.equal(response.cookies.get("akl_session")?.maxAge, 0);
+    assert.equal(response.cookies.get("akb_platform_session")?.maxAge, 0);
     assert.equal(f.requests.some((entry) => entry.url.endsWith("/internal/web-sessions") && entry.init?.method === "POST"), false);
   });
 
@@ -102,22 +102,22 @@ describe("managed browser auth routes", () => {
       return Response.json({ revoked_at: "synthetic" });
     };
     const response = await logout(new NextRequest("https://akb.example/akb/api/auth/logout", {
-      method: "POST", headers: { origin: "https://akb.example", cookie: `akl_session=${"a".repeat(43)}` },
+      method: "POST", headers: { origin: "https://akb.example", cookie: `akb_platform_session=${"a".repeat(43)}` },
     }));
     assert.equal(response.status, 303);
     assert.deepEqual(methods, ["GET", "PATCH"]);
-    assert.equal(response.cookies.get("akl_session")?.maxAge, 0);
-    assert.equal(response.cookies.get("akl_session")?.path, "/akb");
+    assert.equal(response.cookies.get("akb_platform_session")?.maxAge, 0);
+    assert.equal(response.cookies.get("akb_platform_session")?.path, "/akb");
   });
 
   it("does not report successful logout when the local session store cannot revoke", async () => {
     process.env = { ...managedEnv() };
     globalThis.fetch = async () => new Response(null, { status: 503 });
     const response = await logout(new NextRequest("https://akb.example/akb/api/auth/logout", {
-      method: "POST", headers: { origin: "https://akb.example", cookie: `akl_session=${"a".repeat(43)}` },
+      method: "POST", headers: { origin: "https://akb.example", cookie: `akb_platform_session=${"a".repeat(43)}` },
     }));
     assert.equal(response.status, 503);
-    assert.equal(response.cookies.get("akl_session"), undefined);
+    assert.equal(response.cookies.get("akb_platform_session"), undefined);
     assert.equal((await response.json()).error.code, "SESSION_REVOCATION_UNAVAILABLE");
   });
 });

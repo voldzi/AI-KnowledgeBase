@@ -1,0 +1,139 @@
+{
+  "measuredAt": "2026-09-05T16:24:37.575Z",
+  "node": "v26.4.0",
+  "platform": "darwin",
+  "browser": "Playwright Chromium headless",
+  "reactMode": "production",
+  "viewport": "1440x900",
+  "cpuRate": 1,
+  "variant": "bounded production candidate",
+  "scope": "Synthetic authorized history response through actual client component; actual styles; excludes network/PDP, Next hydration, hardware-independent INP and provider latency.",
+  "measurements": [
+    {
+      "turns": 500,
+      "messages": 1000,
+      "run": 1,
+      "historyReadyMs": 34.90000003576279,
+      "renderedMessages": 60,
+      "transcriptNodes": 1741,
+      "initialLongTasksMs": [],
+      "inputSamplesMs": [
+        8.800000011920929,
+        16.19999998807907,
+        16,
+        16.19999998807907,
+        15.899999976158142,
+        16.099999964237213,
+        15.800000011920929,
+        16,
+        15.799999952316284,
+        16
+      ]
+    },
+    {
+      "turns": 500,
+      "messages": 1000,
+      "run": 2,
+      "historyReadyMs": 35,
+      "renderedMessages": 60,
+      "transcriptNodes": 1741,
+      "initialLongTasksMs": [],
+      "inputSamplesMs": [
+        15.699999988079071,
+        16.100000023841858,
+        16.099999964237213,
+        16.100000023841858,
+        16.19999998807907,
+        16.30000001192093,
+        15.900000035762787,
+        16.100000023841858,
+        15.899999976158142,
+        15.900000035762787
+      ]
+    },
+    {
+      "turns": 500,
+      "messages": 1000,
+      "run": 3,
+      "historyReadyMs": 34,
+      "renderedMessages": 60,
+      "transcriptNodes": 1741,
+      "initialLongTasksMs": [],
+      "inputSamplesMs": [
+        15.399999976158142,
+        16.099999964237213,
+        16.200000047683716,
+        16.19999998807907,
+        16.19999998807907,
+        16.30000001192093,
+        16.19999998807907,
+        16.100000023841858,
+        15.800000011920929,
+        16.099999964237213
+      ]
+    },
+    {
+      "turns": 1000,
+      "messages": 2000,
+      "run": 1,
+      "historyReadyMs": 36.10000002384186,
+      "renderedMessages": 60,
+      "transcriptNodes": 1741,
+      "initialLongTasksMs": [],
+      "inputSamplesMs": [
+        15.300000011920929,
+        16,
+        16.19999998807907,
+        16.200000047683716,
+        16.100000023841858,
+        16.19999998807907,
+        15.799999952316284,
+        16.100000023841858,
+        16.099999964237213,
+        16.100000023841858
+      ]
+    },
+    {
+      "turns": 1000,
+      "messages": 2000,
+      "run": 2,
+      "historyReadyMs": 36.30000001192093,
+      "renderedMessages": 60,
+      "transcriptNodes": 1741,
+      "initialLongTasksMs": [],
+      "inputSamplesMs": [
+        15.399999976158142,
+        16,
+        16,
+        16.099999964237213,
+        15.899999976158142,
+        16.19999998807907,
+        16.099999964237213,
+        15.5,
+        15.900000035762787,
+        15.899999976158142
+      ]
+    },
+    {
+      "turns": 1000,
+      "messages": 2000,
+      "run": 3,
+      "historyReadyMs": 37.5,
+      "renderedMessages": 60,
+      "transcriptNodes": 1741,
+      "initialLongTasksMs": [],
+      "inputSamplesMs": [
+        15.800000011920929,
+        16,
+        16.099999964237213,
+        16.30000001192093,
+        16.19999998807907,
+        16.100000023841858,
+        16.30000001192093,
+        16,
+        16.100000023841858,
+        16
+      ]
+    }
+  ]
+}

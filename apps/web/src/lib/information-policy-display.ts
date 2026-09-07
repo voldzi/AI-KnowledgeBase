@@ -113,6 +113,13 @@ function isInformationPolicySummary(
     /^(?:pol|pb)_[A-Za-z0-9_-]{8,}$/.test(policy.policyBindingId) &&
     ["PUBLIC", "INTERNAL", "PROJECT_MANAGEMENT", "RESTRICTED"].includes(policy.handlingClass ?? "") &&
     policy.legalClassification === "NONE" &&
+    (policy.tlp == null || ["TLP:RED", "TLP:AMBER+STRICT", "TLP:AMBER", "TLP:GREEN", "TLP:CLEAR"].includes(policy.tlp)) &&
+    (policy.tlp !== "TLP:RED" || (
+      policy.audience?.scopeType === "recipient_set" &&
+      Array.isArray(policy.audience.recipientSubjectIds) &&
+      policy.audience.recipientSubjectIds.length > 0 &&
+      policy.audience.recipientSubjectIds.every((subject) => typeof subject === "string" && subject.trim().length > 0)
+    )) &&
     Array.isArray(policy.contentCategories) &&
     Array.isArray(policy.obligations) &&
     Boolean(policy.audience) &&

@@ -33,6 +33,7 @@ from app.schemas import (
 )
 from intelligence.entities import intelligence_payload_fields
 from indexers.qdrant import IndexingResult
+from app.document_policy import require_document_policy
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,9 @@ class OpenSearchIndexer:
         del vectors
         if not chunks:
             return IndexingResult(indexed_chunks=0)
+
+        for chunk in chunks:
+            require_document_policy(chunk)
 
         await self._ensure_index()
         if self.settings.opensearch_delete_existing_version:

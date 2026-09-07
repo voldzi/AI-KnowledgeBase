@@ -44,7 +44,7 @@ Implementovano ve web aplikaci:
 - workflow zalozka detailu dokumentu umoznuje `Predat ke schvaleni`; publikace vyzaduje schvalenou presnou verzi, nezmeneny zdroj a aktualni opravneni. Starsi publikovana verze zustava platna behem pripravy nahrady. Archivace je samostatna akce pro aktualni `valid` verzi,
 - verze zalozka detailu dokumentu obsahuje navodny panel s aktualnim stavem verze, doporucenym dalsim krokem a vysvetlenim, ze nova verze ma vznikat pres originalni soubor a rizene volby zmeny, ne jako volna poznamka,
 - upload preflight s nazvem souboru, velikosti, MIME typem a SHA-256 hashem,
-- podepsana upload session na `/api/controlled-document/upload/preflight` a PUT do `/api/controlled-document/upload/sessions/{sessionId}/content`,
+- podepsana upload session na `/api/controlled-document/upload/preflight` a PUT do `/api/document-intake/v1/sessions/{sessionId}/content`,
 - ulozeni zdrojoveho souboru pres nakonfigurovany object-storage backend; produkcni S3 se cte nativnim API a lokalni backend zustava pro vyvoj a rizeny rollback,
 - upload formular sklada `change_summary` z rizene volby typu zmeny, dopadu zmeny a doporuceneho dalsiho kroku; uzivatel nepise souhrn zmeny do volneho textu,
 - aplikacni napoveda na `/help`,

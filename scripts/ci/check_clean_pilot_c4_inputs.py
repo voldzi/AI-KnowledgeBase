@@ -17,9 +17,9 @@ PYTHON_SERVICES = (
     "governance-service",
     "llm-gateway-service",
 )
-PYTHON_BASE = "python:3.12-slim@sha256:e5c9fa26ffb76e11e0f054f30dc2523a2f9693f0c36c0cf1e39b27e152d899fc"
-NODE_BASE = "node:26-alpine@sha256:2d984a15c9b54fd0aeb608b8e0d0d83529eb34d2966db27a1fb4f1edc3d298a3"
-PNPM_CHECKSUM = "sha256:deafa7ec98a1218b6a047289b92fbe2395c1e22d3495bb711653013218ee15ee"
+PYTHON_BASE = "python:3.12.14-slim@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea"
+NODE_BASE = "node:26.8.1-alpine@sha256:2d984a15c9b54fd0aeb608b8e0d0d83529eb34d2966db27a1fb4f1edc3d298a3"
+PNPM_CHECKSUM = "sha256:b9e49603540d04107b98e93917a30e6114970d403c23e40309a44ea9c2bca7fd"
 DEBIAN_SNAPSHOT = "snapshot.debian.org/archive/debian/20260824T000000Z"
 DEBIAN_SECURITY_SNAPSHOT = "snapshot.debian.org/archive/debian-security/20260824T000000Z"
 UPSTREAM_NAMES = ("postgresql", "s3-object-storage", "opensearch", "qdrant")
@@ -133,7 +133,7 @@ def check(root: Path) -> None:
     check_python_lock(docling_lock)
     require(
         docling_lock.read_text(encoding="utf-8"),
-        "docling-slim==2.124.0",
+        "docling-slim==2.126.0",
         "pinned Docling runtime",
     )
     reject(
@@ -151,7 +151,7 @@ def check(root: Path) -> None:
     )
     check_python_lock(macos_docling_lock)
     macos_docling = macos_docling_lock.read_text(encoding="utf-8")
-    require(macos_docling, "docling-slim==2.124.0", "pinned macOS Docling runtime")
+    require(macos_docling, "docling-slim==2.126.0", "pinned macOS Docling runtime")
     require(macos_docling, "mlx==0.32.2", "pinned Apple Silicon MLX runtime")
     reject(macos_docling, "docling-parse==", "macOS source-only docling-parse dependency")
     for locked_requirements in (docling_lock, macos_docling_lock):
@@ -166,7 +166,7 @@ def check(root: Path) -> None:
     require(lock_generator, 'UV_VERSION="0.12.9"', "pinned Docling lock resolver")
     require(
         lock_generator,
-        'PACKAGE_CUTOFF="2026-09-02T20:00:00Z"',
+        'PACKAGE_CUTOFF="2026-09-06T10:05:00Z"',
         "Docling package publication cutoff",
     )
     local_setup = (root / "scripts/setup_docling_local.sh").read_text(encoding="utf-8")
@@ -193,7 +193,7 @@ def check(root: Path) -> None:
     if (
         model_manifest.get("schema") != "akb-docling-model-sources-1"
         or model_manifest.get("profile") != "standard-cpu-v1"
-        or model_manifest.get("docling_package") != "docling-slim==2.124.0"
+        or model_manifest.get("docling_package") != "docling-slim==2.126.0"
     ):
         stop("Docling model source manifest contract drift")
     repositories = model_manifest.get("repositories")

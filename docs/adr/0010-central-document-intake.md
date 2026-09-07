@@ -4,6 +4,9 @@
 
 Accepted for implementation on 2026-07-26.
 
+The compatibility-adapter and migration rollout below are superseded for the
+clean target environment by [ADR 0016](0016-single-document-intake-contract.md).
+
 ## Context
 
 AKB receives documents from authenticated employees, STRATOS applications and

@@ -11,11 +11,6 @@ import {
   type OidcSession,
 } from "@/lib/auth/oidc";
 
-export const SERVER_SESSION_COOKIE = "akl_session";
-export const CENTRAL_SSO_SYNC_COOKIE = "akl_sso_sync";
-export const SSO_ATTEMPT_COOKIE = "akb_sso_attempt";
-export const SSO_SIGNED_OUT_COOKIE = "akb_sso_signed_out";
-
 type StoredSession = {
   session_id: string;
   session_id_hash: string;
@@ -104,20 +99,22 @@ export async function resolveServerSession(
   config: AklConfig,
   selector: string,
   nowMs = Date.now(),
+  activity = true,
 ): Promise<ResolvedServerSession | null> {
   if (!validSelector(selector)) return null;
   const sessionHash = selectorHash(selector);
   let pending = resolvingSessions.get(config);
   if (!pending) resolvingSessions.set(config, pending = new Map());
-  const existing = pending.get(sessionHash);
+  const pendingKey = `${sessionHash}:${activity}`;
+  const existing = pending.get(pendingKey);
   if (existing) return existing;
   // Share only the in-flight read/rotation, never an authorization result cache.
-  const resolution = resolveStoredServerSession(config, selector, sessionHash, nowMs);
-  pending.set(sessionHash, resolution);
+  const resolution = resolveStoredServerSession(config, selector, sessionHash, nowMs, activity);
+  pending.set(pendingKey, resolution);
   try {
     return await resolution;
   } finally {
-    pending.delete(sessionHash);
+    pending.delete(pendingKey);
   }
 }
 
@@ -172,9 +169,13 @@ async function resolveStoredServerSession(
   selector: string,
   sessionHash: string,
   nowMs: number,
+  activity: boolean,
 ): Promise<ResolvedServerSession | null> {
   let stored = await readStoredSession(config, sessionHash);
   if (!stored) return null;
+  // A selector belonging to the other web client cannot authorize this app.
+  // Do not revoke that client's session while rejecting a misplaced cookie.
+  if (stored.client_id !== requireOidcConfig(config).clientId) return null;
   if (!storedSessionActive(stored, nowMs)) {
     await revokeServerSession(config, selector, "expired");
     return null;
@@ -230,9 +231,9 @@ async function resolveStoredServerSession(
     return null;
   }
   const patch: Record<string, unknown> = {
-    last_seen_at: new Date(nowMs).toISOString(),
+    last_seen_at: activity ? new Date(nowMs).toISOString() : stored.last_seen_at,
     idle_expires_at: new Date(
-      Math.min(nowMs + sessionTtls(config, persistent).idle, absoluteExpiresAt),
+      Math.min(activity ? nowMs + sessionTtls(config, persistent).idle : Date.parse(stored.idle_expires_at), absoluteExpiresAt),
     ).toISOString(),
   };
   if (requiresIdentityValidation || requiresTokenRefresh) {

@@ -1,0 +1,32 @@
+{
+  "akb_probe_401_ui": {
+    "status": "PASS",
+    "elapsedMs": 29,
+    "evidence": "controlled transport fault, not central revocation"
+  },
+  "akb_probe_403_ui": {
+    "status": "PASS",
+    "elapsedMs": 28,
+    "evidence": "controlled transport fault, not central revocation"
+  },
+  "akb_probe_503_ui": {
+    "status": "PASS",
+    "elapsedMs": 27,
+    "evidence": "controlled transport fault, not central revocation"
+  },
+  "chat_probe_401_ui": {
+    "status": "PASS",
+    "elapsedMs": 28,
+    "evidence": "controlled transport fault, not central revocation"
+  },
+  "chat_probe_403_ui": {
+    "status": "PASS",
+    "elapsedMs": 27,
+    "evidence": "controlled transport fault, not central revocation"
+  },
+  "chat_probe_503_ui": {
+    "status": "PASS",
+    "elapsedMs": 27,
+    "evidence": "controlled transport fault, not central revocation"
+  }
+}

@@ -9,7 +9,7 @@ from uuid import uuid4
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, event, text
+from sqlalchemy import MetaData, Table, create_engine, event, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import Session
@@ -21,6 +21,9 @@ from app.models import Document, DocumentVersion, ExternalDocumentRef, Ingestion
 from app.api import update_document_external_references_current
 from app.auth import Principal
 from app.schemas import ExternalDocumentCurrentUpdateRequest
+from document_profile_fixtures import verified_profile_authority, admit_orm_profile
+from document_policy_fixtures import admitted_policy
+from app.information_policy import InformationPolicyBinding, policy_columns
 
 
 SERVICE_ROOT = Path(__file__).resolve().parents[1]
@@ -93,7 +96,7 @@ def test_ingestion_attempt_model_rejects_cross_document_version() -> None:
     reason="A dedicated PostgreSQL admin URL is required for the destructive migration fixture",
 )
 def test_postgres_0018_backfills_and_enforces_document_version_identity(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, verified_profile_authority,
 ) -> None:
     admin_url = make_url(os.environ["AKL_REGISTRY_MIGRATION_TEST_ADMIN_URL"]).set(
         drivername="postgresql+psycopg"
@@ -102,6 +105,9 @@ def test_postgres_0018_backfills_and_enforces_document_version_identity(
     database_url = admin_url.set(database=database_name)
     admin_engine = create_engine(admin_url, poolclass=NullPool)
     database_engine = None
+    # Alembic's CLI logging setup must not disable the application's loggers in
+    # this shared pytest process. The migrations and database checks run intact.
+    monkeypatch.setattr("logging.config.fileConfig", lambda *_args, **_kwargs: None)
 
     with admin_engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
         connection.execute(text(f'CREATE DATABASE "{database_name}"'))
@@ -116,38 +122,32 @@ def test_postgres_0018_backfills_and_enforces_document_version_identity(
         command.upgrade(alembic_config, "0017_canonical_own_scope")
 
         database_engine = create_engine(database_url, poolclass=NullPool)
-        with Session(database_engine) as session:
-            document = _document("doc_migration_backfill")
-            version = _version(document.document_id, "ver_migration_backfill")
-            session.add_all(
-                [
-                    document,
-                    version,
-                    ExternalDocumentRef(
-                        external_document_id="extdoc_migration_one",
-                        external_system="STRATOS",
-                        external_ref="migration:one",
-                        entity_type="MigrationFixture",
-                        entity_id="one",
-                        document_id=document.document_id,
-                        current_document_version_id=version.document_version_id,
-                        current_ingestion_job_id="ing_migration_backfill",
-                        current_ingestion_status="INGESTING",
-                    ),
-                    ExternalDocumentRef(
-                        external_document_id="extdoc_migration_two",
-                        external_system="STRATOS",
-                        external_ref="migration:two",
-                        entity_type="MigrationFixture",
-                        entity_id="two",
-                        document_id=document.document_id,
-                        current_document_version_id=version.document_version_id,
-                        current_ingestion_job_id="ing_migration_ambiguous",
-                        current_ingestion_status="INGESTING",
-                    ),
-                ]
-            )
-            session.commit()
+        # The fixture represents schema 0017. Current ORM events/columns belong
+        # to later migrations, so seed the historical schema through reflection.
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        metadata = MetaData()
+        old_documents = Table("documents", metadata, autoload_with=database_engine)
+        old_versions = Table("document_versions", metadata, autoload_with=database_engine)
+        old_refs = Table("external_document_refs", metadata, autoload_with=database_engine)
+        with database_engine.begin() as connection:
+            connection.execute(old_documents.insert().values(
+                document_id="doc_migration_backfill", title="Migration fixture", document_type="directive",
+                status="draft", classification="internal", owner_id="user_migration", tags=[], metadata={},
+                created_at=now, updated_at=now,
+            ))
+            connection.execute(old_versions.insert().values(
+                document_version_id="ver_migration_backfill", document_id="doc_migration_backfill",
+                version_label="1.0", status="draft", source_file_uri="s3://migration/backfill.pdf", created_at=now,
+            ))
+            for suffix, job_id in (("one", "ing_migration_backfill"), ("two", "ing_migration_ambiguous")):
+                connection.execute(old_refs.insert().values(
+                    external_document_id=f"extdoc_migration_{suffix}", tenant_id="org_stratos", external_system="STRATOS",
+                    external_ref=f"migration:{suffix}", entity_type="MigrationFixture", entity_id=suffix,
+                    document_id="doc_migration_backfill", current_document_version_id="ver_migration_backfill",
+                    current_ingestion_job_id=job_id, current_ingestion_status="INGESTING", metadata={},
+                    created_at=now, updated_at=now,
+                ))
 
         with pytest.raises(DBAPIError, match="ambiguous external ingestion state"):
             command.upgrade(alembic_config, "head")
@@ -204,12 +204,17 @@ def test_postgres_0018_backfills_and_enforces_document_version_identity(
                 )
 
         with Session(database_engine) as session:
-            session.add_all(
-                [
-                    _document("doc_migration_concurrent"),
-                    _version("doc_migration_concurrent", "ver_migration_concurrent"),
-                ]
-            )
+            document = _document("doc_migration_concurrent")
+            document.document_type = "knowledge_base_article"
+            version = _version(document.document_id, "ver_migration_concurrent")
+            binding = InformationPolicyBinding.model_validate(admitted_policy(owner="user_migration"))
+            for record in (document, version):
+                for key, value in policy_columns(binding).items():
+                    setattr(record, key, value)
+                record.governance_scope_type = "organization"
+                record.governance_scope_id = "org_stratos"
+            session.add_all([document, version])
+            admit_orm_profile(session, document, [version], verified_profile_authority)
             session.commit()
 
         barrier = Barrier(2)

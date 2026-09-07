@@ -13,8 +13,8 @@ Tento dokument popisuje implementovaný tok `services/ingestion-service`.
 4. Pipeline pod stejnou vlastní service identity načte metadata dokumentu a
    verze přes Registry API.
 5. Object storage klient načte zdrojový soubor.
-6. Parser router zvolí HTML/HTM/XHTML, XLSX/XLSM, PPTX, TXT/MD/CSV/JSON/XML, PDF nebo DOCX parser. Volitelný Docling adaptér může běžet v režimu `shadow`, `prefer` nebo `enforce`; výchozí `off` zachovává původní cestu. GraniteDocling se používá jen pro PDF. HTML parser extrahuje nadpisy jako sekce a přeskakuje skripty/styly; XLSX parser extrahuje řádky listů jako tabulkové bloky (oddělovač `|`), s opakováním hlavičky v pokračovacích blocích; PPTX parser extrahuje slidy jako stránky s titulkem slidu jako sekcí, včetně tabulek a poznámek lektora; text parser bezpečně indexuje i strukturované textové zdroje CSV, JSON a XML.
-7. OCR fallback se použije při selhání parseru nebo nízkém množství extrahovaného textu. Podporované providery jsou `sidecar`, `tesseract` pro obrázky a `ocrmypdf` pro PDF. OCR výstup ukládá metadata parser enginu, jazyka, počtu stran s textem, prázdných stran a kvality.
+6. Parser router volí adaptér podle sdíleného [katalogu formátů](../CONTRACTS/DOCUMENT_FORMAT_CAPABILITIES_V1.md): HTML, XLSX/XLSM, PPTX, podporované prosté a strukturované texty, PDF nebo DOCX. Volitelný Docling může běžet v režimu `shadow`, `prefer` nebo `enforce`; výchozí `off` zachovává nativní cestu. GraniteDocling se používá jen pro PDF. HTML zachovává nadpisy a přeskakuje skripty/styly. [Nativní Office extrakce](native-office-extraction.md) zachovává prázdné buňky, přesné řádky listů, snímky, tabulky a poznámky; list ani snímek nepředstírá fyzickou PDF stránku. TextParser přijímá také katalogem povolené YAML a serializované architekturní/API texty, vždy s `page_number=null`, `pages_processed=0` a nedostupným mapováním fyzických stránek.
+7. V nativní cestě se OCR použije při nízkém množství textu nebo chybějícím textu na jednotlivých PDF stránkách; souhrnná délka textu nepřeskakuje kontrolu pokrytí PDF. Providery zahrnují `sidecar`, `tesseract` a `ocrmypdf`. Výchozí `ocrmypdf` zpracovává PDF a výslovně směruje PNG/JPEG/WEBP na přítomný Tesseract. Nativní raster je omezen na jediný snímek a 25 megapixelů, vyžaduje kontrolu a nemění originál. Překročení limitů zpracování a šifrovaný Office archiv jsou terminální chyby před OCR fallbackem. OCR výstup ukládá metadata enginu, jazyka, pokrytí a kvality.
 8. Pipeline vytvoří `quality` report s `quality_score`, `quality_tier` a `requires_review`; nízká kvalita OCR přidá varování `LOW_OCR_QUALITY` nebo `OCR_EMPTY_PAGES`.
 9. Logical chunker vytvoří `DocumentChunk` objekty s citovatelnými metadaty včetně parser/OCR quality evidence.
 10. Pravidlová Intelligence entity vrstva `rule_based_v1` doplní do `metadata.intelligence` deterministické entity z chunk textu: `email`, `url`, `ipv4`, `phone`, `date` a `document_number`.
@@ -27,6 +27,41 @@ Tento dokument popisuje implementovaný tok `services/ingestion-service`.
 14. Služba uloží `IngestionReport` a pod vlastní Registry service identity
     auditně zapíše start/completed/failed; inbound actor zůstává v payloadu jako
     neautoritativní reported actor.
+
+## Smíšené PDF a mapování OCR stránek
+
+Po úspěšném nativním čtení PDF router zkontroluje každou fyzickou stránku.
+Stránky bez textových bloků odešle OCRmyPDF v jedné dočasné PDF podmnožině.
+Původní soubor v úložišti ani nativní text ostatních stránek se nemění.
+OCRmyPDF nad touto podmnožinou zachovává stávající `--force-ocr`, deskew,
+rotate-pages, jazyk a timeout; nativní stránky se znovu nerasterizují.
+
+Výstupní OCR sidecar se dělí po form-feed hranicích. Počet stran musí přesně
+odpovídat podmnožině (přípustný je závěrečný form-feed). Každá stránka se
+parsuje samostatně a vrací původní číslo stránky, například podmnožina 2, 4
+se vrátí jako 2, 4, nikoli 1, 2. Lokální `sidecar` provider pro tuto cestu
+vyžaduje přesné hranice všech stránek původního PDF a použije jen chybějící
+stránky. Nejednoznačný souvislý OCR přepis se neslučuje s nativním textem.
+Logical chunker nepřekračuje hranici fyzické stránky, i když by se více
+stránek vešlo do velikostního limitu. Odstavce stejné sekce na stejné stránce
+se mohou spojit; překryv dlouhého bloku zůstává uvnitř jeho původní stránky.
+Indexovaný chunk tak nenese text jiné stránky pod citací první stránky.
+
+Metadata nesou `ocr_pages_requested`, `ocr_pages_completed`, `empty_pages`
+a `page_mapping=original_pdf_pages`. Vypnuté nebo nedostupné OCR, timeout,
+neúspěch procesu, chybějící sidecar, nesouhlas počtu stran nebo prázdný OCR
+výstup zachovají čitelný nativní obsah, ale přidají
+`PDF_PAGES_REQUIRE_REVIEW` a `requires_review=true`; report nevykazuje plné
+pokrytí ani kvalitu `good`. Stejnou kontrolu vyžadují skutečně prázdné stránky,
+protože absence textu sama nerozlišuje prázdnou stránku od nečitelného skenu.
+
+Test `services/ingestion-service/tests/test_mixed_pdf_ocr.py` vytváří skutečný
+pětistránkový PDF s nativními stránkami 1, 3, 5 a rasterovými stránkami 2, 4.
+Nativní parser i sestavení OCR podmnožiny běží skutečně; nahrazený je pouze
+externí OCR proces. Test tedy dokládá směrování, mapování a chyby, nikoli
+přesnost konkrétního OCR enginu. Textové pokrytí také nedokládá úplnost
+kombinovaných obrázků a textu uvnitř jedné stránky; to vyžaduje obsahové QA.
+Režimy Docling `prefer` a `enforce` nadále mají vlastní extrakční cestu.
 
 ## Struktura aplikační dokumentace
 

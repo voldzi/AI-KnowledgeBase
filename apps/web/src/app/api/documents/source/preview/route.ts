@@ -54,6 +54,13 @@ export async function GET(request: NextRequest) {
     if (error instanceof SourceDownloadError) {
       return sourcePreviewErrorResponse(error);
     }
+    if (error instanceof Error && error.message.startsWith("OOXML_")) {
+      return NextResponse.json({ error: {
+        code: "SOURCE_PREVIEW_REJECTED",
+        message: "Soubor překračuje možnosti bezpečného strukturovaného náhledu nebo má poškozenou strukturu. Použijte ověřený originál nebo PDF náhled.",
+        trace_id: "web-source-preview",
+      } }, { status: 422, headers: { "Cache-Control": "private, no-store" } });
+    }
     return NextResponse.json(
       {
         error: {

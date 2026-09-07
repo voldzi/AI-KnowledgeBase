@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, CheckCircle2, FileClock, FilePlus2, Fingerprint, ListChecks, Play, RotateCcw } from "lucide-react";
 import {
   FieldLabelWithHelp,
@@ -12,8 +12,11 @@ import {
   type WorkflowParticipantValidationError,
 } from "@voldzi/stratos-ui";
 
+import { DocumentProfileFields } from "./document-profile-fields";
+import { NATIVE_DOCUMENT_PROFILES, profileForDocumentType, readNativeDocumentProfile, readDocumentVersionProfile } from "@/lib/documents/document-profile";
 import { StatusBadge } from "@/components/status-badge";
 import { StratosButton, StratosButtonLink, StratosSelect } from "@/components/stratos";
+import { documentFormatError, documentFormatHint } from "@/lib/documents/document-formats";
 import { withAppBasePath } from "@/lib/app-url";
 import { formatNumber } from "@/lib/format";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
@@ -298,12 +301,18 @@ const newDocumentCopy = {
 export function NewDocumentForm({ authorization, currentSubjectId, directoryUsers }: NewDocumentFormProps) {
   const { language } = useLanguage();
   const copy = newDocumentCopy[language];
-  const workflowRoles = useMemo(() => documentWorkflowRoles(language), [language]);
+  const [profileId, setProfileId] = useState("akb.controlled-document");
+  const selectedProfile = NATIVE_DOCUMENT_PROFILES.find((profile) => profile.id === profileId)!;
+  const independentApproval = selectedProfile.publicationRequiresIndependentApproval === true;
+  const workflowRoles = useMemo(() => documentWorkflowRoles(language, independentApproval), [language, independentApproval]);
   const workflowSubjects = useMemo(
     () => directoryUsersToWorkflowSubjects(directoryUsers, currentSubjectId, language),
     [currentSubjectId, directoryUsers, language],
   );
   const [createdDocument, setCreatedDocument] = useState<Document | null>(null);
+  const [pendingConfirmation, setPendingConfirmation] = useState<string | null>(null);
+  const sourceFileRequest = useRef(0);
+  const formRef = useRef<HTMLFormElement>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [filePreflight, setFilePreflight] = useState<FilePreflight | null>(null);
   const [submitted, setSubmitted] = useState<{ document: Document; version: DocumentVersion; job: IngestionJob } | null>(null);
@@ -313,6 +322,7 @@ export function NewDocumentForm({ authorization, currentSubjectId, directoryUser
   const [formResetKey, setFormResetKey] = useState(0);
   const [documentType, setDocumentType] = useState<DocumentType>("directive");
   const [classification, setClassification] = useState<Classification>("internal");
+  const [tlp, setTlp] = useState("");
   const [tags, setTags] = useState("controlled-document,akb,smernice");
   const [parserProfile, setParserProfile] = useState<ParserProfile>("controlled_document");
   const [chunkingStrategy, setChunkingStrategy] = useState<ChunkingStrategy>("legal_structured");
@@ -321,17 +331,26 @@ export function NewDocumentForm({ authorization, currentSubjectId, directoryUser
   );
   const [participantErrors, setParticipantErrors] = useState<WorkflowParticipantValidationError[]>([]);
   const [dirty, setDirty] = useState(false);
+  useEffect(() => {
+    if (pendingConfirmation && error && !submitting) {
+      formRef.current?.querySelector<HTMLButtonElement>('button[type="submit"]')?.focus();
+    }
+  }, [pendingConfirmation, error, submitting]);
 
   function resetFlow() {
+    sourceFileRequest.current += 1;
     setCreatedDocument(null);
+    setPendingConfirmation(null);
     setSelectedFile(null);
     setFilePreflight(null);
     setSubmitted(null);
     setError(null);
     setPhase("idle");
     setSubmitting(false);
+    setProfileId("akb.controlled-document");
     setDocumentType("directive");
     setClassification("internal");
+    setTlp("");
     setTags("controlled-document,akb,smernice");
     setParserProfile("controlled_document");
     setChunkingStrategy("legal_structured");
@@ -346,6 +365,9 @@ export function NewDocumentForm({ authorization, currentSubjectId, directoryUser
       return;
     }
     const selectedType = catalogEntry(template.documentType);
+    const nextProfile = profileForDocumentType(selectedType.code);
+    if (!nextProfile) return;
+    setProfileId(nextProfile.id);
     setDocumentType(selectedType.code);
     setClassification(selectedType.defaultClassification);
     setTags(selectedType.defaultTags.join(","));
@@ -358,9 +380,9 @@ export function NewDocumentForm({ authorization, currentSubjectId, directoryUser
   const metadataLocked = Boolean(createdDocument && !submitted);
   const hasRequiredParticipants = workflowRoles.every((role) =>
     participantAssignments.filter((assignment) => assignment.roleId === role.id).length >= (role.minAssignments ?? 0)
-  ) && validateDocumentWorkflowAssignments(participantAssignments, language).length === 0;
+  ) && validateDocumentWorkflowAssignments(participantAssignments, language, independentApproval).length === 0;
   const canSubmit = Boolean(
-    allowed && hasRequiredParticipants && selectedFile && filePreflight?.hash && !filePreflight.hashing && !submitting && !submitted
+    allowed && hasRequiredParticipants && tlp && selectedFile && filePreflight?.hash && !filePreflight.hashing && !submitting && !submitted
   );
   const statusLabel =
     phase === "queued"
@@ -398,6 +420,8 @@ export function NewDocumentForm({ authorization, currentSubjectId, directoryUser
   ];
 
   async function selectSourceFile(file: File | null) {
+    if (submitting || pendingConfirmation) return;
+    const requestId = ++sourceFileRequest.current;
     setError(null);
     setSubmitted(null);
     setDirty(true);
@@ -408,6 +432,13 @@ export function NewDocumentForm({ authorization, currentSubjectId, directoryUser
       return;
     }
     setSelectedFile(file);
+    const formatError = documentFormatError(file.name, language);
+    if (formatError || file.size > MAX_UPLOAD_SIZE_BYTES) {
+      const message = formatError ?? (language === "cs" ? "Soubor překračuje limit 50 MB." : "File exceeds the 50 MB limit.");
+      setFilePreflight({ name: file.name, size: file.size, type: file.type, hash: null, hashing: false, error: message });
+      setError(message);
+      return;
+    }
     setPhase("ready");
     setFilePreflight({
       name: file.name,
@@ -419,6 +450,7 @@ export function NewDocumentForm({ authorization, currentSubjectId, directoryUser
     });
     try {
       const hash = await sha256File(file);
+      if (sourceFileRequest.current !== requestId) return;
       setFilePreflight({
         name: file.name,
         size: file.size,
@@ -428,6 +460,7 @@ export function NewDocumentForm({ authorization, currentSubjectId, directoryUser
         error: null,
       });
     } catch {
+      if (sourceFileRequest.current !== requestId) return;
       setFilePreflight({
         name: file.name,
         size: file.size,
@@ -442,23 +475,25 @@ export function NewDocumentForm({ authorization, currentSubjectId, directoryUser
   return (
     <section className="grid grid--two">
       <form
+        ref={formRef}
         key={formResetKey}
         className="panel"
         onChange={() => setDirty(true)}
         onSubmit={async (event) => {
           event.preventDefault();
+          if (submitting) return;
           if (!selectedFile || !filePreflight?.hash) {
             setError(copy.missingFile);
             return;
           }
-          const customParticipantValidation = validateDocumentWorkflowAssignments(participantAssignments, language);
+          const customParticipantValidation = validateDocumentWorkflowAssignments(participantAssignments, language, independentApproval);
           const workflowValidation = [
             ...validateWorkflowParticipants(workflowRoles, participantAssignments),
             ...customParticipantValidation,
           ];
           setParticipantErrors(customParticipantValidation);
           if (workflowValidation.length > 0) {
-            setError(language === "cs" ? "Doplňte gestora a schvalovatele dokumentu." : "Assign the document owner and approver.");
+            setError(language === "cs" ? "Doplňte odpovědnosti požadované pro tento druh dokumentu." : "Assign the responsibilities required for this document profile.");
             return;
           }
 
@@ -468,81 +503,99 @@ export function NewDocumentForm({ authorization, currentSubjectId, directoryUser
 
           try {
             let document = createdDocument;
-            if (!document) {
-              setPhase("creating");
-              const documentResponse = await fetch(withAppBasePath("/api/controlled-document/documents"), {
+            let confirmationBody = pendingConfirmation;
+            if (!confirmationBody) {
+              const assignments = workflowAssignmentsToDocumentAssignments(participantAssignments, workflowSubjects);
+              // Validate dates/domain evidence before creating a root or uploading bytes.
+              const versionProfile = readDocumentVersionProfile(form, selectedProfile, "pending");
+              if (!document) {
+                setPhase("creating");
+                const documentResponse = await fetch(withAppBasePath("/api/controlled-document/documents"), {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    title: String(form.get("title") ?? ""), document_type: documentType,
+                    classification, tlp, tags,
+                    recipient_subject_ids: form.getAll("recipient_subject_ids"), assignments,
+                    document_profile: readNativeDocumentProfile(form, selectedProfile, assignments),
+                  })
+                });
+                if (!documentResponse.ok) {
+                  setError(buildWorkflowError(copy.registryError, await readErrorMessage(documentResponse)));
+                  setPhase("ready");
+                  return;
+                }
+                const payload = (await documentResponse.json()) as { document: Document };
+                document = payload.document;
+                setCreatedDocument(document);
+              }
+
+              if (!document.current_root_metadata_revision) throw new Error(language === "cs"
+                ? "Příjem dokumentů není připravený. Chybí potvrzené údaje o původu a odpovědnosti."
+                : "Document intake is not ready. Confirmed provenance and accountability are unavailable.");
+              versionProfile.expected_root_metadata_revision = document.current_root_metadata_revision;
+              setPhase("preflight");
+              const preflightResponse = await fetch(withAppBasePath("/api/controlled-document/upload/preflight"), {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                  ...Object.fromEntries(form.entries()),
-                  assignments: workflowAssignmentsToDocumentAssignments(participantAssignments, workflowSubjects),
+                  document_id: document.document_id,
+                  document_profile: versionProfile,
+                  file_name: selectedFile.name,
+                  file_size: selectedFile.size,
+                  file_type: selectedFile.type || "application/octet-stream",
+                  sha256: filePreflight.hash
                 })
               });
-              if (!documentResponse.ok) {
-                setError(buildWorkflowError(copy.registryError, await readErrorMessage(documentResponse)));
+              if (!preflightResponse.ok) {
+                setError(buildWorkflowError(copy.preflightError, await readErrorMessage(preflightResponse)));
                 setPhase("ready");
                 return;
               }
-              const payload = (await documentResponse.json()) as { document: Document };
-              document = payload.document;
-              setCreatedDocument(document);
-            }
+              const preflightBody = (await preflightResponse.json()) as { preflight: UploadPreflightDecision };
 
-            setPhase("preflight");
-            const preflightResponse = await fetch(withAppBasePath("/api/controlled-document/upload/preflight"), {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                document_id: document.document_id,
-                file_name: selectedFile.name,
-                file_size: selectedFile.size,
-                file_type: selectedFile.type || "application/octet-stream",
-                sha256: filePreflight.hash
-              })
-            });
-            if (!preflightResponse.ok) {
-              setError(buildWorkflowError(copy.preflightError, await readErrorMessage(preflightResponse)));
-              setPhase("ready");
-              return;
-            }
-            const preflightBody = (await preflightResponse.json()) as { preflight: UploadPreflightDecision };
+              setPhase("uploading");
+              const uploadResponse = await fetch(preflightBody.preflight.upload_url, {
+                method: preflightBody.preflight.upload_method,
+                headers: preflightBody.preflight.required_headers,
+                body: selectedFile
+              });
+              if (!uploadResponse.ok) {
+                setError(buildWorkflowError(copy.uploadError, await readErrorMessage(uploadResponse)));
+                setPhase("ready");
+                return;
+              }
+              const uploaded = (await uploadResponse.json()) as UploadContentResponse;
 
-            setPhase("uploading");
-            const uploadResponse = await fetch(preflightBody.preflight.upload_url, {
-              method: preflightBody.preflight.upload_method,
-              headers: preflightBody.preflight.required_headers,
-              body: selectedFile
-            });
-            if (!uploadResponse.ok) {
-              setError(buildWorkflowError(copy.uploadError, await readErrorMessage(uploadResponse)));
-              setPhase("ready");
-              return;
+              confirmationBody = JSON.stringify({
+                  document_id: document.document_id,
+                  version_label: "1.0",
+                  document_profile: versionProfile,
+                  valid_from: versionProfile.lifecycle.effectiveFrom,
+                  valid_to: versionProfile.lifecycle.effectiveTo,
+                  change_summary: buildFirstVersionSummary({
+                    copy,
+                    title: document.title
+                  }),
+                  parser_profile: String(form.get("parser_profile") ?? "controlled_document"),
+                  chunking_strategy: String(form.get("chunking_strategy") ?? "legal_structured"),
+                  embedding_profile: "default",
+                  upload_session_id: preflightBody.preflight.upload_session_id,
+                  upload_token: preflightBody.preflight.required_headers["X-AKL-Upload-Token"],
+                  upload_receipt: uploaded.upload_receipt,
+                  source_file_uri: uploaded.source_file_uri,
+                  file_hash: uploaded.file.sha256,
+                  file_name: uploaded.file.filename,
+                  file_size: uploaded.file.size_bytes,
+                  file_type: uploaded.file.mime_type
+              });
+              setPendingConfirmation(confirmationBody);
             }
-            const uploaded = (await uploadResponse.json()) as UploadContentResponse;
-
+            if (!document) throw new Error(copy.requestFailed);
             const workflowResponse = await fetch(withAppBasePath("/api/controlled-document/ingestion"), {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                document_id: document.document_id,
-                version_label: "1.0",
-                valid_from: String(form.get("valid_from") ?? new Date().toISOString().slice(0, 10)),
-                change_summary: buildFirstVersionSummary({
-                  copy,
-                  title: document.title
-                }),
-                parser_profile: String(form.get("parser_profile") ?? "controlled_document"),
-                chunking_strategy: String(form.get("chunking_strategy") ?? "legal_structured"),
-                embedding_profile: "default",
-                upload_session_id: preflightBody.preflight.upload_session_id,
-                upload_token: preflightBody.preflight.required_headers["X-AKL-Upload-Token"],
-                upload_receipt: uploaded.upload_receipt,
-                source_file_uri: uploaded.source_file_uri,
-                file_hash: uploaded.file.sha256,
-                file_name: uploaded.file.filename,
-                file_size: uploaded.file.size_bytes,
-                file_type: uploaded.file.mime_type
-              })
+              body: confirmationBody
             });
             if (!workflowResponse.ok) {
               setError(buildWorkflowError(copy.workflowError, await readErrorMessage(workflowResponse)));
@@ -581,7 +634,7 @@ export function NewDocumentForm({ authorization, currentSubjectId, directoryUser
             <FilePlus2 size={18} aria-hidden="true" />
           </div>
         </div>
-        <div className="panel__body form-grid">
+        <fieldset disabled={submitting || Boolean(submitted) || Boolean(pendingConfirmation)} className="panel__body form-grid document-intake-fields" aria-busy={submitting}>
           <div className="guided-change">
             <div>
               <div className="stratos-field-label-row">
@@ -591,7 +644,7 @@ export function NewDocumentForm({ authorization, currentSubjectId, directoryUser
               <p>{copy.templateHint}</p>
             </div>
             <div className="task-actions">
-              {documentTemplates.map((template) => (
+              {documentTemplates.filter((template) => profileForDocumentType(template.documentType)).map((template) => (
                 <StratosButton
                   key={template.key}
                   type="button"
@@ -603,6 +656,15 @@ export function NewDocumentForm({ authorization, currentSubjectId, directoryUser
               ))}
             </div>
           </div>
+          <StratosSelect id="document-family" label={language === "cs" ? "Druh dokumentu" : "Document family"} value={profileId} disabled={metadataLocked || Boolean(submitted)} onChange={(event) => {
+            const profile = NATIVE_DOCUMENT_PROFILES.find((item) => item.id === event.target.value)!;
+            setProfileId(profile.id);
+            if (!profile.documentTypes.includes(documentType)) setDocumentType(profile.documentTypes[0] as DocumentType);
+            setParticipantErrors([]);
+          }}>
+            {NATIVE_DOCUMENT_PROFILES.map((profile) => <option value={profile.id} key={profile.id}>{profile.label[language]}</option>)}
+          </StratosSelect>
+          <p className="field__hint">{language === "cs" ? "Povinné údaje a schvalování odpovídají zvolenému druhu. Veřejné předpisy přijímejte prostřednictvím ověřené kolekce." : "Required metadata and approval follow the selected family. Public regulations must use a verified collection."}</p>
           <div className="form-grid form-grid--two">
             <div className="field">
               <FieldLabelWithHelp htmlFor="title" label={copy.titleLabel} helpLabel={copy.titleHelpLabel} helpText={copy.titleHelp} />
@@ -617,7 +679,7 @@ export function NewDocumentForm({ authorization, currentSubjectId, directoryUser
               disabled={metadataLocked || Boolean(submitted)}
               onChange={(event) => setDocumentType(event.target.value as DocumentType)}
             >
-              {documentTypeOptions.map((item) => (
+              {documentTypeOptions.filter((item) => selectedProfile.documentTypes.includes(item.code)).map((item) => (
                 <option key={item.code} value={item.code}>{item.label[language]}</option>
               ))}
             </StratosSelect>
@@ -634,8 +696,34 @@ export function NewDocumentForm({ authorization, currentSubjectId, directoryUser
             <option value="public">{copy.public}</option>
             <option value="internal">{copy.internal}</option>
             <option value="restricted">{copy.restricted}</option>
-            <option value="confidential">{copy.confidential}</option>
           </StratosSelect>
+          <StratosSelect
+            id="document-tlp"
+            name="tlp"
+            label={language === "cs" ? "TLP — pravidla sdílení" : "TLP — sharing rules"}
+            value={tlp}
+            required
+            disabled={metadataLocked || Boolean(submitted)}
+            onChange={(event) => setTlp(event.target.value)}
+          >
+            <option value="" disabled>{language === "cs" ? "Vyberte povinné TLP" : "Select required TLP"}</option>
+            {["TLP:CLEAR", "TLP:GREEN", "TLP:AMBER", "TLP:AMBER+STRICT", "TLP:RED"].map((value) => (
+              <option key={value} value={value}>{value}</option>
+            ))}
+          </StratosSelect>
+          <p className="muted">{language === "cs"
+            ? "TLP určuje možnosti dalšího sdílení. Přístup k dokumentu se samostatně ověřuje podle jeho oprávnění. Bez TLP nelze dokument přijmout."
+            : "TLP defines onward sharing. Document access is checked separately against its permissions. TLP is required before admission."}</p>
+          {tlp === "TLP:RED" ? (
+            <div className="field">
+              <label htmlFor="tlp-recipients">{language === "cs" ? "Konkrétní příjemci TLP:RED" : "Exact TLP:RED recipients"}</label>
+              <select id="tlp-recipients" name="recipient_subject_ids" multiple required disabled={metadataLocked || Boolean(submitted)}>
+                {workflowSubjects.filter((subject) => subject.type === "person").map((subject) => (
+                  <option key={subject.id} value={subject.id}>{subject.name}</option>
+                ))}
+              </select>
+            </div>
+          ) : null}
           <div className="field">
             <FieldLabelWithHelp htmlFor="tags" label={copy.tags} helpLabel={copy.tagsHelpLabel} helpText={copy.tagsHelp} />
             <input
@@ -651,8 +739,8 @@ export function NewDocumentForm({ authorization, currentSubjectId, directoryUser
               <strong>{language === "cs" ? "Odpovědnosti dokumentu" : "Document responsibilities"}</strong>
               <p className="muted">
                 {language === "cs"
-                  ? "Vyberte jednoho gestora a jednoho schvalovatele z adresáře organizace."
-                  : "Select one owner and one approver from the organization directory."}
+                  ? independentApproval ? "Vyberte gestora a nezávislého schvalovatele z adresáře." : "Vyberte gestora; další schvalovatel je pro tento druh volitelný."
+                  : independentApproval ? "Choose a gestor and independent approver from the directory." : "Choose a gestor; an additional approver is optional for this family."}
               </p>
             </div>
             <WorkflowParticipants
@@ -685,15 +773,12 @@ export function NewDocumentForm({ authorization, currentSubjectId, directoryUser
               }}
             />
           </div>
+          <DocumentProfileFields key={profileId} profile={selectedProfile} directoryUsers={directoryUsers} disabled={Boolean(submitted)} authorshipDisabled={metadataLocked} />
           <div className="form-grid form-grid--three">
             <div className="field">
               <FieldLabelWithHelp htmlFor="version-label" label={copy.versionLabel} helpLabel={copy.versionHelpLabel} helpText={copy.versionHint} />
               <input id="version-label" name="version_label" value="1.0" readOnly />
               <small>{copy.versionHint}</small>
-            </div>
-            <div className="field">
-              <FieldLabelWithHelp htmlFor="valid-from" label={copy.validFrom} helpLabel={copy.validFromHelpLabel} helpText={copy.validFromHelp} />
-              <input id="valid-from" name="valid_from" type="date" defaultValue={new Date().toISOString().slice(0, 10)} disabled={Boolean(submitted)} />
             </div>
             <StratosSelect
               id="parser"
@@ -754,6 +839,9 @@ export function NewDocumentForm({ authorization, currentSubjectId, directoryUser
               onRemoveFile={() => void selectSourceFile(null)}
               onValidationError={(validationErrors) => setError(validationErrors[0]?.message ?? copy.missingFile)}
             />
+            {selectedFile && documentFormatHint(selectedFile.name, language) ? (
+              <p className="field__hint">{documentFormatHint(selectedFile.name, language)}</p>
+            ) : null}
           </div>
           {filePreflight ? (
             <div className="preflight-card">
@@ -773,16 +861,27 @@ export function NewDocumentForm({ authorization, currentSubjectId, directoryUser
               </div>
             </div>
           ) : null}
+        </fieldset>
+        <div className="panel__body stack">
           <StratosButton tone="primary" type="submit" disabled={!canSubmit}>
             <Play size={16} aria-hidden="true" />
-            {submitting ? copy.saving : copy.save}
+            {submitting ? copy.saving : pendingConfirmation ? (language === "cs" ? "Zkusit potvrzení znovu" : "Retry confirmation") : copy.save}
           </StratosButton>
           {!allowed ? (
             <p className="notice">{copy.disabled}</p>
           ) : null}
           {createdDocument && !submitted ? <p className="notice">{copy.draftRetained}</p> : null}
-          {error ? <p className="notice notice--danger">{error}</p> : null}
+          {error ? <p className="notice notice--danger" role="alert">{error}</p> : null}
+        {pendingConfirmation && !submitted ? <div className="stack">
+          <p role="status">{language === "cs" ? "Soubor je uložený. Opakování použije stejné potvrzení a znovu ověří oprávnění." : "The file is stored. Retrying uses the same confirmation and checks current access again."}</p>
+          <StratosButton type="button" disabled={submitting} onClick={() => {
+            if (createdDocument && window.confirm(language === "cs" ? "Ukončit tento pokus? Verze už může být vytvořená. Otevřeme aktuální detail dokumentu." : "End this attempt? The version may already exist. Open the current document detail.")) {
+              window.location.assign(withAppBasePath(`/documents/${createdDocument.document_id}`));
+            }
+          }}>{language === "cs" ? "Ukončit pokus a otevřít dokument" : "End attempt and open document"}</StratosButton>
+        </div> : null}
         </div>
+
       </form>
 
       <aside className="panel">

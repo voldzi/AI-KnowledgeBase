@@ -29,9 +29,17 @@ export async function POST(request: NextRequest) {
       );
     }
     const body = await request.json();
+    const allowedFields = new Set(["collection_id", "collection_revision", "source_url", "canonical_url", "title", "version_label", "effective_from", "effective_to"]);
+    if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some((field) => !allowedFields.has(field))
+        || ["collection_id", "collection_revision", "source_url", "title"].some((field) => typeof body[field] !== "string" || !body[field].trim())
+        || ["canonical_url", "version_label", "effective_from"].some((field) => body[field] !== undefined && (typeof body[field] !== "string" || !body[field].trim()))
+        || (body.effective_to !== undefined && body.effective_to !== null && (typeof body.effective_to !== "string" || !body.effective_to.trim()))) {
+      throw new ApiClientError("Vyberte schválenou kolekci. Pravidla a odpovědnost zdroje potvrzuje STRATOS.", 422, "PUBLIC_SOURCE_REQUEST_INVALID", context.correlationId ?? "public-source-sync");
+    }
     const result = await synchronizePublicSource(
       {
         collectionId: String(body.collection_id ?? ""),
+        collectionRevision: String(body.collection_revision ?? ""),
         sourceUrl: String(body.source_url ?? ""),
         canonicalUrl: body.canonical_url ? String(body.canonical_url) : undefined,
         title: String(body.title ?? ""),

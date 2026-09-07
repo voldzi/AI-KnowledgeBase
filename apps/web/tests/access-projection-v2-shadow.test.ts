@@ -61,7 +61,7 @@ describe("STRATOS access projection V2 active cutover candidate", () => {
       revision: "2.1.0",
       status: "active",
       digest: "sha256:16509ccbdc3e49e7a9918a29c833a8ae1aa7c78777b0a8693a2477acc2f0dafa",
-      catalogVersion: "capabilities-1.12.0",
+      catalogVersion: "capabilities-1.12.1",
       organizationId: "org_stratos",
       consumerCutover: true,
     });
@@ -79,7 +79,7 @@ describe("STRATOS access projection V2 active cutover candidate", () => {
       (body) => { body.contractStatus = "shadow"; },
       (body) => { body.schemaVersion = "stratos-access-projection-1"; },
       (body) => { body.contractDigest = "sha256:" + "0".repeat(64); },
-      (body) => { body.catalogVersion = "capabilities-1.12.1"; },
+      (body) => { body.catalogVersion = "capabilities-1.12.0"; },
     ];
     for (const mutate of mutations) {
       const body = activeProjection(); mutate(body);
@@ -113,5 +113,6 @@ function activeProjection(): ReturnType<typeof projection> {
     contractRevision: "2.1.0",
     contractStatus: "active",
     contractDigest: "sha256:16509ccbdc3e49e7a9918a29c833a8ae1aa7c78777b0a8693a2477acc2f0dafa",
+    catalogVersion: "capabilities-1.12.1",
   };
 }

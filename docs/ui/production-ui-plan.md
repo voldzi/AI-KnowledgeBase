@@ -34,10 +34,19 @@ workspace:
 - Opening a persisted thread has an explicit loading and retry state. The UI
   does not render a false empty-thread state while Registry history is still
   being authorized and loaded.
+- Long transcripts render at most 60 messages with accessible older/newer/latest
+  navigation; the full authorized history stays in memory. Stop waiting, response
+  source selection and reduced-motion behavior are described in
+  [Chat controls](chat-history-and-response-controls.md), with a reproducible
+  [local performance profile](../qa/chat-history-performance-2026-09-05.md).
 - Federated answers show a compact, human-readable list of the authorized live
-  STRATOS sources used for the answer. The persisted history keeps only source
-  identity, status, item count and timestamp; it never duplicates Budget,
-  ProjectFlow or ArchFlow business payloads.
+  STRATOS sources used for the answer. Provider status metadata is minimal;
+  persisted raw answers and prompts can still contain Budget, ProjectFlow or
+  ArchFlow business information. Those records remain stored without newly added
+  application-level encryption. Current reads return a content-free refresh
+  receipt until Registry can verify complete provenance and current source
+  authority. See [history controls](chat-history-and-response-controls.md) and
+  [ADR 0018](../adr/0018-federated-history-authority.md).
 - The source panel distinguishes live application sources from cited controlled
   documents and gives links a usable label even when an upstream Markdown link
   does not contain display text.
@@ -103,6 +112,15 @@ Phase 05 introduces the Document Workbench direction:
 - Upload has file preflight metadata, SHA-256 calculation, a signed upload session, browser PUT upload and then the workflow request.
 - Both native AKB upload flows use the shared `FileDropzone`. AKB still owns
   preflight, object transfer, confirm, ingestion, classification, DLP and audit.
+- Document detail shows the selected content's policy summary in the main view;
+  version upload shows the document rules inherited by the new version. TLP,
+  audience and export/external-AI restrictions remain visible without opening
+  technical details. Missing TLP is explicitly marked as unspecified. Under
+  [ADR 0017](../adr/0017-mandatory-document-policy.md), this is a diagnostic error
+  state, not an approved exception; mandatory admission enforcement is a pending
+  release gate. Missing
+  or inconsistent version coordinates do not fall back to the parent policy.
+  This display does not replace authorization or implement a policy editor.
 - `/help` provides in-app help for document managers, owners/gestors, and auditors.
 
 The current upload bridge stores the source object in shared local object storage, creates a draft version and queues ingestion. Publishing is separated behind the Registry API approval state and publish gate.

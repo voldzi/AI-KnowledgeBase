@@ -45,7 +45,7 @@ export const DOCUMENT_WORKFLOW_ROLE_IDS = {
   approver: "approver",
 } as const;
 
-export function documentWorkflowRoles(language: AklLanguage): WorkflowParticipantRole[] {
+export function documentWorkflowRoles(language: AklLanguage, independentApprovalRequired = true): WorkflowParticipantRole[] {
   return [
     {
       id: DOCUMENT_WORKFLOW_ROLE_IDS.gestor,
@@ -66,8 +66,8 @@ export function documentWorkflowRoles(language: AklLanguage): WorkflowParticipan
         ? "Rozhoduje o schválení verze; audit vždy zaznamená konkrétního uživatele."
         : "Decides version approval; audit always records the acting user.",
       order: 2,
-      required: true,
-      minAssignments: 1,
+      required: independentApprovalRequired,
+      minAssignments: independentApprovalRequired ? 1 : 0,
       maxAssignments: 1,
       allowedSubjectTypes: ["person", "group", "organization"],
     },
@@ -138,7 +138,7 @@ export function workflowAssignmentsToDocumentAssignments(
     const subject = subjectsById.get(assignment.subjectId);
     return {
       role: assignment.roleId === DOCUMENT_WORKFLOW_ROLE_IDS.approver ? "approver" : "gestor",
-      subject_type: subject?.type === "person" ? "user" : "group",
+      subject_type: subject?.type === "person" ? "user" : subject?.type === "organization" ? "unit" : "group",
       subject_id: assignment.subjectId,
       display_label: subject?.name ?? null,
       is_primary: assignment.primary ?? true,
@@ -152,10 +152,11 @@ export function workflowAssignmentsToDocumentAssignments(
 export function validateDocumentWorkflowAssignments(
   assignments: WorkflowParticipantAssignment[],
   language: AklLanguage,
+  independentApprovalRequired = true,
 ): WorkflowParticipantValidationError[] {
   const gestor = assignments.find((assignment) => assignment.roleId === DOCUMENT_WORKFLOW_ROLE_IDS.gestor);
   const approver = assignments.find((assignment) => assignment.roleId === DOCUMENT_WORKFLOW_ROLE_IDS.approver);
-  if (gestor && approver && gestor.subjectId === approver.subjectId) {
+  if (independentApprovalRequired && gestor && approver && gestor.subjectId === approver.subjectId) {
     return [{
       roleId: DOCUMENT_WORKFLOW_ROLE_IDS.approver,
       assignmentId: approver.id,

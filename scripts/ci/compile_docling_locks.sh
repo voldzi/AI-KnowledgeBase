@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 UV_BIN="${UV_BIN:-uv}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 UV_VERSION="0.12.9"
-PACKAGE_CUTOFF="2026-09-02T20:00:00Z"
+PACKAGE_CUTOFF="2026-09-06T10:05:00Z"
 CONSTRAINTS="/tmp/akb-docling-base.constraints"
 
 [[ "$(${UV_BIN} --version)" == "uv ${UV_VERSION} ("* ]] || {

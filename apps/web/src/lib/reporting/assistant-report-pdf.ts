@@ -128,7 +128,8 @@ function fixedWidth(value: string, width: number) {
 function citationLine(rowId: string, citation: Citation) {
   const page = citation.page_number ? `, page ${citation.page_number}` : "";
   const section = citation.section_path.length ? `, section ${citation.section_path.join(" / ")}` : "";
-  return `${rowId}: ${citation.document_title} (${citation.version_label}${page}${section}) - ${citation.chunk_id}`;
+  const policy = [citation.policy_binding_id, citation.policy_version, citation.policy_hash].filter(Boolean).join(" / ");
+  return `${rowId}: ${citation.document_title} (${citation.version_label}${page}${section}) - ${citation.document_id} / ${citation.document_version_id} / ${citation.chunk_id}${policy ? ` - ${policy}` : ""}`;
 }
 
 function formatCell(value: string | number | boolean | null | undefined) {

@@ -1,0 +1,25 @@
+{
+  "allowed_switcher_budget_pf_arch_akb_budget": {
+    "status": "FAIL",
+    "reason": "AssertionError",
+    "detail": "Expected values to be strictly equal:  1 !== 0 "
+  },
+  "stratos_to_standalone_chat": {
+    "status": "PASS",
+    "credentialEntries": 1,
+    "standaloneProfile": true
+  },
+  "new_tabs_without_login": {
+    "status": "FAIL",
+    "reason": "AssertionError",
+    "detail": "Expected values to be strictly equal:  1 !== 0 "
+  },
+  "restricted_person_projectflow_denied": {
+    "status": "PASS",
+    "bootstrapStatus": 403
+  },
+  "akb_chat_switcher": {
+    "status": "BLOCKED",
+    "reason": "AKB uses published stratos-ui 0.3.37 without Chat item; standalone Chat has no application switcher. 0.5.0 is workspace-only in STRATOS."
+  }
+}

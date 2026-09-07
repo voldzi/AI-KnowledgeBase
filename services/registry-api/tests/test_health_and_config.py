@@ -1,3 +1,6 @@
+from tests.document_policy_fixtures import admitted_policy
+from document_profile_fixtures import profiled_document_request
+
 import pytest
 from pydantic import ValidationError
 
@@ -244,12 +247,13 @@ def test_error_shape_uses_trace_id(client, reader_headers):
     response = client.post(
         "/api/v1/documents",
         headers=reader_headers | {"X-Correlation-ID": "corr-denied"},
-        json={
+        json=profiled_document_request({
             "title": "Nope",
             "document_type": "policy",
             "owner_id": "user_reader",
             "classification": "internal",
-        },
+            "information_policy": admitted_policy(handling_class="INTERNAL"),
+        }),
     )
 
     assert response.status_code == 403

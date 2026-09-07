@@ -1,0 +1,128 @@
+[
+  {
+    "service": "registry-api",
+    "image": "sha256:29419ba425107ab16f9c43643ee8eaa6ebba950578a2db604cf8446a1ce72396",
+    "status": "running",
+    "health": "healthy"
+  },
+  {
+    "service": "web",
+    "image": "sha256:3622940cb2d88bed3c1a95f5ea182062786dd3cf326b92d9e19c851fdefe100c",
+    "status": "running",
+    "health": "healthy"
+  },
+  {
+    "service": "chat-web",
+    "image": "sha256:7d8f81620bfc1257430db2763acd7030e2c6dca4458ef4700ce84f8f08448e55",
+    "status": "running",
+    "health": "healthy"
+  },
+  {
+    "service": "stratos-projectflow-web",
+    "image": "sha256:0fb10576a4ffaa46ec46824e380cd2facf63b883c54ed2b9f6d89d09f1299258",
+    "status": "running",
+    "health": null
+  },
+  {
+    "service": "stratos-archflow",
+    "image": "sha256:3eaa7567eb5248c0513dd33ac1a2aaf02d8e16f5643351981fa1460c0212bdca",
+    "status": "running",
+    "health": null
+  },
+  {
+    "service": "stratos-web",
+    "image": "sha256:95db774a3452ad48118b51708534a35f047bdef00760a82890668f36793fb701",
+    "status": "running",
+    "health": null
+  },
+  {
+    "service": "stratos-api",
+    "image": "sha256:ca95a00160371661010e05570ec8bdcb046ddacd25dd1ffd11a80f38e8140c95",
+    "status": "running",
+    "health": "healthy"
+  },
+  {
+    "service": "stratos-projectflow-api",
+    "image": "sha256:7693bac59126f5e30dfa6b7ccaee21e1c5781d4b346b08f1b2bc866d642ee3c5",
+    "status": "running",
+    "health": "healthy"
+  },
+  {
+    "service": "evaluation-service",
+    "image": "sha256:1bd426e98cb0a790725e239869c7f986526e951b21efa5cdbd3e5f808a46639f",
+    "status": "running",
+    "health": "healthy"
+  },
+  {
+    "service": "governance-service",
+    "image": "sha256:60ecc61bce5dbd908895e78a8ad7ccb48c70ee76503de8fd95f80ce10f67e48d",
+    "status": "running",
+    "health": "healthy"
+  },
+  {
+    "service": "ingestion-service",
+    "image": "sha256:8e2bb09c0df7ff3075ec98a7d1e8c89a774cdfb55cfd1eb6eb180fc0efd54210",
+    "status": "running",
+    "health": "healthy"
+  },
+  {
+    "service": "rag-retrieval-service",
+    "image": "sha256:d8a816679e6c5f03017dd193e9f4740c9475beff802960381ce9d07a2244de38",
+    "status": "running",
+    "health": "healthy"
+  },
+  {
+    "service": "llm-gateway-service",
+    "image": "sha256:61300fe4f4134f2e69dcdd986d1bd0b335e039951e77ec5db37b1e20aca86c8d",
+    "status": "running",
+    "health": "healthy"
+  },
+  {
+    "service": "stratos-report-renderer",
+    "image": "sha256:08ce77ccb1f7a38a21abcb1a21bf1dae04c35608327af1110bab30eac21f3b8a",
+    "status": "running",
+    "health": "healthy"
+  },
+  {
+    "service": "keycloak",
+    "image": "sha256:be6a86215213145bfb4fb3e2b3ab982a806d00262655abdcf3ffa6a38d241c7c",
+    "status": "running",
+    "health": "healthy"
+  },
+  {
+    "service": "postgres",
+    "image": "sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685",
+    "status": "running",
+    "health": "healthy"
+  },
+  {
+    "service": "stratos-postgres",
+    "image": "sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2",
+    "status": "running",
+    "health": "healthy"
+  },
+  {
+    "service": "qdrant",
+    "image": "sha256:75eab8c4ba42096724fdcfde8b4de0b5713d529dde32f285a1f86fdcb2c9e50c",
+    "status": "running",
+    "health": "healthy"
+  },
+  {
+    "service": "minio",
+    "image": "sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e",
+    "status": "running",
+    "health": "healthy"
+  },
+  {
+    "service": "opensearch",
+    "image": "sha256:8690b204fe914c60ca76d451ac73bc0481e034d32d3779944c8caca56a2b003f",
+    "status": "running",
+    "health": "healthy"
+  },
+  {
+    "service": "clamav",
+    "image": "sha256:b25d9199257ae7ef45e0cc4c7eaa60ce7e5447796f0090d5ff311d1a30980cc3",
+    "status": "running",
+    "health": "healthy"
+  }
+]

@@ -28,8 +28,8 @@ describe("automatic STRATOS SSO", () => {
     assert.equal(location.searchParams.get("max_age"), null);
     assert.ok(location.searchParams.get("nonce"));
     assert.equal(location.searchParams.get("code_challenge_method"), "S256");
-    assert.match(response.headers.get("set-cookie") ?? "", /akl_oidc_state=/);
-    assert.doesNotMatch(response.headers.get("set-cookie") ?? "", /akl_session=/);
+    assert.match(response.headers.get("set-cookie") ?? "", /akb_platform_oidc_state=/);
+    assert.doesNotMatch(response.headers.get("set-cookie") ?? "", /akb_platform_session=/);
   });
 
   it("falls back once to interactive login when central SSO is absent", async () => {
@@ -38,7 +38,7 @@ describe("automatic STRATOS SSO", () => {
     const response = await completeOidcCallback(
       new NextRequest(
         `https://stratos.example/akb/api/auth/callback?error=login_required&state=${encodeURIComponent(state)}`,
-        { headers: { cookie: `akl_oidc_state=${state}; akl_oidc_pkce=verifier` } },
+        { headers: { cookie: `akb_platform_oidc_state=${state}; akb_platform_oidc_pkce=verifier` } },
       ),
     );
 
@@ -61,7 +61,7 @@ describe("automatic STRATOS SSO", () => {
     const retry = await completeOidcCallback(
       new NextRequest(
         `https://stratos.example/akb/api/auth/callback?error=login_required&state=${encodeURIComponent(state)}`,
-        { headers: { cookie: `akl_oidc_state=${state}; akl_oidc_pkce=verifier` } },
+        { headers: { cookie: `akb_platform_oidc_state=${state}; akb_platform_oidc_pkce=verifier` } },
       ),
     );
     const retryLocation = new URL(retry.headers.get("location") ?? "");
@@ -75,7 +75,7 @@ describe("automatic STRATOS SSO", () => {
     const response = await completeOidcCallback(
       new NextRequest(
         `https://stratos.example/akb/api/auth/callback?error=login_required&state=${encodeURIComponent(state)}`,
-        { headers: { cookie: "akl_oidc_state=other; akl_oidc_pkce=verifier" } },
+        { headers: { cookie: "akb_platform_oidc_state=other; akb_platform_oidc_pkce=verifier" } },
       ),
     );
 

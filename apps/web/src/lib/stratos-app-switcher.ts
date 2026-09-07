@@ -2,6 +2,7 @@ export const AKB_STRATOS_APP_IDS = [
   "budget-contract",
   "projectflow",
   "akb",
+  "chat",
   "archflow",
 ] as const;
 

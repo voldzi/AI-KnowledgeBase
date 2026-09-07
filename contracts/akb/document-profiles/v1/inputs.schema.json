@@ -1,0 +1,313 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:akb:document-profile-input:1",
+  "title": "Strict document profile inputs awaiting coordinated API cutover",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/DocumentProfileInput"
+    },
+    {
+      "$ref": "#/$defs/DocumentVersionProfileInput"
+    }
+  ],
+  "$defs": {
+    "DocumentAccountability": {
+      "additionalProperties": false,
+      "properties": {
+        "ownerSubjectId": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Ownersubjectid",
+          "type": "string"
+        },
+        "gestor": {
+          "$ref": "#/$defs/DocumentGestor"
+        }
+      },
+      "required": [
+        "ownerSubjectId",
+        "gestor"
+      ],
+      "title": "DocumentAccountability",
+      "type": "object"
+    },
+    "DocumentAuthor": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "person",
+            "organization",
+            "external_authority"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "evidenceReference": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Evidencereference",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "evidenceReference"
+      ],
+      "title": "DocumentAuthor",
+      "type": "object"
+    },
+    "DocumentGestor": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "person",
+            "organization_unit"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "id"
+      ],
+      "title": "DocumentGestor",
+      "type": "object"
+    },
+    "DocumentLifecycle": {
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "enum": [
+            "fixed_interval",
+            "until_superseded",
+            "record"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "effectiveFrom": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Effectivefrom"
+        },
+        "effectiveTo": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Effectiveto"
+        },
+        "recordedOn": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Recordedon"
+        },
+        "reviewAt": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reviewat"
+        },
+        "reviewRuleId": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Reviewruleid",
+          "type": "string"
+        },
+        "retentionRuleId": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Retentionruleid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "mode",
+        "effectiveFrom",
+        "effectiveTo",
+        "recordedOn",
+        "reviewAt",
+        "reviewRuleId",
+        "retentionRuleId"
+      ],
+      "title": "DocumentLifecycle",
+      "type": "object"
+    },
+    "DocumentProfileInput": {
+      "additionalProperties": false,
+      "properties": {
+        "profile": {
+          "$ref": "#/$defs/DocumentProfileReference"
+        },
+        "authorship": {
+          "items": {
+            "$ref": "#/$defs/DocumentAuthor"
+          },
+          "minItems": 1,
+          "title": "Authorship",
+          "type": "array"
+        },
+        "provenance": {
+          "$ref": "#/$defs/DocumentProvenanceInput"
+        },
+        "accountability": {
+          "$ref": "#/$defs/DocumentAccountability"
+        }
+      },
+      "required": [
+        "profile",
+        "authorship",
+        "provenance",
+        "accountability"
+      ],
+      "title": "DocumentProfileInput",
+      "type": "object"
+    },
+    "DocumentProfileReference": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "revision": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Revision",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "title": "DocumentProfileReference",
+      "type": "object"
+    },
+    "DocumentProvenanceInput": {
+      "additionalProperties": false,
+      "properties": {
+        "sourceSystem": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Sourcesystem",
+          "type": "string"
+        },
+        "sourceRecordId": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "pattern": "^\\S+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Sourcerecordid"
+        },
+        "sourceGovernedResourceId": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "pattern": "^\\S+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Sourcegovernedresourceid"
+        }
+      },
+      "required": [
+        "sourceSystem",
+        "sourceRecordId",
+        "sourceGovernedResourceId"
+      ],
+      "title": "DocumentProvenanceInput",
+      "type": "object"
+    },
+    "DocumentVersionProfileInput": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_root_metadata_revision": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Expected Root Metadata Revision",
+          "type": "string"
+        },
+        "lifecycle": {
+          "$ref": "#/$defs/DocumentLifecycle"
+        },
+        "domain_evidence": {
+          "additionalProperties": true,
+          "title": "Domain Evidence",
+          "type": "object"
+        }
+      },
+      "required": [
+        "expected_root_metadata_revision",
+        "lifecycle",
+        "domain_evidence"
+      ],
+      "title": "DocumentVersionProfileInput",
+      "type": "object"
+    }
+  }
+}
