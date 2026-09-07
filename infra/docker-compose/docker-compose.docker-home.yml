@@ -925,29 +925,29 @@ networks:
     driver: bridge
     ipam:
       config:
-        - subnet: ${AKL_PUBLIC_ZONE_SUBNET:-10.246.240.0/24}
+        - subnet: ${AKL_PUBLIC_ZONE_SUBNET:-10.246.245.0/24}
   app_zone:
     driver: bridge
     ipam:
       config:
-        - subnet: ${AKL_APP_ZONE_SUBNET:-10.246.241.0/24}
+        - subnet: ${AKL_APP_ZONE_SUBNET:-10.246.246.0/24}
   data_zone:
     driver: bridge
     internal: true
     ipam:
       config:
-        - subnet: ${AKL_DATA_ZONE_SUBNET:-10.246.242.0/24}
+        - subnet: ${AKL_DATA_ZONE_SUBNET:-10.246.247.0/24}
   ai_compute_zone:
     driver: bridge
     internal: true
     ipam:
       config:
-        - subnet: ${AKL_AI_COMPUTE_ZONE_SUBNET:-10.246.243.0/24}
+        - subnet: ${AKL_AI_COMPUTE_ZONE_SUBNET:-10.246.248.0/24}
   management_zone:
     driver: bridge
     ipam:
       config:
-        - subnet: ${AKL_MANAGEMENT_ZONE_SUBNET:-10.246.244.0/24}
+        - subnet: ${AKL_MANAGEMENT_ZONE_SUBNET:-10.246.249.0/24}
 
 volumes:
   caddy-data:
