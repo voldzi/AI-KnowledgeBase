@@ -154,7 +154,7 @@ class CachedPythonEnvironmentTests(unittest.TestCase):
                 ],
             ), mock.patch(
                 "ensure_cached_python_test_env.sys.version_info",
-                SimpleNamespace(major=3, minor=11, micro=0),
+                SimpleNamespace(major=3, minor=12, micro=0),
             ):
                 self.assertEqual(main(), 0)
             self.assertFalse(cache_root.exists())
