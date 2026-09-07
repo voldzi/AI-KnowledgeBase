@@ -290,7 +290,7 @@ def initialize() -> None:
     assert config["services"]["stratos-api"]["environment"]["DATABASE_URL"].endswith("@stratos-postgres:5432/stratos?schema=public")
     compose("run", "--rm", "--no-deps", "registry-api", "alembic", "upgrade", "head")
     # README local:db sequence: schema, access bootstrap, then database hardening.
-    compose("run", "--rm", "--no-deps", "stratos-api", "pnpm", "exec", "prisma", "db", "push", "--skip-generate")
+    compose("run", "--rm", "--no-deps", "stratos-api", "pnpm", "exec", "prisma", "db", "push")
     compose("run", "--rm", "--no-deps", "stratos-api", "pnpm", "prisma:seed")
     compose("run", "--rm", "--no-deps", "stratos-api", "pnpm", "prisma:migrate:access-governance")
     compose("exec", "-T", "stratos-postgres", "sh", "-c", "psql -U stratos -d postgres -tAc \"SELECT 1 FROM pg_database WHERE datname='projectflow'\" | grep -q 1 || createdb -U stratos projectflow")
