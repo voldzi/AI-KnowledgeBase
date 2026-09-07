@@ -116,7 +116,7 @@ fi
 """)
             docker.chmod(0o755)
             sync = fake_bin / "sync"
-            sync.write_text("#!/usr/bin/env bash\\nexit 0\\n")
+            sync.write_text("#!/usr/bin/env bash\nexit 0\n")
             sync.chmod(0o755)
             release = root / "release"
             (release / "git" / "AI-KnowledgeBase.git").mkdir(parents=True)
