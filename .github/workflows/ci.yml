@@ -268,7 +268,7 @@ jobs:
           POSTGRES_USER: akl_platform
           POSTGRES_PASSWORD: akl_local_postgres
         ports:
-          - 5432:5432
+          - 5432
         options: >-
           --health-cmd "pg_isready -U akl_platform -d akl"
           --health-interval 10s
@@ -290,7 +290,7 @@ jobs:
 
       - name: Run PostgreSQL migration and integration smoke
         env:
-          AKL_REGISTRY_PG_ADMIN_URL: postgresql://akl_platform:akl_local_postgres@localhost:5432/akl
+          AKL_REGISTRY_PG_ADMIN_URL: postgresql://akl_platform:akl_local_postgres@localhost:${{ job.services.postgres.ports['5432'] }}/akl
           AKL_REGISTRY_PG_DATABASE: akl_registry_smoke
         run: python scripts/registry_postgres_smoke.py
 
@@ -298,7 +298,7 @@ jobs:
         working-directory: services/registry-api
         env:
           PYTHONPATH: .
-          AKL_REGISTRY_MIGRATION_TEST_ADMIN_URL: postgresql://akl_platform:akl_local_postgres@localhost:5432/akl
+          AKL_REGISTRY_MIGRATION_TEST_ADMIN_URL: postgresql://akl_platform:akl_local_postgres@localhost:${{ job.services.postgres.ports['5432'] }}/akl
         run: >-
           python -m pytest
           tests/test_ingestion_attempt_migration.py
