@@ -69,6 +69,12 @@ class SameShaAttestationTests(unittest.TestCase):
             "id": 666, "run_attempt": 1, "head_sha": commit,
             "head_branch": "main", "event": "push",
         }, expected)
+        # Gitea increments the server counter on a rerun but keeps the runner
+        # context value at the original attempt.  Server identity remains exact.
+        validate_run_response({
+            "id": 666, "run_attempt": 4, "head_sha": commit,
+            "head_branch": "main", "event": "push",
+        }, expected)
 
     def test_server_visible_artifact_contract_fails_closed(self) -> None:
         commit = "a" * 40
