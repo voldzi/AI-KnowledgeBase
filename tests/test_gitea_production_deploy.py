@@ -298,7 +298,7 @@ fi
         workflow = (ROOT / ".gitea/workflows/deploy-production.yaml").read_text()
 
         self.assertIn('[[ "$archive_sha" =~ ^[0-9a-f]{64}$ ]]', gateway)
-        self.assertIn('timeout 900 dd bs=1M', gateway)
+        self.assertIn('timeout 3600 dd bs=1M', gateway)
         self.assertIn('gzip -t "$archive"', gateway)
         self.assertIn('schema=akb-prebuilt-image-import-1', gateway)
         self.assertIn('[[ "$revision" == "$release_sha"', gateway)
