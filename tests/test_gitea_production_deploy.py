@@ -26,9 +26,9 @@ class ProductionGateTests(unittest.TestCase):
     @staticmethod
     def _docker_archive(sha: str, *, extra: bool = False) -> bytes:
         services = ["registry-api", "ingestion-service", "rag-retrieval-service", "evaluation-service", "governance-service", "llm-gateway-service", "web", "chat-web"]
-        manifest = [{"Config": f"{index}.json", "RepoTags": [f"akl/{service}:{sha}"], "Layers": []} for index, service in enumerate(services)]
+        manifest = [{"Config": f"{index}.json", "RepoTags": [f"akb/{service}:{sha}"], "Layers": []} for index, service in enumerate(services)]
         if extra:
-            manifest.append({"Config": "extra.json", "RepoTags": [f"akl/unexpected:{sha}"], "Layers": []})
+            manifest.append({"Config": "extra.json", "RepoTags": [f"akb/unexpected:{sha}"], "Layers": []})
         output = io.BytesIO()
         with tarfile.open(fileobj=output, mode="w:gz") as archive:
             data = json.dumps(manifest).encode()
@@ -49,9 +49,9 @@ class ProductionGateTests(unittest.TestCase):
 set -euo pipefail
 if [[ "$1 ${2:-}" == "image inspect" ]]; then
   [[ -f "$FAKE_DOCKER_STATE" ]] || exit 1
-  service="${@: -1}"; service="${service#akl/}"; service="${service%%:*}"
+  service="${@: -1}"; service="${service#akb/}"; service="${service%%:*}"
   if [[ "$*" == *org.opencontainers.image.revision* ]]; then printf '%s\\n' "$FAKE_SHA"
-  elif [[ "$*" == *cz.zeleznalady.akl.compose-project* ]]; then printf 'akl\\n'
+  elif [[ "$*" == *cz.zeleznalady.akl.compose-project* ]]; then printf 'akb\\n'
   elif [[ "$*" == *cz.zeleznalady.akl.service* ]]; then printf '%s\\n' "$service"
   fi
 elif [[ "$1" == "load" ]]; then cat >/dev/null; touch "$FAKE_DOCKER_STATE"
@@ -273,6 +273,23 @@ fi
             with patch.object(production_gate, "get_json", side_effect=responses):
                 with self.assertRaises(RuntimeError):
                     production_gate.verify_gate(args)
+
+    def test_gateway_rejects_conflicting_legacy_and_canonical_roots(self) -> None:
+        gateway = ROOT / "infra/ci/gitea-runner/host/akb-gitea-deploy-gateway.sh"
+        result = subprocess.run(
+            ["bash", str(gateway), "status", "20260907T120000Z-aaaaaaaaaaaa-1"],
+            check=False,
+            capture_output=True,
+            text=True,
+            env={
+                **os.environ,
+                "AKB_GATEWAY_TEST_MODE": "1",
+                "AKB_RELEASE_ROOT": "/tmp/akb",
+                "AKL_RELEASE_ROOT": "/tmp/akl",
+            },
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("/tmp/akb", result.stderr)
 
     def test_gateway_rejects_unrecognized_command(self) -> None:
         gateway = ROOT / "infra/ci/gitea-runner/host/akb-gitea-deploy-gateway.sh"

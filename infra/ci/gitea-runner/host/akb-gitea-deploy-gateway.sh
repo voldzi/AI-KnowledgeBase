@@ -3,12 +3,13 @@ set +x
 set -Eeuo pipefail
 umask 077
 
-RELEASE_ROOT="/srv/akl"
-OPERATIONS_ROOT="${RELEASE_ROOT}/ci-deployments"
-if [[ "${AKB_GATEWAY_TEST_MODE:-}" == "1" && -z "${SSH_ORIGINAL_COMMAND:-}" ]]; then
-  RELEASE_ROOT="${AKL_RELEASE_ROOT:-$RELEASE_ROOT}"
-  OPERATIONS_ROOT="${AKB_GITEA_DEPLOY_OPERATIONS_ROOT:-${RELEASE_ROOT}/ci-deployments}"
+RELEASE_ROOT="${AKB_RELEASE_ROOT:-${AKL_RELEASE_ROOT:-/srv/akb}}"
+if [[ -n "${AKB_RELEASE_ROOT:-}" && -n "${AKL_RELEASE_ROOT:-}" && "${AKB_RELEASE_ROOT}" != "${AKL_RELEASE_ROOT}" ]]; then
+  printf 'AKB deployment gateway rejected the request.\n' >&2
+  exit 1
 fi
+OPERATIONS_ROOT="${AKB_GITEA_DEPLOY_OPERATIONS_ROOT:-${RELEASE_ROOT}/ci-deployments}"
+GIT_DIR="${AKB_RELEASE_GIT_DIR:-${RELEASE_ROOT}/git/AI-KnowledgeBase.git}"
 CURRENT_LINK="${RELEASE_ROOT}/current"
 
 fail() {
@@ -62,7 +63,7 @@ import json, sys
 with open(sys.argv[2], encoding="utf-8") as source:
     value = json.load(source)
 expected = {
-    f"akl/{service}:{sys.argv[1]}"
+    f"akb/{service}:{sys.argv[1]}"
     for service in (
         "registry-api", "ingestion-service", "rag-retrieval-service",
         "evaluation-service", "governance-service", "llm-gateway-service",
@@ -83,7 +84,7 @@ PY
   local service image revision project owner
   for service in registry-api ingestion-service rag-retrieval-service evaluation-service \
     governance-service llm-gateway-service web chat-web; do
-    image="akl/${service}:${release_sha}"
+    image="akb/${service}:${release_sha}"
     docker image inspect "$image" >/dev/null 2>&1 && { rm -f "$archive"; fail; }
   done
   gzip -dc "$archive" | docker load >/dev/null || { rm -f "$archive"; fail; }
@@ -91,12 +92,12 @@ PY
 
   for service in registry-api ingestion-service rag-retrieval-service evaluation-service \
     governance-service llm-gateway-service web chat-web; do
-    image="akl/${service}:${release_sha}"
+    image="akb/${service}:${release_sha}"
     docker image inspect "$image" >/dev/null 2>&1 || fail
     revision="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image")"
     project="$(docker image inspect --format '{{index .Config.Labels "cz.zeleznalady.akl.compose-project"}}' "$image")"
     owner="$(docker image inspect --format '{{index .Config.Labels "cz.zeleznalady.akl.service"}}' "$image")"
-    [[ "$revision" == "$release_sha" && "$project" == "akl" && "$owner" == "$service" ]] || fail
+    [[ "$revision" == "$release_sha" && "$project" == "akb" && "$owner" == "$service" ]] || fail
   done
   local temporary="${marker}.${BASHPID}.tmp"
   printf 'schema=akb-prebuilt-image-import-1\nrelease_sha=%s\narchive_sha256=%s\n' \
@@ -131,12 +132,52 @@ atomic_status() {
   sync -f "$operation_dir"
 }
 
+bootstrap_target_release() {
+  local release_sha="$1" release_dir stage_dir trusted_ref
+  release_dir="${RELEASE_ROOT}/releases/${release_sha}"
+  [[ -d "$GIT_DIR" && ! -L "$GIT_DIR" ]] || fail
+  trusted_ref="refs/remotes/origin/main"
+  git --no-replace-objects --git-dir="$GIT_DIR" rev-parse --verify "${release_sha}^{commit}" >/dev/null 2>&1 || fail
+  git --no-replace-objects --git-dir="$GIT_DIR" show-ref --verify --quiet "$trusted_ref" || fail
+  git --no-replace-objects --git-dir="$GIT_DIR" merge-base --is-ancestor "$release_sha" "$trusted_ref" || fail
+  if [[ -e "$release_dir" || -L "$release_dir" ]]; then
+    [[ -d "$release_dir" && ! -L "$release_dir" && -x "${release_dir}/scripts/bootstrap_docker_home_target.sh" ]] || fail
+    printf '%s\n' "$release_dir"
+    return
+  fi
+  install -d -m 0700 "${RELEASE_ROOT}/releases"
+  stage_dir="${RELEASE_ROOT}/releases/.${release_sha}.gateway-${BASHPID}"
+  (umask 077; mkdir "$stage_dir") || fail
+  if ! git --no-replace-objects --git-dir="$GIT_DIR" archive --format=tar "$release_sha" | tar -xf - -C "$stage_dir"; then
+    rm -rf "$stage_dir"; fail
+  fi
+  [[ -x "${stage_dir}/scripts/bootstrap_docker_home_target.sh" ]] || { rm -rf "$stage_dir"; fail; }
+  printf '%s\n' "$release_sha" >"${stage_dir}/.akl-release-sha"
+  printf 'git_sha=%s\ntrusted_ref=%s\nprepared_utc=%s\n' "$release_sha" "$trusted_ref" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"${stage_dir}/.akl-release-manifest"
+  chmod -R a-w "$stage_dir"
+  mv "$stage_dir" "$release_dir" || { chmod -R u+w "$stage_dir"; rm -rf "$stage_dir"; fail; }
+  sync -f "$release_dir"; sync -f "${RELEASE_ROOT}/releases"
+  printf '%s\n' "$release_dir"
+}
+
+deploy_entrypoint() {
+  local release_sha="$1" deploy_script
+  if [[ -L "$CURRENT_LINK" ]]; then
+    deploy_script="${CURRENT_LINK}/scripts/deploy_docker_home_release.sh"
+  else
+    local bootstrap_release
+    bootstrap_release="$(bootstrap_target_release "$release_sha")"
+    deploy_script="${bootstrap_release}/scripts/bootstrap_docker_home_target.sh"
+  fi
+  [[ -x "$deploy_script" ]] || fail
+  printf '%s\n' "$deploy_script"
+}
+
 start_deploy() {
   validate_sha "$ARGUMENT"
   RELEASE_SHA="$ARGUMENT"
-  [[ -L "$CURRENT_LINK" ]] || fail
-  local deploy_script="${CURRENT_LINK}/scripts/deploy_docker_home_release.sh"
-  [[ -x "$deploy_script" ]] || fail
+  local deploy_script
+  deploy_script="$(deploy_entrypoint "$RELEASE_SHA")"
   install -d -m 0700 "$OPERATIONS_ROOT"
   local operation_id
   operation_id="$(date -u +%Y%m%dT%H%M%SZ)-${RELEASE_SHA:0:12}-$$"
@@ -171,12 +212,14 @@ run_deploy() {
   [[ -d "$operation_dir" && ! -L "$operation_dir" ]] || fail
   [[ -f "$release_sha_file" && ! -L "$release_sha_file" ]] || fail
   [[ "$(cat "$release_sha_file")" == "$RELEASE_SHA" ]] || fail
-  local deploy_script="${CURRENT_LINK}/scripts/deploy_docker_home_release.sh"
-  [[ -x "$deploy_script" ]] || fail
+  local deploy_script
+  deploy_script="$(deploy_entrypoint "$RELEASE_SHA")"
   local deploy_pid="$BASHPID"
   atomic_status "$operation_dir" running -1 "$deploy_pid"
   set +e
-  "$deploy_script" --sha "$RELEASE_SHA" >>"${operation_dir}/operator.log" 2>&1
+  AKB_RELEASE_ROOT="$RELEASE_ROOT" \
+  AKB_RELEASE_GIT_DIR="$GIT_DIR" \
+    "$deploy_script" --sha "$RELEASE_SHA" >>"${operation_dir}/operator.log" 2>&1
   local deploy_status=$?
   set -e
   if [[ $deploy_status -eq 0 ]]; then

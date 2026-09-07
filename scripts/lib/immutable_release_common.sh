@@ -7,6 +7,32 @@ akl_fail() {
   exit 1
 }
 
+akl_resolve_release_root() {
+  local canonical="${AKB_RELEASE_ROOT:-${AKL_RELEASE_ROOT:-/srv/akb}}"
+  if [[ -n "${AKL_RELEASE_ROOT:-}" && "${AKL_RELEASE_ROOT}" != "$canonical" ]]; then
+    akl_fail "AKB_RELEASE_ROOT and legacy AKL_RELEASE_ROOT disagree"
+  fi
+  printf '%s\n' "$canonical"
+}
+
+akl_resolve_release_env_file() {
+  local release_root="$1"
+  local canonical="${AKB_PROD_ENV_FILE:-${AKL_PROD_ENV_FILE:-${release_root}/env/akb.prod.env}}"
+  if [[ -n "${AKL_PROD_ENV_FILE:-}" && "${AKL_PROD_ENV_FILE}" != "$canonical" ]]; then
+    akl_fail "AKB_PROD_ENV_FILE and legacy AKL_PROD_ENV_FILE disagree"
+  fi
+  printf '%s\n' "$canonical"
+}
+
+akl_resolve_release_git_dir() {
+  local release_root="$1"
+  local canonical="${AKB_RELEASE_GIT_DIR:-${AKL_RELEASE_GIT_DIR:-${release_root}/git/AI-KnowledgeBase.git}}"
+  if [[ -n "${AKL_RELEASE_GIT_DIR:-}" && "${AKL_RELEASE_GIT_DIR}" != "$canonical" ]]; then
+    akl_fail "AKB_RELEASE_GIT_DIR and legacy AKL_RELEASE_GIT_DIR disagree"
+  fi
+  printf '%s\n' "$canonical"
+}
+
 akl_require_command() {
   command -v "$1" >/dev/null 2>&1 || akl_fail "Required command not found: $1"
 }

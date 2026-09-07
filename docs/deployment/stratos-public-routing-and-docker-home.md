@@ -26,13 +26,13 @@ Pozor na preklep: pouzivat `stratos.zeleznalady.cz`, ne `startos.zeleznalady.cz`
 `docker.home.cz`:
 
 - provozuje aplikacni kontejnery,
-- provozuje AKB stack v `/srv/akl`,
+- provozuje AKB stack v `/srv/akb`,
 - pouziva PostgreSQL pres `haproxy.home.cz:5000`,
 - pouziva sdileny Keycloak realm `stratos`,
 - vystavuje interni nebo pilotni aplikační porty, napr. AKB na `3220`.
-- AKB běží z ověřeného read-only `/srv/akl/releases/<full-sha>` a poslední
-  plně ověřený release označuje `/srv/akl/current`; produkční env zůstává v
-  `/srv/akl/env/akl.prod.env` mimo Git.
+- AKB běží z ověřeného read-only `/srv/akb/releases/<full-sha>` a poslední
+  plně ověřený release označuje `/srv/akb/current`; produkční env zůstává v
+  `/srv/akb/env/akb.prod.env` mimo Git.
 
 `dmz.home.cz`:
 
@@ -499,7 +499,7 @@ a static 404 instead of the expected OIDC redirect.
 
 The docker-home compose profile defaults `AKL_WEB_BASE_PATH` to `/akb` for the
 web build and runtime environment. Keep the explicit value in
-`/srv/akl/env/akl.prod.env` for operational clarity, but a missing env value
+`/srv/akb/env/akb.prod.env` for operational clarity, but a missing env value
 must not rebuild the Next.js image without the `/akb` base path.
 
 ProjectFlow:
@@ -541,10 +541,10 @@ role/environment availability.
 
 Aktualni pilot:
 
-- release: `/srv/akl/current` -> `/srv/akl/releases/<full-sha>`,
-- release Git mirror: `/srv/akl/git/AI-KnowledgeBase.git`,
-- env: `/srv/akl/env/akl.prod.env`,
-- compose: `/srv/akl/current/infra/docker-compose/docker-compose.docker-home.yml`,
+- release: `/srv/akb/current` -> `/srv/akb/releases/<full-sha>`,
+- release Git mirror: `/srv/akb/git/AI-KnowledgeBase.git`,
+- env: `/srv/akb/env/akb.prod.env`,
+- compose: `/srv/akb/current/infra/docker-compose/docker-compose.docker-home.yml`,
 - AKB proxy port: `3220`,
 - Docker subnets: `10.246.240.0/24` az `10.246.244.0/24`,
 - PostgreSQL: `haproxy.home.cz:5000`,
@@ -623,7 +623,7 @@ infra/keycloak/update-stratos-public-routing.sh
 `realm-stratos.json` je zdrojovy export realmu. Pro existujici produkcni realm se redirecty aktualizuji bezpecne skriptem:
 
 ```bash
-/srv/akl/current/infra/keycloak/update-stratos-public-routing.sh
+/srv/akb/current/infra/keycloak/update-stratos-public-routing.sh
 ```
 
 Skript se pta na Keycloak admin heslo a upravuje pouze:
@@ -651,5 +651,5 @@ tajemstvim pouze pro dobu rekonciliace a pred ukoncenim jej odstrani:
 
 ```bash
 KEYCLOAK_USE_BOOTSTRAP_ADMIN_SERVICE=true \
-  /srv/akl/current/infra/keycloak/update-stratos-public-routing.sh
+  /srv/akb/current/infra/keycloak/update-stratos-public-routing.sh
 ```

@@ -25,7 +25,7 @@ while [[ $# -gt 0 ]]; do
 done
 [[ -n "$CREDENTIAL_DIR" ]] || usage
 
-RELEASE_ROOT="${AKL_RELEASE_ROOT:-/srv/akl}"
+RELEASE_ROOT="$(akl_resolve_release_root)"
 
 akl_require_command python3
 akl_assert_no_active_deploy_lock "$RELEASE_ROOT"

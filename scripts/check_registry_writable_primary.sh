@@ -28,8 +28,8 @@ case "$PHASE" in
   *) usage ;;
 esac
 
-RELEASE_ROOT="${AKL_RELEASE_ROOT:-/srv/akl}"
-ENV_FILE="${AKL_PROD_ENV_FILE:-${RELEASE_ROOT}/env/akl.prod.env}"
+RELEASE_ROOT="$(akl_resolve_release_root)"
+ENV_FILE="$(akl_resolve_release_env_file "$RELEASE_ROOT")"
 EXPECTED_POSTGRES_TOOL_IMAGE_ID="${AKL_RELEASE_EXPECTED_POSTGRES_TOOL_IMAGE_ID:-}"
 DEPLOYMENT_ID="${AKL_RELEASE_DEPLOYMENT_ID:-primary-gate-${PHASE}-$$}"
 akl_validate_deployment_id "$DEPLOYMENT_ID"

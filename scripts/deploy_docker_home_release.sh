@@ -37,11 +37,11 @@ akl_validate_full_sha "$TARGET_SHA"
 [[ -z "${SOURCE_DATE_EPOCH+x}" ]] \
   || akl_fail "Ambient SOURCE_DATE_EPOCH is forbidden; it is derived from the exact target commit"
 
-RELEASE_ROOT="${AKL_RELEASE_ROOT:-/srv/akl}"
-ENV_SOURCE_FILE="${AKL_PROD_ENV_FILE:-${RELEASE_ROOT}/env/akl.prod.env}"
+RELEASE_ROOT="$(akl_resolve_release_root)"
+ENV_SOURCE_FILE="$(akl_resolve_release_env_file "$RELEASE_ROOT")"
 ENV_FILE="$ENV_SOURCE_FILE"
 DEPLOYMENTS_DIR="${RELEASE_ROOT}/deployments"
-GIT_DIR="${AKL_RELEASE_GIT_DIR:-${RELEASE_ROOT}/git/AI-KnowledgeBase.git}"
+GIT_DIR="$(akl_resolve_release_git_dir "$RELEASE_ROOT")"
 TARGET_RELEASE="${RELEASE_ROOT}/releases/${TARGET_SHA}"
 MIGRATION_STARTED="false"
 CURRENT_ADVANCED="false"
@@ -210,7 +210,7 @@ if grep -E 'replace-with|<user>|<password>|long-random|prod-password' "$ENV_FILE
   akl_fail "Private production env snapshot contains placeholder values"
 fi
 akl_assert_no_ambient_env_file_overrides "$ENV_FILE"
-PROJECT_NAME="$(akl_env_value "$ENV_FILE" AKL_RELEASE_COMPOSE_PROJECT akl)"
+PROJECT_NAME="$(akl_env_value "$ENV_FILE" AKL_RELEASE_COMPOSE_PROJECT akb)"
 TRUSTED_REF="$(akl_env_value "$ENV_FILE" AKL_RELEASE_TRUSTED_REF refs/remotes/origin/main)"
 REGISTRY_STOP_TIMEOUT="$(akl_env_value "$ENV_FILE" AKL_RELEASE_REGISTRY_STOP_TIMEOUT_SECONDS 30)"
 INGESTION_AUTHORIZATION_SECRET_FILE="$(
@@ -956,14 +956,14 @@ SOURCE_DATE_EPOCH="$(
 )" || akl_fail "Could not derive SOURCE_DATE_EPOCH from the exact target commit"
 [[ "$SOURCE_DATE_EPOCH" =~ ^[1-9][0-9]*$ ]] \
   || akl_fail "The exact target commit has no valid SOURCE_DATE_EPOCH"
-REGISTRY_API_IMAGE="akl/registry-api:${TARGET_SHA}"
-INGESTION_SERVICE_IMAGE="akl/ingestion-service:${TARGET_SHA}"
-RAG_RETRIEVAL_SERVICE_IMAGE="akl/rag-retrieval-service:${TARGET_SHA}"
-EVALUATION_SERVICE_IMAGE="akl/evaluation-service:${TARGET_SHA}"
-GOVERNANCE_SERVICE_IMAGE="akl/governance-service:${TARGET_SHA}"
-WEB_IMAGE="akl/web:${TARGET_SHA}"
-CHAT_WEB_IMAGE="akl/chat-web:${TARGET_SHA}"
-LLM_GATEWAY_SERVICE_IMAGE="akl/llm-gateway-service:${TARGET_SHA}"
+REGISTRY_API_IMAGE="akb/registry-api:${TARGET_SHA}"
+INGESTION_SERVICE_IMAGE="akb/ingestion-service:${TARGET_SHA}"
+RAG_RETRIEVAL_SERVICE_IMAGE="akb/rag-retrieval-service:${TARGET_SHA}"
+EVALUATION_SERVICE_IMAGE="akb/evaluation-service:${TARGET_SHA}"
+GOVERNANCE_SERVICE_IMAGE="akb/governance-service:${TARGET_SHA}"
+WEB_IMAGE="akb/web:${TARGET_SHA}"
+CHAT_WEB_IMAGE="akb/chat-web:${TARGET_SHA}"
+LLM_GATEWAY_SERVICE_IMAGE="akb/llm-gateway-service:${TARGET_SHA}"
 PREBUILT_IMAGES="false"
 PREBUILT_MARKER="${RELEASE_ROOT}/prebuilt/${TARGET_SHA}.env"
 if [[ -e "$PREBUILT_MARKER" ]]; then
@@ -1301,7 +1301,7 @@ if [[ " ${services[*]} " == *" ingestion-service "* ]]; then
       || akl_fail "Production Docling must use the isolated UDS worker"
     [[ "$DOCLING_DEVICE" == "cpu" ]] \
       || akl_fail "This production Docling profile is qualified only for CPU"
-    [[ "$DOCLING_ARTIFACTS_DIR" == /srv/akl/models/docling-standard-* ]] \
+    [[ "$DOCLING_ARTIFACTS_DIR" == /srv/akb/models/docling-standard-* ]] \
       || akl_fail "Production Docling model bundle is outside the approved immutable root"
     [[ "$DOCLING_ARTIFACTS_SHA256" =~ ^sha256:[0-9a-f]{64}$ ]] \
       || akl_fail "Production Docling model-bundle SHA-256 is invalid"
@@ -1323,7 +1323,7 @@ source_manifest_path = Path(sys.argv[3])
 if root.is_symlink() or not root.is_dir():
     raise SystemExit("model bundle root is invalid")
 resolved_root = root.resolve(strict=True)
-if Path("/srv/akl/models") not in resolved_root.parents:
+if Path("/srv/akb/models") not in resolved_root.parents:
     raise SystemExit("model bundle escaped the approved root")
 if resolved_root.stat().st_mode & 0o222:
     raise SystemExit("model bundle root is writable")

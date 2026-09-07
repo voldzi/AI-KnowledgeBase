@@ -15,8 +15,8 @@ usage() {
 TARGET_SHA="$1"
 akl_validate_full_sha "$TARGET_SHA"
 
-RELEASE_ROOT="${AKL_RELEASE_ROOT:-/srv/akl}"
-ENV_FILE="${AKL_PROD_ENV_FILE:-${RELEASE_ROOT}/env/akl.prod.env}"
+RELEASE_ROOT="$(akl_resolve_release_root)"
+ENV_FILE="$(akl_resolve_release_env_file "$RELEASE_ROOT")"
 BACKUPS_DIR="${RELEASE_ROOT}/backups"
 TIMESTAMP="${AKL_RELEASE_TIMESTAMP:-$(date -u +%Y%m%dT%H%M%SZ)}"
 DEPLOYMENT_ID="${AKL_RELEASE_DEPLOYMENT_ID:-}"

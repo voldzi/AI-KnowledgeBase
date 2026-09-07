@@ -31,9 +31,9 @@ done
 [[ -n "$TARGET_SHA" ]] || usage
 akl_validate_full_sha "$TARGET_SHA"
 
-RELEASE_ROOT="${AKL_RELEASE_ROOT:-/srv/akl}"
-ENV_FILE="${AKL_PROD_ENV_FILE:-${RELEASE_ROOT}/env/akl.prod.env}"
-GIT_DIR="${AKL_RELEASE_GIT_DIR:-${RELEASE_ROOT}/git/AI-KnowledgeBase.git}"
+RELEASE_ROOT="$(akl_resolve_release_root)"
+ENV_FILE="$(akl_resolve_release_env_file "$RELEASE_ROOT")"
+GIT_DIR="$(akl_resolve_release_git_dir "$RELEASE_ROOT")"
 TARGET_RELEASE="${RELEASE_ROOT}/releases/${TARGET_SHA}"
 TARGET_COMPOSE_FILE="${TARGET_RELEASE}/infra/docker-compose/docker-compose.docker-home.yml"
 akl_require_command python3

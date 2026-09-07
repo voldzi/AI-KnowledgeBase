@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TARGET_ENV_FILE="${1:-/srv/akl/env/akl.prod.env}"
+TARGET_ENV_FILE="${1:-${AKB_PROD_ENV_FILE:-${AKL_PROD_ENV_FILE:-/srv/akb/env/akb.prod.env}}}"
 REPO_ENV_FILE="${ROOT_DIR}/.env"
 COMPOSE_ENV_FILE="${ROOT_DIR}/infra/docker-compose/.env"
 
