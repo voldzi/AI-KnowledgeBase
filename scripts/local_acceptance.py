@@ -253,6 +253,19 @@ def prepare(stratos: Path) -> None:
         "protocol": "openid-connect",
         "attributes": {"include.in.token.scope": "true", "display.on.consent.screen": "false"},
     }]
+    realm_roles_mapper = lambda client_id: {
+        "name": client_id + " realm roles",
+        "protocol": "openid-connect",
+        "protocolMapper": "oidc-usermodel-realm-role-mapper",
+        "config": {
+            "multivalued": "true",
+            "claim.name": "realm_access.roles",
+            "jsonType.label": "String",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false",
+        },
+    }
     for client_id, port, path in [("akl-web", 3220, "/akb"), ("akb-chat-web", 3221, ""), ("budget-web", 3240, ""), ("projectflow-web", 3231, "")]:
         origin = f"http://localhost:{port}"
         clients.append({"clientId": client_id, "enabled": True, "protocol": "openid-connect", "publicClient": True, "standardFlowEnabled": True, "directAccessGrantsEnabled": False, "redirectUris": [origin + path + "/*"], "webOrigins": [origin], "attributes": {"post.logout.redirect.uris": origin + path + "/*", "pkce.code.challenge.method": "S256"}, "defaultClientScopes": ["basic", "profile", "email", "roles"], "protocolMappers": [audience_mapper(a) for a in ["akl-api", "budget-web", "projectflow-web", "stratos-access-api"]] + [{"name": "identity-audience", "protocol": "openid-connect", "protocolMapper": "oidc-hardcoded-claim-mapper", "config": {"claim.value": "employees", "claim.name": "identity_audience", "jsonType.label": "String", "access.token.claim": "true", "id.token.claim": "false"}}]})
@@ -266,7 +279,7 @@ def prepare(stratos: Path) -> None:
         "stratos-archflow-akb-service": c["archflow_service_subject"],
     }
     for client_id in ["svc-ingestion", "svc-akb-web-ingestion", "akb-rag-service", "stratos-akb-service", "stratos-projectflow-akb-service", "stratos-archflow-akb-service"]:
-        clients.append({"clientId": client_id, "enabled": True, "protocol": "openid-connect", "publicClient": False, "secret": c[client_id], "serviceAccountsEnabled": True, "standardFlowEnabled": False, "directAccessGrantsEnabled": False, "defaultClientScopes": ["roles"], "optionalClientScopes": ["service_ingestion"] if client_id in service_subjects else [], "protocolMappers": [audience_mapper(a) for a in ["akl-api", "llm-gateway-service"]]})
+        clients.append({"clientId": client_id, "enabled": True, "protocol": "openid-connect", "publicClient": False, "secret": c[client_id], "serviceAccountsEnabled": True, "standardFlowEnabled": False, "directAccessGrantsEnabled": False, "fullScopeAllowed": False, "defaultClientScopes": ["roles"], "optionalClientScopes": ["service_ingestion"] if client_id in service_subjects else [], "protocolMappers": [audience_mapper(a) for a in ["akl-api", "llm-gateway-service"]] + [realm_roles_mapper(client_id)]})
         roles = {"svc-ingestion": ["service_ingestion"], "svc-akb-web-ingestion": ["service_akb_web_ingestion"], "akb-rag-service": ["service_rag"], "stratos-akb-service": ["service_ingestion"], "stratos-projectflow-akb-service": ["service_ingestion"], "stratos-archflow-akb-service": ["service_ingestion"]}[client_id]
         realm["users"].append({**({"id": service_subjects[client_id]} if client_id in service_subjects else {}), "username": "service-account-" + client_id, "serviceAccountClientId": client_id, "enabled": True, "realmRoles": roles})
     realm["clients"] = clients
