@@ -16547,6 +16547,7 @@
       ],
       "post": {
         "operationId": "getStratosSourceDocumentStatus",
+        "summary": "Read governed STRATOS source document status",
         "security": [
           {
             "sourceService": [],
@@ -16693,6 +16694,7 @@
     "/api/stratos/source-upload/preflight": {
       "post": {
         "operationId": "prepareStratosSourceUpload",
+        "summary": "Prepare a governed STRATOS source upload",
         "security": [
           {
             "sourceService": [],
@@ -16857,6 +16859,7 @@
       ],
       "post": {
         "operationId": "confirmStratosSourceUpload",
+        "summary": "Confirm a governed STRATOS source upload",
         "security": [
           {
             "sourceService": [],

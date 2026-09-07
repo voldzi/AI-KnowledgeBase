@@ -9,6 +9,7 @@
     "/api/v1/information-governance/source-document-intake/authorize": {
       "post": {
         "operationId": "authorizeSourceDocumentIntake",
+        "summary": "Authorize governed source document intake",
         "security": [
           {
             "sourceService": [],

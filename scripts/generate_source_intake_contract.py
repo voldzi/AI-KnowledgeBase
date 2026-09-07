@@ -44,15 +44,15 @@ def generate():
         "limits":obj({"max_file_bytes":{"type":"integer","minimum":1},"accepted_mime_types":{"type":"array","items":string()}})})
     security={"sourceService":{"type":"http","scheme":"bearer","bearerFormat":"JWT","description":"Exact source client, aud akl-api, service_ingestion. Server-to-server only."},
         "sourceActor":{"type":"apiKey","in":"header","name":"X-STRATOS-Actor-Authorization","description":"Separate current person bearer including Bearer prefix."}}
-    def operation(name,input_name,output_name):
-        return {"operationId":name,"security":[{"sourceService":[],"sourceActor":[]}],
+    def operation(name,summary,input_name,output_name):
+        return {"operationId":name,"summary":summary,"security":[{"sourceService":[],"sourceActor":[]}],
             "requestBody":{"required":True,"content":{"application/json":{"schema":ref(input_name)}}},
             "responses":{**{str(code):{"description":"Exact replay" if code==200 else "Created", "content":{"application/json":{"schema":ref(output_name)}}} for code in (200,201)},
                 **{str(code):{"description":description,"content":{"application/json":{"schema":ref("Error")}}} for code,description in
                    ((400,"Invalid request"),(401,"Missing or invalid credentials"),(403,"Denied actor, source or service"),(409,"Stale or conflicting immutable source"),(410,"Upload token expired"),(413,"File or request too large"),(422,"Invalid mandatory source/profile/TLP"),(429,"Rate limited"),(502,"Conflicting upstream response"),(503,"Required authority, scanner or ingestion unavailable"))}}}
-    paths={"/api/stratos/source-upload/preflight":{"post":operation("prepareStratosSourceUpload","SourcePrepare","PreflightResponse")},
-        "/api/stratos/source-upload/sessions/{sessionId}/confirm":{"parameters":[{"in":"path","name":"sessionId","required":True,"schema":string()}],"post":operation("confirmStratosSourceUpload","ConfirmRequest","ConfirmResponse")}}
-    status_op=operation("getStratosSourceDocumentStatus","SourceStatusRequest","SourceStatusResponse")
+    paths={"/api/stratos/source-upload/preflight":{"post":operation("prepareStratosSourceUpload","Prepare a governed STRATOS source upload","SourcePrepare","PreflightResponse")},
+        "/api/stratos/source-upload/sessions/{sessionId}/confirm":{"parameters":[{"in":"path","name":"sessionId","required":True,"schema":string()}],"post":operation("confirmStratosSourceUpload","Confirm a governed STRATOS source upload","ConfirmRequest","ConfirmResponse")}}
+    status_op=operation("getStratosSourceDocumentStatus","Read governed STRATOS source document status","SourceStatusRequest","SourceStatusResponse")
     status_op["responses"].pop("201")
     status_op["responses"]["404"]={"description":"Source document not found"}
     paths["/api/stratos/source-upload/documents/{documentId}/status"]={"parameters":[{"in":"path","name":"documentId","required":True,"schema":string()}],"post":status_op}
@@ -67,7 +67,7 @@ def generate():
     authority_schemas["SourceIntakeAuthorityRequest"]=obj(fields)
     authority_schemas["SourceIntakeAuthorityResponse"]=obj({"schema_version":fields["schema_version"],"allowed":{"const":True},
         "nonce":fields["nonce"],"request_hash":string(),"expires_at":{"type":"string","format":"date-time"}})
-    auth_op=operation("authorizeSourceDocumentIntake","AuthorityRequest","AuthorityResponse")
+    auth_op=operation("authorizeSourceDocumentIntake","Authorize governed source document intake","AuthorityRequest","AuthorityResponse")
     auth_op["responses"].pop("201")
     auth_op["description"]="STRATOS implementation required. Recompute request_hash over all request members except request_hash using recursively key-sorted compact UTF-8 JSON. Verify actual source record, revision, parent, attachment bytes/hash, actor token and effective policy/metadata. No echo-only authorization. Return nonce-bound decision with expiry >now and <=60 seconds."
     authority={"openapi":"3.1.0","info":{"title":"STRATOS source authority required by AKB","version":"1.0.0"},
