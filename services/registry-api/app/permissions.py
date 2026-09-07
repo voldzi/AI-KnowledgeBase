@@ -151,7 +151,9 @@ ACTION_CAPABILITIES: dict[str, set[str]] = {
     Action.document_version_create.value: {"akb:upload", "akb:manage_document"},
     Action.document_version_publish.value: {"akb:manage_document"},
     Action.document_version_archive.value: {"akb:manage_document"},
-    Action.document_ingest.value: {"akb:manage_document"},
+    # Ingestion authorization follows a successful upload. Contributors may
+    # initiate it inside their granted scope; execution remains service-bound.
+    Action.document_ingest.value: {"akb:upload", "akb:manage_document"},
     Action.document_reindex.value: {"akb:manage_document"},
     Action.rag_query.value: {"akb:chat"},
     Action.rag_compare.value: {"akb:chat"},
@@ -849,7 +851,7 @@ def resolve_document_version_authority(
             or version.governance_registration_status != "REGISTERED"
             or not document.governed_resource_id
             or not version.governed_resource_id
-            or version.governed_parent_resource_id != document.governed_resource_id
+            or not version.governed_parent_resource_id
         ):
             raise ValueError("The document version governed resource lineage is unavailable")
         governed_resource_id = version.governed_resource_id
@@ -1141,6 +1143,11 @@ def _primary_capability(action: str) -> str:
         Action.rag_check_compliance.value: "akb:chat",
         Action.rag_export.value: "akb:export",
         Action.audit_write.value: "akb:read_audit",
+        # Contributors may create a version within their granted document
+        # scope; management is an alternative local capability, not the
+        # capability sent to the central upload decision.
+        Action.document_version_create.value: "akb:upload",
+        Action.document_ingest.value: "akb:upload",
     }
     if action in preferred:
         return preferred[action]

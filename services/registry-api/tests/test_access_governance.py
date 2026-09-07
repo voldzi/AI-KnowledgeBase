@@ -555,6 +555,54 @@ def test_oidc_accepts_route_bound_minimal_client_credentials_token(monkeypatch) 
     assert principal.dynamic_access_loaded is False
 
 
+@pytest.mark.parametrize("account_roles", [["manage-account"], ["manage-account", "manage-account-links", "view-profile"]])
+def test_oidc_accepts_standard_keycloak_service_ingestion_token_without_username(monkeypatch, account_roles) -> None:
+    class JwkClient:
+        def __init__(self, _url):
+            pass
+
+        def get_signing_key_from_jwt(self, _token):
+            return SimpleNamespace(key="test-key")
+
+    claims = {
+        "sub": "521ddb5b-8e5d-4053-adc5-1c03629400bb",
+        "azp": "stratos-projectflow-akb-service",
+        "client_id": "stratos-projectflow-akb-service",
+        "scope": "service_ingestion",
+        "realm_access": {
+            "roles": [
+                "offline_access",
+                "service_ingestion",
+                "uma_authorization",
+                "default-roles-stratos",
+            ]
+        },
+        "resource_access": {"account": {"roles": account_roles}},
+    }
+    monkeypatch.setattr(auth_module, "PyJWKClient", JwkClient)
+    monkeypatch.setattr(auth_module.jwt, "decode", lambda *_args, **_kwargs: claims)
+    monkeypatch.setattr(
+        auth_module,
+        "governance_client",
+        lambda _settings: pytest.fail("service token must not use user projection"),
+    )
+    request = Request({
+        "type": "http",
+        "headers": [(b"authorization", b"Bearer signed-token")],
+    })
+
+    principal = _oidc_principal(
+        request,
+        _settings(
+            AKL_TRUSTED_SERVICE_CLIENT_IDS="akb-rag-service,svc-ingestion,stratos-projectflow-akb-service"
+        ),
+    )
+
+    assert principal.service_identity is True
+    assert principal.service_client_id == "stratos-projectflow-akb-service"
+    assert principal.subject_id == claims["sub"]
+
+
 def test_oidc_rejects_minimal_service_token_from_untrusted_azp(monkeypatch) -> None:
     class JwkClient:
         def __init__(self, _url):
@@ -791,7 +839,7 @@ def test_ingestion_service_document_transport_uses_fixed_central_identity(
     assert [call["operation"] for call in calls] == ["read", "upload"]
     assert [call["capability_id"] for call in calls] == [
         "akb:read_document",
-        "akb:manage_document",
+        "akb:upload",
     ]
     assert all(call["credential_token"] is None for call in calls)
 
@@ -1288,7 +1336,7 @@ def test_official_public_source_exact_version_decision_uses_fixed_service_identi
 
     assert result.allowed is True
     assert calls[0]["credential_token"] is None
-    assert calls[0]["capability_id"] == "akb:manage_document"
+    assert calls[0]["capability_id"] == "akb:upload"
 
 
 def test_public_chat_scope_keeps_exact_valid_official_reference_version(
@@ -1792,3 +1840,17 @@ def test_revoke_rejects_missing_timestamp_or_foreign_policy_hash(
             status="REVOKED",
             reason="Public approval withdrawn",
         )
+
+
+@pytest.mark.parametrize("extra", [
+    {"resource_access": {"account": {"roles": ["manage-account", "admin"]}}},
+    {"resource_access": {"account": {"roles": [{"role": "manage-account"}]}}},
+    {"resource_access": {"account": {"roles": []}}},
+    {"resource_access": {"account": {"roles": ["manage-account"]}, "foreign": {"roles": []}}},
+    {"sid": "human-session"},
+    {"preferred_username": "human"},
+])
+def test_minimal_service_identity_rejects_foreign_roles_and_human_claims(extra):
+    claims = {"scope": "service_ingestion", "azp": "stratos-archflow-akb-service",
+              "client_id": "stratos-archflow-akb-service", **extra}
+    assert auth_module._is_minimal_client_credentials_identity(claims) is False

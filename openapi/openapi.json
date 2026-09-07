@@ -28984,8 +28984,7 @@
             "default": "internal"
           },
           "information_policy": {
-            "$ref": "#/components/schemas/RegistryApiDocumentInformationPolicyBinding",
-            "description": "Authoritative policy with explicit effective TLP; external and official imports have no unclassified admission mode."
+            "$ref": "#/components/schemas/RegistryApiSourceIntakeInformationPolicyBinding"
           },
           "integration_envelope": {
             "anyOf": [
@@ -29159,6 +29158,141 @@
           "source_document_id"
         ],
         "title": "SourceDocument"
+      },
+      "RegistryApiSourceIntakeInformationPolicyBinding": {
+        "allOf": [
+          {
+            "properties": {
+              "schemaVersion": {
+                "type": "string",
+                "const": "stratos-information-policy-2",
+                "title": "Schemaversion"
+              },
+              "policyBindingId": {
+                "type": "string",
+                "pattern": "^(?:pol|pb)_[A-Za-z0-9_-]{8,}$",
+                "title": "Policybindingid"
+              },
+              "policyVersion": {
+                "type": "string",
+                "const": "information-policy-2.0.0",
+                "title": "Policyversion"
+              },
+              "handlingClass": {
+                "$ref": "#/components/schemas/RegistryApiHandlingClass"
+              },
+              "legalClassification": {
+                "type": "string",
+                "const": "NONE",
+                "title": "Legalclassification"
+              },
+              "tlp": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/RegistryApiTlpLabel"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "pap": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/RegistryApiPapLabel"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "contentCategories": {
+                "items": {
+                  "$ref": "#/components/schemas/RegistryApiContentCategory"
+                },
+                "type": "array",
+                "title": "Contentcategories"
+              },
+              "audience": {
+                "$ref": "#/components/schemas/RegistryApiPolicyAudience"
+              },
+              "obligations": {
+                "items": {
+                  "$ref": "#/components/schemas/RegistryApiPolicyObligation"
+                },
+                "type": "array",
+                "title": "Obligations"
+              },
+              "originatorId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Originatorid"
+              },
+              "issuedAt": {
+                "type": "string",
+                "format": "date-time",
+                "title": "Issuedat"
+              },
+              "reviewAt": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Reviewat"
+              },
+              "policyHash": {
+                "type": "string",
+                "pattern": "^sha256:[a-f0-9]{64}$"
+              }
+            },
+            "additionalProperties": false,
+            "type": "object",
+            "required": [
+              "schemaVersion",
+              "policyBindingId",
+              "policyVersion",
+              "handlingClass",
+              "legalClassification",
+              "contentCategories",
+              "audience",
+              "obligations",
+              "issuedAt",
+              "policyHash"
+            ],
+            "title": "InformationPolicyBinding"
+          },
+          {
+            "properties": {
+              "tlp": {
+                "type": "string",
+                "enum": [
+                  "TLP:RED",
+                  "TLP:AMBER+STRICT",
+                  "TLP:AMBER",
+                  "TLP:GREEN",
+                  "TLP:CLEAR"
+                ]
+              }
+            },
+            "type": "object",
+            "required": [
+              "tlp"
+            ]
+          }
+        ],
+        "title": "SourceIntakeInformationPolicyBinding",
+        "description": "A source authority decision must bind the exact canonical policy hash."
       },
       "RegistryApiSourceFile": {
         "properties": {
@@ -40530,140 +40664,6 @@
         "title": "DocumentGestor",
         "type": "object"
       },
-      "SourceIntakeDocumentInformationPolicyBinding": {
-        "allOf": [
-          {
-            "additionalProperties": false,
-            "properties": {
-              "schemaVersion": {
-                "const": "stratos-information-policy-2",
-                "title": "Schemaversion",
-                "type": "string"
-              },
-              "policyBindingId": {
-                "pattern": "^(?:pol|pb)_[A-Za-z0-9_-]{8,}$",
-                "title": "Policybindingid",
-                "type": "string"
-              },
-              "policyVersion": {
-                "const": "information-policy-2.0.0",
-                "title": "Policyversion",
-                "type": "string"
-              },
-              "handlingClass": {
-                "$ref": "#/components/schemas/SourceIntakeHandlingClass"
-              },
-              "legalClassification": {
-                "const": "NONE",
-                "title": "Legalclassification",
-                "type": "string"
-              },
-              "tlp": {
-                "anyOf": [
-                  {
-                    "$ref": "#/components/schemas/SourceIntakeTlpLabel"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "default": null
-              },
-              "pap": {
-                "anyOf": [
-                  {
-                    "$ref": "#/components/schemas/SourceIntakePapLabel"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "default": null
-              },
-              "contentCategories": {
-                "items": {
-                  "$ref": "#/components/schemas/SourceIntakeContentCategory"
-                },
-                "title": "Contentcategories",
-                "type": "array"
-              },
-              "audience": {
-                "$ref": "#/components/schemas/SourceIntakePolicyAudience"
-              },
-              "obligations": {
-                "items": {
-                  "$ref": "#/components/schemas/SourceIntakePolicyObligation"
-                },
-                "title": "Obligations",
-                "type": "array"
-              },
-              "originatorId": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "default": null,
-                "title": "Originatorid"
-              },
-              "issuedAt": {
-                "format": "date-time",
-                "title": "Issuedat",
-                "type": "string"
-              },
-              "reviewAt": {
-                "anyOf": [
-                  {
-                    "format": "date-time",
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "default": null,
-                "title": "Reviewat"
-              }
-            },
-            "required": [
-              "schemaVersion",
-              "policyBindingId",
-              "policyVersion",
-              "handlingClass",
-              "legalClassification",
-              "contentCategories",
-              "audience",
-              "obligations",
-              "issuedAt"
-            ],
-            "title": "InformationPolicyBinding",
-            "type": "object"
-          },
-          {
-            "properties": {
-              "tlp": {
-                "enum": [
-                  "TLP:RED",
-                  "TLP:AMBER+STRICT",
-                  "TLP:AMBER",
-                  "TLP:GREEN",
-                  "TLP:CLEAR"
-                ],
-                "type": "string"
-              }
-            },
-            "required": [
-              "tlp"
-            ],
-            "type": "object"
-          }
-        ],
-        "description": "AKB admission profile; the shared STRATOS binding remains defensive nullable.",
-        "title": "DocumentInformationPolicyBinding"
-      },
       "SourceIntakeDocumentLifecycle": {
         "additionalProperties": false,
         "properties": {
@@ -41235,8 +41235,7 @@
             "default": "internal"
           },
           "information_policy": {
-            "$ref": "#/components/schemas/SourceIntakeDocumentInformationPolicyBinding",
-            "description": "Authoritative policy with explicit effective TLP; external and official imports have no unclassified admission mode."
+            "$ref": "#/components/schemas/SourceIntakeSourceIntakeInformationPolicyBinding"
           },
           "integration_envelope": {
             "anyOf": [
@@ -41419,7 +41418,8 @@
           "source_document_id"
         ],
         "title": "SourceDocument",
-        "type": "object"
+        "type": "object",
+        "description": "ArchFlow organization_unit intake requires an explicit source-authority handoff. governance_scope.id, gestor_unit, accountability.gestor(kind organization_unit).id and the sole organization_unit policy audience scope ID must match exactly. The source authority revalidates the active canonical unit at every boundary."
       },
       "SourceIntakeSourceFile": {
         "additionalProperties": false,
@@ -41456,6 +41456,145 @@
         ],
         "title": "SourceFile",
         "type": "object"
+      },
+      "SourceIntakeSourceIntakeInformationPolicyBinding": {
+        "allOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "schemaVersion": {
+                "const": "stratos-information-policy-2",
+                "title": "Schemaversion",
+                "type": "string"
+              },
+              "policyBindingId": {
+                "pattern": "^(?:pol|pb)_[A-Za-z0-9_-]{8,}$",
+                "title": "Policybindingid",
+                "type": "string"
+              },
+              "policyVersion": {
+                "const": "information-policy-2.0.0",
+                "title": "Policyversion",
+                "type": "string"
+              },
+              "handlingClass": {
+                "$ref": "#/components/schemas/SourceIntakeHandlingClass"
+              },
+              "legalClassification": {
+                "const": "NONE",
+                "title": "Legalclassification",
+                "type": "string"
+              },
+              "tlp": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/SourceIntakeTlpLabel"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "pap": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/SourceIntakePapLabel"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "contentCategories": {
+                "items": {
+                  "$ref": "#/components/schemas/SourceIntakeContentCategory"
+                },
+                "title": "Contentcategories",
+                "type": "array"
+              },
+              "audience": {
+                "$ref": "#/components/schemas/SourceIntakePolicyAudience"
+              },
+              "obligations": {
+                "items": {
+                  "$ref": "#/components/schemas/SourceIntakePolicyObligation"
+                },
+                "title": "Obligations",
+                "type": "array"
+              },
+              "originatorId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Originatorid"
+              },
+              "issuedAt": {
+                "format": "date-time",
+                "title": "Issuedat",
+                "type": "string"
+              },
+              "reviewAt": {
+                "anyOf": [
+                  {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Reviewat"
+              },
+              "policyHash": {
+                "pattern": "^sha256:[a-f0-9]{64}$",
+                "type": "string"
+              }
+            },
+            "required": [
+              "schemaVersion",
+              "policyBindingId",
+              "policyVersion",
+              "handlingClass",
+              "legalClassification",
+              "contentCategories",
+              "audience",
+              "obligations",
+              "issuedAt",
+              "policyHash"
+            ],
+            "title": "InformationPolicyBinding",
+            "type": "object"
+          },
+          {
+            "properties": {
+              "tlp": {
+                "enum": [
+                  "TLP:RED",
+                  "TLP:AMBER+STRICT",
+                  "TLP:AMBER",
+                  "TLP:GREEN",
+                  "TLP:CLEAR"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "tlp"
+            ],
+            "type": "object"
+          }
+        ],
+        "description": "A source authority decision must bind the exact canonical policy hash.",
+        "title": "SourceIntakeInformationPolicyBinding"
       },
       "SourceIntakeSourceLocation": {
         "properties": {

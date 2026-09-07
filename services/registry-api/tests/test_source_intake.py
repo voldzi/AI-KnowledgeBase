@@ -7,7 +7,9 @@ from pydantic import ValidationError
 from sqlalchemy import select, func
 from app import source_intake as intake
 from app.auth import Principal, get_current_principal
+from app.information_policy import canonical_policy_hash
 from app.models import Document, DocumentVersion
+from app.schemas import DocumentInformationPolicyBinding
 from app.access_governance import GovernanceDenied
 from document_profile_fixtures import root_profile, version_request, verified_profile_authority
 from document_policy_fixtures import admitted_policy
@@ -17,6 +19,7 @@ from document_intake_fixtures import _intake_receipt
 def request_body(source="STRATOS_PROJECTFLOW", entity="project"):
     is_project = source == "STRATOS_PROJECTFLOW"
     policy = admitted_policy()
+    policy["policyHash"] = canonical_policy_hash(DocumentInformationPolicyBinding.model_validate(policy))
     policy.update(originatorId="user_owner")
     policy["obligations"] = ["AUDIT_ACCESS"]
     profile = root_profile()
@@ -221,3 +224,25 @@ def test_authority_wire_payload_matches_delivered_schema(client,source_runtime):
     assert 'policyBindingId' in wire['document']['information_policy']
     assert 'recordedOn' in wire['version_profile']['lifecycle']
     assert 'policy_binding_id' not in wire['document']['information_policy']
+
+
+@pytest.mark.parametrize("mutation", [None, "scope", "gestor", "gestor_label", "audience", "extra_scope", "organization", "person"])
+def test_archflow_unit_handoff_requires_exact_source_gestor_and_audience(mutation):
+    raw = request_body("STRATOS_ARCHFLOW", "need")
+    doc = raw["document"]
+    doc["governance_scope"] = {"type": "organization_unit", "id": "unit_knowledge"}
+    doc["document_profile"]["accountability"]["gestor"] = {"kind": "organization_unit", "id": "unit_knowledge"}
+    doc["information_policy"]["audience"] = {"organizationId": "org_stratos", "scopeType": "organization_unit", "scopeIds": ["unit_knowledge"], "recipientSubjectIds": []}
+    if mutation == "scope": doc["governance_scope"]["id"] = "unit_other"
+    if mutation == "gestor": doc["document_profile"]["accountability"]["gestor"]["id"] = "unit_other"
+    if mutation == "gestor_label": doc["gestor_unit"] = "unit_other"
+    if mutation == "audience": doc["information_policy"]["audience"]["scopeIds"] = ["unit_other"]
+    if mutation == "extra_scope": doc["information_policy"]["audience"]["scopeIds"].append("unit_other")
+    if mutation == "organization": doc["information_policy"]["audience"] = {"organizationId": "org_stratos", "scopeType": "organization", "scopeIds": [], "recipientSubjectIds": []}
+    if mutation == "person": doc["document_profile"]["accountability"]["gestor"]["kind"] = "person"
+    doc["information_policy"]["policyHash"] = canonical_policy_hash(DocumentInformationPolicyBinding.model_validate(
+        {key: value for key, value in doc["information_policy"].items() if key != "policyHash"}))
+    if mutation is None:
+        assert intake.SourcePrepare.model_validate(raw).document.governance_scope.id == "unit_knowledge"
+    else:
+        with pytest.raises(ValidationError): intake.SourcePrepare.model_validate(raw)

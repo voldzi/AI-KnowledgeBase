@@ -61,7 +61,7 @@ results['projectflow_source_identity']=inside('stratos-projectflow-api','node',r
   if(!tokenResponse.ok) { console.log(JSON.stringify({token_status:tokenResponse.status}));return; }
   const token=(await tokenResponse.json()).access_token;
   const claims=JSON.parse(Buffer.from(token.split('.')[1],'base64url'));
-  const response=await fetch(e.PROJECTFLOW_AKB_SOURCE_INTAKE_BASE_URL+'/api/stratos/source-upload/preflight',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:'{}'});
+  const response=await fetch(e.PROJECTFLOW_AKB_SOURCE_INTAKE_BASE_URL+'/api/stratos/source-upload/preflight',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({document:{external_system:'STRATOS_PROJECTFLOW'}})});
   const result=await response.json(); const audiences=Array.isArray(claims.aud)?claims.aud:[claims.aud];
   console.log(JSON.stringify({token_status:200,audience_ok:audiences.includes('akl-api'),role_ok:(claims.realm_access?.roles??[]).includes('service_ingestion'),subject_ok:claims.sub===e.PROJECTFLOW_AKB_SERVICE_SUBJECT_ID,status:response.status,code:result.error?.code}));
 })().catch(()=>{console.log(JSON.stringify({error:'unavailable'}));process.exitCode=1;});
@@ -74,7 +74,7 @@ results['archflow_source_identity']=inside('stratos-api','node',r'''
   if(!tokenResponse.ok) { console.log(JSON.stringify({token_status:tokenResponse.status}));return; }
   const token=(await tokenResponse.json()).access_token;
   const claims=JSON.parse(Buffer.from(token.split('.')[1],'base64url'));
-  const response=await fetch(e.ARCHFLOW_AKB_SOURCE_INTAKE_BASE_URL+'/api/stratos/source-upload/preflight',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:'{}'});
+  const response=await fetch(e.ARCHFLOW_AKB_SOURCE_INTAKE_BASE_URL+'/api/stratos/source-upload/preflight',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({document:{external_system:'STRATOS_ARCHFLOW'}})});
   const result=await response.json(); const audiences=Array.isArray(claims.aud)?claims.aud:[claims.aud];
   console.log(JSON.stringify({token_status:200,audience_ok:audiences.includes('akl-api'),role_ok:(claims.realm_access?.roles??[]).includes('service_ingestion'),subject_ok:claims.sub===e.ARCHFLOW_AKB_SERVICE_SUBJECT_ID,status:response.status,code:result.error?.code}));
 })().catch(()=>{console.log(JSON.stringify({error:'unavailable'}));process.exitCode=1;});
@@ -93,8 +93,12 @@ print(json.dumps({"source_authority_configured":bool(s.stratos_source_intake_aut
 print(json.dumps(results,indent=2))
 expected=all(results[name]['status']==401 for name in ('anonymous_prepare','anonymous_confirm','anonymous_status'))
 expected=expected and results['budget_cannot_impersonate_source']=={'token_status':200,'status':403,'code':'SOURCE_SYSTEM_NOT_ALLOWED'}
-identity_expected={'token_status':200,'audience_ok':True,'role_ok':True,'subject_ok':True,'status':403,'code':'AUTH_FORBIDDEN'}
-expected=expected and results['projectflow_source_identity']==identity_expected
-expected=expected and results['archflow_source_identity']==identity_expected
+identity_common={'token_status':200,'audience_ok':True,'role_ok':True,'subject_ok':True}
+# The intentionally incomplete probe must never create a session or document.
+# Newer source contracts reject it at the canonical policy-binding boundary;
+# older compatible authorities may first reject the absent source actor proof.
+identity_failures=({**identity_common,'status':422,'code':'POLICY_BINDING_INVALID'}, {**identity_common,'status':403,'code':'AUTH_FORBIDDEN'})
+expected=expected and results['projectflow_source_identity'] in identity_failures
+expected=expected and results['archflow_source_identity'] in identity_failures
 expected=expected and results['registry_boundary']['auth_mode']=='oidc' and results['registry_boundary']['source_authority_configured']
 raise SystemExit(0 if expected else 1)

@@ -238,9 +238,8 @@ def test_live_and_published_document_admission_schema_are_equivalent():
     published = yaml.safe_load((Path(__file__).parents[1] / "openapi.yaml").read_text())["components"]["schemas"]
     live = app.openapi()["components"]["schemas"]
     strict = deepcopy(published["DocumentInformationPolicyBinding"])
-    strict["allOf"][0] = published["InformationPolicyBinding"]
     assert strict == live["DocumentInformationPolicyBinding"]
-    assert {"type": "null"} in published["InformationPolicyBinding"]["properties"]["tlp"]["anyOf"]
+    assert {"type": "null"} in strict["allOf"][0]["properties"]["tlp"]["anyOf"]
     for name in ("DocumentCreate", "DocumentPatch", "ExternalDocumentUpsertRequest", "DocumentVersionCreate",
                  "StratosBudgetUploadExternalDocumentUpsertRequest", "StratosBudgetUploadDocumentVersionCreate",
                  "StratosBudgetUploadExternalDocumentCurrentUpdateRequest"):

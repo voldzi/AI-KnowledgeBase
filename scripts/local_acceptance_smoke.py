@@ -76,8 +76,14 @@ print(json.dumps({'clean_allowed':clean.endswith('OK'),'standard_test_detected':
 """)
 print(json.dumps(results, ensure_ascii=False, indent=2))
 expected = all(v.get("http_status") == 200 for k, v in results.items() if k.endswith(("_health", "_ready", "_web")))
-expected = expected and results["stratos_admission"] == {"valid_request_status":503,"reason_code":"DOCUMENT_ADMISSION_CATALOG_NOT_READY","invalid_request_status":400,"anonymous_status":401}
-expected = expected and results["akb_admission"]["http_status"] == 503
-expected = expected and results["akb_admission"]["reason_code"] == "document_profile_admission_unavailable"
+expected = expected and results["stratos_admission"]["valid_request_status"] == 201
+expected = expected and results["stratos_admission"].get("reason_code") is None
+expected = expected and results["stratos_admission"]["invalid_request_status"] == 400
+expected = expected and results["stratos_admission"]["anonymous_status"] == 401
+expected = expected and results["akb_admission"]["http_status"] == 200
+expected = expected and results["akb_admission"]["reason_code"] is None
+expected = expected and {
+    "status", "service", "document_profile_admission", "catalog_revision", "catalog_hash"
+}.issubset(results["akb_admission"]["body_keys"])
 expected = expected and all(results["antivirus"].values())
 raise SystemExit(0 if expected else 1)

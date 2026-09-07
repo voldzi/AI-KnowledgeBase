@@ -66,7 +66,7 @@ def prepare(stratos: Path) -> None:
     prepare_tls()
     credential_path = STATE / "credentials.json"
     credentials = json.loads(credential_path.read_text()) if credential_path.exists() else {}
-    for key in ("budget_session", "pf_session", "postgres", "minio", "keycloak", "operator", "break_glass", "policy", "session", "session_store", "session_encryption", "upload", "ingestion", "ticket", "jwt", "renderer", "budget_cursor", "pf_cursor", "pf_policy", "pf_availability", "pf_budget", "projectflow_source_state", "archflow_source_state", "svc-ingestion", "svc-akb-web-ingestion", "akb-rag-service", "stratos-akb-service", "stratos-projectflow-akb-service", "stratos-archflow-akb-service"):
+    for key in ("budget_session", "pf_session", "postgres", "minio", "keycloak", "operator", "break_glass", "policy", "session", "session_store", "session_encryption", "upload", "ingestion", "llm_gateway", "ticket", "jwt", "renderer", "budget_cursor", "pf_cursor", "pf_policy", "pf_availability", "pf_budget", "projectflow_source_state", "archflow_source_state", "svc-ingestion", "svc-akb-web-ingestion", "akb-rag-service", "stratos-akb-service", "stratos-projectflow-akb-service", "stratos-archflow-akb-service"):
         credentials.setdefault(key, secrets.token_hex(32))
     for key in ("operator_subject", "break_glass_subject", "projectflow_service_subject", "archflow_service_subject"):
         credentials.setdefault(key, str(uuid.uuid4()))
@@ -117,6 +117,7 @@ def prepare(stratos: Path) -> None:
         AKL_TRUSTED_SERVICE_CLIENT_IDS="akb-rag-service,stratos-akb-service,stratos-projectflow-akb-service,stratos-archflow-akb-service,svc-budget-controlled-rules,svc-ingestion",
         AKL_SERVICE_CLIENT_ROUTE_GRANTS="akb-rag-service=authz|audit|idempotency,stratos-akb-service=stratos-budget-upload,stratos-projectflow-akb-service=stratos-source-intake,stratos-archflow-akb-service=stratos-source-intake,svc-budget-controlled-rules=controlled-rules-read,svc-ingestion=authz|audit|documents-read|ingestion-status",
         AKL_STRATOS_SOURCE_INTAKE_AUTHORITY_URL="http://stratos-api:4000/api/v1/information-governance/source-document-intake/authorize",
+        AKL_STRATOS_SERVICE_POLICY_BINDING_ID="pb_akb_local_service_audit_20260906",
         AKB_POLICY_SERVICE_TOKEN=c["policy"],
     )
     services["registry-api"]["ports"] = ["127.0.0.1:18001:8000"]
@@ -126,10 +127,10 @@ def prepare(stratos: Path) -> None:
     services["governance-service"]["environment"]["AKL_AUTH_MODE"] = "bearer"
     for name, client in [("ingestion-service", "svc-ingestion"), ("rag-retrieval-service", "akb-rag-service")]:
         services[name]["environment"].update(AKL_REGISTRY_SERVICE_TOKEN_URL=ISSUER + "/protocol/openid-connect/token", AKL_REGISTRY_SERVICE_CLIENT_ID=client, AKL_REGISTRY_SERVICE_CLIENT_SECRET=c[client])
-    services["ingestion-service"]["environment"].update(AKL_INGESTION_OBJECT_STORAGE_MODE="s3", AKL_INGESTION_DOCLING_MODE="off")
-    services["rag-retrieval-service"]["environment"].update(AKL_RAG_AUTHZ_MODE="registry", AKL_RAG_RETRIEVER_MODE="qdrant", AKL_RAG_FULLTEXT_MODE="opensearch", AKL_RAG_LLM_CLIENT_MODE="http")
+    services["ingestion-service"]["environment"].update(AKL_INGESTION_OBJECT_STORAGE_MODE="s3", AKL_INGESTION_DOCLING_MODE="off", AKL_LLM_GATEWAY_TOKEN=c["llm_gateway"])
+    services["rag-retrieval-service"]["environment"].update(AKL_RAG_AUTHZ_MODE="registry", AKL_RAG_RETRIEVER_MODE="qdrant", AKL_RAG_FULLTEXT_MODE="opensearch", AKL_RAG_LLM_CLIENT_MODE="http", AKL_LLM_GATEWAY_TOKEN=c["llm_gateway"])
     services["llm-gateway-service"].pop("depends_on", None)
-    services["llm-gateway-service"]["environment"].update(AKL_LLM_ENABLED_PROVIDERS="ollama", AKL_LLM_DEFAULT_PROVIDER="ollama", AKL_OLLAMA_BASE_URL="http://host.docker.internal:11434", AKL_OLLAMA_BASE_URLS="http://host.docker.internal:11434", AKL_LLM_ALLOW_MODEL_PULL="false")
+    services["llm-gateway-service"]["environment"].update(AKL_AUTH_MODE="bearer", AKL_SERVICE_TOKEN=c["llm_gateway"], AKL_LLM_ENABLED_PROVIDERS="ollama", AKL_LLM_DEFAULT_PROVIDER="ollama", AKL_OLLAMA_BASE_URL="http://host.docker.internal:11434", AKL_OLLAMA_BASE_URLS="http://host.docker.internal:11434", AKL_LLM_ALLOW_MODEL_PULL="false")
     services["llm-gateway-service"]["environment"]["AKL_LLM_MODEL_PROVIDER_MAP"] = json.dumps({"gemma4:12b-mlx": "ollama", "bge-m3": "ollama"})
     web = services["web"]
     app_urls = {"NEXT_PUBLIC_AKB_URL": "http://localhost:3220/akb", "NEXT_PUBLIC_CHAT_URL": "http://localhost:3221", "NEXT_PUBLIC_STRATOS_HOME_URL": "http://localhost:3240", "NEXT_PUBLIC_PROJECTFLOW_URL": "http://localhost:3231", "NEXT_PUBLIC_ARCHFLOW_URL": "http://localhost:3232"}
@@ -255,6 +256,11 @@ def prepare(stratos: Path) -> None:
     for client_id, port, path in [("akl-web", 3220, "/akb"), ("akb-chat-web", 3221, ""), ("budget-web", 3240, ""), ("projectflow-web", 3231, "")]:
         origin = f"http://localhost:{port}"
         clients.append({"clientId": client_id, "enabled": True, "protocol": "openid-connect", "publicClient": True, "standardFlowEnabled": True, "directAccessGrantsEnabled": False, "redirectUris": [origin + path + "/*"], "webOrigins": [origin], "attributes": {"post.logout.redirect.uris": origin + path + "/*", "pkce.code.challenge.method": "S256"}, "defaultClientScopes": ["basic", "profile", "email", "roles"], "protocolMappers": [audience_mapper(a) for a in ["akl-api", "budget-web", "projectflow-web", "stratos-access-api"]] + [{"name": "identity-audience", "protocol": "openid-connect", "protocolMapper": "oidc-hardcoded-claim-mapper", "config": {"claim.value": "employees", "claim.name": "identity_audience", "jsonType.label": "String", "access.token.claim": "true", "id.token.claim": "false"}}]})
+    # ArchFlow uses Budget's server-owned OIDC client with its own public return URL.
+    budget_client = next(client for client in clients if client["clientId"] == "budget-web")
+    budget_client["redirectUris"].append("http://localhost:3232/*")
+    budget_client["webOrigins"].append("http://localhost:3232")
+    budget_client["attributes"]["post.logout.redirect.uris"] += "##http://localhost:3232/*"
     service_subjects = {
         "stratos-projectflow-akb-service": c["projectflow_service_subject"],
         "stratos-archflow-akb-service": c["archflow_service_subject"],

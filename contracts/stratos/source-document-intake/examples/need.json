@@ -28,7 +28,8 @@
       ],
       "originatorId": "user_owner",
       "issuedAt": "2026-01-01T00:00:00Z",
-      "reviewAt": null
+      "reviewAt": null,
+      "policyHash": "sha256:11c92798cab6fec58d4f3f6e2e83fc340dcd9b6429f5fbcacd01eb97a95755aa"
     },
     "owner": {
       "user_id": "user_owner"

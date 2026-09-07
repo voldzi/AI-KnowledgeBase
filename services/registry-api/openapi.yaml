@@ -12137,9 +12137,7 @@ components:
           $ref: '#/components/schemas/Classification'
           default: internal
         information_policy:
-          $ref: '#/components/schemas/DocumentInformationPolicyBinding'
-          description: Authoritative policy with explicit effective TLP; external
-            and official imports have no unclassified admission mode.
+          $ref: '#/components/schemas/SourceIntakeInformationPolicyBinding'
         integration_envelope:
           anyOf:
           - $ref: '#/components/schemas/IntegrationEnvelope'
@@ -12236,6 +12234,93 @@ components:
       - owner
       - source_document_id
       title: SourceDocument
+    SourceIntakeInformationPolicyBinding:
+      allOf:
+      - properties:
+          schemaVersion:
+            type: string
+            const: stratos-information-policy-2
+            title: Schemaversion
+          policyBindingId:
+            type: string
+            pattern: ^(?:pol|pb)_[A-Za-z0-9_-]{8,}$
+            title: Policybindingid
+          policyVersion:
+            type: string
+            const: information-policy-2.0.0
+            title: Policyversion
+          handlingClass:
+            $ref: '#/components/schemas/HandlingClass'
+          legalClassification:
+            type: string
+            const: NONE
+            title: Legalclassification
+          tlp:
+            anyOf:
+            - $ref: '#/components/schemas/TlpLabel'
+            - type: 'null'
+          pap:
+            anyOf:
+            - $ref: '#/components/schemas/PapLabel'
+            - type: 'null'
+          contentCategories:
+            items:
+              $ref: '#/components/schemas/ContentCategory'
+            type: array
+            title: Contentcategories
+          audience:
+            $ref: '#/components/schemas/PolicyAudience'
+          obligations:
+            items:
+              $ref: '#/components/schemas/PolicyObligation'
+            type: array
+            title: Obligations
+          originatorId:
+            anyOf:
+            - type: string
+            - type: 'null'
+            title: Originatorid
+          issuedAt:
+            type: string
+            format: date-time
+            title: Issuedat
+          reviewAt:
+            anyOf:
+            - type: string
+              format: date-time
+            - type: 'null'
+            title: Reviewat
+          policyHash:
+            type: string
+            pattern: ^sha256:[a-f0-9]{64}$
+        additionalProperties: false
+        type: object
+        required:
+        - schemaVersion
+        - policyBindingId
+        - policyVersion
+        - handlingClass
+        - legalClassification
+        - contentCategories
+        - audience
+        - obligations
+        - issuedAt
+        - policyHash
+        title: InformationPolicyBinding
+      - properties:
+          tlp:
+            type: string
+            enum:
+            - TLP:RED
+            - TLP:AMBER+STRICT
+            - TLP:AMBER
+            - TLP:GREEN
+            - TLP:CLEAR
+        type: object
+        required:
+        - tlp
+      title: SourceIntakeInformationPolicyBinding
+      description: A source authority decision must bind the exact canonical policy hash.
     SourceFile:
       properties:
         file_name:

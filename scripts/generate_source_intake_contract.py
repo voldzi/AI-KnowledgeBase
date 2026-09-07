@@ -23,6 +23,12 @@ def generate():
         schema=model.model_json_schema(ref_template="#/components/schemas/SourceIntake{model}")
         for name,value in schema.pop("$defs",{}).items(): schemas["SourceIntake"+name]=value
         schemas["SourceIntake"+model.__name__]=schema
+    schemas["SourceIntakeSourceDocument"]["description"] = (
+        "ArchFlow organization_unit intake requires an explicit source-authority handoff. "
+        "governance_scope.id, gestor_unit, accountability.gestor(kind organization_unit).id "
+        "and the sole organization_unit policy audience scope ID must match exactly. "
+        "The source authority revalidates the active canonical unit at every boundary."
+    )
     schemas["SourceIntakeError"] = obj({"error": {"type":"object","required":["code","message","trace_id"],"properties":{
         "code":string(),"message":string(),"trace_id":string(),"details":{"type":"object"}},"additionalProperties":True}})
     schemas["SourceIntakeConfirmRequest"]=obj({"upload_token":string(),"upload_receipt":string()})

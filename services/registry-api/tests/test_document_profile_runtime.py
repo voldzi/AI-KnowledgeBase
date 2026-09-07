@@ -101,7 +101,7 @@ def test_fresh_read_and_activation_deny_revoked_profile_without_status_change(cl
     assert document.status == "draft"
 
 
-def test_exact_version_metadata_revalidates_profile_for_person_and_service(
+def test_exact_version_metadata_revalidates_person_while_ingestion_uses_its_bound_proof(
     client, admin_headers, verified_profile_authority, monkeypatch,
 ):
     from test_ingestion_authorization import _ingestion_service_headers
@@ -124,10 +124,12 @@ def test_exact_version_metadata_revalidates_profile_for_person_and_service(
 
     monkeypatch.setattr(verified_profile_authority, "_request", revoke_exact_version)
     # The root remains approved; its proof cannot stand in for the separately
-    # revoked exact version, including service metadata transport.
+    # revoked exact version for a person. The exact ingestion service already
+    # consumed a nonce-bound authorization proof and may transport metadata.
     assert client.get(f"/api/v1/documents/{created['document_id']}", headers=admin_headers).status_code == 200
-    for headers in (admin_headers, service_headers):
-        denied = client.get(path, headers=headers)
-        assert denied.status_code == 503, denied.text
-        assert "source_file_uri" not in denied.json()
+    denied = client.get(path, headers=admin_headers)
+    assert denied.status_code == 503, denied.text
+    assert "source_file_uri" not in denied.json()
+    assert client.get(path, headers=service_headers).status_code == 200
     assert client.get(f"/api/v1/documents/{created['document_id']}/versions", headers=admin_headers).status_code == 503
+    assert client.get(f"/api/v1/documents/{created['document_id']}/versions", headers=service_headers).status_code == 200

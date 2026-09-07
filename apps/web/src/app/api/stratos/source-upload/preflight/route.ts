@@ -16,7 +16,12 @@ export async function POST(request: NextRequest) {
     const { principal: service, body } = await authenticateStratosDocumentServiceJsonRequest(request);
     const sourceDocument = body.document as Record<string, unknown> | undefined;
     const source = sourceSystemForService(service, sourceDocument?.external_system);
-    const informationPolicy = parseDocumentInformationPolicy(sourceDocument?.information_policy);
+    const sourcePolicy = sourceDocument?.information_policy as Record<string, unknown> | undefined;
+    const { policyHash: sourcePolicyHash, ...sourcePolicyValues } = sourcePolicy ?? {};
+    const informationPolicy = parseDocumentInformationPolicy(sourcePolicyValues);
+    if (typeof sourcePolicyHash !== "string" || sourcePolicyHash !== policyHash(informationPolicy)) {
+      throw new UploadPreflightError(422, "SOURCE_INTAKE_EXPLICIT_POLICY_REQUIRED", "A canonical source policyHash is required.");
+    }
     const correlationId = requiredSourceText(body.correlation_id);
     const sourceRevision = requiredSourceText(body.source_revision);
     const versionLabel = requiredSourceText(body.version_label);

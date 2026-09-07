@@ -27,7 +27,7 @@ from app.information_policy import canonical_policy_hash
 from app.middleware import get_correlation_id
 from app.models import ExternalDocumentRef
 from app.permissions import Action, require_document_action
-from app.schemas import ExternalDocumentUpsertRequest, ExternalDocumentResponse, DocumentVersionCreate, DocumentVersionResponse, DocumentFileCreate
+from app.schemas import DocumentInformationPolicyBinding, ExternalDocumentUpsertRequest, ExternalDocumentResponse, DocumentVersionCreate, DocumentVersionResponse, DocumentFileCreate
 
 SOURCE_CLIENTS = {"STRATOS_PROJECTFLOW": "stratos-projectflow-akb-service", "STRATOS_ARCHFLOW": "stratos-archflow-akb-service"}
 SOURCE_SYSTEMS = frozenset(SOURCE_CLIENTS)
@@ -38,6 +38,26 @@ class Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class SourceIntakeInformationPolicyBinding(DocumentInformationPolicyBinding):
+    """A source authority decision must bind the exact canonical policy hash."""
+
+    policy_hash: str = Field(alias="policyHash", pattern=r"^sha256:[a-f0-9]{64}$")
+
+    @classmethod
+    def __get_pydantic_json_schema__(cls, core_schema, handler):
+        schema = super().__get_pydantic_json_schema__(core_schema, handler)
+        base = schema["allOf"][0]
+        base["properties"]["policyHash"] = {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}
+        base["required"].append("policyHash")
+        return schema
+
+    @model_validator(mode="after")
+    def exact_hash(self):
+        if self.policy_hash != canonical_policy_hash(self):
+            raise ValueError("policyHash must match the canonical information policy")
+        return self
+
+
 class SourceDocument(ExternalDocumentUpsertRequest):
     model_config = ConfigDict(extra="forbid")
     external_system: Literal["STRATOS_PROJECTFLOW", "STRATOS_ARCHFLOW"]
@@ -45,6 +65,7 @@ class SourceDocument(ExternalDocumentUpsertRequest):
     tenant_id: Literal["org_stratos"] = "org_stratos"
     source_document_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
     project_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+    information_policy: SourceIntakeInformationPolicyBinding
 
     @model_validator(mode="after")
     def exact_source(self):
@@ -69,10 +90,18 @@ class SourceDocument(ExternalDocumentUpsertRequest):
             if self.entity_type != "need" or self.project_id is not None:
                 raise ValueError("ArchFlow source is an exact need record")
             prefix = f"archflow-need:{self.entity_id}"
-            if not self.governance_scope or self.governance_scope.type not in {"organization", "own"}:
-                raise ValueError("ArchFlow requires the authoritative organization or own scope")
+            if not self.governance_scope or self.governance_scope.type not in {"organization", "own", "organization_unit"}:
+                raise ValueError("ArchFlow requires its authoritative organization, own or exact unit scope")
             if self.governance_scope.type == "organization" and self.governance_scope.id != "org_stratos":
                 raise ValueError("Organization scope must name org_stratos")
+            if self.governance_scope.type == "organization_unit":
+                gestor = self.document_profile.accountability.gestor
+                audience = self.information_policy.audience
+                if (not self.governance_scope.id or gestor.kind != "organization_unit"
+                    or gestor.id != self.governance_scope.id or self.gestor_unit != self.governance_scope.id
+                    or audience.scope_type != "organization_unit"
+                    or audience.scope_ids != [self.governance_scope.id] or audience.recipient_subject_ids):
+                    raise ValueError("ArchFlow unit source, gestor and policy audience must name the same exact unit")
         if self.external_ref != f"{prefix}:document:{self.source_document_id}":
             raise ValueError("external_ref must be canonical and stable across versions")
         provenance = self.document_profile.provenance
@@ -87,12 +116,20 @@ class SourceDocument(ExternalDocumentUpsertRequest):
         allowed = {"organization", "recipient_set"}
         if self.project_id:
             allowed.add("project")
+        elif self.governance_scope and self.governance_scope.type == "organization_unit":
+            allowed.add("organization_unit")
         if policy.audience.scope_type not in allowed or (policy.audience.scope_type == "project" and policy.audience.scope_ids != [self.project_id]):
             raise ValueError("Audience must preserve the exact source scope")
         return self
 
     def registration(self):
         data = self.model_dump(mode="json", by_alias=True, exclude={"source_document_id", "project_id"})
+        # The hash is source-authority evidence.  The shared registry binding
+        # remains the canonical policy fields only.
+        data["information_policy"].pop("policyHash", None)
+        # The AKB root is not a child resource of the source system.  The
+        # immutable source parent remains in provenance and source metadata.
+        data["parent_governed_resource_id"] = None
         data["metadata"] = {"source_intake": self.model_dump(mode="json", by_alias=True)}
         return ExternalDocumentUpsertRequest.model_validate(data)
 
@@ -220,7 +257,8 @@ def prepare(payload: SourcePrepare, request: Request, db: Session = Depends(get_
     natural = f"{payload.document.tenant_id}:{payload.document.external_system}:{payload.document.external_ref}"
     api._lock_budget_upload_identity(db, "source:" + natural)
     external = api._upsert_external_document(payload.document.registration(), db, actor,
-        source_document_id="doc_source_" + sha256(natural.encode()).hexdigest()[:32])
+        source_document_id="doc_source_" + sha256(natural.encode()).hexdigest()[:32],
+        policy_binding_prevalidated=True)
     stored = api._get_external_document_ref(db, external.external_document.external_document_id)
     if SourceDocument.model_validate(stored.ref_metadata["source_intake"]) != payload.document:
         raise problem(409, "source_intake_replay_conflict", "Source registration cannot replace its original coordinates or profile")
@@ -253,8 +291,12 @@ def authorize(payload, document_id, request, db, service, stage):
         raise problem(409, "source_intake_lineage_conflict", "The policy or admitted root changed after preparation")
     require_document_action(actor, Action.document_version_create, document, db)
     require_fresh_document_profile(document, actor_id=actor.subject_id)
+    authority_version = VersionDraft(
+        lifecycle=payload.document_profile.lifecycle,
+        domain_evidence=payload.document_profile.domain_evidence,
+    )
     require_source_authority(source, file=payload.file, source_revision=payload.source_revision,
-        version_profile=payload.document_profile, actor=actor, bearer=bearer, service=service, stage=stage)
+        version_profile=authority_version, actor=actor, bearer=bearer, service=service, stage=stage)
     return actor, external
 
 

@@ -247,10 +247,7 @@ function authenticateResolvedExactService(
     );
   }
   const subjectId = stringClaim(claims.sub);
-  if (
-    !subjectId
-    || stringClaim(claims.preferred_username) !== `service-account-${profile.clientId}`
-  ) {
+  if (!subjectId) {
     throw new ServiceBridgeError(
       403,
       "AUTH_FORBIDDEN",

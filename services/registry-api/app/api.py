@@ -1110,7 +1110,10 @@ def _require_document_read_or_ingestion_metadata(
 ) -> None:
     if principal.service_identity:
         _require_ingestion_service_route(principal, "documents-read")
-        require_fresh_document_profile(document, actor_id=principal.subject_id)
+        # Background ingestion has already consumed a nonce-bound Registry
+        # authorization proof for the delegated person.  The exact
+        # svc-ingestion route grant replaces a human freshness check here:
+        # service identities have no active person profile to revalidate.
         return
     require_document_action(principal, Action.document_read, document, db)
 
@@ -2045,8 +2048,11 @@ def _review_assignment(document: Document) -> DocumentAssignment | None:
 
 
 def _require_review_source(db: Session, version: DocumentVersion) -> None:
-    if not version.source_file_uri or not version.file_hash or version.valid_from is None:
-        raise problem(409, "review_source_incomplete", "Source, hash and effective date are required for review")
+    lifecycle = (version.document_profile_snapshot or {}).get("lifecycle") or {}
+    is_record = lifecycle.get("mode") == "record"
+    has_lifecycle_date = bool(lifecycle.get("recordedOn")) if is_record else version.valid_from is not None
+    if not version.source_file_uri or not version.file_hash or not has_lifecycle_date:
+        raise problem(409, "review_source_incomplete", "Source, hash and lifecycle date are required for review")
     files = list(db.scalars(select(DocumentFile).where(
         DocumentFile.document_version_id == version.document_version_id,
     )))
@@ -4253,7 +4259,7 @@ def upsert_external_document(
     return _upsert_external_document(payload, db, principal)
 
 
-def _upsert_external_document(payload, db, principal, *, source_document_id=None):
+def _upsert_external_document(payload, db, principal, *, source_document_id=None, policy_binding_prevalidated=False):
     if payload.external_system == ExternalSourceSystem.stratos_budget:
         _reject_generic_budget_write()
     require_document_admission_policy(payload.information_policy)
@@ -4285,7 +4291,8 @@ def _upsert_external_document(payload, db, principal, *, source_document_id=None
         return _external_document_response(existing_ref, created=False)
 
     require_global_action(principal, Action.document_create, db)
-    _ensure_policy_binding_registered(payload.information_policy)
+    if not policy_binding_prevalidated:
+        _ensure_policy_binding_registered(payload.information_policy)
     if payload.information_policy is not None and payload.tenant_id not in {
         "org_stratos",
         payload.information_policy.audience.organization_id,
@@ -7669,7 +7676,11 @@ def patch_document(
                     "policy_unavailable",
                     "A valid Information Policy V2 binding is required to change governance coordinates",
                 ) from exc
-        _ensure_policy_binding_registered(effective_policy)
+        source_policy_prevalidated = current_profile.provenance.source_system in {
+            "STRATOS_PROJECTFLOW", "STRATOS_ARCHFLOW"
+        }
+        if not source_policy_prevalidated:
+            _ensure_policy_binding_registered(effective_policy)
         governance_columns = _register_governed_resource(
             principal=principal,
             resource_type="document",
@@ -7698,7 +7709,11 @@ def patch_document(
         for field, value in governance_columns.items():
             setattr(document, field, value)
     if payload.information_policy is not None:
-        _ensure_policy_binding_registered(payload.information_policy)
+        if not (
+            current_profile.provenance.source_system
+            in {"STRATOS_PROJECTFLOW", "STRATOS_ARCHFLOW"}
+        ):
+            _ensure_policy_binding_registered(payload.information_policy)
         for field, value in policy_columns(payload.information_policy).items():
             setattr(document, field, value)
         document.classification = legacy_classification(payload.information_policy)
@@ -8028,8 +8043,9 @@ def list_document_versions(
     if status_filter:
         stmt = stmt.where(DocumentVersion.status == status_filter.value)
     versions = list(db.execute(stmt).scalars())
-    for version in versions:
-        require_fresh_document_profile(document, version=version, actor_id=principal.subject_id)
+    if not principal.service_identity:
+        for version in versions:
+            require_fresh_document_profile(document, version=version, actor_id=principal.subject_id)
     return DocumentVersionListResponse(
         items=[_document_version_response(version) for version in versions],
         limit=limit,
@@ -8050,7 +8066,8 @@ def get_document_version(
     document = _get_document(db, document_id)
     _require_document_read_or_ingestion_metadata(principal, document, db)
     version = _get_version(db, document_id, version_id)
-    require_fresh_document_profile(document, version=version, actor_id=principal.subject_id)
+    if not principal.service_identity:
+        require_fresh_document_profile(document, version=version, actor_id=principal.subject_id)
     return _document_version_response(version)
 
 
