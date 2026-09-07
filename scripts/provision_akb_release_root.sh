@@ -9,7 +9,7 @@ set +x
 DEPLOY_USER="$1"
 GIT_URL="$2"
 [[ "$DEPLOY_USER" =~ ^[a-z_][a-z0-9_-]*$ ]] || { printf 'Invalid deploy user.\n' >&2; exit 2; }
-[[ "$GIT_URL" =~ ^https:// ]] || { printf 'Release Git URL must use HTTPS.\n' >&2; exit 2; }
+[[ "$GIT_URL" =~ ^ssh://git@git\.home\.cz:2222/[A-Za-z0-9._/-]+\.git$ ]] || { printf 'Release Git URL must be the approved Gitea SSH URL.\n' >&2; exit 2; }
 id "$DEPLOY_USER" >/dev/null
 ROOT=/srv/akb
 for directory in "$ROOT" "$ROOT/releases" "$ROOT/state" "$ROOT/env" "$ROOT/git" "$ROOT/prebuilt" "$ROOT/backups" "$ROOT/ci-deployments" "$ROOT/deployments"; do
