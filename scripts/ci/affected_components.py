@@ -74,6 +74,11 @@ def _impact_owner(raw_path: str) -> str | None:
         return None
     if path in DOCUMENTATION_FILES or path.startswith(DOCUMENTATION_PREFIXES):
         return None
+    if path in {
+        "scripts/ci/check_production_build_inputs.py",
+        "scripts/ci/publish_production_images.sh",
+    }:
+        return "immutable_release"
     if (
         path.startswith(".gitea/workflows/")
         or path.startswith("scripts/ci/")

@@ -61,6 +61,12 @@ class AffectedComponentsTests(unittest.TestCase):
         self.assertFalse(plan.web)
         self.assertFalse(plan.compose)
 
+    def test_production_image_publication_selects_release_contract_check(self) -> None:
+        plan = plan_paths(["scripts/ci/publish_production_images.sh"])
+        self.assertTrue(plan.immutable_release)
+        self.assertFalse(plan.web)
+        self.assertFalse(plan.compose)
+
     def test_docling_release_paths_select_only_ingestion_release_surface(self) -> None:
         plan = plan_paths(
             [
