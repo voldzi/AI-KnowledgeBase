@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ENV_FILE="${AKL_PROD_ENV_FILE:-/srv/akl/env/akl.prod.env}"
+ENV_FILE="${AKB_PROD_ENV_FILE:-${AKL_PROD_ENV_FILE:-/srv/akb/env/akb.prod.env}}"
 COMPOSE_FILE="${ROOT_DIR}/infra/docker-compose/docker-compose.docker-home.yml"
 
 fail() {

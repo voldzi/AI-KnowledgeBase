@@ -39,7 +39,7 @@ build_image() {
   local target="$registry/$owner/akb-$service:$source_sha"
   if docker pull "$target" >/dev/null 2>&1; then
     [[ "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$target")" == "$source_sha" \
-      && "$(docker image inspect --format '{{index .Config.Labels "cz.zeleznalady.akl.compose-project"}}' "$target")" == "akl" \
+      && "$(docker image inspect --format '{{index .Config.Labels "cz.zeleznalady.akl.compose-project"}}' "$target")" == "akb" \
       && "$(docker image inspect --format '{{index .Config.Labels "cz.zeleznalady.akl.service"}}' "$target")" == "$service" ]] \
       || { printf 'Existing immutable image provenance is invalid for %s.\n' "$service" >&2; exit 1; }
   else
@@ -47,7 +47,7 @@ build_image() {
     --platform "$platform" --provenance=false --sbom=false \
     --build-arg "SOURCE_DATE_EPOCH=$source_date_epoch" \
     --label "org.opencontainers.image.revision=$source_sha" \
-    --label 'cz.zeleznalady.akl.compose-project=akl' \
+    --label 'cz.zeleznalady.akl.compose-project=akb' \
     --label "cz.zeleznalady.akl.service=$service" \
     --output "type=image,name=$target,push=true,unpack=false,rewrite-timestamp=true" \
     --file "$dockerfile" "$@" "$context"

@@ -8,8 +8,7 @@ reviewed release candidate; it must not be appended to a candidate already in
 CI.
 
 1. Parameterise every release script, forced-command gateway, test fixture,
-   deployment record and runbook with `AKB_RELEASE_ROOT`, defaulting only in
-   transition code to `/srv/akl`.
+   deployment record and runbook with `AKB_RELEASE_ROOT`, defaulting to `/srv/akb` for the new root.
 2. Add canonical `AKB_*` configuration names. A legacy `AKL_*` alias is accepted
    only when the canonical name is absent. Supplying both with different values
    fails before a Docker, database or object-store operation.

@@ -25,7 +25,7 @@ while [[ $# -gt 0 ]]; do
 done
 [[ -n "$SNAPSHOT_DIR" ]] || usage
 
-RELEASE_ROOT="${AKL_RELEASE_ROOT:-/srv/akl}"
+RELEASE_ROOT="$(akl_resolve_release_root)"
 SNAPSHOT_ROOT="${RELEASE_ROOT}/env"
 
 akl_require_command python3

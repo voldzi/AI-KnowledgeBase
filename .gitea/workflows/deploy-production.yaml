@@ -204,7 +204,7 @@ jobs:
             service="${coordinate%%=*}"
             reference="${coordinate#*=}"
             docker pull "${reference}" >/dev/null
-            tag="akl/${service}:${RELEASE_SHA}"
+            tag="akb/${service}:${RELEASE_SHA}"
             docker tag "${reference}" "${tag}"
             image_tags+=("${tag}")
           done

@@ -1,4 +1,4 @@
-name: ${COMPOSE_PROJECT_NAME:-akl}
+name: ${COMPOSE_PROJECT_NAME:-akb}
 
 x-json-logging: &json-logging
   driver: json-file
@@ -14,7 +14,7 @@ x-python-healthcheck: &python-healthcheck
 
 x-immutable-release-labels: &immutable-release-labels
   org.opencontainers.image.revision: ${AKL_SERVICE_VERSION:-0.1.0}
-  cz.zeleznalady.akl.compose-project: ${AKL_RELEASE_COMPOSE_PROJECT:-akl}
+  cz.zeleznalady.akl.compose-project: ${AKL_RELEASE_COMPOSE_PROJECT:-akb}
 
 services:
   reverse-proxy:
@@ -50,7 +50,7 @@ services:
     build:
       context: ../..
       dockerfile: services/platform-infrastructure/Dockerfile
-    image: ${PLATFORM_STATUS_IMAGE:-akl/platform-status:docker-home}
+    image: ${PLATFORM_STATUS_IMAGE:-akb/platform-status:docker-home}
     restart: unless-stopped
     environment:
       AKL_ENV: production
@@ -78,7 +78,7 @@ services:
       args:
         NEXT_PUBLIC_AKL_BASE_PATH: ${AKL_WEB_BASE_PATH:-/akb}
         AKL_IMAGE_SERVICE: web
-    image: ${WEB_IMAGE:-akl/web:${AKL_IMAGE_TAG:-docker-home}}
+    image: ${WEB_IMAGE:-akb/web:${AKL_IMAGE_TAG:-docker-home}}
     restart: unless-stopped
     labels: *immutable-release-labels
     environment:
@@ -183,7 +183,7 @@ services:
       - ${AKL_SEAWEEDFS_AKL_ROOT:-/srv/seaweedfs/akl}:/data/object-storage
       - ${AKL_S3_ACCESS_KEY_ID_SOURCE_FILE:-/dev/null}:/run/source-secrets/akb-s3-access-key-id:ro
       - ${AKL_S3_SECRET_ACCESS_KEY_SOURCE_FILE:-/dev/null}:/run/source-secrets/akb-s3-secret-access-key:ro
-      - ${AKL_WEB_INGESTION_CLIENT_SECRET_FILE:-/srv/akl/env/svc-akb-web-ingestion.client-secret}:/run/secrets/svc-akb-web-ingestion-client-secret:ro
+      - ${AKL_WEB_INGESTION_CLIENT_SECRET_FILE:-/srv/akb/env/svc-akb-web-ingestion.client-secret}:/run/secrets/svc-akb-web-ingestion-client-secret:ro
       - ${AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE:-/dev/null}:/run/secrets/svc-akb-director-copilot-client-secret:ro
       - ${AKL_DIRECTOR_COPILOT_BUDGET_CLIENT_SECRET_FILE:-/dev/null}:/run/secrets/akb-director-budget:ro
       - ${AKL_DIRECTOR_COPILOT_PROJECTFLOW_CLIENT_SECRET_FILE:-/dev/null}:/run/secrets/akb-director-projectflow:ro
@@ -229,7 +229,7 @@ services:
       args:
         NEXT_PUBLIC_AKL_BASE_PATH: ""
         AKL_IMAGE_SERVICE: chat-web
-    image: ${CHAT_WEB_IMAGE:-akl/chat-web:${AKL_IMAGE_TAG:-docker-home}}
+    image: ${CHAT_WEB_IMAGE:-akb/chat-web:${AKL_IMAGE_TAG:-docker-home}}
     restart: unless-stopped
     labels: *immutable-release-labels
     environment:
@@ -352,7 +352,7 @@ services:
       labels: *immutable-release-labels
       args:
         SOURCE_DATE_EPOCH: ${SOURCE_DATE_EPOCH:-}
-    image: ${REGISTRY_API_IMAGE:-akl/registry-api:${AKL_IMAGE_TAG:-docker-home}}
+    image: ${REGISTRY_API_IMAGE:-akb/registry-api:${AKL_IMAGE_TAG:-docker-home}}
     restart: unless-stopped
     read_only: true
     security_opt:
@@ -438,7 +438,7 @@ services:
       STRATOS_KEYCLOAK_DIRECTORY_CLIENT_ID: ${STRATOS_KEYCLOAK_DIRECTORY_CLIENT_ID:-}
       STRATOS_KEYCLOAK_DIRECTORY_CLIENT_SECRET: ${STRATOS_KEYCLOAK_DIRECTORY_CLIENT_SECRET:-}
     volumes:
-      - ${AKL_INGESTION_AUTHORIZATION_SECRET_FILE:-/srv/akl/env/ingestion-authorization.secret}:/run/secrets/akl-ingestion-authorization-secret:ro
+      - ${AKL_INGESTION_AUTHORIZATION_SECRET_FILE:-/srv/akb/env/ingestion-authorization.secret}:/run/secrets/akl-ingestion-authorization-secret:ro
       - ${AKL_SEAWEEDFS_AKL_ROOT:-/srv/seaweedfs/akl}:/data/object-storage:ro
       - ${AKL_S3_ACCESS_KEY_ID_SOURCE_FILE:-/dev/null}:/run/secrets/akb-s3-access-key-id:ro
       - ${AKL_S3_SECRET_ACCESS_KEY_SOURCE_FILE:-/dev/null}:/run/secrets/akb-s3-secret-access-key:ro
@@ -451,7 +451,7 @@ services:
     logging: *json-logging
 
   docling-worker:
-    image: ${INGESTION_SERVICE_IMAGE:-akl/ingestion-service:${AKL_IMAGE_TAG:-docker-home}}
+    image: ${INGESTION_SERVICE_IMAGE:-akb/ingestion-service:${AKL_IMAGE_TAG:-docker-home}}
     restart: unless-stopped
     init: true
     read_only: true
@@ -508,7 +508,7 @@ services:
       labels:
         <<: *immutable-release-labels
         cz.zeleznalady.akl.service: ingestion-service
-    image: ${INGESTION_SERVICE_IMAGE:-akl/ingestion-service:${AKL_IMAGE_TAG:-docker-home}}
+    image: ${INGESTION_SERVICE_IMAGE:-akb/ingestion-service:${AKL_IMAGE_TAG:-docker-home}}
     restart: unless-stopped
     labels:
       <<: *immutable-release-labels
@@ -615,9 +615,9 @@ services:
       - ${AKL_S3_SECRET_ACCESS_KEY_SOURCE_FILE:-/dev/null}:/run/secrets/akb-s3-secret-access-key:ro
       - ingestion-jobs:/data/ingestion-jobs
       - docling-runtime:/run/akb-docling:ro
-      - ${AKL_INGESTION_REGISTRY_CLIENT_SECRET_FILE:-/srv/akl/env/svc-ingestion.client-secret}:/run/secrets/svc-ingestion-client-secret:ro
-      - ${AKL_OPENSEARCH_CA_SOURCE_FILE:-/srv/akl/env/opensearch-root-ca.pem}:/run/secrets/opensearch-root-ca.pem:ro
-      - ${AKL_OPENSEARCH_INGESTION_PASSWORD_SOURCE_FILE:-/srv/akl/env/akl-opensearch-ingestion.password}:/run/secrets/akl-opensearch-password:ro
+      - ${AKL_INGESTION_REGISTRY_CLIENT_SECRET_FILE:-/srv/akb/env/svc-ingestion.client-secret}:/run/secrets/svc-ingestion-client-secret:ro
+      - ${AKL_OPENSEARCH_CA_SOURCE_FILE:-/srv/akb/env/opensearch-root-ca.pem}:/run/secrets/opensearch-root-ca.pem:ro
+      - ${AKL_OPENSEARCH_INGESTION_PASSWORD_SOURCE_FILE:-/srv/akb/env/akl-opensearch-ingestion.password}:/run/secrets/akl-opensearch-password:ro
     depends_on:
       docling-worker:
         condition: service_healthy
@@ -636,7 +636,7 @@ services:
     build:
       context: ../../services/rag-retrieval-service
       labels: *immutable-release-labels
-    image: ${RAG_RETRIEVAL_SERVICE_IMAGE:-akl/rag-retrieval-service:${AKL_IMAGE_TAG:-docker-home}}
+    image: ${RAG_RETRIEVAL_SERVICE_IMAGE:-akb/rag-retrieval-service:${AKL_IMAGE_TAG:-docker-home}}
     restart: unless-stopped
     read_only: true
     security_opt:
@@ -733,9 +733,9 @@ services:
       AKL_RAG_COLBERT_MODEL: ${AKL_RAG_COLBERT_MODEL:-colbert-multilingual-v2}
       AKL_RAG_COLBERT_CANDIDATE_LIMIT: ${AKL_RAG_COLBERT_CANDIDATE_LIMIT:-24}
     volumes:
-      - ${AKL_RAG_REGISTRY_CLIENT_SECRET_FILE:-/srv/akl/env/akb-rag-service.client-secret}:/run/secrets/akb-rag-service-client-secret:ro
-      - ${AKL_OPENSEARCH_CA_SOURCE_FILE:-/srv/akl/env/opensearch-root-ca.pem}:/run/secrets/opensearch-root-ca.pem:ro
-      - ${AKL_OPENSEARCH_RAG_PASSWORD_SOURCE_FILE:-/srv/akl/env/akl-opensearch-rag.password}:/run/secrets/akl-opensearch-password:ro
+      - ${AKL_RAG_REGISTRY_CLIENT_SECRET_FILE:-/srv/akb/env/akb-rag-service.client-secret}:/run/secrets/akb-rag-service-client-secret:ro
+      - ${AKL_OPENSEARCH_CA_SOURCE_FILE:-/srv/akb/env/opensearch-root-ca.pem}:/run/secrets/opensearch-root-ca.pem:ro
+      - ${AKL_OPENSEARCH_RAG_PASSWORD_SOURCE_FILE:-/srv/akb/env/akl-opensearch-rag.password}:/run/secrets/akl-opensearch-password:ro
       - ${AKL_RAG_RERANKER_API_KEY_SOURCE_FILE:-/dev/null}:/run/secrets/akl-rag-reranker-api-key:ro
     depends_on:
       registry-api:
@@ -753,7 +753,7 @@ services:
     build:
       context: ../../services/llm-gateway-service
       labels: *immutable-release-labels
-    image: ${LLM_GATEWAY_SERVICE_IMAGE:-akl/llm-gateway-service:${AKL_IMAGE_TAG:-docker-home}}
+    image: ${LLM_GATEWAY_SERVICE_IMAGE:-akb/llm-gateway-service:${AKL_IMAGE_TAG:-docker-home}}
     restart: unless-stopped
     read_only: true
     security_opt:
@@ -810,7 +810,7 @@ services:
     build:
       context: ../../services/evaluation-service
       labels: *immutable-release-labels
-    image: ${EVALUATION_SERVICE_IMAGE:-akl/evaluation-service:${AKL_IMAGE_TAG:-docker-home}}
+    image: ${EVALUATION_SERVICE_IMAGE:-akb/evaluation-service:${AKL_IMAGE_TAG:-docker-home}}
     restart: unless-stopped
     labels: *immutable-release-labels
     environment:
@@ -870,7 +870,7 @@ services:
     build:
       context: ../../services/governance-service
       labels: *immutable-release-labels
-    image: ${GOVERNANCE_SERVICE_IMAGE:-akl/governance-service:${AKL_IMAGE_TAG:-docker-home}}
+    image: ${GOVERNANCE_SERVICE_IMAGE:-akb/governance-service:${AKL_IMAGE_TAG:-docker-home}}
     restart: unless-stopped
     read_only: true
     security_opt:
