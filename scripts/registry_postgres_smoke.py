@@ -210,7 +210,7 @@ def verify_external_document_api(database_url: str) -> None:
     settings.stratos_information_resources_url = "https://test-authority.invalid/resources"
     profile = root_profile(profile_id="akb.contract", owner="user_pg_owner", gestor="unit_pg_knowledge")
     profile["provenance"] = {
-        "sourceSystem": "STRATOS_PROJECTFLOW",
+        "sourceSystem": "STRATOS_PLATFORM",
         "sourceRecordId": "contract:postgres-smoke:main",
         "sourceGovernedResourceId": "gres_pg_smoke_source",
     }
@@ -219,7 +219,7 @@ def verify_external_document_api(database_url: str) -> None:
         "tenant_id": "org_stratos",
         # This smoke exercises the generic external-document contract. Budget
         # lineage has a dedicated fail-closed route and is covered separately.
-        "external_system": "STRATOS_PROJECTFLOW",
+        "external_system": "STRATOS_PLATFORM",
         "external_ref": "contract:postgres-smoke:main",
         "entity_type": "Contract",
         "entity_id": "contract-postgres-smoke",
