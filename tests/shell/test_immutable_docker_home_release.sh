@@ -2390,9 +2390,9 @@ grep -q '^fault:build-before-tag$' <<<"$build_before_tag_log" \
 if grep -q '^up:\|^registry_stop$\|^alembic_upgrade$' <<<"$build_before_tag_log"; then
   fail 'build-before-tag failure reached restart, writer stop, or migration'
 fi
-[[ "$(<"${FAKE_RUNTIME_DIR}/images/web/ref")" != "akl/web:${BUILD_BEFORE_TAG_FAILED_SHA}" ]] \
+[[ "$(<"${FAKE_RUNTIME_DIR}/images/web/ref")" != "akb/web:${BUILD_BEFORE_TAG_FAILED_SHA}" ]] \
   || fail 'build-before-tag fixture unexpectedly created the target image tag'
-[[ "$(<"${FAKE_RUNTIME_DIR}/images/chat-web/ref")" != "akl/chat-web:${BUILD_BEFORE_TAG_FAILED_SHA}" ]] \
+[[ "$(<"${FAKE_RUNTIME_DIR}/images/chat-web/ref")" != "akb/chat-web:${BUILD_BEFORE_TAG_FAILED_SHA}" ]] \
   || fail 'build-before-tag fixture unexpectedly created the chat target image tag'
 build_before_tag_record="$(find "${AKL_RELEASE_ROOT}/deployments" -type f -name '*.txt' -print | sort | tail -n 1)"
 grep -q '^target_build_may_have_started=true$' "$build_before_tag_record" \
@@ -3687,7 +3687,7 @@ git -C "$WORK_REPO" commit --quiet -m 'web release with pre-existing image tag'
 SHA_ELEVEN="$(git -C "$WORK_REPO" rev-parse HEAD)"
 git -C "$WORK_REPO" push --quiet origin main
 printf 'MARK existing-image\n' >>"$CALL_LOG"
-if FAKE_EXISTING_IMAGE="akl/web:${SHA_ELEVEN}" \
+if FAKE_EXISTING_IMAGE="akb/web:${SHA_ELEVEN}" \
   "$SOURCE_ROOT/scripts/deploy_docker_home_release.sh" --sha "$SHA_ELEVEN"; then
   fail 'release overwrote a pre-existing immutable image tag'
 fi
