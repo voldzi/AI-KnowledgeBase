@@ -306,6 +306,16 @@ def initialize() -> None:
     compose("run", "--rm", "--no-deps", "stratos-api", "pnpm", "exec", "prisma", "db", "push")
     compose("run", "--rm", "--no-deps", "stratos-api", "pnpm", "prisma:seed")
     compose("run", "--rm", "--no-deps", "stratos-api", "pnpm", "prisma:migrate:access-governance")
+    stratos_root = Path(config["services"]["stratos-api"]["build"]["context"])
+    keycloak_installer = stratos_root / "infra/keycloak/ensure-akb-service-client.sh"
+    assert keycloak_installer.is_file()
+    installer_env = os.environ.copy()
+    installer_env.update(
+        KEYCLOAK_CONTAINER=f"{PROJECT}-keycloak-1",
+        KEYCLOAK_INTERNAL_URL="http://127.0.0.1:18080",
+        KEYCLOAK_USE_CONTAINER_BOOTSTRAP_PASSWORD="true",
+    )
+    subprocess.run([str(keycloak_installer)], cwd=stratos_root, env=installer_env, check=True)
     compose("exec", "-T", "stratos-postgres", "sh", "-c", "psql -U stratos -d postgres -tAc \"SELECT 1 FROM pg_database WHERE datname='projectflow'\" | grep -q 1 || createdb -U stratos projectflow")
     compose("run", "--rm", "--no-deps", "stratos-projectflow-api", "node", "dist/db/migrate.js")
     compose("run", "--rm", "--no-deps", "registry-api", "python", "-c", "import os,boto3; from botocore.exceptions import ClientError; s=boto3.client('s3',endpoint_url=os.environ['AKL_S3_ENDPOINT'],aws_access_key_id=os.environ['AKL_S3_ACCESS_KEY_ID'],aws_secret_access_key=os.environ['AKL_S3_SECRET_ACCESS_KEY']); buckets={v['Name'] for v in s.list_buckets()['Buckets']}; name=os.environ['AKL_S3_BUCKET']; s.create_bucket(Bucket=name) if name not in buckets else None; print('Local acceptance bucket ready')")
