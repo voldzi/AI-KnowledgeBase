@@ -5,7 +5,7 @@ from pathlib import Path
 
 from app.information_policy import InformationPolicyBinding, canonical_policy_hash
 from app.models import Document
-from app.permissions import SubjectContext, evaluate_document_access
+from app.permissions import SubjectContext, _v2_document_decision
 from app.schemas import Action
 
 
@@ -15,7 +15,7 @@ FIXTURES = (
 )
 
 
-def test_central_decision_fixtures_match_registry_enforcement() -> None:
+def test_central_decision_fixtures_match_shared_v2_evaluator() -> None:
     fixture = json.loads(FIXTURES.read_text(encoding="utf-8"))
     assert fixture["fixtureVersion"] == "conformance-1.0.0"
 
@@ -66,7 +66,9 @@ def evaluate_fixture(request: dict) -> dict:
         application_access_active=bool(request.get("applicationAccess")),
         access_v2=True,
     )
-    decision = evaluate_document_access(context, Action.document_read.value, document)
+    # Shared STRATOS conformance remains nullable. AKB adds its mandatory TLP
+    # gate before this evaluator; the admission suite tests that stricter boundary.
+    decision = _v2_document_decision(context, Action.document_read.value, document)
     return {
         "decision": "ALLOW" if decision.allowed else "DENY",
         "reasonCodes": list(decision.reason_codes),

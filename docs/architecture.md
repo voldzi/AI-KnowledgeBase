@@ -11,6 +11,15 @@ workflows. It owns document metadata, versions, source-file references,
 ingestion, extraction, chunking, embeddings, Qdrant indexing, retrieval,
 citations, source opening, governance helpers, and audit events.
 
+The [organizational document readiness assessment](ARCHITECTURE/document-model-readiness-2026-09-05.md)
+separates currently implemented document/format support from the foundational
+profile, metadata, temporal and citation work required before broad intake.
+[ADR 0017](adr/0017-mandatory-document-policy.md) makes effective TLP mandatory
+for the clean target. Document admission, ingestion/index writes and production
+retrieval reject missing effective TLP; shared V2 remains defensively nullable.
+Verified active accountability and approved source/collection profiles still
+require the [coordinated profile contract](CONTRACTS/AKB_DOCUMENT_PROFILE_PROPOSAL.md).
+
 ## Product Boundary
 
 AKB is the source of truth for Document AI assets and evidence. STRATOS

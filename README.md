@@ -140,6 +140,10 @@ GET  /api/v1/assistant/citations/{chunk_id}/open
 
 ## Local Production
 
+For joint AKB + STRATOS testing before production, use the isolated persistent
+[Docker Desktop acceptance environment](docs/deployment/local-acceptance-docker-desktop.md)
+and its [verification record](docs/qa/local-docker-acceptance-2026-09-05.md).
+
 ```bash
 cp .env.local-prod.example .env.local-prod
 docker compose --env-file .env.local-prod \

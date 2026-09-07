@@ -16,6 +16,13 @@ import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.config import Settings
+from app.document_admission import has_explicit_document_tlp
+from app.document_profile_catalog import validate_profile_policy
+from app.document_profile import (
+    DocumentAdmissionConfirmation, DocumentAdmissionExpectation,
+    PreparedDocumentAdmission, prepare_document_admission, verify_document_admission_confirmation,
+)
+
 from app.information_policy import (
     InformationPolicyBinding,
     IntegrationEnvelope,
@@ -53,6 +60,8 @@ class GovernedResourceRegistration:
     source_version: str
     policy_binding_id: str
     policy_hash: str
+    document_admission: DocumentAdmissionConfirmation | None = None
+    admission_request: PreparedDocumentAdmission | None = None
 
 
 @dataclass(frozen=True)
@@ -72,6 +81,8 @@ class BudgetAkbGovernedResourceRegistration:
     correlation_id: str
     idempotency_key: str
     confirmation: dict[str, Any]
+    document_admission: DocumentAdmissionConfirmation | None = None
+    admission_request: PreparedDocumentAdmission | None = None
 
 
 @dataclass(frozen=True)
@@ -365,6 +376,7 @@ class StratosGovernanceClient:
         parent_resource_id: str | None,
         reason: str,
         metadata: dict[str, Any] | None = None,
+        document_admission: DocumentAdmissionExpectation | None = None,
     ) -> GovernedResourceRegistration:
         base_url = self.settings.stratos_information_resources_url
         if not base_url:
@@ -382,6 +394,18 @@ class StratosGovernanceClient:
             body["parentId"] = parent_resource_id
         if audit_actor_subject_id:
             body["metadata"] = {**body["metadata"], "auditActorSubjectId": audit_actor_subject_id}
+        if document_admission is not None and not has_explicit_document_tlp(binding):
+            raise ValueError("Document admission requires an explicit effective TLP")
+        if document_admission is not None:
+            validate_profile_policy(document_admission.root_snapshot.profile, binding)
+        prepared_admission = prepare_document_admission(
+            document_admission, resource_type=resource_type, resource_id=resource_id,
+            source_version=source_version, policy_binding_id=binding.policy_binding_id,
+            policy_hash=canonical_policy_hash(binding), scope=scope,
+            current_root_governed_resource_id=parent_resource_id,
+        ) if document_admission is not None else None
+        if prepared_admission is not None:
+            body["documentAdmission"] = prepared_admission.request
         response = self._request(
             "PUT",
             (
@@ -390,6 +414,7 @@ class StratosGovernanceClient:
             ),
             credential_token,
             body,
+            extra_headers={"X-Correlation-ID": document_admission.correlation_id} if document_admission is not None else None,
         )
         effective_policy = response.get("effectivePolicy")
         expected_hash = canonical_policy_hash(binding)
@@ -411,11 +436,14 @@ class StratosGovernanceClient:
             or not _authoritative_policy_metadata_matches(effective_policy, binding)
         ):
             raise GovernanceUnavailable("STRATOS returned a conflicting governed resource")
+        admission_confirmation = self._verify_document_admission_response(response, prepared_admission)
         return GovernedResourceRegistration(
             resource_id=response["id"],
             source_version=source_version,
             policy_binding_id=binding.policy_binding_id,
             policy_hash=expected_hash,
+            document_admission=admission_confirmation,
+            admission_request=prepared_admission,
         )
 
 
@@ -432,6 +460,7 @@ class StratosGovernanceClient:
         envelope: IntegrationEnvelope,
         binding: InformationPolicyBinding,
         reason: str,
+        document_admission: DocumentAdmissionExpectation | None = None,
     ) -> BudgetAkbGovernedResourceRegistration:
         base_url = self.settings.stratos_budget_akb_resources_url
         credential = self.settings.stratos_policy_service_token
@@ -449,6 +478,28 @@ class StratosGovernanceClient:
             )
         classification["tlp"] = envelope.classification.tlp
         classification["pap"] = envelope.classification.pap
+        if document_admission is not None and document_admission.correlation_id != envelope.correlation_id:
+            raise ValueError("Document admission must preserve the Budget correlation id")
+        if document_admission is not None:
+            provenance = document_admission.root_snapshot.provenance
+            version_snapshot = document_admission.version_snapshot
+            if (not has_explicit_document_tlp(binding)
+                or provenance.source_system != envelope.source_system
+                or provenance.source_record_id != envelope.payload.get("contractId")
+                or provenance.source_governed_resource_id != inherited_from_resource_id
+                or (version_snapshot is not None and (
+                    version_snapshot.source_lineage.source_version != envelope.payload.get("fileHash")
+                    or version_snapshot.source_lineage.content_sha256 != envelope.payload.get("fileHash")
+                ))):
+                raise ValueError("Document admission must preserve the verified Budget source lineage and TLP")
+        if document_admission is not None:
+            validate_profile_policy(document_admission.root_snapshot.profile, binding)
+        prepared_admission = prepare_document_admission(
+            document_admission, resource_type=resource_type, resource_id=resource_id,
+            source_version=source_version, policy_binding_id=binding.policy_binding_id,
+            policy_hash=envelope.policy_hash, scope=scope,
+            current_root_governed_resource_id=parent_id,
+        ) if document_admission is not None else None
         response = self._request(
             "PUT",
             (
@@ -463,6 +514,7 @@ class StratosGovernanceClient:
                 "scope": scope,
                 "integrationEnvelope": integration_envelope,
                 "reason": reason,
+                **({"documentAdmission": prepared_admission.request} if prepared_admission is not None else {}),
             },
             extra_headers={
                 "Idempotency-Key": envelope.idempotency_key,
@@ -496,6 +548,7 @@ class StratosGovernanceClient:
             raise GovernanceInvalidResponse(
                 "STRATOS returned a conflicting Budget-derived AKB governed resource"
             )
+        admission_confirmation = self._verify_document_admission_response(response, prepared_admission)
         return BudgetAkbGovernedResourceRegistration(
             governed_resource_id=response["id"],
             resource_type=resource_type,
@@ -512,7 +565,76 @@ class StratosGovernanceClient:
             correlation_id=envelope.correlation_id,
             idempotency_key=envelope.idempotency_key,
             confirmation=dict(response),
+            document_admission=admission_confirmation,
+            admission_request=prepared_admission,
         )
+
+    def document_admission_readiness(self, *, correlation_id: str):
+        """Nonce-bound support decision; does not register any document or resource."""
+        from app.document_admission_readiness import prepare_admission_readiness, verify_admission_readiness
+        base = self.settings.stratos_information_resources_url
+        credential = self.settings.stratos_policy_service_token
+        if not base or not credential:
+            raise GovernanceUnavailable("Document admission readiness is unavailable")
+        request = prepare_admission_readiness(correlation_id)
+        response = self._request("POST", f"{base.rstrip('/')}/akb/document-admission/readiness", credential,
+            request.model_dump(mode="json", by_alias=True), extra_headers={"X-Correlation-ID": correlation_id})
+        try:
+            return verify_admission_readiness(response, request)
+        except ValueError as exc:
+            raise GovernanceInvalidResponse("STRATOS admission readiness is missing, stale or conflicting") from exc
+
+    def revalidate_document_admission(
+        self, *, document_admission: DocumentAdmissionExpectation,
+        resource_type: str, resource_id: str, source_version: str,
+        governed_resource_id: str, current_root_governed_resource_id: str,
+        binding: InformationPolicyBinding, scope: dict[str, str], audit_actor_subject_id: str,
+    ) -> DocumentAdmissionConfirmation:
+        """Required STRATOS resource extension; unsupported upstream fails closed.
+
+        This operation decides against existing resources and never registers or
+        restores one. The endpoint is a proposed coordinated contract, not a
+        claimed capability of the currently deployed STRATOS implementation.
+        """
+        base = self.settings.stratos_information_resources_url
+        credential = self.settings.stratos_policy_service_token
+        if not base or not credential or not has_explicit_document_tlp(binding):
+            raise GovernanceUnavailable("Atomic document admission revalidation is unavailable")
+        validate_profile_policy(document_admission.root_snapshot.profile, binding)
+        prepared = prepare_document_admission(
+            document_admission, resource_type=resource_type, resource_id=resource_id,
+            source_version=source_version, policy_binding_id=binding.policy_binding_id,
+            policy_hash=canonical_policy_hash(binding), scope=scope,
+            current_root_governed_resource_id=current_root_governed_resource_id, operation="revalidate",
+        )
+        response = self._request("POST",
+            f"{base.rstrip('/')}/akb/{quote(resource_type, safe='')}/{quote(resource_id, safe='')}/document-admission/decisions",
+            credential, {
+                "sourceVersion": source_version, "governedResourceId": governed_resource_id,
+                "currentRootGovernedResourceId": current_root_governed_resource_id,
+                "policyBindingId": binding.policy_binding_id, "policyHash": canonical_policy_hash(binding),
+                "scope": scope, "auditActorSubjectId": audit_actor_subject_id,
+                "documentAdmission": prepared.request,
+            }, extra_headers={"X-Correlation-ID": document_admission.correlation_id})
+        if response.get("id") != governed_resource_id:
+            raise GovernanceInvalidResponse("The revalidation target differs from the exact stored resource")
+        return self._verify_document_admission_response(response, prepared)
+
+    @staticmethod
+    def _verify_document_admission_response(response, prepared_admission):
+        if prepared_admission is None:
+            return None  # This profile contract has not yet been requested by a caller.
+        try:
+            if response.get("isActive") is not True or response.get("confirmedBySubjectId") != "service:akb":
+                raise ValueError("Strict document admission requires active canonical governance")
+            return verify_document_admission_confirmation(
+                response.get("documentAdmission"), prepared=prepared_admission,
+                governed_resource_id=response["id"],
+            )
+        except (ValueError, KeyError) as exc:
+            raise GovernanceInvalidResponse(
+                "STRATOS document admission confirmation is missing, stale or conflicting"
+            ) from exc
 
     def upsert_information_publication(
         self,

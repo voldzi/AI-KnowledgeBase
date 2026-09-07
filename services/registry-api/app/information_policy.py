@@ -111,6 +111,15 @@ class InformationPolicyBinding(BaseModel):
         return self
 
 
+def budget_audience_matches_source(binding: InformationPolicyBinding, scope_id: str) -> bool:
+    """Audience does not replace the authoritative financial source scope."""
+    audience = binding.audience
+    return audience.organization_id == "org_stratos" and (
+        audience.scope_type in {"organization", "recipient_set"}
+        or (audience.scope_type == "budget_scope" and audience.scope_ids == [scope_id])
+    )
+
+
 class IntegrationActor(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -255,7 +264,7 @@ def anonymous_public_eligible(binding: InformationPolicyBinding) -> bool:
         and binding.audience.scope_type == "public"
         and not binding.audience.scope_ids
         and not binding.audience.recipient_subject_ids
-        and binding.tlp in {None, TlpLabel.clear.value}
+        and binding.tlp == TlpLabel.clear.value
         and binding.pap in {None, PapLabel.clear.value}
         and ContentCategory.public_information.value in categories
         and not {ContentCategory.personal_data.value, ContentCategory.authentication.value}.intersection(categories)

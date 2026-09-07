@@ -46,6 +46,14 @@ Use `external_system`, never `source_system`, for STRATOS integration payloads.
 
 ## Package Model
 
+Current AKB dependency: the exact **0.5.1** tarball delivered by STRATOS and
+explicitly accepted in the 2026-09-06 handoff. It is stored in
+`apps/web/vendor/stratos-ui/`, verified against its release manifest and consumed
+as a file dependency under the frozen pnpm lockfile. This approved distribution
+exception is recorded in [ADR 0023](adr/0023-immutable-stratos-ui-delivery.md).
+It is not published to npm and is not a local source fork.
+
+
 General STRATOS UI primitives for AKB, Budget, ProjectFlow and ArchFlow use
 `@voldzi/stratos-ui@0.3.29` or newer compatible versions from the public npm
 registry. Applications must not add a scoped `.npmrc` that redirects
@@ -267,17 +275,23 @@ Stable external STRATOS API capabilities:
 Server-side calls use service token or OIDC client credentials. Browser
 components use only the AKB web/API bridge and AKB-hosted viewer/embed URLs.
 
-Implemented browser bridge endpoints for the shared components:
+Budget upload is server-to-server and requires its service credential plus a
+separate current person bearer for interactive mode. The browser must not
+receive the service credential. ProjectFlow and ArchFlow upload profiles remain
+explicit implementation/acceptance work; generic upload examples are not a
+supported contract. See `docs/integration/STRATOS_DOCUMENT_INTAKE_HANDOFF.md`.
+
+Implemented read bridge and dedicated Budget server upload endpoints:
 
 ```http
 POST /akb/api/stratos/documents/search
-POST /akb/api/stratos/upload/preflight
-PUT  /akb/api/stratos/upload/sessions/{upload_session_id}/content
-POST /akb/api/stratos/upload/sessions/{upload_session_id}/confirm
+POST /akb/api/stratos/budget-upload/preflight
+PUT  /akb/api/document-intake/v1/sessions/{upload_session_id}/content
+POST /akb/api/stratos/budget-upload/sessions/{upload_session_id}/confirm
 GET  /akb/api/stratos/documents/{document_id}/open-url
 POST /akb/api/stratos/documents/{document_id}/source-open?version_id=...
-GET  /akb/api/stratos/documents/{document_id}/ingestion-status
-POST /akb/api/stratos/documents/{document_id}/retry-ingestion
+GET  /akb/api/stratos/budget-upload/documents/{document_id}/ingestion-status
+POST /akb/api/stratos/budget-upload/documents/{document_id}/retry-ingestion
 GET  /akb/api/stratos/citations/{chunk_id}/open-url
 GET  /akb/embed/documents/{document_id}
 ```

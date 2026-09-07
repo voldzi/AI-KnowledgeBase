@@ -19,6 +19,7 @@ type FetchState = {
   audience: string[];
   active: boolean;
   clientId: string;
+  includePreferredUsername: boolean;
 };
 
 let state: FetchState;
@@ -60,6 +61,7 @@ beforeEach(() => {
     audience: ["akl-api"],
     active: true,
     clientId: "stratos-akb-service",
+    includePreferredUsername: true,
   };
   globalThis.fetch = async (input, init) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
@@ -70,7 +72,9 @@ beforeEach(() => {
       client_id: state.clientId,
       azp: state.clientId,
       sub: `service-subject-${token}`,
-      preferred_username: `service-account-${state.clientId}`,
+      ...(state.includePreferredUsername
+        ? { preferred_username: `service-account-${state.clientId}` }
+        : {}),
       aud: state.audience,
       realm_access: { roles: state.roles },
     });
@@ -251,5 +255,14 @@ describe("STRATOS document service authentication", () => {
 
     assert.equal(principal.clientId, "stratos-akb-service");
     assert.deepEqual(principal.roles, ["service_ingestion"]);
+  });
+
+  it("accepts an exact service identity without a display-name claim", async () => {
+    state.clientId = "stratos-projectflow-akb-service";
+    state.includePreferredUsername = false;
+    const principal = await authenticateStratosDocumentServiceRequest(request({}));
+
+    assert.equal(principal.clientId, "stratos-projectflow-akb-service");
+    assert.equal(principal.subjectId, "service-subject-valid-budget-token");
   });
 });

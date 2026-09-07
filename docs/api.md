@@ -176,7 +176,14 @@ PUT /api/document-intake/v1/sessions/{sessionId}/content
 ```
 
 Origin-specific preflight routes issue a signed session and this canonical
-URL. The endpoint accepts only the exact signed MIME type, size and SHA-256,
+URL. Before reading the body, the endpoint revalidates the current upload
+authority, signed actor, source lineage and authoritative policy coordinates.
+Budget calls require a service bearer and, in interactive mode, the separate
+current `X-STRATOS-Actor-Authorization` bearer. Preflight publishes the required
+authentication mode without returning credentials. Registry provides the
+server-only `POST /api/v1/integrations/stratos-budget-upload/documents/{document_id}/intake-authorization`
+operation for this decision. The old controlled-document and Budget content
+aliases are removed for the clean target. The endpoint accepts only the exact signed MIME type, size and SHA-256,
 writes to quarantine, performs file-signature and ClamAV checks, and returns a
 signed `akb-document-intake-receipt-1`. Registry confirmation verifies the
 receipt against the immutable file, and Ingestion can require Registry status
@@ -713,3 +720,7 @@ directly.
 Generate clients from `openapi/openapi.json` for repository-level integration.
 Use service-local OpenAPI only when building service-internal clients and keep
 the root contract in sync.
+
+### ProjectFlow and ArchFlow source document intake
+
+The dedicated source bridge is implemented with exact source service identities, a separate current person credential and fresh STRATOS source authorization. The common scanner and mandatory document-profile/TLP admission remain in force. Generic source write bypasses are closed. STRATOS adapters and joint positive acceptance are pending; intake remains closed. See [source intake contract and handoff](integration/STRATOS_SOURCE_DOCUMENT_INTAKE_V1.md).

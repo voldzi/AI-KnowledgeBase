@@ -1,14 +1,18 @@
 # Official Public Sources
 
-AKB can import approved collections of original PDF, DOCX, reviewed HTML
-catalog pages and explicitly approved structured open-data documents from official public authorities
-without turning every item into a separately managed internal document
-workflow.
+AKB prepares and imports centrally approved official-source documents under the
+`akb.official-public-reference` profile. The AKB picker/client and strict intake
+path are implemented; live collection approval and exact source preparation
+require the new [STRATOS collections V1 contract](../integration/STRATOS_OFFICIAL_SOURCE_COLLECTIONS_V1.md).
+Until that contract is jointly verified and configured, synchronization is
+unavailable. The local discovery catalog does not grant approval.
 
 ## Product Model
 
-- A document manager approves and starts one named collection in the
-  **Public sources** workspace.
+- A permitted document manager selects a named collection from the fresh STRATOS
+  approved-list projection in **Public sources**. The picker shows its issuer,
+  owner, gestor, review rule and explicit TLP. No opaque authority IDs or policy
+  JSON are entered by the user.
 - Discovery follows only HTTPS URLs on the collection's explicit host
   allowlist. Redirects are checked again and IP-address destinations are
   rejected.
@@ -18,21 +22,24 @@ workflow.
   limit, hashed and stored in AKB object storage.
 - The canonical source URL and capture time are recorded on the immutable AKB
   version. Repeated synchronization is idempotent by collection plus canonical
-  URL and SHA-256. A changed hash creates and publishes a new version; an
-  unchanged hash does not create a duplicate.
-- Collection approval authorizes the mechanical source-origin, file-type and
-  hash checks. It does not bypass Registry authorization or Ingestion proofs.
-  A manager with `akb:manage_document` starts the synchronization. Registry
-  registers only the strictly marked public-reference document and version
-  through the existing fixed `service:akb` identity, while retaining the
-  manager as `metadata.auditActorSubjectId`. All central runtime decisions for
-  a strictly marked official-public-reference document also use that fixed
-  system identity. Local collection approval, audit and the exact
-  web-to-Ingestion proof remain bound to the current manager; ordinary uploads
-  continue to use their verified interactive bearer.
-- AKB forwards the policy owner plus `issuedAt` and nullable `reviewAt` to the
-  STRATOS Policy Registry. The Registry validates and immutably stores these
-  metadata and AKB accepts only the authoritative matching response.
+  URL, SHA-256 and immutable version metadata. Reuse requires the same file
+  metadata, root revision/hash, lifecycle and domain evidence. Changed content
+  or immutable metadata creates a new version; earlier snapshots remain intact.
+- Every synchronization freshly prepares the individual source in STRATOS. Its
+  complete profile, explicit PUBLIC/TLP:CLEAR policy, issuer evidence, owner,
+  gestor and lifecycle/domain evidence are validated before any original is
+  downloaded. `sourceGovernedResourceId` identifies the individual upstream
+  document; collection identity is separate.
+- Registry creates or freshly admits the current root before downloading. AKB
+  compares the returned canonical root hash/revision/profile and policy with the
+  prepared source. Changed existing metadata returns a conflict requiring an
+  explicit update with the current revision; a stale list projection never
+  substitutes for fresh admission.
+- The complete nested version proposal is signed with its expected root
+  revision. Registry builds final source lineage from the verified file/receipt
+  and requires central root/version snapshot confirmation before activation.
+  Merely approved-looking metadata, `active: true` assignments or an official
+  URL are not an authority proof. Root and version protection remains explicit.
 - Failed indexing remains resumable. Re-running the collection retries the
   failed current attempt or continues from the first missing version.
 - A transient browser request failure and a transient official-source download
@@ -68,7 +75,7 @@ The source metadata uses:
 
 ## Pilot Catalog
 
-The curated pilot target is 384 documents:
+The curated technical discovery target is 385 documents; this count is not a count of centrally approved imports:
 
 | Collection | Target | Mode |
 | --- | ---: | --- |
@@ -78,10 +85,12 @@ The curated pilot target is 384 documents:
 | Selected EU legal acts | 33 | fixed CELEX catalog through the official Cellar dissemination API |
 | Open FitSM IT service management | 25 | official-site discovery |
 | Czech Statistical Office | 40 | official-site discovery plus reviewed HTML catalog pages |
-| Czech legislation from e-Sbírka | 97 | credential-free official open data |
+| Czech legislation from e-Sbírka | 98 | credential-free official open data |
 
-All seven collections are synchronizable without a new credential. The
-EU-law connector downloads the official Czech XHTML expression from the
+All seven technical discovery adapters can read the public catalogs without
+source credentials. Intake additionally requires a permitted interactive STRATOS
+actor, an active centrally approved collection and exact source preparation;
+this is not established by the adapter catalog. The EU-law connector downloads the official Czech XHTML expression from the
 Publications Office Cellar API with the CELEX identifier and retains EUR-Lex as
 the canonical human reference. XHTML is used consistently because Cellar does
 not expose one-file Czech PDFs for every selected act, while the official XHTML
@@ -113,10 +122,13 @@ duplicate document. Download catalogue responses, preparation states and file
 identifiers are validated and cannot redirect the intake outside the approved
 e-Sbírka origin.
 
-No additional Keycloak user or client is created for this workflow. It reuses
-the existing `AKB_POLICY_SERVICE_TOKEN` mapped by STRATOS to `service:akb`.
-Missing or invalid service credentials fail closed before an AKB document is
-committed.
+No user/client or central collection is created automatically by AKB. The new
+collection/proposal API forwards the current interactive actor's bearer only to
+the configured STRATOS origin, without redirects. Public source downloads never
+receive that bearer. Registry's documented governance identity and fresh
+admission contracts remain separate from this source preparation operation.
+Missing configuration, unknown upstream endpoints or invalid central responses
+fail closed before downloading.
 
 Licensed or copyrighted internal references, including organization-owned ITIL
 copies, are not added to this public-source catalog. They are imported as
@@ -152,8 +164,10 @@ before switching `AKL_RAG_FULLTEXT_MODE` to `opensearch`.
 1. Sign in with an AKB profile that has `akb:manage_document` and the effective
    update, publish and ingest actions.
 2. Open **Public sources**.
-3. For a collection, select **Load catalog** and review the source count,
-   authority and any warnings.
+3. Select a centrally approved collection by name. Review the displayed issuer,
+   owner, gestor, review rule and TLP, then select **Load catalog** and review the
+   candidate count and warnings. If approvals are unavailable, retry the approval
+   list or ask the STRATOS administrator; importing remains disabled.
 4. To update only a legal or thematic subset, enter one or more titles or act
    numbers separated by commas, semicolons or new lines. Review the matching
    count and choose **Synchronize selection**. Leave the field empty only when
@@ -161,7 +175,9 @@ before switching `AKL_RAG_FULLTEXT_MODE` to `opensearch`.
    worker to preserve the temporal order; other collections use two. Leaving
    the page stops new browser requests but committed documents remain; running
    synchronization again resumes idempotently. Transient network, timeout,
-   HTTP 429 and HTTP 5xx failures receive one automatic retry.
+   HTTP 429 and HTTP 5xx failures receive one automatic retry. Approval or current
+   root conflicts stop further candidates and require refreshed approval; an
+   already in-flight candidate still passes its own fresh admission gates.
 5. Verify that failures are zero and that newly created ingestion attempts reach
    `INDEXED`. A failed item can be retried by synchronizing the collection again.
    When a previously captured OOXML original has the correct content hash but
@@ -176,4 +192,8 @@ before switching `AKL_RAG_FULLTEXT_MODE` to `opensearch`.
 The collection definitions and host allowlists are code-reviewed in
 `apps/web/src/lib/public-sources/catalog.ts`. Discovery and synchronization are
 implemented in the adjacent `discovery.ts` and `sync.ts` modules. A source is
-never accepted only because a browser supplied its URL.
+never accepted only because a browser supplied its URL. The new optional web
+setting `AKL_STRATOS_OFFICIAL_SOURCES_URL` defaults to empty. Configure it only
+after the joint collections/prepare and final Registry snapshot-admission
+acceptance in the integration handoff. No collection-level rollout or upstream
+readiness is inferred from passing local fixture tests.

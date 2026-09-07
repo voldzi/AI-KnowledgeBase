@@ -12,6 +12,7 @@ from app.config import Settings
 from app.errors import RetrievalError
 from app.http_utils import request_json_with_retry
 from app.schemas import ChunkCitation, RagQueryFilters, RetrievedChunk
+from app.source_locator import office_source_locator
 from retrievers.scoring import (
     CLASSIFICATION_ORDER,
     deterministic_embedding,
@@ -250,58 +251,6 @@ class QdrantHybridRetriever:
         if not text:
             return None
         return _point_to_chunk(point_payload, score=1.0, dense_score=1.0, sparse_score=1.0)
-
-    async def get_neighbors(self, chunk: RetrievedChunk) -> tuple[str, str]:
-        """Return (before_text, after_text) from chunks around the given chunk
-        inside the same document version, based on chunk_index."""
-        chunk_index = chunk.metadata.get("chunk_index")
-        document_version_id = chunk.citation.document_version_id
-        if not isinstance(chunk_index, int) or not document_version_id:
-            return "", ""
-        window = self._settings.source_context_window
-        if window == 0:
-            return "", ""
-        payload = await _request_qdrant_json_allow_missing(
-            settings=self._settings,
-            method="POST",
-            url=f"{self._settings.qdrant_base_url}/collections/{self._settings.qdrant_collection}/points/scroll",
-            json_body={
-                "limit": max(8, window * 2 + 1),
-                "with_payload": True,
-                "with_vector": False,
-                "filter": {
-                    "must": [
-                        {"key": "document_version_id", "match": {"value": document_version_id}},
-                        {
-                            "key": "metadata.chunk_index",
-                            "range": {"gte": chunk_index - window, "lte": chunk_index + window},
-                        },
-                    ]
-                },
-            },
-        )
-        result = payload.get("result", {})
-        points = result.get("points", []) if isinstance(result, dict) else []
-        before: list[tuple[int, str]] = []
-        after: list[tuple[int, str]] = []
-        for point in points:
-            if not isinstance(point, dict):
-                continue
-            point_payload = point.get("payload", {})
-            if not isinstance(point_payload, dict):
-                continue
-            point_metadata = point_payload.get("metadata") if isinstance(point_payload.get("metadata"), dict) else {}
-            point_index = point_metadata.get("chunk_index")
-            text = str(point_payload.get("text") or "").strip()
-            if not text or not isinstance(point_index, int):
-                continue
-            if chunk_index - window <= point_index < chunk_index:
-                before.append((point_index, text))
-            elif chunk_index < point_index <= chunk_index + window:
-                after.append((point_index, text))
-        before_text = "\n\n".join(text for _, text in sorted(before))
-        after_text = "\n\n".join(text for _, text in sorted(after))
-        return before_text, after_text
 
     async def get_context_chunks(self, chunk: RetrievedChunk, *, window: int) -> list[RetrievedChunk]:
         chunk_index = chunk.metadata.get("chunk_index")
@@ -671,6 +620,14 @@ def _point_to_chunk(
     sparse_score: float,
 ) -> RetrievedChunk:
     chunk_metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
+    source_locator = office_source_locator(chunk_metadata.get("source_locator"))
+    source_name = str(payload.get("source_file_name") or chunk_metadata.get("source_file_name") or "").lower()
+    source_mime = payload.get("source_mime_type") or chunk_metadata.get("source_mime_type")
+    native_office = source_locator is not None or source_name.endswith((".xlsx", ".xlsm", ".pptx")) or source_mime in {
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-excel.sheet.macroEnabled.12",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    }
     chunk_id = str(payload.get("chunk_id") or "")
     document_id = str(payload.get("document_id") or "")
     document_version_id = str(payload.get("document_version_id") or "")
@@ -684,7 +641,7 @@ def _point_to_chunk(
             document_version_id=document_version_id,
             document_title=str(payload.get("document_title") or chunk_metadata.get("document_title") or document_id),
             version_label=str(payload.get("version_label") or chunk_metadata.get("version_label") or document_version_id),
-            page_number=payload.get("page_number"),
+            page_number=None if native_office else payload.get("page_number"),
             section_path=list(payload.get("section_path") or []),
             article_number=payload.get("article_number"),
             paragraph_number=payload.get("paragraph_number"),
@@ -728,6 +685,7 @@ def _point_to_chunk(
             "quality_tier": payload.get("quality_tier", chunk_metadata.get("quality_tier")),
             "requires_review": payload.get("requires_review", chunk_metadata.get("requires_review")),
             "parser_quality": chunk_metadata.get("parser_quality"),
+            "source_locator": source_locator,
         },
     )
 

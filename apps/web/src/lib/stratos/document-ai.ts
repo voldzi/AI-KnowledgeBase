@@ -14,6 +14,9 @@ import { getAklConfig } from "@/lib/api/config";
 import { requestJson } from "@/lib/api/http-client";
 import { withAppBasePath } from "@/lib/app-url";
 import { equalCanonicalJson } from "@/lib/stratos/canonical-json";
+import type { DocumentProfileInput, DocumentVersionProfileInput } from "@/lib/documents/document-profile";
+import { parseDocumentProfileInput, parseDocumentVersionProfileDraft, parseDocumentVersionProfileInput,
+  type DocumentVersionProfileDraft } from "@/lib/documents/document-profile-validation";
 import {
   getUploadSettings,
   type UploadSettings,
@@ -21,7 +24,7 @@ import {
 } from "@/lib/upload/preflight";
 import { applyDocumentIntakeSettings } from "@/lib/upload/document-intake";
 import {
-  parseInformationPolicy,
+  parseDocumentInformationPolicy,
   parseStratosBudgetIntegrationEnvelope,
   STRATOS_ORGANIZATION_ID,
   type InformationPolicyBinding,
@@ -137,7 +140,7 @@ export interface StratosBudgetUploadContract {
   externalRef: string;
   entityType: "Contract";
   entityId: string;
-  ownerSubjectId: string;
+  actorSubjectId: string;
   fileName: string;
   fileType: string;
   fileSize: number;
@@ -149,6 +152,8 @@ export interface StratosBudgetUploadContract {
 }
 
 export interface StratosBudgetPreflightContract extends StratosBudgetUploadContract {
+  documentProfile: DocumentProfileInput;
+  documentVersionProfile: DocumentVersionProfileDraft;
   documentType: "contract";
   title: string;
   registryClassification: "public" | "internal" | "restricted";
@@ -169,6 +174,10 @@ export interface StratosBudgetPreflightContract extends StratosBudgetUploadContr
     batch_entries_sha256?: string;
     release_revision?: string;
   };
+}
+
+export interface StratosBudgetConfirmContract extends StratosBudgetUploadContract {
+  documentProfile: DocumentVersionProfileInput;
 }
 
 export interface StratosBudgetStoredLineage {
@@ -219,7 +228,7 @@ export interface StratosBudgetUploadConfirmResult {
   file_name: string;
   file_type: string;
   file_size: number;
-  document_version_status: "valid";
+  document_version_status: "draft" | "valid";
   governance_confirmation: StratosBudgetGovernanceConfirmation;
 }
 
@@ -238,6 +247,8 @@ export interface SourceLocationInput {
 }
 
 export const STRATOS_BUDGET_PREFLIGHT_FIELDS = [
+  "document_profile",
+  "document_version_profile",
   "tenant_id",
   "external_system",
   "external_ref",
@@ -246,7 +257,7 @@ export const STRATOS_BUDGET_PREFLIGHT_FIELDS = [
   "document_type",
   "title",
   "classification",
-  "owner_actor_id",
+  "actor_subject_id",
   "owner_display_name",
   "context_tags",
   "metadata",
@@ -261,6 +272,7 @@ export const STRATOS_BUDGET_PREFLIGHT_FIELDS = [
 ] as const;
 
 export const STRATOS_BUDGET_CONFIRM_FIELDS = [
+  "document_profile",
   "tenant_id",
   "external_system",
   "external_ref",
@@ -321,7 +333,6 @@ export function getStratosBudgetUploadSettings(
       Number.isSafeInteger(configuredBudgetLimit) && configuredBudgetLimit > 0
         ? configuredBudgetLimit
         : STRATOS_BUDGET_UPLOAD_MAX_FILE_BYTES,
-    publicUploadBasePath: withAppBasePath("/api/stratos/budget-upload/sessions")
   });
 }
 
@@ -385,12 +396,19 @@ export function parseStratosBudgetPreflightContract(
 ): StratosBudgetPreflightContract {
   assertBudgetExactFields(body, STRATOS_BUDGET_PREFLIGHT_FIELDS, "Budget upload preflight");
   const contract = parseStratosBudgetUploadContract(body, "sha256");
+  const documentProfile = parseDocumentProfileInput(body.document_profile, { documentType: "contract", sourceSystem: "STRATOS_BUDGET" });
+  const documentVersionProfile = parseDocumentVersionProfileDraft(body.document_version_profile, documentProfile);
+  if (documentProfile.provenance.sourceRecordId !== contract.entityId
+      || documentProfile.provenance.sourceGovernedResourceId !== contract.parentGovernedResourceId
+      || documentVersionProfile.domain_evidence.contractReference !== contract.entityId) {
+    budgetContractError("Document profile source references must match the exact Budget envelope.", "STRATOS_BUDGET_UPLOAD_LINEAGE_INVALID");
+  }
   if (
     requiredString(body, "document_type") !== "contract"
-    || requiredString(body, "owner_actor_id") !== contract.ownerSubjectId
+    || requiredString(body, "actor_subject_id") !== contract.actorSubjectId
   ) {
     budgetContractError(
-      "Budget upload document type and owner must match the immutable integration envelope.",
+      "Budget upload document type and actor must match the immutable integration envelope.",
       "STRATOS_BUDGET_UPLOAD_LINEAGE_INVALID",
     );
   }
@@ -484,6 +502,8 @@ export function parseStratosBudgetPreflightContract(
   }
   return {
     ...contract,
+    documentProfile,
+    documentVersionProfile,
     documentType: "contract",
     title: requiredString(body, "title"),
     registryClassification: registryClassificationForPolicy(contract.informationPolicy),
@@ -511,9 +531,9 @@ export function parseStratosBudgetPreflightContract(
 
 export function parseStratosBudgetConfirmContract(
   body: Record<string, unknown>,
-): StratosBudgetUploadContract {
+): StratosBudgetConfirmContract {
   assertBudgetExactFields(body, STRATOS_BUDGET_CONFIRM_FIELDS, "Budget upload confirmation");
-  return parseStratosBudgetUploadContract(body, "file_hash");
+  return { ...parseStratosBudgetUploadContract(body, "file_hash"), documentProfile: parseDocumentVersionProfileInput(body.document_profile) };
 }
 
 export function stratosBudgetPreflightWorkflow(
@@ -624,10 +644,10 @@ export function stratosBudgetVersionLineageFromUploadToken(
   };
 }
 
-export function canonicalStratosBudgetUploadContract(
-  contract: StratosBudgetUploadContract,
+export function canonicalStratosBudgetUploadContract<T extends StratosBudgetUploadContract>(
+  contract: T,
   payload: UploadTokenPayload,
-): StratosBudgetUploadContract {
+): T {
   return {
     ...contract,
     fileName: payload.file_name,
@@ -657,12 +677,13 @@ export async function upsertStratosBudgetExternalDocument(input: {
       entity_type: contract.entityType,
       entity_id: contract.entityId,
       document_type: contract.documentType,
+      document_profile: contract.documentProfile,
       title: contract.title,
       classification: contract.registryClassification,
       information_policy: contract.informationPolicy,
       integration_envelope: contract.integrationEnvelope,
       owner: {
-        user_id: contract.ownerSubjectId,
+        user_id: contract.documentProfile.accountability.ownerSubjectId,
         display_name: contract.ownerDisplayName,
       },
       tags: contract.tags,
@@ -708,6 +729,7 @@ export function buildStratosBudgetDocumentVersionRequest(input: {
 }): Record<string, unknown> {
   return {
     external_ref: input.contract.externalRef,
+    document_profile: parseDocumentVersionProfileInput(input.body.document_profile),
     version_label: requiredString(input.body, "version_label"),
     valid_from: optionalString(input.body, "valid_from"),
     valid_to: optionalString(input.body, "valid_to"),
@@ -824,7 +846,7 @@ export function stratosBudgetLineageFromVersion(
       "web-stratos-budget-bridge",
     );
   }
-  const informationPolicy = parseInformationPolicy(version.policy_summary);
+  const informationPolicy = parseDocumentInformationPolicy(version.policy_summary);
   if (!equalCanonicalJson(document.policy_summary, version.policy_summary)) {
     throw new ApiClientError(
       "The Budget document and version policies differ.",
@@ -1088,7 +1110,7 @@ function parseStratosBudgetUploadContract(
   body: Record<string, unknown>,
   hashField: "sha256" | "file_hash",
 ): StratosBudgetUploadContract {
-  const informationPolicy = parseInformationPolicy(body.information_policy);
+  const informationPolicy = parseDocumentInformationPolicy(body.information_policy);
   const integrationEnvelope = parseStratosBudgetIntegrationEnvelope(
     body.integration_envelope,
     informationPolicy,
@@ -1125,7 +1147,7 @@ function parseStratosBudgetUploadContract(
     externalRef,
     entityType: "Contract",
     entityId,
-    ownerSubjectId: integrationEnvelope.actor.subjectId,
+    actorSubjectId: integrationEnvelope.actor.subjectId,
     fileName: requiredString(body, "file_name"),
     fileType: requiredString(body, "file_type"),
     fileSize,

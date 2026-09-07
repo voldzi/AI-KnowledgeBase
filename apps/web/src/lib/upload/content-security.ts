@@ -308,13 +308,22 @@ function parseClamdScanResponse(response: string): {
 }
 
 function parseClamdVersion(response: string): {
-  engineVersion: string | null;
-  signatureVersion: string | null;
+  engineVersion: string;
+  signatureVersion: string;
 } {
-  const match = response.match(/^ClamAV\s+([^/\s]+)\/([^/\s]+)(?:\/|$)/u);
+  const match = response.match(
+    /^ClamAV[ \t]+(\d+(?:\.\d+)+(?:[-+][a-zA-Z0-9._-]+)?)\/(\d+)(?:\/[^\r\n\0]+)?$/u,
+  );
+  if (!match) {
+    throw new UploadPreflightError(
+      503,
+      "CONTENT_SECURITY_INVALID_RESPONSE",
+      "The content-security scanner did not return valid engine and signature versions.",
+    );
+  }
   return {
-    engineVersion: match?.[1] ?? null,
-    signatureVersion: match?.[2] ?? null,
+    engineVersion: match[1],
+    signatureVersion: match[2],
   };
 }
 

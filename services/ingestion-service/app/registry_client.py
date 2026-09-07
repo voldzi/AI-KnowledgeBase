@@ -14,6 +14,7 @@ import httpx
 from app.config import Settings
 from app.context import get_correlation_id, get_request_id
 from app.errors import IngestionError
+from app.document_policy import document_policy_hash
 from app.schemas import Classification, DocumentMetadata
 from app.security import AuthContext
 
@@ -157,6 +158,20 @@ class RegistryClient:
         auth_context: AuthContext | None = None,
     ) -> DocumentMetadata:
         if self.settings.registry_client_mode == "mock":
+            summary = {
+                "policyBindingId": "pol_mock_ingestion",
+                "policyVersion": "information-policy-2.0.0",
+                "handlingClass": self.settings.registry_mock_classification.upper(),
+                "legalClassification": "NONE",
+                "tlp": "TLP:AMBER",
+                "pap": None,
+                "obligations": ["AUDIT_ACCESS"],
+                "contentCategories": [],
+                "audience": {
+                    "organizationId": "org_stratos", "scopeType": "organization",
+                    "scopeIds": [], "recipientSubjectIds": [],
+                },
+            }
             return DocumentMetadata(
                 document_id=document_id,
                 document_version_id=document_version_id,
@@ -167,6 +182,10 @@ class RegistryClient:
                 tags=["mock"],
                 classification=Classification(self.settings.registry_mock_classification),
                 access_scope=list(self.settings.registry_mock_access_scope),
+                policy_binding_id=summary["policyBindingId"],
+                policy_version=summary["policyVersion"],
+                policy_hash=document_policy_hash(summary),
+                policy_summary=summary,
                 source_file_uri=None,
                 file_hash=None,
             )

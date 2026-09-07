@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 
 from app.information_policy import (
@@ -8,6 +10,8 @@ from app.information_policy import (
     canonical_policy_hash,
 )
 from app.models import Document, DocumentVersion
+from document_profile_fixtures import (admit_orm_profile, profiled_document_request,
+    profiled_version_request, verified_profile_authority)
 
 
 def policy(
@@ -22,7 +26,7 @@ def policy(
         "policyVersion": "information-policy-2.0.0",
         "handlingClass": "INTERNAL",
         "legalClassification": "NONE",
-        "tlp": None,
+        "tlp": "TLP:CLEAR",
         "pap": None,
         "contentCategories": ["CONTRACTUAL"],
         "audience": {
@@ -63,7 +67,7 @@ def create_document(client, *, information_policy: dict | None = None):
     return client.post(
         "/api/v1/documents",
         headers=v2_headers(subject="user_owner", capabilities="akb:upload,akb:manage_document"),
-        json={
+        json=profiled_document_request({
             "title": "Policy V2 test",
             "document_type": "contract",
             "owner_id": "user_owner",
@@ -71,7 +75,7 @@ def create_document(client, *, information_policy: dict | None = None):
             "classification": "internal",
             "tags": ["policy-v2"],
             "information_policy": information_policy,
-        },
+        }),
     )
 
 
@@ -81,7 +85,7 @@ def test_policy_binding_id_accepts_registry_and_central_namespaces() -> None:
 
 
 
-def test_v2_document_and_version_store_immutable_policy_snapshot(client) -> None:
+def test_v2_document_and_version_store_immutable_policy_snapshot(client, verified_profile_authority) -> None:
     binding = policy()
     created = create_document(client, information_policy=binding)
     assert created.status_code == 201, created.text
@@ -96,24 +100,24 @@ def test_v2_document_and_version_store_immutable_policy_snapshot(client) -> None
     version = client.post(
         f"/api/v1/documents/{document['document_id']}/versions",
         headers=v2_headers(subject="user_owner", capabilities="akb:upload", scopes="organization"),
-        json={
+        json=profiled_version_request(document, {
             "version_label": "1.0",
             "source_file_uri": "s3://akl-documents/policy-v2/test.pdf",
             "file_hash": f"sha256:{'a' * 64}",
-        },
+        }),
     )
     assert version.status_code == 201, version.text
     assert version.json()["policy_hash"] == expected_hash
     assert version.json()["policy_summary"] == document["policy_summary"]
 
 
-def test_v2_upload_requires_policy_binding(client) -> None:
+def test_v2_upload_requires_policy_binding(client, verified_profile_authority) -> None:
     response = create_document(client, information_policy=None)
     assert response.status_code == 422
-    assert response.json()["error"]["code"] == "policy_unavailable"
+    assert response.json()["error"]["code"] == "validation_error"
 
 
-def test_classified_and_unknown_obligation_are_rejected_before_create(client) -> None:
+def test_classified_and_unknown_obligation_are_rejected_before_create(client, verified_profile_authority) -> None:
     classified = policy()
     classified["legalClassification"] = "D"
     response = create_document(client, information_policy=classified)
@@ -125,7 +129,7 @@ def test_classified_and_unknown_obligation_are_rejected_before_create(client) ->
     assert response.status_code == 422
 
 
-def test_capability_and_scope_are_both_required(client) -> None:
+def test_capability_and_scope_are_both_required(client, verified_profile_authority) -> None:
     created = create_document(client, information_policy=policy()).json()
     document_id = created["document_id"]
 
@@ -144,7 +148,7 @@ def test_capability_and_scope_are_both_required(client) -> None:
     assert "SCOPE_MISMATCH" in wrong_scope.json()["error"]["details"]["reason_codes"]
 
 
-def test_financial_area_scope_isolates_it_from_logistics(client, db_session) -> None:
+def test_financial_area_scope_isolates_it_from_logistics(client, db_session, verified_profile_authority) -> None:
     created = create_document(
         client,
         information_policy=policy(scope_type="organization_unit", scope_ids=["it"]),
@@ -180,11 +184,11 @@ def test_financial_area_scope_isolates_it_from_logistics(client, db_session) -> 
             capabilities="akb:upload,akb:manage_document",
             scopes="organization,organization_unit:it",
         ),
-        json={
+        json=profiled_version_request(created.json(), {
             "version_label": "1.0",
             "source_file_uri": "s3://akl-documents/it/restricted-budget.pdf",
             "file_hash": f"sha256:{'e' * 64}",
-        },
+        }),
     )
     assert version_response.status_code == 201, version_response.text
     version_id = version_response.json()["document_version_id"]
@@ -214,7 +218,7 @@ def test_financial_area_scope_isolates_it_from_logistics(client, db_session) -> 
     assert public_default.json()["denied_document_ids"] == [document_id]
 
 
-def test_central_organization_scope_with_id_allows_document_version(client) -> None:
+def test_central_organization_scope_with_id_allows_document_version(client, verified_profile_authority) -> None:
     document = create_document(client, information_policy=policy()).json()
 
     response = client.post(
@@ -224,11 +228,11 @@ def test_central_organization_scope_with_id_allows_document_version(client) -> N
             capabilities="akb:upload,akb:manage_document",
             scopes="organization:org_stratos",
         ),
-        json={
+        json=profiled_version_request(document, {
             "version_label": "1.0",
             "source_file_uri": "s3://akl-documents/policy-v2/central-scope.pdf",
             "file_hash": f"sha256:{'c' * 64}",
-        },
+        }),
     )
 
     assert response.status_code == 201, response.text
@@ -237,6 +241,7 @@ def test_central_organization_scope_with_id_allows_document_version(client) -> N
 def test_organization_reader_can_read_published_source_without_authoring_rights(
     client,
     db_session,
+    verified_profile_authority,
 ) -> None:
     document = create_document(client, information_policy=policy()).json()
     version_response = client.post(
@@ -246,11 +251,11 @@ def test_organization_reader_can_read_published_source_without_authoring_rights(
             capabilities="akb:upload,akb:manage_document",
             scopes="organization:org_stratos",
         ),
-        json={
+        json=profiled_version_request(document, {
             "version_label": "1.0",
             "source_file_uri": "s3://akl-documents/policy-v2/organization.pdf",
             "file_hash": f"sha256:{'f' * 64}",
-        },
+        }),
     )
     assert version_response.status_code == 201, version_response.text
     version_id = version_response.json()["document_version_id"]
@@ -295,7 +300,7 @@ def test_organization_reader_can_read_published_source_without_authoring_rights(
 
 
 @pytest.mark.parametrize("restriction", ["scope_missing", "other_organization", "recipient", "unit"])
-def test_organization_read_profile_preserves_narrower_document_boundaries(client, restriction) -> None:
+def test_organization_read_profile_preserves_narrower_document_boundaries(client, restriction, verified_profile_authority) -> None:
     binding = policy()
     if restriction == "recipient":
         binding["audience"]["recipientSubjectIds"] = ["user_owner"]
@@ -316,6 +321,7 @@ def test_organization_read_profile_preserves_narrower_document_boundaries(client
 
 def test_authoring_filter_allows_exact_draft_version_only_for_document_manager(
     client,
+    verified_profile_authority,
 ) -> None:
     document = create_document(client, information_policy=policy()).json()
     version = client.post(
@@ -325,11 +331,11 @@ def test_authoring_filter_allows_exact_draft_version_only_for_document_manager(
             capabilities="akb:upload,akb:manage_document",
             scopes="organization:org_stratos",
         ),
-        json={
+        json=profiled_version_request(document, {
             "version_label": "draft-authoring",
             "source_file_uri": "s3://akl-documents/policy-v2/draft-authoring.docx",
             "file_hash": f"sha256:{'a' * 64}",
-        },
+        }),
     ).json()
     coordinates = {
         "subject_id": "user_owner",
@@ -375,6 +381,7 @@ def test_authoring_filter_allows_exact_draft_version_only_for_document_manager(
 def test_public_chat_filter_allows_exact_valid_official_reference_version(
     client,
     db_session,
+    verified_profile_authority,
 ) -> None:
     binding = InformationPolicyBinding.model_validate(official_public_reference_policy())
     policy_hash = canonical_policy_hash(binding)
@@ -407,6 +414,7 @@ def test_public_chat_filter_allows_exact_valid_official_reference_version(
         document_id=document.document_id,
         version_label="1.0",
         status="valid",
+        valid_from=date(2020,1,1),
         organization_id="org_stratos",
         policy_binding_id=binding.policy_binding_id,
         policy_version=binding.policy_version,
@@ -418,6 +426,7 @@ def test_public_chat_filter_allows_exact_valid_official_reference_version(
         file_hash=f"sha256:{'c' * 64}",
     )
     db_session.add_all([document, version])
+    admit_orm_profile(db_session, document, [version], verified_profile_authority, profile_id="akb.official-public-reference")
     db_session.commit()
 
     filtered = client.post(
@@ -455,7 +464,7 @@ def test_public_chat_filter_allows_exact_valid_official_reference_version(
     assert "PUBLIC_PROJECTION_REQUIRED" in direct_read.json()["error"]["details"]["reason_codes"]
 
 
-def test_tlp_red_requires_explicit_recipient(client) -> None:
+def test_tlp_red_requires_explicit_recipient(client, verified_profile_authority) -> None:
     binding = policy(scope_type="recipient_set")
     binding.update({"tlp": "TLP:RED", "originatorId": "originator"})
     binding["audience"]["recipientSubjectIds"] = ["user_recipient"]
@@ -480,7 +489,7 @@ def test_tlp_red_requires_explicit_recipient(client) -> None:
     assert allowed.status_code == 200
 
 
-def test_own_governed_scope_is_immutable_and_bound_to_canonical_owner(client) -> None:
+def test_own_governed_scope_is_immutable_and_bound_to_canonical_owner(client, verified_profile_authority) -> None:
     binding = policy(scope_type="recipient_set")
     binding["audience"]["recipientSubjectIds"] = ["user_owner"]
     created = client.post(
@@ -490,7 +499,7 @@ def test_own_governed_scope_is_immutable_and_bound_to_canonical_owner(client) ->
             capabilities="akb:upload,akb:manage_document,akb:read_document",
             scopes="own",
         ),
-        json={
+        json=profiled_document_request({
             "title": "Private owner document",
             "document_type": "contract",
             "owner_id": "user_owner",
@@ -500,7 +509,7 @@ def test_own_governed_scope_is_immutable_and_bound_to_canonical_owner(client) ->
                 "type": "own",
                 "ownerSubjectId": "user_owner",
             },
-        },
+        }),
     )
     assert created.status_code == 201, created.text
     body = created.json()
@@ -544,18 +553,18 @@ def test_own_governed_scope_is_immutable_and_bound_to_canonical_owner(client) ->
             capabilities="akb:upload,akb:manage_document",
             scopes="own",
         ),
-        json={
+        json=profiled_version_request(body, {
             "version_label": "1.0",
             "source_file_uri": "s3://akl-documents/private/owner.pdf",
             "file_hash": f"sha256:{'f' * 64}",
-        },
+        }),
     )
     assert version.status_code == 201, version.text
     assert version.json()["governance_scope_type"] == "own"
     assert version.json()["governance_scope_owner_subject_id"] == "user_owner"
 
 
-def test_own_governed_scope_rejects_forged_owner(client) -> None:
+def test_own_governed_scope_rejects_forged_owner(client, verified_profile_authority) -> None:
     binding = policy(scope_type="recipient_set")
     binding["audience"]["recipientSubjectIds"] = ["user_victim"]
     response = client.post(
@@ -565,7 +574,7 @@ def test_own_governed_scope_rejects_forged_owner(client) -> None:
             capabilities="akb:upload,akb:manage_document",
             scopes="own",
         ),
-        json={
+        json=profiled_document_request({
             "title": "Forged private document",
             "document_type": "contract",
             "owner_id": "user_attacker",
@@ -575,14 +584,14 @@ def test_own_governed_scope_rejects_forged_owner(client) -> None:
                 "type": "own",
                 "ownerSubjectId": "user_victim",
             },
-        },
+        }),
     )
 
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "governance_scope_owner_mismatch"
 
 
-def test_stale_or_revoked_vector_version_is_filtered(client, db_session) -> None:
+def test_stale_or_revoked_vector_version_is_filtered(client, db_session, verified_profile_authority) -> None:
     document = create_document(client, information_policy=policy()).json()
     version_response = client.post(
         f"/api/v1/documents/{document['document_id']}/versions",
@@ -590,11 +599,11 @@ def test_stale_or_revoked_vector_version_is_filtered(client, db_session) -> None
             subject="user_owner",
             capabilities="akb:upload,akb:manage_document",
         ),
-        json={
+        json=profiled_version_request(document, {
             "version_label": "1.0",
             "source_file_uri": "s3://akl-documents/policy-v2/vector.pdf",
             "file_hash": f"sha256:{'d' * 64}",
-        },
+        }),
     )
     assert version_response.status_code == 201, version_response.text
     version_id = version_response.json()["document_version_id"]
@@ -633,27 +642,16 @@ def test_stale_or_revoked_vector_version_is_filtered(client, db_session) -> None
     assert allowed.json()["allowed_document_ids"] == [document["document_id"]]
 
     stored_version.status = "archived"
-    replacement = DocumentVersion(
-        document_id=document["document_id"],
-        version_label="2.0",
-        status="valid",
-        organization_id=stored_version.organization_id,
-        policy_binding_id=stored_version.policy_binding_id,
-        policy_version=stored_version.policy_version,
-        policy_hash=stored_version.policy_hash,
-        policy_summary=dict(stored_version.policy_summary),
-        governed_resource_id="gir_policy_v2_replacement",
-        governed_source_version="source_policy_v2_replacement",
-        governed_parent_resource_id=stored_document.governed_resource_id,
-        governance_scope_type=stored_version.governance_scope_type,
-        governance_scope_id=stored_version.governance_scope_id,
-        governance_scope_owner_subject_id=stored_version.governance_scope_owner_subject_id,
-        governance_registration_status=stored_version.governance_registration_status,
-        governance_registered_at=stored_version.governance_registered_at,
-        source_file_uri="s3://akl-documents/policy-v2/vector-v2.pdf",
-        file_hash=f"sha256:{'e' * 64}",
+    db_session.commit()
+    replacement_response = client.post(
+        f"/api/v1/documents/{document['document_id']}/versions",
+        headers=v2_headers(subject="user_owner", capabilities="akb:upload,akb:manage_document"),
+        json=profiled_version_request(document, {"version_label":"2.0",
+            "source_file_uri":"s3://akl-documents/policy-v2/vector-v2.pdf", "file_hash":f"sha256:{'e' * 64}"}),
     )
-    db_session.add(replacement)
+    assert replacement_response.status_code == 201, replacement_response.text
+    replacement = db_session.get(DocumentVersion, replacement_response.json()["document_version_id"])
+    replacement.status = "valid"
     db_session.commit()
 
     mixed = client.post(
@@ -695,7 +693,7 @@ def test_stale_or_revoked_vector_version_is_filtered(client, db_session) -> None
     assert revoked.json()["denied_document_ids"] == [document["document_id"]]
 
 
-def test_stratos_admin_without_akb_capability_cannot_read_content(client) -> None:
+def test_stratos_admin_without_akb_capability_cannot_read_content(client, verified_profile_authority) -> None:
     document = create_document(client, information_policy=policy()).json()
     response = client.get(
         f"/api/v1/documents/{document['document_id']}",

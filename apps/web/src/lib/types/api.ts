@@ -1,3 +1,4 @@
+import type { DocumentVersionProfileInput } from "@/lib/documents/document-profile";
 import type { AuditEvent, AuditEventListOptions, CreateAuditEventRequest } from "./audit";
 import type {
   AuthorizationHint,
@@ -173,6 +174,40 @@ export interface DocumentAuthorizationDecision {
   constraints: Record<string, unknown>;
 }
 
+export interface BudgetIntakeAuthorizationRequest {
+  document_profile: DocumentVersionProfileInput;
+  upload_session_id: string;
+  external_document_id: string;
+  governed_document_resource_id: string;
+  source_governed_resource_id: string;
+  source_resource_id: string;
+  source_version: string;
+  policy_binding_id: string;
+  policy_version: string;
+  policy_hash: string;
+  governance_scope: { type: "budget_scope"; id: string };
+  actor_subject_id: string;
+  registered_by_subject_id: string;
+  correlation_id: string;
+  idempotency_key: string;
+  workflow_mode: "interactive" | "historical_batch";
+  workflow_context: Record<string, string>;
+}
+
+export interface BudgetIntakeAuthorizationResponse {
+  allowed: boolean;
+  document_id: string;
+  upload_session_id: string;
+  confirmed_subject_id: string;
+  registered_by_subject_id: string;
+  policy_binding_id: string;
+  policy_version: string;
+  policy_hash: string;
+  source_governed_resource_id: string;
+  source_version: string;
+  reason_codes: string[];
+}
+
 export interface RegistryApiClient {
   listDocuments(context: ApiRequestContext, options?: DocumentListOptions): Promise<Document[]>;
   listDocumentPage(
@@ -261,8 +296,15 @@ export interface RegistryApiClient {
   authorizeDocument(
     documentId: string,
     action: string,
-    context: ApiRequestContext
+    context: ApiRequestContext,
+    documentVersionId?: string,
   ): Promise<DocumentAuthorizationDecision>;
+  authorizeBudgetDocumentIntake(
+    documentId: string,
+    request: BudgetIntakeAuthorizationRequest,
+    serviceContext: ApiRequestContext,
+    actorAccessToken?: string,
+  ): Promise<BudgetIntakeAuthorizationResponse>;
   createIngestionAuthorization(
     documentId: string,
     versionId: string,

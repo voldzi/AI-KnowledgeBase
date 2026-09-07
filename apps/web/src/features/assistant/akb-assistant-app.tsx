@@ -1,17 +1,17 @@
 "use client";
 
 import {
+  memo,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type CSSProperties,
   type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
-  type ReactNode,
 } from "react";
-import ReactMarkdown, { type Components } from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { AssistantMarkdown } from "./assistant-markdown";
 import {
   Archive,
   BarChart3,
@@ -38,6 +38,7 @@ import {
   Send,
   Share2,
   ShieldAlert,
+  Square,
   Table2,
   ThumbsDown,
   ThumbsUp,
@@ -67,6 +68,8 @@ import {
   type AssistantReportTemplate
 } from "@/lib/assistant/assistant-report-request";
 import { recoverPersistedAssistantTurn } from "@/lib/assistant/late-response-recovery";
+import { transcriptWindow, TRANSCRIPT_WINDOW_SIZE } from "@/lib/assistant/transcript-window";
+import { clarificationPrompt } from "@/lib/assistant/clarification-prompt";
 import { assistantResponseStatus, assistantVisibleWarnings } from "@/lib/assistant/response-presentation";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
 import {
@@ -132,6 +135,7 @@ interface ChatMessage {
   authorDisplayName?: string | null;
   response?: AssistantChatResponse;
   pending?: boolean;
+  inReplyToMessageId?: string;
   persisted?: boolean;
   persistenceStatus?: "persisted" | "failed";
   feedback?: AssistantMessageFeedback | null;
@@ -170,48 +174,6 @@ interface SlashCommandOption {
   label: string;
 }
 
-function assistantMarkdownComponents(openLinkLabel: string): Components {
-  return {
-    a({ children, href }) {
-      const hasLabel = hasMarkdownCellContent(children);
-      const localNavigation = href?.startsWith("/") && !href.startsWith("//") && !href.includes("\\");
-      return (
-        <a href={href} target={localNavigation ? undefined : "_blank"} rel={localNavigation ? undefined : "noreferrer"}>
-          {hasLabel ? children : openLinkLabel}
-        </a>
-      );
-    },
-    table({ children }) {
-      return (
-        <div className="akb-chat-message__table-wrap">
-          <table>{children}</table>
-        </div>
-      );
-    },
-    td({ children }) {
-      return (
-        <td>
-          {hasMarkdownCellContent(children)
-            ? children
-            : <span className="akb-chat-message__empty-cell">neuvedeno</span>}
-        </td>
-      );
-    },
-  };
-}
-
-function hasMarkdownCellContent(children: ReactNode): boolean {
-  if (children === null || children === undefined || children === false) {
-    return false;
-  }
-  if (typeof children === "string" || typeof children === "number") {
-    return String(children).trim().length > 0;
-  }
-  if (Array.isArray(children)) {
-    return children.some((child) => hasMarkdownCellContent(child));
-  }
-  return true;
-}
 
 const assistantAppCopy = {
   cs: {
@@ -264,6 +226,9 @@ const assistantAppCopy = {
     noPreciseSource: "Nenašel jsem dostatečně přesný zdroj.",
     version: "Verze",
     page: "Strana",
+    sheet: "List",
+    row: "Řádek",
+    slide: "Snímek",
     opening: "Otevírám",
     openCitation: "Otevřít citaci",
     openDocument: "Otevřít dokument",
@@ -293,6 +258,7 @@ const assistantAppCopy = {
     sources: "Použité zdroje",
     clarificationTitle: "Potřebuji doplnit",
     clarificationFallback: "Doplnění pomůže najít správný postup.",
+    clarificationPromptUnavailable: "Původní otázku pro toto doplnění nelze bezpečně určit. Položte prosím nový dotaz.",
     selectOption: "Vyberte možnost",
     continue: "Pokračovat",
     result: "Výsledek",
@@ -354,7 +320,16 @@ const assistantAppCopy = {
     requestedThreadUnavailable: "Požadované vlákno není dostupné nebo k němu nemáte přístup.",
     historySourceAccessChanged: "Přístup ke zdrojům této historické odpovědi se změnil. Položte dotaz znovu, aby AKB použila pouze aktuálně dostupné zdroje.",
     historySourceTemporarilyUnavailable: "Zdroj historické odpovědi se teď nepodařilo bezpečně ověřit. Obsah zůstává skrytý; zkuste vlákno načíst později.",
+    historyLiveSourceRefreshRequired: "Uložený obsah z aplikací STRATOS zůstává skrytý. Pro aktuální informace položte nový dotaz; AKB znovu ověří přístup ke zdrojům.",
+    historySourceRefreshRequired: "Uložený přehled vyžaduje nové ověření zdrojů. Položte nový dotaz; AKB použije jen aktuálně dostupné informace.",
+    stopWaiting: "Zastavit čekání",
+    answerStopped: "Čekání zastaveno. Nový dotaz můžete zadat hned.",
     newMessagesBelow: "Nová odpověď",
+    historyNavigation: "Části konverzace",
+    olderMessages: "Starší zprávy",
+    newerMessages: "Novější zprávy",
+    latestMessages: "Nejnovější zprávy",
+    visibleMessageRange: "Zprávy {start}–{end} z {total}",
     close: "Zavřít",
     hideThreads: "Skrýt vlákna",
     showThreads: "Zobrazit vlákna",
@@ -416,6 +391,9 @@ const assistantAppCopy = {
     noPreciseSource: "I could not find a sufficiently precise source.",
     version: "Version",
     page: "Page",
+    sheet: "Sheet",
+    row: "Row",
+    slide: "Slide",
     opening: "Opening",
     openCitation: "Open citation",
     openDocument: "Open document",
@@ -445,6 +423,7 @@ const assistantAppCopy = {
     sources: "Sources used",
     clarificationTitle: "I need more details",
     clarificationFallback: "Additional details help find the right procedure.",
+    clarificationPromptUnavailable: "The original question for this clarification cannot be established safely. Please ask a new question.",
     selectOption: "Select an option",
     continue: "Continue",
     result: "Result",
@@ -506,7 +485,16 @@ const assistantAppCopy = {
     requestedThreadUnavailable: "The requested thread is unavailable or you do not have access to it.",
     historySourceAccessChanged: "Access to the sources for this historical answer has changed. Ask the question again so AKB uses only sources currently available to you.",
     historySourceTemporarilyUnavailable: "The source of this historical answer could not be verified safely right now. The content remains hidden; try loading the thread later.",
+    historyLiveSourceRefreshRequired: "Stored content from STRATOS applications remains hidden. Ask a new question for current information; AKB will verify source access again.",
+    historySourceRefreshRequired: "This stored overview requires a new source check. Ask a new question; AKB will use only currently accessible information.",
+    stopWaiting: "Stop waiting",
+    answerStopped: "Waiting stopped. You can ask a new question now.",
     newMessagesBelow: "New answer",
+    historyNavigation: "Conversation sections",
+    olderMessages: "Older messages",
+    newerMessages: "Newer messages",
+    latestMessages: "Latest messages",
+    visibleMessageRange: "Messages {start}–{end} of {total}",
     close: "Close",
     hideThreads: "Hide threads",
     showThreads: "Show threads",
@@ -559,6 +547,9 @@ export function AkbAssistantApp({
   const [sourceError, setSourceError] = useState<string | null>(null);
   const [openingSourceId, setOpeningSourceId] = useState<string | null>(null);
   const [citationModalOpen, setCitationModalOpen] = useState(false);
+  const [sourceMessageId, setSourceMessageId] = useState<string | null>(null);
+  const [transcriptEnds, setTranscriptEnds] = useState<Record<string, number | null>>({});
+  const pendingTranscriptFocus = useRef<"first" | "last" | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [shareTarget, setShareTarget] = useState<DirectoryUser | null>(null);
   const [sharePermission, setSharePermission] = useState<SharePermission>("viewer");
@@ -570,7 +561,7 @@ export function AkbAssistantApp({
   const [renameValue, setRenameValue] = useState("");
   const [renameSaving, setRenameSaving] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [clarificationValues, setClarificationValues] = useState<Record<string, string>>({});
+  const [clarificationValues, setClarificationValues] = useState<Record<string, Record<string, string>>>({});
   const [reportModeEnabled, setReportModeEnabled] = useState(false);
   const [reportTemplate, setReportTemplate] = useState<AssistantReportTemplate>("obligation_table");
   const [reportDetailLevel, setReportDetailLevel] = useState<AssistantReportDetailLevel>("standard");
@@ -587,9 +578,10 @@ export function AkbAssistantApp({
   const mobileActionsTriggerRef = useRef<HTMLButtonElement | null>(null);
   const threadScrollPositions = useRef(new Map<string, number>());
   const previousTranscriptThreadId = useRef<string | null>(null);
-  const previousLastMessageId = useRef<string | null>(null);
+  const previousLastMessageKey = useRef<string | null>(null);
   const autoFollowTranscript = useRef(true);
   const sourceRequest = useRef<AbortController | null>(null);
+  const chatRequest = useRef<{ controller: AbortController; threadId: string; pendingMessageId: string } | null>(null);
   const [newMessagesBelow, setNewMessagesBelow] = useState(false);
   const [personalizedSuggestions, setPersonalizedSuggestions] = useState(
     suggestions,
@@ -599,18 +591,52 @@ export function AkbAssistantApp({
   const canManageActiveThread = !activeThread?.conversationId ||
     activeThread.ownerSubjectId === currentSubjectId;
   const composer = activeThread?.draft ?? "";
-  const lastAssistantResponse = findLastAssistantResponse(activeThread);
-  const lastAssistantLiveSources = assistantLiveSources(lastAssistantResponse?.current_context);
+  const visibleWindow = transcriptWindow(activeThread.messages.length, transcriptEnds[activeThread.id] ?? null);
+  const visibleMessages = useMemo(() => activeThread.messages.slice(visibleWindow.start, visibleWindow.end),
+    [activeThread.messages, visibleWindow.start, visibleWindow.end]);
+  const sourceResponse = visibleMessages.find((message) => message.id === sourceMessageId)?.response
+    ?? findLastAssistantResponse({ messages: visibleMessages });
+  const lastAssistantLiveSources = assistantLiveSources(sourceResponse?.current_context);
   const sourceSummary = assistantSourceSummary(
-    lastAssistantResponse?.citations.length ?? 0,
+    sourceResponse?.citations.length ?? 0,
     lastAssistantLiveSources.length,
     language,
   );
   const sourcePanelVisible = compactSourcePanel ? mobileSourcesOpen : desktopSourcesOpen;
+  useEffect(() => {
+    sourceRequest.current?.abort();
+    sourceRequest.current = null;
+    setSourceContext(null);
+    setSourceError(null);
+    setOpeningSourceId(null);
+    setCitationModalOpen(false);
+  }, [sourceResponse]);
+  useEffect(() => {
+    if (sourceMessageId && !visibleMessages.some((message) => message.id === sourceMessageId)) setSourceMessageId(null);
+  }, [sourceMessageId, visibleMessages]);
+  useLayoutEffect(() => {
+    const focus = pendingTranscriptFocus.current;
+    const transcript = transcriptRef.current;
+    if (!focus || !transcript) return;
+    pendingTranscriptFocus.current = null;
+    const messages = transcript.querySelectorAll<HTMLElement>(".akb-chat-message");
+    const target = focus === "first" ? messages[0] : messages[messages.length - 1];
+    transcript.scrollTop = focus === "first" ? 0 : transcript.scrollHeight;
+    target?.focus({ preventScroll: true });
+    autoFollowTranscript.current = focus === "last" && visibleWindow.isLatest;
+  }, [activeThread.id, visibleWindow.start, visibleWindow.end, visibleWindow.isLatest]);
   useEffect(() => () => {
     sourceRequest.current?.abort();
     sourceRequest.current = null;
   }, [activeThreadId]);
+  useEffect(() => {
+    if (chatRequest.current && chatRequest.current.threadId !== activeThreadId) stopQuestion(false);
+    setSourceMessageId(null);
+  }, [activeThreadId]);
+  useEffect(() => () => {
+    chatRequest.current?.controller.abort();
+    chatRequest.current = null;
+  }, []);
   const visibleThreads = useMemo(() => {
     const query = threadSearch.trim().toLowerCase();
     const byView = threads.filter((thread) => {
@@ -755,8 +781,11 @@ export function AkbAssistantApp({
       return;
     }
     let active = true;
+    const controller = new AbortController();
     fetch(withAppBasePath(`/api/assistant/conversations/${encodeURIComponent(activeThread.conversationId)}`), {
       credentials: "same-origin",
+      cache: "no-store",
+      signal: controller.signal,
       headers: { Accept: "application/json" }
     })
       .then((response) => {
@@ -792,31 +821,33 @@ export function AkbAssistantApp({
       });
     return () => {
       active = false;
+      controller.abort();
     };
-  }, [activeThread?.conversationId, activeThread?.historyLoaded, activeThread?.id, language]);
+  }, [activeThread?.conversationId, activeThread?.historyLoaded, activeThread?.historyLoadFailed, activeThread?.id, language]);
 
-  const lastMessageId = activeThread?.messages.at(-1)?.id ?? null;
+  const lastMessage = activeThread.messages.at(-1);
+  const lastMessageKey = lastMessage ? `${lastMessage.id}:${Boolean(lastMessage.pending)}` : null;
   useEffect(() => {
     const transcript = transcriptRef.current;
     if (!transcript || !activeThread) {
       return;
     }
     const threadChanged = previousTranscriptThreadId.current !== activeThread.id;
-    const messageChanged = previousLastMessageId.current !== lastMessageId;
+    const messageChanged = previousLastMessageKey.current !== lastMessageKey;
     previousTranscriptThreadId.current = activeThread.id;
-    previousLastMessageId.current = lastMessageId;
+    previousLastMessageKey.current = lastMessageKey;
     const frame = window.requestAnimationFrame(() => {
       if (threadChanged) {
         const savedPosition = threadScrollPositions.current.get(activeThread.id);
         transcript.scrollTop = savedPosition ?? transcript.scrollHeight;
-        autoFollowTranscript.current = isTranscriptNearBottom(transcript);
+        autoFollowTranscript.current = isTranscriptNearBottom(transcript) && visibleWindow.isLatest;
         setNewMessagesBelow(false);
         return;
       }
       if (!messageChanged) {
         return;
       }
-      if (autoFollowTranscript.current) {
+      if (autoFollowTranscript.current && visibleWindow.isLatest) {
         transcriptEndRef.current?.scrollIntoView({
           block: "end",
           behavior: prefersReducedMotion() ? "auto" : "smooth",
@@ -827,7 +858,7 @@ export function AkbAssistantApp({
       }
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [activeThread, lastMessageId]);
+  }, [activeThread.id, lastMessageKey, visibleWindow.isLatest]);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -854,6 +885,7 @@ export function AkbAssistantApp({
   }
 
   function selectThread(threadId: string) {
+    if (threadId !== activeThread.id) stopQuestion(false);
     rememberActiveThreadScroll();
     setActiveThreadId(threadId);
     setStatusMessage(null);
@@ -895,6 +927,7 @@ export function AkbAssistantApp({
     if (creatingThread) {
       return;
     }
+    stopQuestion(false);
     rememberActiveThreadScroll();
     const previousThreadId = activeThread.id;
     const thread = createEmptyThread(copy.emptyThreadTitle);
@@ -1172,7 +1205,7 @@ export function AkbAssistantApp({
       setStatusMessage(copy.emptyQuestion);
       return;
     }
-    if (submitting) {
+    if (chatRequest.current) {
       return;
     }
 
@@ -1205,12 +1238,19 @@ export function AkbAssistantApp({
       createdAt: new Date().toISOString(),
       pending: true
     };
+    const request = { controller: new AbortController(), threadId, pendingMessageId: pendingMessage.id };
+    chatRequest.current = request;
+    const isCurrentRequest = () => chatRequest.current === request && !request.controller.signal.aborted;
     setSubmitting(true);
+    setTranscriptEnds((current) => ({ ...current, [threadId]: null }));
     autoFollowTranscript.current = true;
     setNewMessagesBelow(false);
     setStatusMessage(null);
     setSourceContext(null);
     setSourceError(null);
+    sourceRequest.current?.abort();
+    setSourceMessageId(null);
+    setCitationModalOpen(false);
     setClarificationValues({});
     updateThread(threadId, (thread) => ({
       ...thread,
@@ -1221,7 +1261,7 @@ export function AkbAssistantApp({
     }));
 
     const recoverLateResponse = async () => {
-      if (!activeConversationId) return false;
+      if (!activeConversationId || !isCurrentRequest()) return false;
       updateThread(threadId, (thread) => ({
         ...thread,
         messages: thread.messages.map((message) => (
@@ -1234,17 +1274,18 @@ export function AkbAssistantApp({
         conversationId: activeConversationId,
         submittedQuestion: trimmed,
         knownAssistantMessageIds,
+        signal: request.controller.signal,
         loadConversation: async (conversationId) => {
           const response = await fetch(
             withAppBasePath(`/api/assistant/conversations/${encodeURIComponent(conversationId)}`),
-            { credentials: "same-origin", headers: { Accept: "application/json" } },
+            { credentials: "same-origin", cache: "no-store", signal: request.controller.signal, headers: { Accept: "application/json" } },
           );
           if (!response.ok) return null;
           const payload = await response.json() as { conversation: AssistantConversationDetail };
           return payload.conversation;
         },
       });
-      if (!conversation) return false;
+      if (!conversation || !isCurrentRequest()) return false;
       updateThread(threadId, (thread) => ({
         ...threadFromConversation(conversation, language),
         id: thread.id,
@@ -1255,6 +1296,7 @@ export function AkbAssistantApp({
     };
 
     const showRecoveryFailure = () => {
+      if (!isCurrentRequest()) return;
       setStatusMessage(copy.answerRecoveryFailed);
       updateThread(threadId, (thread) => ({
         ...thread,
@@ -1270,6 +1312,7 @@ export function AkbAssistantApp({
       const httpResponse = await fetch(withAppBasePath(endpoint), {
         method: "POST",
         credentials: "same-origin",
+        signal: request.controller.signal,
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({
           message: trimmed,
@@ -1279,6 +1322,7 @@ export function AkbAssistantApp({
           response_language: language
         })
       });
+      if (!isCurrentRequest()) return;
       if (!httpResponse.ok) {
         if (httpResponse.status === 401) {
           redirectToLoginAfterUnauthorized();
@@ -1289,6 +1333,7 @@ export function AkbAssistantApp({
           return;
         }
         const errorMessage = await assistantHttpErrorMessage(httpResponse, copy);
+        if (!isCurrentRequest()) return;
         setStatusMessage(errorMessage);
         updateThread(threadId, (thread) => ({
           ...thread,
@@ -1305,10 +1350,12 @@ export function AkbAssistantApp({
         message_id?: string | null;
         persistence_status?: "persisted" | "failed";
       };
+      if (!isCurrentRequest()) return;
       const response = payload.response;
       const assistantMessage: ChatMessage = {
         id: payload.message_id ?? createClientId("msg-assistant"),
         role: "assistant",
+        inReplyToMessageId: userMessage.id,
         content: response.answer ?? response.message ?? response.recommended_action ?? copy.noPreciseSource,
         createdAt: new Date().toISOString(),
         response,
@@ -1330,11 +1377,41 @@ export function AkbAssistantApp({
         updatedAt: new Date().toISOString()
       }));
     } catch {
+      if (!isCurrentRequest()) return;
       if (await recoverLateResponse()) return;
       showRecoveryFailure();
     } finally {
-      setSubmitting(false);
+      if (chatRequest.current === request) {
+        chatRequest.current = null;
+        setSubmitting(false);
+      }
     }
+  }
+
+  function stopQuestion(showStatus = true) {
+    const request = chatRequest.current;
+    if (!request) return;
+    chatRequest.current = null;
+    request.controller.abort();
+    setSubmitting(false);
+    if (showStatus) setStatusMessage(copy.answerStopped);
+    updateThread(request.threadId, (thread) => ({
+      ...thread,
+      messages: thread.messages.map((message) => message.id === request.pendingMessageId
+        ? { ...message, content: copy.answerStopped, pending: false } : message),
+    }));
+  }
+
+  function showResponseSources(messageId: string) {
+    sourceRequest.current?.abort();
+    sourceRequest.current = null;
+    setSourceMessageId(messageId);
+    setSourceContext(null);
+    setSourceError(null);
+    setOpeningSourceId(null);
+    setCitationModalOpen(false);
+    if (compactSourcePanel) setMobileSourcesOpen(true);
+    else setDesktopSourcesOpen(true);
   }
 
   function rememberActiveThreadScroll() {
@@ -1353,8 +1430,13 @@ export function AkbAssistantApp({
     }
     threadScrollPositions.current.set(activeThread.id, transcript.scrollTop);
     const nearBottom = isTranscriptNearBottom(transcript);
-    autoFollowTranscript.current = nearBottom;
-    if (nearBottom) {
+    autoFollowTranscript.current = nearBottom && visibleWindow.isLatest;
+    if (visibleWindow.isLatest && !nearBottom && transcriptEnds[activeThread.id] == null) {
+      setTranscriptEnds((current) => ({ ...current, [activeThread.id]: activeThread.messages.length }));
+    } else if (visibleWindow.isLatest && nearBottom && transcriptEnds[activeThread.id] != null) {
+      setTranscriptEnds((current) => ({ ...current, [activeThread.id]: null }));
+    }
+    if (nearBottom && visibleWindow.isLatest) {
       setNewMessagesBelow(false);
     }
   }
@@ -1362,10 +1444,21 @@ export function AkbAssistantApp({
   function scrollToLatestMessage() {
     autoFollowTranscript.current = true;
     setNewMessagesBelow(false);
+    if (!visibleWindow.isLatest) {
+      showTranscriptWindow(null, "last");
+      return;
+    }
     transcriptEndRef.current?.scrollIntoView({
       block: "end",
       behavior: prefersReducedMotion() ? "auto" : "smooth",
     });
+  }
+
+  function showTranscriptWindow(end: number | null, focus: "first" | "last" = "first") {
+    pendingTranscriptFocus.current = focus;
+    autoFollowTranscript.current = end === null;
+    if (end === null) setNewMessagesBelow(false);
+    setTranscriptEnds((current) => ({ ...current, [activeThread.id]: end ?? (focus === "last" ? null : activeThread.messages.length) }));
   }
 
   async function submitMessageFeedback(
@@ -1480,15 +1573,21 @@ export function AkbAssistantApp({
     }
   }
 
-  function submitClarification(response: AssistantChatResponse) {
+  function submitClarification(response: AssistantChatResponse, responseMessageId: string) {
+    const previousQuestion = clarificationPrompt(activeThread.messages, responseMessageId);
+    const boundResponse = activeThread.messages.find((message) => message.id === responseMessageId)?.response;
+    if (previousQuestion === null || boundResponse !== response) {
+      setStatusMessage(copy.clarificationPromptUnavailable);
+      return;
+    }
     const answers = response.questions.reduce<Record<string, string>>((items, question) => {
-      const value = clarificationValues[question.id]?.trim();
+      const value = clarificationValues[responseMessageId]?.[question.id]?.trim();
       if (value) {
         items[question.id] = value;
       }
       return items;
     }, {});
-    const nextContext = { ...activeThread.context, ...answers };
+    const nextContext = { ...response.current_context, ...answers };
     if (response.current_context.clarification_kind === "director_plan_meaning") {
       const selectedPlan = answers.director_plan_meaning;
       if (selectedPlan) {
@@ -1496,7 +1595,6 @@ export function AkbAssistantApp({
       }
       return;
     }
-    const previousQuestion = [...activeThread.messages].reverse().find((message) => message.role === "user")?.content ?? "";
     void submitQuestion(previousQuestion, "/api/assistant/clarify", nextContext);
   }
 
@@ -2172,6 +2270,21 @@ export function AkbAssistantApp({
             </div>
           </PortalPopover>
 
+          {activeThread.historyLoaded && activeThread.messages.length > TRANSCRIPT_WINDOW_SIZE ? (
+            <nav className="akb-chat-history-nav" aria-label={copy.historyNavigation}>
+              <StratosButton type="button" disabled={visibleWindow.start === 0}
+                onClick={() => showTranscriptWindow(visibleWindow.start)}>{copy.olderMessages}</StratosButton>
+              <span role="status" aria-live="polite" aria-atomic="true">
+                {copy.visibleMessageRange.replace("{start}", String(visibleWindow.start + 1))
+                  .replace("{end}", String(visibleWindow.end)).replace("{total}", String(activeThread.messages.length))}
+              </span>
+              <StratosButton type="button" disabled={visibleWindow.isLatest}
+                onClick={() => showTranscriptWindow(visibleWindow.end + TRANSCRIPT_WINDOW_SIZE >= activeThread.messages.length
+                  ? null : visibleWindow.end + TRANSCRIPT_WINDOW_SIZE)}>{copy.newerMessages}</StratosButton>
+              <StratosButton type="button" disabled={visibleWindow.isLatest}
+                onClick={() => showTranscriptWindow(null, "last")}>{copy.latestMessages}</StratosButton>
+            </nav>
+          ) : null}
           <section
             ref={transcriptRef}
             className="akb-chat-transcript"
@@ -2181,7 +2294,7 @@ export function AkbAssistantApp({
               && !activeThread.historyLoaded
               && !activeThread.historyLoadFailed
             )}
-            aria-live="polite"
+            aria-live={visibleWindow.isLatest ? "polite" : "off"}
             aria-relevant="additions text"
             onScroll={handleTranscriptScroll}
           >
@@ -2230,16 +2343,20 @@ export function AkbAssistantApp({
                 </div>
               </div>
             ) : (
-              activeThread.messages.map((message) => (
+              visibleMessages.map((message) => (
                 <ChatBubble
                   key={message.id}
                   message={message}
                   copy={copy}
                   currentSubjectId={currentSubjectId}
-                  clarificationValues={clarificationValues}
-                  setClarificationValues={setClarificationValues}
-                  onSubmitClarification={submitClarification}
+                  clarificationValues={clarificationValues[message.id] ?? {}}
+                  setClarificationValues={(updater) => setClarificationValues((current) => ({
+                    ...current, [message.id]: updater(current[message.id] ?? {}),
+                  }))}
+                  onSubmitClarification={(response) => submitClarification(response, message.id)}
                   onAskFollowUp={(question) => void submitQuestion(question)}
+                  onShowSources={() => showResponseSources(message.id)}
+                  sourcesSelected={Boolean(message.response && message.response === sourceResponse)}
                   onFeedback={(rating, reasonCode) => void submitMessageFeedback(
                     message.id,
                     rating,
@@ -2407,11 +2524,12 @@ export function AkbAssistantApp({
                 disabled={creatingThread || activeThread.status === "archived"}
               />
               <button
-                type="submit"
-                disabled={creatingThread || submitting || activeThread.status === "archived"}
-                aria-label={submitting ? copy.asking : copy.ask}
+                type={submitting ? "button" : "submit"}
+                disabled={creatingThread || (!submitting && activeThread.status === "archived")}
+                aria-label={submitting ? copy.stopWaiting : copy.ask}
+                onClick={submitting ? () => stopQuestion() : undefined}
               >
-                <Send size={17} aria-hidden="true" />
+                {submitting ? <Square size={17} aria-hidden="true" /> : <Send size={17} aria-hidden="true" />}
               </button>
             </div>
           </form>
@@ -2484,9 +2602,9 @@ export function AkbAssistantApp({
                 })}
               </div>
             ) : null}
-            {lastAssistantResponse?.citations.length ? (
+            {sourceResponse?.citations.length ? (
               <CitationList
-                citations={lastAssistantResponse.citations}
+                citations={sourceResponse.citations}
                 activeChunkId={sourceContext?.chunk_id}
                 openingChunkId={openingSourceId}
                 emptyLabel={copy.noPreciseSource}
@@ -2529,7 +2647,7 @@ export function AkbAssistantApp({
         open={citationModalOpen}
         onClose={closeCitation}
         title={copy.sourceTitle}
-        citations={lastAssistantResponse?.citations ?? []}
+        citations={sourceResponse?.citations ?? []}
         activeChunkId={sourceContext?.chunk_id}
         openingChunkId={openingSourceId}
         sourceContext={sourceContext}
@@ -2913,6 +3031,8 @@ function ChatBubble({
   setClarificationValues,
   onSubmitClarification,
   onAskFollowUp,
+  onShowSources,
+  sourcesSelected,
   onFeedback,
 }: {
   message: ChatMessage;
@@ -2922,6 +3042,8 @@ function ChatBubble({
   setClarificationValues: (updater: (current: Record<string, string>) => Record<string, string>) => void;
   onSubmitClarification: (response: AssistantChatResponse) => void;
   onAskFollowUp: (question: string) => void;
+  onShowSources: () => void;
+  sourcesSelected: boolean;
   onFeedback: (
     rating: AssistantMessageFeedbackRating,
     reasonCode: AssistantMessageFeedbackReason | null,
@@ -2932,7 +3054,7 @@ function ChatBubble({
   const responseStatus = response ? assistantResponseStatus(response, language) : null;
   const [feedbackReasonsOpen, setFeedbackReasonsOpen] = useState(false);
   return (
-    <article className={`akb-chat-message akb-chat-message--${message.role}`}>
+    <article tabIndex={-1} className={`akb-chat-message akb-chat-message--${message.role}`}>
       <div className="akb-chat-message__avatar" aria-hidden="true">
         {message.role === "assistant" ? <Bot size={16} /> : <Users size={16} />}
       </div>
@@ -2959,8 +3081,15 @@ function ChatBubble({
           hideMarkdownTables={Boolean(response?.report_artifacts.length)}
         />
         {message.pending ? <div className="akb-chat-loader" /> : null}
+        {response && (response.citations.length > 0 || assistantLiveSources(response.current_context).length > 0) ? (
+          <StratosButton type="button" aria-pressed={sourcesSelected} onClick={onShowSources}>
+            <FileText size={15} aria-hidden="true" />
+            {copy.sourcesPanel}
+          </StratosButton>
+        ) : null}
         {response ? (
           <AssistantResponseTools
+            responseMessageId={message.id}
             response={response}
             copy={copy}
             clarificationValues={clarificationValues}
@@ -3024,7 +3153,7 @@ function ChatBubble({
   );
 }
 
-function ChatMessageContent({
+const ChatMessageContent = memo(function ChatMessageContent({
   role,
   content,
   openLinkLabel,
@@ -3047,15 +3176,10 @@ function ChatMessageContent({
 
   return (
     <div className="akb-chat-message__markdown">
-      <ReactMarkdown
-        components={assistantMarkdownComponents(openLinkLabel)}
-        remarkPlugins={[remarkGfm]}
-      >
-        {displayContent}
-      </ReactMarkdown>
+      <AssistantMarkdown content={displayContent} openLinkLabel={openLinkLabel} />
     </div>
   );
-}
+});
 
 function stripMarkdownTables(markdown: string): string {
   const lines = markdown.split(/\r?\n/);
@@ -3095,6 +3219,7 @@ function isMarkdownTableSeparator(line: string): boolean {
 }
 
 function AssistantResponseTools({
+  responseMessageId,
   response,
   copy,
   clarificationValues,
@@ -3102,6 +3227,7 @@ function AssistantResponseTools({
   onSubmitClarification,
   onAskFollowUp
 }: {
+  responseMessageId: string;
   response: AssistantChatResponse;
   copy: AssistantAppLabels;
   clarificationValues: Record<string, string>;
@@ -3120,6 +3246,7 @@ function AssistantResponseTools({
           {response.questions.map((question) => (
             <ClarificationField
               key={question.id}
+              fieldId={`akb-clarification-${responseMessageId}-${question.id}`}
               question={question}
               value={clarificationValues[question.id] ?? ""}
               copy={copy}
@@ -3716,11 +3843,13 @@ function isPresent<T>(value: T | null | undefined): value is T {
 }
 
 function ClarificationField({
+  fieldId,
   question,
   value,
   copy,
   onChange
 }: {
+  fieldId: string;
   question: ClarificationQuestion;
   value: string;
   copy: AssistantAppLabels;
@@ -3729,7 +3858,7 @@ function ClarificationField({
   if (question.type === "single_choice") {
     return (
       <StratosSelect
-        id={`akb-clarification-${question.id}`}
+        id={fieldId}
         label={question.question}
         value={value}
         onChange={(event) => onChange(event.target.value)}
@@ -3743,9 +3872,9 @@ function ClarificationField({
   }
 
   return (
-    <label className="field" htmlFor={`akb-clarification-${question.id}`}>
+    <label className="field" htmlFor={fieldId}>
       <span>{question.question}</span>
-      <input id={`akb-clarification-${question.id}`} value={value} onChange={(event) => onChange(event.target.value)} />
+      <input id={fieldId} value={value} onChange={(event) => onChange(event.target.value)} />
     </label>
   );
 }
@@ -3936,7 +4065,11 @@ function messageFromConversationMessage(
   previousUserMessage = "",
   language: AklLanguage
 ): ChatMessage {
-  const content = message.availability === "source_access_changed"
+  const content = message.metadata.history_live_source_refresh_required === true
+    ? assistantAppCopy[language].historyLiveSourceRefreshRequired
+    : message.metadata.history_source_refresh_required === true
+      ? assistantAppCopy[language].historySourceRefreshRequired
+    : message.availability === "source_access_changed"
     ? assistantAppCopy[language].historySourceAccessChanged
     : message.availability === "source_temporarily_unavailable"
       ? assistantAppCopy[language].historySourceTemporarilyUnavailable
@@ -4036,7 +4169,7 @@ function nullableStringValue(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
-function findLastAssistantResponse(thread: AssistantThread): AssistantChatResponse | null {
+function findLastAssistantResponse(thread: Pick<AssistantThread, "messages">): AssistantChatResponse | null {
   for (let index = thread.messages.length - 1; index >= 0; index -= 1) {
     const response = thread.messages[index]?.response;
     if (response) {

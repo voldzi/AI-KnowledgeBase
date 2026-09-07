@@ -9,6 +9,11 @@ from sqlalchemy import select
 from app import api
 from app.errors import problem
 from app.models import Document, DocumentAssignment, DocumentFile, DocumentVersion, WorkflowTask
+from tests.document_policy_fixtures import admitted_policy
+from document_profile_fixtures import verified_profile_authority, profiled_document_request, profiled_version_request
+
+
+pytestmark = pytest.mark.usefixtures("verified_profile_authority")
 
 
 REVIEWER = {"X-AKL-Subject": "user_reviewer", "X-AKL-Roles": "reviewer"}
@@ -18,6 +23,7 @@ def source(client, headers, **overrides):
     payload = {
         "title": "Application manual", "document_type": "manual", "owner_id": "user_admin",
         "classification": "internal", "metadata": {"review_due_on": "2026-09-15"},
+        "information_policy": admitted_policy(owner="user_admin"),
         "access_policies": [{"subjects": ["role:reviewer"], "actions": ["document.read", "document.version.publish"]}],
         "assignments": [
             {"role": "gestor", "subject_type": "user", "subject_id": "user_admin", "is_primary": True},
@@ -25,18 +31,21 @@ def source(client, headers, **overrides):
         ],
         **overrides,
     }
-    response = client.post("/api/v1/documents", headers=headers, json=payload)
+    response = client.post("/api/v1/documents", headers=headers, json=profiled_document_request(payload))
     assert response.status_code == 201, response.text
     doc = response.json()["document_id"]
     return doc, new_version(client, headers, doc)
 
 
 def new_version(client, headers, doc, label="1.0", **overrides):
-    response = client.post(f"/api/v1/documents/{doc}/versions", headers=headers, json={
+    document = client.get(f"/api/v1/documents/{doc}", headers=headers)
+    assert document.status_code == 200, document.text
+    payload = profiled_version_request(document.json(), {
         "version_label": label, "valid_from": "2026-08-01", "valid_to": "2027-08-01",
         "source_file_uri": f"s3://akl-documents/{doc}/{label}/manual.pdf", "file_hash": "sha256:" + "a" * 64,
         **overrides,
     })
+    response = client.post(f"/api/v1/documents/{doc}/versions", headers=headers, json=payload)
     assert response.status_code == 201, response.text
     return response.json()["document_version_id"]
 
@@ -87,6 +96,14 @@ def test_assignment_does_not_grant_approval_capability(client, admin_headers):
     {"role": "approver", "subject_type": "service", "subject_id": "svc-test", "is_primary": True},
 ]])
 def test_review_needs_human_or_group_assignment(client, admin_headers, assignments):
+    if not assignments:
+        payload = profiled_document_request({"title": "Missing independent reviewer", "document_type": "manual",
+            "owner_id": "user_admin", "information_policy": admitted_policy(owner="user_admin")})
+        payload["assignments"] = [row for row in payload["assignments"] if row["role"] != "approver"]
+        response = client.post("/api/v1/documents", headers=admin_headers, json=payload)
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "document_profile_approver_required"
+        return
     doc, version = source(client, admin_headers, assignments=assignments)
     response = submit(client, admin_headers, doc, version)
     assert response.status_code == 409
@@ -182,8 +199,11 @@ def test_unclean_source_is_not_reviewable(client, admin_headers, db_session, sca
     assert result.json()["error"]["code"] == "review_scan_incomplete"
 
 
-def test_required_scan_needs_exact_attested_source(client, admin_headers, monkeypatch):
+def test_required_scan_needs_exact_attested_source(client, admin_headers, monkeypatch, db_session):
     doc, version = source(client, admin_headers)
+    file = db_session.scalars(select(DocumentFile).where(DocumentFile.document_version_id == version)).one()
+    file.content_security_attestation_sha256 = None
+    db_session.commit()
     monkeypatch.setattr(api.get_settings(), "content_security_required", True)
     assert submit(client, admin_headers, doc, version).status_code == 409
 
@@ -380,11 +400,13 @@ def test_decision_and_publication_recheck_exact_version_policy(client, admin_hea
 
 
 def test_missing_effective_date_and_unexpected_fields_are_rejected(client, admin_headers):
-    doc, _ = source(client, admin_headers)
-    version = new_version(client, admin_headers, doc, "2", valid_from=None)
-    response = submit(client, admin_headers, doc, version)
-    assert response.status_code == 409
-    assert response.json()["error"]["code"] == "review_source_incomplete"
+    doc, version = source(client, admin_headers)
+    document = client.get(f"/api/v1/documents/{doc}", headers=admin_headers).json()
+    invalid = profiled_version_request(document, {"version_label": "2", "valid_from": "2026-08-01",
+        "source_file_uri": f"s3://akl-documents/{doc}/2/manual.pdf"})
+    invalid["valid_from"] = invalid["document_profile"]["lifecycle"]["effectiveFrom"] = None
+    response = client.post(f"/api/v1/documents/{doc}/versions", headers=admin_headers, json=invalid)
+    assert response.status_code == 422
     path = f"/api/v1/documents/{doc}/versions/{version}/submit-review"
     assert client.post(path, headers=admin_headers, json={"approver": "user_admin"}).status_code == 422
     assert client.post(path, headers=admin_headers, json={"comment": "x" * 1001}).status_code == 422

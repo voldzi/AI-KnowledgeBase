@@ -1,3 +1,4 @@
+import { authCookieNames } from "@/lib/auth/cookies";
 import "server-only";
 
 import { cookies, headers } from "next/headers";
@@ -14,11 +15,9 @@ import {
   type OidcSession,
 } from "../auth/oidc";
 import {
-  CENTRAL_SSO_SYNC_COOKIE,
   hasCurrentCentralSsoSyncMarker,
   resolveServerSession,
   serverSessionCookieOptions,
-  SERVER_SESSION_COOKIE,
   type ResolvedServerSession,
 } from "../auth/server-session";
 import { contextFromStratosAccessProjection } from "../auth/access-projection";
@@ -83,7 +82,7 @@ async function requireCurrentCentralSso(returnTo: string): Promise<void> {
   if (config.authMode !== "oidc") return;
 
   const cookieStore = await cookies();
-  const selector = cookieStore.get(SERVER_SESSION_COOKIE)?.value;
+  const selector = cookieStore.get(authCookieNames(config.webProfile).session)?.value;
   // Internal RSC refreshes cannot complete a browser OIDC redirect. This only
   // skips entry synchronization; the session and access projection below still
   // have to authorize every request, including forged transport metadata.
@@ -93,7 +92,7 @@ async function requireCurrentCentralSso(returnTo: string): Promise<void> {
     await hasCurrentCentralSsoSyncMarker(
       config,
       selector,
-      cookieStore.get(CENTRAL_SSO_SYNC_COOKIE)?.value,
+      cookieStore.get(authCookieNames(config.webProfile).sync)?.value,
     )
   ) {
     return;
@@ -138,15 +137,16 @@ export async function getOptionalServerRequestContext(
 }
 
 async function resolveOptionalServerRequestContext(request?: RequestLike): Promise<ApiRequestContext | null> {
+  const sessionProbe = request?.headers.get("X-STRATOS-Session-Probe") === "1";
   const bearerToken = bearerTokenFromRequest(request);
   if (bearerToken) {
-    return contextFromStratosAccessProjection(bearerToken, getAklConfig());
+    return contextFromStratosAccessProjection(bearerToken, getAklConfig(), fetch, Date.now(), sessionProbe, sessionProbe);
   }
 
   const session = await getOptionalServerOidcSession(request);
   if (session) {
     if (!session.accessToken) return null;
-    return contextFromStratosAccessProjection(session.accessToken, getAklConfig());
+    return contextFromStratosAccessProjection(session.accessToken, getAklConfig(), fetch, Date.now(), sessionProbe, sessionProbe);
   }
 
   const config = getAklConfig();
@@ -208,13 +208,13 @@ async function resolveOptionalServerOidcSession(
   const cookieStore = request
     ? cookieReaderFromRequest(request)
     : await cookies();
-  const selector = cookieStore.get(SERVER_SESSION_COOKIE)?.value;
+  const selector = cookieStore.get(authCookieNames(config.webProfile).session)?.value;
   if (!selector) return null;
-  const resolved = await resolveServerSession(config, selector);
+  const resolved = await resolveServerSession(config, selector, Date.now(), request?.headers.get("X-STRATOS-Session-Probe") !== "1");
   if (resolved && request) {
     try {
       // Route handlers propagate a policy downgrade to the browser immediately.
-      (await cookies()).set(SERVER_SESSION_COOKIE, selector, serverSessionCookieOptions(config, resolved.persistent, resolved.absoluteExpiresAt));
+      (await cookies()).set(authCookieNames(config.webProfile).session, selector, serverSessionCookieOptions(config, resolved.persistent, resolved.absoluteExpiresAt));
     } catch {
       // Read-only rendering cannot set cookies; /api/auth/session synchronizes
       // them. Server expiry and revocation remain authoritative in either case.

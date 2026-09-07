@@ -120,7 +120,7 @@ Web bridge upload session neni dlouhodoby business objekt, ale kontrakt mezi bro
 ```json
 {
   "upload_session_id": "upl_123",
-  "upload_url": "/api/controlled-document/upload/sessions/upl_123/content",
+  "upload_url": "/api/document-intake/v1/sessions/upl_123/content",
   "upload_method": "PUT",
   "source_file_uri": "s3://akl-documents/doc_123/draft/2026-06-06/upl_123/smernice.pdf",
   "expires_at": "2026-06-06T10:15:00Z",

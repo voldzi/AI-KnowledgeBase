@@ -69,8 +69,10 @@ class LogicalStructureChunker:
                 continue
 
             section_changed = pending and pending[-1].section_path != block.section_path
+            page_changed = pending and pending[-1].page_number != block.page_number
+            locator_changed = pending and pending[-1].metadata.get("source_locator") != block.metadata.get("source_locator")
             would_exceed_target = _text_length(pending) + len(block.text) > self.settings.chunk_target_chars
-            if pending and (section_changed or would_exceed_target):
+            if pending and (section_changed or page_changed or locator_changed or would_exceed_target):
                 chunks.append(
                     self._make_chunk(
                         pending,
@@ -163,6 +165,7 @@ class LogicalStructureChunker:
             "chunk_index": chunk_index,
             "block_type": first.block_type,
             "first_block_metadata": first.metadata,
+            "source_locator": first.metadata.get("source_locator"),
             "parser_quality": {
                 "pages_processed": parser_result.pages_processed,
                 "pages_with_text": parser_result.metadata.get("pages_with_text"),
@@ -200,7 +203,7 @@ class LogicalStructureChunker:
             text=text,
             normalized_text=normalized_text,
             page_number=first.page_number,
-            section_path=first.section_path,
+            section_path=_source_section_path(first),
             section_title=first.section_title,
             article_number=first.article_number,
             paragraph_number=first.paragraph_number,
@@ -266,31 +269,70 @@ class LogicalStructureChunker:
         pieces: list[ParsedBlock] = []
         rows: list[str] = []
         row_start = offset
+        locator = block.metadata.get("source_locator")
+        source_rows = locator.get("row_numbers") if isinstance(locator, dict) else None
+        if source_rows is not None and len(source_rows) != len(lines):
+            raise ParserError("TABLE_SOURCE_MAPPING_INVALID", "Table rows do not match the exact source locator.")
+        selected_rows: list[int] = []
 
         def flush(end: int) -> None:
             if rows:
+                piece_metadata = {**block.metadata, "table_header_repeated": True,
+                                  "table_header_char_start": block.char_start, "table_row_char_end": block.char_start + end}
+                if source_rows is not None:
+                    piece_metadata["source_locator"] = {**locator, "row_numbers": [*source_rows[:header_count], *selected_rows]}
                 pieces.append(replace(
                     block, text=header + "\n" + "\n".join(rows),
                     char_start=block.char_start + row_start,
                     char_end=block.char_start + end,
-                    metadata={**block.metadata, "table_header_repeated": True,
-                              "table_header_char_start": block.char_start, "table_row_char_end": block.char_start + end},
+                    metadata=piece_metadata,
                 ))
 
-        for line in lines[header_count:]:
+        for row_index, line in enumerate(lines[header_count:], start=header_count):
             row = line.rstrip("\r\n")
             if len(header) + 1 + len(row) > self.settings.max_chunk_chars:
                 raise ParserError("TABLE_ROW_EXCEEDS_CHUNK_LIMIT", "A table row and its header exceed the safe extraction limit.")
             if rows and len(header) + 1 + sum(len(value) + 1 for value in rows) + len(row) > self.settings.chunk_target_chars:
                 flush(offset)
                 rows = []
+                selected_rows = []
                 row_start = offset
             rows.append(row)
+            if source_rows is not None:
+                selected_rows.append(source_rows[row_index])
             offset += len(line)
         flush(offset)
         if not pieces:
             raise ParserError("TABLE_ROW_EXCEEDS_CHUNK_LIMIT", "A table header exceeds the safe extraction limit.")
         return pieces
+
+
+def _source_section_path(block: ParsedBlock) -> list[str]:
+    """Keep exact Office coordinates visible in existing citation DTO fields."""
+    path = list(block.section_path)
+    locator = block.metadata.get("source_locator")
+    if not isinstance(locator, dict):
+        return path
+    rows = locator.get("row_numbers")
+    labels = []
+    if locator.get("kind") == "sheet":
+        labels.append(f"{locator['column_name']}:{locator['column_end']}")
+    if locator.get("table_id") is not None:
+        labels.append(f"Tabulka {locator['table_id']}")
+    if isinstance(rows, list) and rows:
+        runs: list[str] = []
+        start = end = rows[0]
+        for row in rows[1:]:
+            if row == end + 1:
+                end = row
+                continue
+            runs.append(str(start) if start == end else f"{start}–{end}")
+            start = end = row
+        runs.append(str(start) if start == end else f"{start}–{end}")
+        labels.append(f"Řádky {', '.join(runs)}")
+    if labels:
+        path.append(" · ".join(labels))
+    return path
 
 
 def normalize_text(text: str) -> str:

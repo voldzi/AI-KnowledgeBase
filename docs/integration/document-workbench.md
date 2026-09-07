@@ -32,7 +32,7 @@ Phase 05 meni dokumentovou cast na Document Workbench a pridava perzistentni wor
   - SHA-256 hash pres browser `crypto.subtle`,
   - serverovy preflight endpoint `/api/controlled-document/upload/preflight`,
   - HMAC podepsana upload session s expiraci,
-  - PUT zdrojoveho souboru do `/api/controlled-document/upload/sessions/{sessionId}/content`,
+  - PUT zdrojoveho souboru do `/api/document-intake/v1/sessions/{sessionId}/content`,
   - ulozeni objektu do sdileneho object-storage volume pro `s3://akl-documents/...`,
   - predani `file_hash`, `file_name`, `file_size`, `file_type`, `upload_session_id` a `upload_token` do web bridge requestu.
 - `/help`:

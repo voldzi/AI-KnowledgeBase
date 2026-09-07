@@ -13,6 +13,8 @@ from app.middleware import CorrelationIdMiddleware
 from app.telemetry import configure_telemetry
 from app.session_api import router as session_router
 from app.director_audit_api import router as director_audit_router
+from app.intake_cleanup_api import router as intake_cleanup_router
+from app.source_intake import router as source_intake_router
 from app.workflow_maintenance import workflow_maintenance_loop
 
 
@@ -61,6 +63,8 @@ def create_app() -> FastAPI:
     app.include_router(router)
     app.include_router(session_router)
     app.include_router(director_audit_router)
+    app.include_router(intake_cleanup_router)
+    app.include_router(source_intake_router)
     return app
 
 

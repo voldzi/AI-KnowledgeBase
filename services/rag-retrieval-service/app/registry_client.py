@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass
+from datetime import date
 from typing import Protocol
 
 import httpx
@@ -42,6 +43,7 @@ class RegistryClient(Protocol):
         candidate_policy_hashes: dict[str, list[str]] | None = None,
         candidate_document_versions: dict[str, list[str]] | None = None,
         action: str = "rag.query",
+        effective_on: date | None = None,
     ) -> AuthzFilterResult:
         ...
 
@@ -144,6 +146,7 @@ class MockRegistryClient:
         candidate_policy_hashes: dict[str, list[str]] | None = None,
         candidate_document_versions: dict[str, list[str]] | None = None,
         action: str = "rag.query",
+        effective_on: date | None = None,
     ) -> AuthzFilterResult:
         denied = {
             document_id
@@ -407,6 +410,7 @@ class HttpRegistryClient:
         candidate_policy_hashes: dict[str, list[str]] | None = None,
         candidate_document_versions: dict[str, list[str]] | None = None,
         action: str = "rag.query",
+        effective_on: date | None = None,
     ) -> AuthzFilterResult:
         if not candidate_document_ids:
             return AuthzFilterResult(allowed_document_ids=set(), denied_document_ids=set())
@@ -424,6 +428,8 @@ class HttpRegistryClient:
             "candidate_policy_hashes": candidate_policy_hashes or {},
             "candidate_document_versions": candidate_document_versions or {},
         }
+        if effective_on is not None:
+            body["effective_on"] = effective_on.isoformat()
         if self._settings.auth_mode in {"disabled", "mock"}:
             body.update(
                 {
@@ -447,6 +453,15 @@ class HttpRegistryClient:
             bearer_token_override=service_token,
             service_identity=service_token is not None,
         )
+        if effective_on is not None and (
+            payload.get("effective_on") != effective_on.isoformat()
+            or not isinstance(payload.get("allowed_document_version_ids"), dict)
+        ):
+            raise RetrievalError(
+                "REGISTRY_TEMPORAL_AUTHORIZATION_INVALID",
+                "Registry did not confirm the requested effective publication date.",
+                status_code=503,
+            )
         return AuthzFilterResult(
             allowed_document_ids=set(payload.get("allowed_document_ids", [])),
             denied_document_ids=set(payload.get("denied_document_ids", [])),
@@ -723,6 +738,7 @@ class DevAuthzRegistryClient:
         candidate_policy_hashes: dict[str, list[str]] | None = None,
         candidate_document_versions: dict[str, list[str]] | None = None,
         action: str = "rag.query",
+        effective_on: date | None = None,
     ) -> AuthzFilterResult:
         return AuthzFilterResult(
             allowed_document_ids=set(candidate_document_ids),

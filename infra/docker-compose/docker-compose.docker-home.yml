@@ -18,7 +18,7 @@ x-immutable-release-labels: &immutable-release-labels
 
 services:
   reverse-proxy:
-    image: ${CADDY_IMAGE:-caddy:2-alpine}
+    image: ${CADDY_IMAGE:-caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648}
     restart: unless-stopped
     environment:
       AKL_PROXY_CONTAINER_PORT: ${AKL_PROXY_CONTAINER_PORT:-8080}
@@ -911,7 +911,7 @@ services:
     logging: *json-logging
 
   qdrant:
-    image: ${QDRANT_IMAGE:-qdrant/qdrant:latest}
+    image: ${QDRANT_IMAGE:-qdrant/qdrant:v1.19.1@sha256:12364fe851b9f17356fc88189fc06d1b521262e04659ec7345975b00c9246a10}
     restart: unless-stopped
     volumes:
       - qdrant-data:/qdrant/storage

@@ -3,16 +3,14 @@ import crypto from "node:crypto";
 import type { AklConfig } from "@/lib/api/config";
 import type { ApiRequestContext } from "@/lib/types";
 import {
-  identityJson, isManagedIdentity, managedDiscovery,
-  verifyManagedIdToken, verifyManagedUserToken, verifyApprovedOidcJwt,
+  identityJson,
+  isManagedIdentity,
+  managedDiscovery,
+  verifyManagedIdToken,
+  verifyManagedUserToken,
+  verifyApprovedOidcJwt,
 } from "./managed-oidc";
 import { centralSessionPolicy, type CentralSessionPolicy, type SessionPolicyReason } from "./session-policy";
-
-export const OIDC_STATE_COOKIE = "akl_oidc_state";
-export const OIDC_SESSION_COOKIE = "akl_session";
-export const OIDC_ACCESS_COOKIE = "akl_access";
-export const OIDC_REFRESH_COOKIE = "akl_refresh";
-export const OIDC_PKCE_COOKIE = "akl_oidc_pkce";
 
 const OIDC_REFRESH_RACE_TTL_MS = 2 * 60 * 1000;
 const OIDC_SESSION_CACHE_MAX_ENTRIES = 256;

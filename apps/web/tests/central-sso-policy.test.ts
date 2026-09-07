@@ -1,10 +1,12 @@
+import { authCookieNames } from "../src/lib/auth/cookies";
+const { session: SERVER_SESSION_COOKIE, attempt: SSO_ATTEMPT_COOKIE, signedOut: SSO_SIGNED_OUT_COOKIE } = authCookieNames();
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { NextRequest } from "next/server";
 import { createRequestStoreForRender } from "next/dist/server/async-storage/request-store";
 import { centralSessionPolicy } from "../src/lib/auth/session-policy";
 import { verifiedSessionFromTokens } from "../src/lib/auth/oidc";
-import { createServerSession, resolveServerSession, serverSessionCookieOptions, SERVER_SESSION_COOKIE, SSO_ATTEMPT_COOKIE, SSO_SIGNED_OUT_COOKIE } from "../src/lib/auth/server-session";
+import { createServerSession, resolveServerSession, serverSessionCookieOptions } from "../src/lib/auth/server-session";
 import { contextFromStratosAccessProjection } from "../src/lib/auth/access-projection";
 import { GET as login } from "../src/app/api/auth/login/route";
 import { GET as sso } from "../src/app/api/auth/sso/route";
@@ -99,7 +101,7 @@ describe("central SSO redirect guard", () => {
     const store = createRequestStoreForRender(
       new NextRequest(url, { headers }), undefined, url, {},
       { tags: [], expirationsByCacheKind: new Map() }, undefined, undefined,
-      false, undefined, null, null,
+      false, undefined, null, null, undefined,
     );
     return new Headers(store.headers);
   };

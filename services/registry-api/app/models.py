@@ -2,7 +2,7 @@ from datetime import date, datetime, timezone
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, ForeignKeyConstraint, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import DDL, event, Boolean, CheckConstraint, Date, DateTime, ForeignKey, ForeignKeyConstraint, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.mutable import MutableDict, MutableList
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -87,6 +87,12 @@ class Document(Base, TimestampMixin):
     governance_registered_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    profile_metadata_revision: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    current_profile_revision: Mapped["DocumentProfileRootRevision | None"] = relationship(
+        primaryjoin="and_(Document.document_id == foreign(DocumentProfileRootRevision.document_id), "
+                    "Document.profile_metadata_revision == foreign(DocumentProfileRootRevision.metadata_revision))",
+        viewonly=True, uselist=False, lazy="selectin",
+    )
     owner_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
     gestor_unit: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     tags: Mapped[list[str]] = mapped_column(
@@ -125,11 +131,24 @@ class Document(Base, TimestampMixin):
     def owner(self) -> str:
         return self.owner_id
 
+    @property
+    def current_root_metadata_revision(self) -> str | None:
+        return self.profile_metadata_revision
+
+    @property
+    def current_root_snapshot_hash(self) -> str | None:
+        return self.current_profile_revision.snapshot_hash if self.current_profile_revision else None
+
+    @property
+    def document_profile(self) -> dict | None:
+        return self.current_profile_revision.payload if self.current_profile_revision else None
+
 
 class DocumentVersion(Base):
     __tablename__ = "document_versions"
     __table_args__ = (
         UniqueConstraint("document_id", "version_label", name="uq_document_version_label"),
+        UniqueConstraint("document_id", "native_intake_session_hash", name="uq_document_version_native_intake"),
         UniqueConstraint(
             "document_id",
             "document_version_id",
@@ -162,6 +181,7 @@ class DocumentVersion(Base):
         String(64), ForeignKey("documents.document_id", ondelete="CASCADE"), nullable=False
     )
     version_label: Mapped[str] = mapped_column(String(80), nullable=False)
+    native_intake_session_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="draft", index=True)
     organization_id: Mapped[str] = mapped_column(
         String(128), nullable=False, default="org_stratos", index=True
@@ -208,6 +228,29 @@ class DocumentVersion(Base):
     publication: Mapped["DocumentPublication | None"] = relationship(
         back_populates="document_version", uselist=False, cascade="all, delete-orphan"
     )
+    profile_snapshot: Mapped["DocumentProfileVersionSnapshot | None"] = relationship(
+        viewonly=True, uselist=False, lazy="selectin",
+    )
+
+    @property
+    def root_metadata_revision(self) -> str | None:
+        return self.profile_snapshot.root_metadata_revision if self.profile_snapshot else None
+
+    @property
+    def root_snapshot_hash(self) -> str | None:
+        return self.profile_snapshot.root_snapshot_hash if self.profile_snapshot else None
+
+    @property
+    def version_snapshot_hash(self) -> str | None:
+        return self.profile_snapshot.snapshot_hash if self.profile_snapshot else None
+
+    @property
+    def document_profile(self) -> dict | None:
+        return self.profile_snapshot.root_revision.payload if self.profile_snapshot else None
+
+    @property
+    def document_profile_snapshot(self) -> dict | None:
+        return self.profile_snapshot.payload if self.profile_snapshot else None
 
 
 class ControlledDocumentPackage(Base, TimestampMixin):
@@ -1140,3 +1183,54 @@ class WorkflowTask(Base, TimestampMixin):
     )
 
     document: Mapped[Document | None] = relationship(back_populates="workflow_tasks")
+
+
+class DocumentProfileRootRevision(Base):
+    __tablename__ = "document_profile_root_revisions"
+    __table_args__ = (
+        UniqueConstraint("document_id", "metadata_revision", name="uq_profile_root_revision"),
+    )
+    snapshot_id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: make_id("dproot"))
+    document_id: Mapped[str] = mapped_column(String(64), ForeignKey("documents.document_id", ondelete="RESTRICT"), nullable=False, index=True)
+    metadata_revision: Mapped[str] = mapped_column(String(160), nullable=False)
+    snapshot_hash: Mapped[str] = mapped_column(String(80), nullable=False)
+    profile_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    profile_revision: Mapped[str] = mapped_column(String(160), nullable=False)
+    payload: Mapped[dict[str, object]] = mapped_column(json_type(), nullable=False)
+    admission_confirmation: Mapped[dict[str, object]] = mapped_column(json_type(), nullable=False)
+    created_by: Mapped[str] = mapped_column(String(160), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class DocumentProfileVersionSnapshot(Base):
+    __tablename__ = "document_profile_version_snapshots"
+    __table_args__ = (
+        ForeignKeyConstraint(["document_id", "document_version_id"], ["document_versions.document_id", "document_versions.document_version_id"], ondelete="RESTRICT"),
+        ForeignKeyConstraint(["document_id", "root_metadata_revision"], ["document_profile_root_revisions.document_id", "document_profile_root_revisions.metadata_revision"], ondelete="RESTRICT"),
+    )
+    document_version_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    document_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    root_metadata_revision: Mapped[str] = mapped_column(String(160), nullable=False)
+    root_snapshot_hash: Mapped[str] = mapped_column(String(80), nullable=False)
+    snapshot_hash: Mapped[str] = mapped_column(String(80), nullable=False)
+    file_id: Mapped[str] = mapped_column(String(64), ForeignKey("document_files.file_id", ondelete="RESTRICT"), nullable=False)
+    payload: Mapped[dict[str, object]] = mapped_column(json_type(), nullable=False)
+    admission_confirmation: Mapped[dict[str, object]] = mapped_column(json_type(), nullable=False)
+    created_by: Mapped[str] = mapped_column(String(160), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    root_revision: Mapped[DocumentProfileRootRevision] = relationship(viewonly=True, lazy="selectin")
+
+
+# Local SQLite schemas enforce the same append-only storage invariant as the
+# PostgreSQL migration, including direct/bulk SQL that bypasses ORM events.
+
+for _snapshot_table in (DocumentProfileRootRevision.__table__, DocumentProfileVersionSnapshot.__table__):
+    for _mutation in ("UPDATE", "DELETE"):
+        event.listen(_snapshot_table, "after_create", DDL(
+            f"CREATE TRIGGER {_snapshot_table.name}_no_{_mutation.lower()} BEFORE {_mutation} ON {_snapshot_table.name} "
+            "BEGIN SELECT RAISE(ABORT, 'document profile snapshots are append-only'); END"
+        ).execute_if(dialect="sqlite"))
+
+# Register the content reference table and database trigger backstop for every
+# schema created by tests or local development, not only migrated PostgreSQL.
+from app.intake_cleanup_storage import IntakeObjectFence  # noqa: E402,F401

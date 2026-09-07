@@ -138,6 +138,14 @@ Chybová odpověď odpovídá centrálnímu kontraktu:
   množinu `candidate_document_versions`; pouze verze se stavem `valid`, správným
   dokumentem a aktuálním hashem projde. Akce `rag.export` používá samostatnou
   capability `akb:export`.
+- Pro `rag.query` a `document.read` lze přidat `effective_on: YYYY-MM-DD`.
+  Každý kandidátní dokument musí mít přesné `candidate_document_versions`.
+  Registry po běžné autorizaci povolí jen jedinou publikaci účinnou k tomuto
+  dni podle celé časové řady; chybějící novější verze v kandidátech neopravňuje
+  použít starší. Odpověď potvrzuje stejné `effective_on`; RAG toto potvrzení
+  vyžaduje. Bez data zůstává běžná autorizace přesných zdrojů. Sémantiku
+  publikací a `GET /documents/{id}/versions?valid_on=...` popisuje
+  [časově řízená dokumentace](../ARCHITECTURE/temporal-controlled-documentation.md).
 - Evaluation a Governance služby používají registry metadata, authorization check a audit.
 - Workflow inbox bere odpovednost, SLA a eskalacni metadata z `document_assignments`, pokud jsou pro dokument nastavena.
 - Intelligence Workbench ukládá analytické spisy, uložené dotazy a evidence
@@ -300,6 +308,14 @@ all-rejected review. The source app still owns final writes to its own domain
 model.
 
 ## Canonical Sources
+
+The dedicated service-only endpoints `POST /api/v1/admin/intake-cleanup/dry-run`
+and `POST /api/v1/admin/intake-cleanup/claim` validate bounded signed manifest
+batches against all current and historical content references. Claim returns a
+durable database fence, never an assertion that storage was deleted. See
+[Intake object cleanup](../OPERATIONS/intake-object-cleanup.md) for exact grants,
+canonical URI requirements, migration ordering, expiry, rotation and conditional
+operator removal. Public or user-filtered document listings are not cleanup proof.
 
 ```text
 services/registry-api/README.md

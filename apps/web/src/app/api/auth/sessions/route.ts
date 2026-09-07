@@ -1,3 +1,4 @@
+import { authCookieNames } from "@/lib/auth/cookies";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getAklConfig } from "@/lib/api/config";
@@ -8,7 +9,6 @@ import {
   resolveServerSession,
   revokeAllSubjectSessions,
   revokeSubjectSession,
-  SERVER_SESSION_COOKIE,
   serverSessionCookieOptions,
 } from "@/lib/auth/server-session";
 
@@ -47,7 +47,7 @@ export async function DELETE(request: NextRequest) {
   }
   const response = new NextResponse(null, { status: 204 });
   if (revokeAll || target === current.sessionId) {
-    response.cookies.set(SERVER_SESSION_COOKIE, "", {
+    response.cookies.set(authCookieNames(config.webProfile).session, "", {
       ...serverSessionCookieOptions(current.config, false),
       maxAge: 0,
     });
@@ -60,7 +60,7 @@ async function currentSession(
   config = getAklConfig(),
 ) {
   const context = await getOptionalServerRequestContext(request);
-  const selector = request.cookies.get(SERVER_SESSION_COOKIE)?.value;
+  const selector = request.cookies.get(authCookieNames(config.webProfile).session)?.value;
   if (!context || !selector) return null;
   const resolved = await resolveServerSession(config, selector);
   if (!resolved || resolved.oidc.subjectId !== context.subjectId) return null;

@@ -270,12 +270,12 @@ class RagAnswer(BaseModel):
 
 
 class SourceLocation(BaseModel):
-    page_number: int | None = Field(default=None, ge=1)
-    slide_number: int | None = Field(default=None, ge=1)
-    sheet_name: str | None = None
-    row_number: int | None = Field(default=None, ge=1)
-    column_name: str | None = None
-    section_path: list[str] = Field(default_factory=list)
+    page_number: int | None = Field(default=None, ge=1, description="Verified physical source page. Native worksheet and slide coordinates never imply a PDF rendition page.")
+    slide_number: int | None = Field(default=None, ge=1, description="One-based slide in the immutable original presentation; independent of rendered PDF pagination.")
+    sheet_name: str | None = Field(default=None, description="Exact original worksheet name.")
+    row_number: int | None = Field(default=None, ge=1, description="First cited original row, including a repeated source header. section_path carries the complete possibly non-contiguous row ranges.")
+    column_name: str | None = Field(default=None, description="First original worksheet column in the cited rectangular row rendering.")
+    section_path: list[str] = Field(default_factory=list, description="Source section labels; native Office citations include the exact sheet/slide, table and row ranges where applicable.")
     section_title: str | None = None
     paragraph_number: str | None = None
     char_start: int | None = Field(default=None, ge=0)

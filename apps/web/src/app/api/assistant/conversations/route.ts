@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getOptionalServerRequestContext, getServerApiClients } from "@/lib/api/server";
+import { freshAuthorizationContext } from "@/lib/assistant/history-authorization";
 
 import { assistantBridgeError, unauthorizedAssistantRequest } from "../errors";
 
@@ -15,7 +16,16 @@ export async function GET(request: Request) {
     const includeArchived = new URL(request.url).searchParams.get("include_archived") === "true";
     const clients = getServerApiClients();
     const response = await clients.registry.listAssistantConversations(context, includeArchived);
-    return NextResponse.json(response);
+    // Registry reauthorizes document references in the list itself and returns
+    // only neutral receipts for federated history. Avoid a detail/PDP fan-out.
+    const authorization = await freshAuthorizationContext(context);
+    if (!authorization.available) {
+      for (const item of response.items) {
+        item.title = null;
+        item.suggestion_signals = [];
+      }
+    }
+    return NextResponse.json(response, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return assistantBridgeError(error);
   }

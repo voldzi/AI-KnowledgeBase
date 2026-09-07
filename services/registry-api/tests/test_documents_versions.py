@@ -1,12 +1,20 @@
 from datetime import date
+from hashlib import sha256
+
+import pytest
 
 import app.api as api_module
+from tests.document_policy_fixtures import admitted_policy
+from document_profile_fixtures import verified_profile_authority, profiled_document_request, profiled_version_request
 from app.schemas import (
     ControlledDocumentSourceType,
     ControlledRuleCitation,
     ControlledRuleProposal,
     ControlledRuleResponse,
 )
+
+
+pytestmark = pytest.mark.usefixtures("verified_profile_authority")
 
 
 def _create_document(client, headers, **overrides):
@@ -20,9 +28,31 @@ def _create_document(client, headers, **overrides):
         "metadata": {"agenda": "registry"},
     }
     payload.update(overrides)
-    response = client.post("/api/v1/documents", headers=headers, json=payload)
+    payload.setdefault("information_policy", admitted_policy(handling_class={
+        "public": "PUBLIC", "internal": "INTERNAL", "restricted": "RESTRICTED",
+    }[payload["classification"]]))
+    response = client.post("/api/v1/documents", headers=headers, json=profiled_document_request(payload))
     assert response.status_code == 201, response.text
     return response.json()
+
+
+def _root_update(document, **changes):
+    root = document["document_profile"]
+    profile = {key: root[key] for key in ("profile", "authorship", "provenance", "accountability")}
+    if profile["provenance"]["sourceSystem"] == "AKB":
+        profile["provenance"] = {**profile["provenance"], "sourceRecordId": None}
+    return {"expected_root_metadata_revision": document["current_root_metadata_revision"],
+            "document_profile": profile, **changes}
+
+
+def _approve_version(client, headers, document, version):
+    submitted = client.post(f"/api/v1/documents/{document['document_id']}/versions/{version['document_version_id']}/submit-review",
+                            headers=headers, json={})
+    assert submitted.status_code == 200, submitted.text
+    approved = client.post(f"/api/v1/workflow/tasks/{submitted.json()['task_id']}/actions",
+        headers={**headers, "X-AKL-Subject": "test_independent_approver"}, json={"action": "approve"})
+    assert approved.status_code == 200, approved.text
+    return approved
 
 
 def test_controlled_rules_reader_cannot_request_unverified_proposals(client, reader_headers):
@@ -68,7 +98,7 @@ def test_document_crud_and_audit(client, admin_headers):
     patched = client.patch(
         f"/api/v1/documents/{document['document_id']}",
         headers=admin_headers,
-        json={"status": "review", "tags": ["updated"]},
+        json=_root_update(document, status="review", tags=["updated"]),
     )
     assert patched.status_code == 200
     assert patched.json()["status"] == "review"
@@ -257,7 +287,7 @@ def test_document_metadata_summary_aggregates_authorized_topics(client, admin_he
         admin_headers,
         title="Důvěrná smlouva",
         document_type="contract",
-        classification="confidential",
+        classification="restricted",
         tags=["smlouvy"],
         access_policies=[
             {
@@ -269,19 +299,18 @@ def test_document_metadata_summary_aggregates_authorized_topics(client, admin_he
     )
 
     for document in [digital, project]:
-        reviewed = client.patch(
-            f"/api/v1/documents/{document['document_id']}",
-            headers=admin_headers,
-            json={"status": "review"},
-        )
-        assert reviewed.status_code == 200, reviewed.text
-        approved = client.patch(
-            f"/api/v1/documents/{document['document_id']}",
-            headers=admin_headers,
-            json={"status": "approved"},
-        )
-        assert approved.status_code == 200, approved.text
-    assert restricted["classification"] == "confidential"
+        if document["document_profile"]["profile"]["id"] == "akb.controlled-document":
+            created = client.post(f"/api/v1/documents/{document['document_id']}/versions", headers=admin_headers,
+                json=profiled_version_request(document, {"version_label": "summary-fixture", "valid_from": "2026-01-01",
+                    "source_file_uri": f"s3://akl-documents/{document['document_id']}/summary.pdf"}))
+            assert created.status_code == 201, created.text
+            _approve_version(client, admin_headers, document, created.json())
+        else:
+            reviewed = client.patch(f"/api/v1/documents/{document['document_id']}", headers=admin_headers, json={"status": "review"})
+            assert reviewed.status_code == 200, reviewed.text
+            approved = client.patch(f"/api/v1/documents/{document['document_id']}", headers=admin_headers, json={"status": "approved"})
+            assert approved.status_code == 200, approved.text
+    assert restricted["classification"] == "restricted"
 
     response = client.get(
         "/api/v1/documents/metadata-summary?topic=digitalizace&topic=řízení projektů",
@@ -317,24 +346,15 @@ def test_document_readiness_report_flags_pilot_blockers(client, admin_headers, r
     version = client.post(
         f"/api/v1/documents/{ready['document_id']}/versions",
         headers=admin_headers,
-        json={
+        json=profiled_version_request(ready, {
             "version_label": "1.0",
             "valid_from": "2026-01-01",
             "source_file_uri": "s3://akl-documents/log/1.pdf",
-            "file_hash": "sha256:ready",
-        },
+            "file_hash": "sha256:" + "1" * 64,
+        }),
     )
     assert version.status_code == 201, version.text
-    assert client.patch(
-        f"/api/v1/documents/{ready['document_id']}",
-        headers=admin_headers,
-        json={"status": "review"},
-    ).status_code == 200
-    assert client.patch(
-        f"/api/v1/documents/{ready['document_id']}",
-        headers=admin_headers,
-        json={"status": "approved"},
-    ).status_code == 200
+    _approve_version(client, admin_headers, ready, version.json())
     published = client.post(
         f"/api/v1/documents/{ready['document_id']}/versions/{version.json()['document_version_id']}/publish",
         headers=admin_headers,
@@ -354,7 +374,7 @@ def test_document_readiness_report_flags_pilot_blockers(client, admin_headers, r
         client,
         admin_headers,
         title="Důvěrný dokument mimo reader",
-        classification="confidential",
+        classification="restricted",
         access_policies=[
             {
                 "subjects": ["role:admin"],
@@ -363,7 +383,7 @@ def test_document_readiness_report_flags_pilot_blockers(client, admin_headers, r
             }
         ],
     )
-    assert confidential["classification"] == "confidential"
+    assert confidential["classification"] == "restricted"
 
     response = client.get("/api/v1/documents/readiness-report?max_issues=200", headers=admin_headers)
     assert response.status_code == 200, response.text
@@ -377,7 +397,6 @@ def test_document_readiness_report_flags_pilot_blockers(client, admin_headers, r
     assert {
         "access_policy_missing",
         "source_version_missing",
-        "gestor_missing",
         "low_extraction_quality",
         "document_number_missing",
         "issue_date_missing",
@@ -399,20 +418,20 @@ def test_version_create_publish_archive(client, admin_headers):
     created = client.post(
         f"/api/v1/documents/{document['document_id']}/versions",
         headers=admin_headers,
-        json={
+        json=profiled_version_request(document, {
             "version_label": "1.0",
             "valid_from": "2026-07-01",
             "valid_to": None,
             "source_file_uri": "s3://akl-documents/doc/ver/file.pdf",
-            "file_hash": "sha256:abc",
+            "file_hash": "sha256:" + "2" * 64,
             "change_summary": "První platná verze.",
             "file": {
                 "filename": "smernice.pdf",
                 "mime_type": "application/pdf",
                 "size_bytes": 123,
-                "sha256": "sha256:abc",
+                "sha256": "sha256:" + "2" * 64,
             },
-        },
+        }),
     )
     assert created.status_code == 201, created.text
     version = created.json()
@@ -424,7 +443,7 @@ def test_version_create_publish_archive(client, admin_headers):
         headers=admin_headers,
     )
     assert rejected_publish.status_code == 409
-    assert rejected_publish.json()["error"]["code"] == "publish_requires_approval"
+    assert rejected_publish.json()["error"]["code"] == "document_profile_independent_approval_required"
 
     submitted = client.patch(
         f"/api/v1/documents/{document['document_id']}",
@@ -437,8 +456,9 @@ def test_version_create_publish_archive(client, admin_headers):
         headers=admin_headers,
         json={"status": "approved"},
     )
-    assert approved.status_code == 200
-    assert approved.json()["status"] == "approved"
+    assert approved.status_code == 409
+    assert approved.json()["error"]["code"] == "document_profile_independent_approval_required"
+    _approve_version(client, admin_headers, document, version)
 
     published = client.post(
         f"/api/v1/documents/{document['document_id']}/versions/{version['document_version_id']}/publish",
@@ -470,7 +490,7 @@ def test_document_status_transition_rejects_invalid_jump(client, admin_headers):
     )
 
     assert rejected.status_code == 409
-    assert rejected.json()["error"]["code"] == "invalid_document_status_transition"
+    assert rejected.json()["error"]["code"] == "document_profile_independent_approval_required"
 
 
 def test_valid_document_can_reenter_review_for_a_new_official_version(client, admin_headers):
@@ -478,23 +498,14 @@ def test_valid_document_can_reenter_review_for_a_new_official_version(client, ad
     created = client.post(
         f"/api/v1/documents/{document['document_id']}/versions",
         headers=admin_headers,
-        json={
+        json=profiled_version_request(document, {
             "version_label": "1.0",
             "valid_from": "2026-07-01",
             "source_file_uri": "s3://akl-documents/doc/ver/official.pdf",
-        },
+        }),
     )
     assert created.status_code == 201, created.text
-    assert client.patch(
-        f"/api/v1/documents/{document['document_id']}",
-        headers=admin_headers,
-        json={"status": "review"},
-    ).status_code == 200
-    assert client.patch(
-        f"/api/v1/documents/{document['document_id']}",
-        headers=admin_headers,
-        json={"status": "approved"},
-    ).status_code == 200
+    _approve_version(client, admin_headers, document, created.json())
     assert client.post(
         f"/api/v1/documents/{document['document_id']}/versions/{created.json()['document_version_id']}/publish",
         headers=admin_headers,
@@ -519,19 +530,20 @@ def test_non_overlapping_legal_versions_remain_valid_and_resolve_by_date(
         admin_headers,
         title="134/2016 Sb. – Zákon o zadávání veřejných zakázek",
         document_type="regulation",
+        classification="public",
     )
 
     def create_and_publish(label, valid_from, valid_to):
         created = client.post(
             f"/api/v1/documents/{document['document_id']}/versions",
             headers=admin_headers,
-            json={
+            json=profiled_version_request(document, {
                 "version_label": label,
                 "valid_from": valid_from,
                 "valid_to": valid_to,
                 "source_file_uri": f"s3://akl-documents/law/{label}.json",
-                "file_hash": f"sha256:{label}",
-            },
+                "file_hash": "sha256:" + sha256(label.encode()).hexdigest(),
+            }),
         )
         assert created.status_code == 201, created.text
         assert client.patch(
@@ -603,7 +615,7 @@ def test_controlled_document_package_and_approved_rule_are_consumable(
                 "policyVersion": "information-policy-2.0.0",
                 "handlingClass": "INTERNAL",
                 "legalClassification": "NONE",
-                "tlp": None,
+                "tlp": "TLP:CLEAR",
                 "pap": None,
                 "contentCategories": ["CONTRACTUAL"],
                 "audience": {
@@ -621,24 +633,21 @@ def test_controlled_document_package_and_approved_rule_are_consumable(
         created = client.post(
             f"/api/v1/documents/{document['document_id']}/versions",
             headers=admin_headers,
-            json={
+            json=profiled_version_request(document, {
                 "version_label": version_label,
                 "valid_from": "2023-05-30",
                 "source_file_uri": source_uri,
-                "file_hash": f"sha256:{version_label}",
-            },
+                "file_hash": "sha256:" + sha256(version_label.encode()).hexdigest(),
+            }),
         )
         assert created.status_code == 201, created.text
-        assert client.patch(
-            f"/api/v1/documents/{document['document_id']}",
-            headers=admin_headers,
-            json={"status": "review"},
-        ).status_code == 200
-        assert client.patch(
-            f"/api/v1/documents/{document['document_id']}",
-            headers=admin_headers,
-            json={"status": "approved"},
-        ).status_code == 200
+        if document["document_profile"]["profile"]["id"] == "akb.controlled-document":
+            _approve_version(client, admin_headers, document, created.json())
+        else:
+            assert client.patch(f"/api/v1/documents/{document['document_id']}", headers=admin_headers,
+                                json={"status": "review"}).status_code == 200
+            assert client.patch(f"/api/v1/documents/{document['document_id']}", headers=admin_headers,
+                                json={"status": "approved"}).status_code == 200
         published = client.post(
             f"/api/v1/documents/{document['document_id']}/versions/"
             f"{created.json()['document_version_id']}/publish",
@@ -1513,11 +1522,11 @@ def test_official_legal_packages_materialize_temporal_versions_and_reject_local_
     local_version_response = client.post(
         f"/api/v1/documents/{local['document_id']}/versions",
         headers=admin_headers,
-        json={
+        json=profiled_version_request(local, {
             "version_label": "1",
             "valid_from": "2023-01-01",
             "source_file_uri": "s3://akl-documents/local.docx",
-        },
+        }),
     )
     assert local_version_response.status_code == 201, local_version_response.text
     local_version = local_version_response.json()
@@ -1564,12 +1573,12 @@ def test_official_legal_packages_materialize_temporal_versions_and_reject_local_
         response = client.post(
             f"/api/v1/documents/{official['document_id']}/versions",
             headers=admin_headers,
-            json={
+            json=profiled_version_request(official, {
                 "version_label": label,
                 "valid_from": valid_from,
                 "valid_to": valid_to,
                 "source_file_uri": f"s3://akl-documents/{label}.pdf",
-            },
+            }),
         )
         assert response.status_code == 201, response.text
         versions.append(response.json())

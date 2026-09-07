@@ -101,6 +101,12 @@ paths:
       tags:
       - ingestion
       summary: Create Ingestion Job
+      description: >-
+        Creates an authorized ingestion attempt. Before source reads or indexing,
+        the immutable Registry version must carry explicit TLP, consistent policy
+        coordinates and required clean scan evidence. Missing TLP or inconsistent
+        policy fails the job with DOCUMENT_TLP_REQUIRED or DOCUMENT_POLICY_INVALID
+        in its report; no chunks are indexed. A 201 attempt is not a completed job.
       operationId: create_ingestion_job_api_v1_ingestion_jobs_post
       requestBody:
         content:

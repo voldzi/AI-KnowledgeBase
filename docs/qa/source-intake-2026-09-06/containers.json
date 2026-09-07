@@ -1,0 +1,128 @@
+[
+  {
+    "Service": "registry-api",
+    "Image": "akb-acceptance/registry-api:local",
+    "State": "running",
+    "Health": "healthy"
+  },
+  {
+    "Service": "chat-web",
+    "Image": "akb-acceptance/chat-web:local",
+    "State": "running",
+    "Health": "healthy"
+  },
+  {
+    "Service": "web",
+    "Image": "akb-acceptance/web:local",
+    "State": "running",
+    "Health": "healthy"
+  },
+  {
+    "Service": "clamav",
+    "Image": "clamav/clamav:1.4",
+    "State": "running",
+    "Health": "healthy"
+  },
+  {
+    "Service": "stratos-projectflow-web",
+    "Image": "akb-acceptance/stratos-projectflow-web:local",
+    "State": "running",
+    "Health": ""
+  },
+  {
+    "Service": "stratos-archflow",
+    "Image": "akb-acceptance/stratos-archflow:local",
+    "State": "running",
+    "Health": ""
+  },
+  {
+    "Service": "stratos-web",
+    "Image": "akb-acceptance/stratos-web:local",
+    "State": "running",
+    "Health": ""
+  },
+  {
+    "Service": "stratos-api",
+    "Image": "akb-acceptance/stratos-api:local",
+    "State": "running",
+    "Health": "healthy"
+  },
+  {
+    "Service": "stratos-projectflow-api",
+    "Image": "akb-acceptance/stratos-projectflow-api:local",
+    "State": "running",
+    "Health": "healthy"
+  },
+  {
+    "Service": "evaluation-service",
+    "Image": "akb-acceptance/evaluation-service:local",
+    "State": "running",
+    "Health": "healthy"
+  },
+  {
+    "Service": "governance-service",
+    "Image": "akb-acceptance/governance-service:local",
+    "State": "running",
+    "Health": "healthy"
+  },
+  {
+    "Service": "ingestion-service",
+    "Image": "akb-acceptance/ingestion-service:local",
+    "State": "running",
+    "Health": "healthy"
+  },
+  {
+    "Service": "rag-retrieval-service",
+    "Image": "akb-acceptance/rag-retrieval-service:local",
+    "State": "running",
+    "Health": "healthy"
+  },
+  {
+    "Service": "llm-gateway-service",
+    "Image": "akb-acceptance/llm-gateway-service:local",
+    "State": "running",
+    "Health": "healthy"
+  },
+  {
+    "Service": "stratos-report-renderer",
+    "Image": "akb-acceptance/stratos-report-renderer:local",
+    "State": "running",
+    "Health": "healthy"
+  },
+  {
+    "Service": "keycloak",
+    "Image": "quay.io/keycloak/keycloak:26.1.5",
+    "State": "running",
+    "Health": "healthy"
+  },
+  {
+    "Service": "postgres",
+    "Image": "postgres:16-alpine",
+    "State": "running",
+    "Health": "healthy"
+  },
+  {
+    "Service": "stratos-postgres",
+    "Image": "postgres:18.6-alpine",
+    "State": "running",
+    "Health": "healthy"
+  },
+  {
+    "Service": "qdrant",
+    "Image": "75eab8c4ba42",
+    "State": "running",
+    "Health": "healthy"
+  },
+  {
+    "Service": "minio",
+    "Image": "minio/minio:RELEASE.2025-09-07T16-13-09Z",
+    "State": "running",
+    "Health": "healthy"
+  },
+  {
+    "Service": "opensearch",
+    "Image": "opensearchproject/opensearch:2",
+    "State": "running",
+    "Health": "healthy"
+  }
+]

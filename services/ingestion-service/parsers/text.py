@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 
 from app.object_storage import SourceObject
+from app.document_formats import format_for_source
 from parsers.base import DocumentParser, ParsedBlock, ParserResult
 
 TEXT_MIME_TYPES = {
@@ -21,6 +23,9 @@ class TextParser(DocumentParser):
     name = "plain_text"
 
     def supports(self, source: SourceObject) -> bool:
+        catalog_entry = format_for_source(source.filename, source.mime_type)
+        if catalog_entry is not None:
+            return catalog_entry["admission"] == "enabled" and catalog_entry["parser"] == "plain_text"
         filename = source.filename.lower()
         return source.mime_type in TEXT_MIME_TYPES or filename.endswith((".csv", ".json", ".txt", ".md", ".markdown", ".xml"))
 
@@ -28,7 +33,10 @@ class TextParser(DocumentParser):
         is_markdown = source.filename.lower().endswith((".md", ".markdown")) or source.mime_type in {
             "text/markdown", "text/x-markdown", "application/markdown",
         }
-        return parse_text(source.content, parser_name=self.name, parser_profile=parser_profile, markdown=is_markdown)
+        result = parse_text(source.content, parser_name=self.name, parser_profile=parser_profile, markdown=is_markdown)
+        return replace(result, blocks=[replace(block, page_number=None) for block in result.blocks],
+            pages_processed=0, metadata={**result.metadata, "page_mapping": "unavailable",
+                "capabilities": ["non_paginated_text", "section_citations"]})
 
 
 def parse_text(content: bytes, *, parser_name: str, parser_profile: str, markdown: bool = False) -> ParserResult:

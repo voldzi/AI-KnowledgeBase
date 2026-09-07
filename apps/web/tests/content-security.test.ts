@@ -4,6 +4,7 @@ import { afterEach, describe, it } from "node:test";
 
 import {
   assertContentMatchesDeclaredType,
+  contentSecurityReadiness,
   inspectDocumentContent,
   type ContentSecuritySettings,
 } from "../src/lib/upload/content-security";
@@ -18,6 +19,44 @@ afterEach(async () => {
 });
 
 describe("document content security", () => {
+  it("checks scanner readiness using VERSION without submitting document bytes", async () => {
+    for (const version of [
+      "ClamAV 1.4.3/27632/Sat Jul 25 00:00:00 2026",
+      "ClamAV 1.4.3-rc/27632",
+    ]) {
+      const { port, server, commands } = await fakeClamd("stream: OK", version);
+      servers.push(server);
+
+      assert.equal(await contentSecurityReadiness(settings(port)), "ready");
+      assert.deepEqual(commands, ["VERSION"]);
+    }
+  });
+
+  it("does not report readiness for malformed or incomplete scanner versions", async () => {
+    for (const version of [
+      "COMMAND UNAVAILABLE",
+      "UNKNOWN COMMAND",
+      "stream: OK",
+      "ClamAV 1.4.3",
+      "ClamAV /27632/Sat Jul 25 00:00:00 2026",
+      "ClamAV invalid/27632",
+      "ClamAV 1.4.3/not-loaded",
+      "ClamAV 1.4.3/27632/",
+      "ClamAV 1.4.3/27632/Sat Jul 25 00:00:00 2026\nUNKNOWN COMMAND",
+    ]) {
+      const { port, server } = await fakeClamd("stream: OK", version);
+      servers.push(server);
+
+      assert.equal(await contentSecurityReadiness(settings(port)), "not_ready", version);
+    }
+  });
+
+  it("preserves required and optional disabled-scanner readiness", async () => {
+    const disabled = { ...settings(1), mode: "disabled" as const };
+    assert.equal(await contentSecurityReadiness(disabled), "not_ready");
+    assert.equal(await contentSecurityReadiness({ ...disabled, required: false }), "disabled");
+  });
+
   it("accepts a matching document only after a clean clamd verdict", async () => {
     const { port, server } = await fakeClamd("stream: OK");
     servers.push(server);
@@ -49,6 +88,21 @@ describe("document content security", () => {
       ),
       (error: unknown) => error instanceof UploadPreflightError
         && error.code === "UPLOAD_MALWARE_DETECTED",
+    );
+  });
+
+  it("rejects a clean scan with invalid engine or signature metadata", async () => {
+    const { port, server } = await fakeClamd("stream: OK", "COMMAND UNAVAILABLE");
+    servers.push(server);
+
+    await assert.rejects(
+      () => inspectDocumentContent(
+        new TextEncoder().encode("%PDF-1.7\nsafe"),
+        "application/pdf",
+        settings(port),
+      ),
+      (error: unknown) => error instanceof UploadPreflightError
+        && error.code === "CONTENT_SECURITY_INVALID_RESPONSE",
     );
   });
 
@@ -89,17 +143,23 @@ function settings(port: number): ContentSecuritySettings {
   };
 }
 
-async function fakeClamd(scanResponse: string): Promise<{
+async function fakeClamd(
+  scanResponse: string,
+  versionResponse = "ClamAV 1.4.3/27632/Sat Jul 25 00:00:00 2026",
+): Promise<{
   port: number;
   server: net.Server;
+  commands: string[];
 }> {
+  const commands: string[] = [];
   const server = net.createServer((socket) => {
     let request = Buffer.alloc(0);
     socket.on("data", (chunk) => {
       const bytes = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
       request = Buffer.concat([request, bytes]);
       if (request.subarray(0, 9).toString("utf8") === "zVERSION\0") {
-        socket.end("ClamAV 1.4.3/27632/Sat Jul 25 00:00:00 2026\0");
+        commands.push("VERSION");
+        socket.end(`${versionResponse}\0`);
         return;
       }
       if (
@@ -107,6 +167,7 @@ async function fakeClamd(scanResponse: string): Promise<{
         && request.byteLength >= 14
         && request.subarray(-4).equals(Buffer.alloc(4))
       ) {
+        commands.push("INSTREAM");
         socket.end(`${scanResponse}\0`);
       }
     });
@@ -114,7 +175,7 @@ async function fakeClamd(scanResponse: string): Promise<{
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   assert(address && typeof address === "object");
-  return { port: address.port, server };
+  return { port: address.port, server, commands };
 }
 
 async function unusedPort(): Promise<number> {

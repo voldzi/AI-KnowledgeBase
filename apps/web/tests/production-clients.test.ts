@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { budgetContractProfile } from "./fixtures/document-profiles";
 import { describe, it } from "node:test";
 
 import { createApiClients } from "../src/lib/api";
@@ -1281,6 +1282,8 @@ describe("production API clients", () => {
     const replaced = await clients.registry.replaceDocumentAssignments(
       "doc_1",
       {
+        document_profile: budgetContractProfile(),
+        expected_root_metadata_revision: "root-revision-test-1",
         assignments: [
           {
             role: "reviewer",
@@ -1306,6 +1309,8 @@ describe("production API clients", () => {
     assert.equal(calls[1][0], "https://registry.local/api/v1/documents/doc_1/assignments");
     assert.equal(calls[1][1]?.method, "PUT");
     assert.deepEqual(JSON.parse(String(calls[1][1]?.body)), {
+      document_profile: budgetContractProfile(),
+      expected_root_metadata_revision: "root-revision-test-1",
       assignments: [
         {
           role: "reviewer",

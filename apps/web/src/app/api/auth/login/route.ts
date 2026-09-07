@@ -1,3 +1,4 @@
+import { authCookieNames } from "@/lib/auth/cookies";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getAklConfig } from "@/lib/api/config";
@@ -7,7 +8,7 @@ import {
   normalizeReturnToForPublicBase,
   requireOidcConfig,
 } from "@/lib/auth/oidc";
-import { serverSessionCookieOptions, SSO_SIGNED_OUT_COOKIE } from "@/lib/auth/server-session";
+import { serverSessionCookieOptions } from "@/lib/auth/server-session";
 import { automaticSsoBlocked, beginOidcNavigation } from "@/lib/auth/login-navigation";
 
 export const runtime = "nodejs";
@@ -21,7 +22,7 @@ export async function GET(request: NextRequest) {
     config,
     request.nextUrl.searchParams.get("return_to"),
   );
-  if (!automaticSsoBlocked(request)) return beginOidcNavigation(config, returnTo);
+  if (!automaticSsoBlocked(config, request)) return beginOidcNavigation(config, returnTo);
   return new NextResponse(
     loginPage(buildPublicAppUrl(config, "/api/auth/login"), returnTo),
     {
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest) {
   const form = await request.formData();
   const returnTo = normalizeReturnToForPublicBase(config, String(form.get("return_to") ?? "/"));
   const response = await beginOidcNavigation(config, returnTo);
-  response.cookies.set(SSO_SIGNED_OUT_COOKIE, "", { ...serverSessionCookieOptions(config, false), maxAge: 0 });
+  response.cookies.set(authCookieNames(config.webProfile).signedOut, "", { ...serverSessionCookieOptions(config, false), maxAge: 0 });
   return response;
 }
 

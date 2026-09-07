@@ -106,10 +106,10 @@ build_and_publish() {
   images["$name"]="$(resolve_pushed_ref "$name" "$target")"
 }
 
-publish_existing postgresql postgres@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
-publish_existing s3-object-storage minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
-publish_existing opensearch opensearchproject/opensearch@sha256:8690b204fe914c60ca76d451ac73bc0481e034d32d3779944c8caca56a2b003f
-publish_existing qdrant qdrant/qdrant@sha256:75eab8c4ba42096724fdcfde8b4de0b5713d529dde32f285a1f86fdcb2c9e50c
+publish_existing postgresql postgres:18.6-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2
+publish_existing s3-object-storage minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+publish_existing opensearch opensearchproject/opensearch:3.8.0@sha256:bcc1797519726ceb6d651d4a3e60b7c30da91793914a8dfe75fd441d4f641509
+publish_existing qdrant qdrant/qdrant:v1.19.1@sha256:12364fe851b9f17356fc88189fc06d1b521262e04659ec7345975b00c9246a10
 
 build_and_publish registry-api services/registry-api
 build_and_publish ingestion-service services/ingestion-service --build-arg AKL_INSTALL_DOCLING=true

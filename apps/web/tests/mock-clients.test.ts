@@ -4,6 +4,14 @@ import { describe, it } from "node:test";
 import { createApiClients } from "../src/lib/api";
 import { createMockContext } from "../src/lib/api/correlation";
 import { ApiClientError } from "../src/lib/types";
+import type { DocumentProfileInput } from "../src/lib/documents/document-profile";
+
+const contractProfile: DocumentProfileInput = {
+  profile: { id: "akb.contract", revision: "1" },
+  authorship: [{ kind: "person", id: "budget_owner", evidenceReference: "test-authorship" }],
+  provenance: { sourceSystem: "AKB", sourceRecordId: null, sourceGovernedResourceId: null },
+  accountability: { ownerSubjectId: "budget_owner", gestor: { kind: "organization_unit", id: "Budget" } },
+};
 
 const env = {
   AKL_ENV: "test",
@@ -23,6 +31,12 @@ describe("mock API clients", () => {
     const createdVersion = await clients.registry.createDocumentVersion(
       documents[0].document_id,
       {
+        document_profile: {
+          expected_root_metadata_revision: documents[0].current_root_metadata_revision!,
+          lifecycle: { mode: "until_superseded", effectiveFrom: "2026-07-01", effectiveTo: null, recordedOn: null,
+            reviewAt: "2027-07-01", reviewRuleId: "akb.review.annual", retentionRuleId: "akb.retention.organizational-record" },
+          domain_evidence: { family: "controlled_document", issuerReference: "test-issuer", applicability: "Test scope", effectiveDateEvidenceReference: "test-effectivity" },
+        },
         version_label: "2.1",
         valid_from: "2026-07-01",
         valid_to: null,
@@ -227,6 +241,7 @@ describe("mock API clients", () => {
     await clients.registry.createDocument(
       {
         title: "Smlouva Budget Contract 1",
+        document_profile: contractProfile,
         document_type: "contract",
         owner_id: "budget_owner",
         gestor_unit: "Budget",
@@ -268,6 +283,7 @@ describe("mock API clients", () => {
     await clients.registry.createDocument(
       {
         title: "Smlouva Budget Contract 2",
+        document_profile: contractProfile,
         document_type: "contract",
         owner_id: "budget_owner",
         gestor_unit: "Budget",
@@ -412,9 +428,13 @@ describe("mock API clients", () => {
     const context = createMockContext({ subjectId: "admin_1", roles: ["admin"] });
 
     const initialAssignments = await clients.registry.listDocumentAssignments("doc_102", context);
+    const original = await clients.registry.getDocument("doc_102", context);
     const assignments = await clients.registry.replaceDocumentAssignments(
       "doc_102",
       {
+        expected_root_metadata_revision: original.current_root_metadata_revision!,
+        document_profile: { ...contractProfile, profile: { id: "akb.controlled-document", revision: "1" },
+          accountability: { ownerSubjectId: "user_777", gestor: { kind: "organization_unit", id: "Security" } } },
         assignments: [
           {
             role: "owner",
@@ -428,6 +448,7 @@ describe("mock API clients", () => {
             escalation_subject_id: "Security",
             escalation_label: "Security management"
           },
+          { role: "gestor", subject_type: "unit", subject_id: "Security", is_primary: true, active: true },
           {
             role: "reviewer",
             subject_type: "group",
@@ -446,7 +467,7 @@ describe("mock API clients", () => {
     const reviewTask = tasks.find((task) => task.document_id === "doc_102");
 
     assert.ok(initialAssignments.length > 0);
-    assert.equal(assignments.length, 2);
+    assert.equal(assignments.length, 3);
     assert.equal(document.owner_id, "user_777");
     assert.equal(reviewTask?.owner_id, "review-board");
     assert.equal(reviewTask?.metadata.assignment_role, "reviewer");

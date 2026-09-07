@@ -50,7 +50,7 @@ def _load_manifest(path: Path) -> dict[str, object]:
         raise ProvisionError("The Docling source manifest is not closed")
     if value.get("schema") != SCHEMA or value.get("profile") != "standard-cpu-v1":
         raise ProvisionError("The Docling source manifest has an unsupported contract")
-    if value.get("docling_package") != "docling-slim==2.124.0":
+    if value.get("docling_package") != "docling-slim==2.126.0":
         raise ProvisionError("The Docling package pin does not match the approved runtime")
     repositories = value.get("repositories")
     required_files = value.get("required_files")

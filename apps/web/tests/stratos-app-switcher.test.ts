@@ -19,8 +19,11 @@ describe("AKB STRATOS application switcher", () => {
     assert.notEqual(availability["budget-contract"]?.visible, false);
     assert.notEqual(availability.projectflow?.visible, false);
     assert.notEqual(availability.akb?.visible, false);
+    assert.notEqual(availability.chat?.visible, false);
     assert.notEqual(availability.archflow?.visible, false);
   });
+
+
 
   it("keeps every destination outside the current suite hidden", () => {
     const availability = applyAkbStratosAppsVisibility(

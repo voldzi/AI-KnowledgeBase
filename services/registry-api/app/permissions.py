@@ -3,6 +3,7 @@ from datetime import date
 from hashlib import sha256
 import json
 from typing import Any
+from fastapi import HTTPException
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
@@ -16,6 +17,8 @@ from app.access_governance import (
     governance_client,
 )
 from app.config import get_settings
+from app.document_admission import has_explicit_document_tlp
+from app.document_profile_runtime import require_fresh_document_profile
 from app.errors import problem
 from app.information_policy import (
     InformationPolicyBinding,
@@ -148,7 +151,9 @@ ACTION_CAPABILITIES: dict[str, set[str]] = {
     Action.document_version_create.value: {"akb:upload", "akb:manage_document"},
     Action.document_version_publish.value: {"akb:manage_document"},
     Action.document_version_archive.value: {"akb:manage_document"},
-    Action.document_ingest.value: {"akb:manage_document"},
+    # Ingestion authorization follows a successful upload. Contributors may
+    # initiate it inside their granted scope; execution remains service-bound.
+    Action.document_ingest.value: {"akb:upload", "akb:manage_document"},
     Action.document_reindex.value: {"akb:manage_document"},
     Action.rag_query.value: {"akb:chat"},
     Action.rag_compare.value: {"akb:chat"},
@@ -533,7 +538,7 @@ def _employee_directive_source_allows(
         audience = binding.audience
         if (
             binding.handling_class != "INTERNAL"
-            or binding.tlp is not None
+            or binding.tlp != "TLP:CLEAR"
             or binding.pap is not None
             or audience.organization_id != context.organization_id
             or audience.scope_type != "organization"
@@ -698,7 +703,31 @@ def _policy_constraints_allow(
     return True, "policy constraints satisfied"
 
 
+def _document_tlp_required_for_action(action: str) -> bool:
+    # Updating metadata may repair an incomplete policy, and withdrawing a
+    # document must remain possible. Those mutations enforce admission at their
+    # own write boundary; they do not authorize reading or publishing content.
+    return action in {
+        Action.document_read.value, Action.document_version_create.value,
+        Action.document_version_publish.value, Action.document_ingest.value,
+        Action.document_reindex.value, Action.rag_query.value,
+        Action.rag_compare.value, Action.rag_check_compliance.value, Action.rag_export.value,
+    }
+
+
 def evaluate_document_access(context: SubjectContext, action: str, document: Document) -> Decision:
+    decision = _evaluate_document_access_without_profile(context, action, document)
+    if decision.allowed and _document_tlp_required_for_action(action):
+        try:
+            require_fresh_document_profile(document, actor_id=context.subject_id)
+        except HTTPException:
+            return Decision(False, "Current document profile admission is unavailable or denied", {}, ("DOCUMENT_PROFILE_REQUIRED",))
+    return decision
+
+
+def _evaluate_document_access_without_profile(context: SubjectContext, action: str, document: Document) -> Decision:
+    if _document_tlp_required_for_action(action) and not has_explicit_document_tlp(document.policy_summary):
+        return Decision(False, "Document TLP is missing or invalid", {}, ("DOCUMENT_TLP_REQUIRED",))
     if context.access_v2:
         return _v2_document_decision(context, action, document)
     constraints = {"max_classification": max_classification_for_roles(context.roles)}
@@ -754,6 +783,8 @@ def resolve_document_version_authority(
     document: Document,
     version: DocumentVersion,
 ) -> DocumentVersionAuthority:
+    if not has_explicit_document_tlp(document.policy_summary) or not has_explicit_document_tlp(version.policy_summary):
+        raise ValueError("The document and immutable version require explicit effective TLP")
     settings = get_settings()
     mock_registration = (
         settings.auth_mode == "mock"
@@ -820,7 +851,7 @@ def resolve_document_version_authority(
             or version.governance_registration_status != "REGISTERED"
             or not document.governed_resource_id
             or not version.governed_resource_id
-            or version.governed_parent_resource_id != document.governed_resource_id
+            or not version.governed_parent_resource_id
         ):
             raise ValueError("The document version governed resource lineage is unavailable")
         governed_resource_id = version.governed_resource_id
@@ -926,8 +957,14 @@ def evaluate_runtime_document_version_access(
     authority: DocumentVersionAuthority,
     local_decision: Decision,
 ) -> Decision:
+    if not has_explicit_document_tlp(document.policy_summary) or not has_explicit_document_tlp(version.policy_summary):
+        return Decision(False, "Document TLP is missing or invalid", {}, ("DOCUMENT_TLP_REQUIRED",))
     if not local_decision.allowed:
         return local_decision
+    try:
+        require_fresh_document_profile(document, version=version, actor_id=principal.subject_id)
+    except HTTPException:
+        return Decision(False, "Current exact-version profile admission is unavailable or denied", {}, ("DOCUMENT_PROFILE_REQUIRED",))
     if local_decision.constraints.get("employee_directive_projection") is True:
         # This derived projection is narrower than the organization-owned
         # source. Its active recipient_set comes from the verified STRATOS
@@ -1000,6 +1037,8 @@ def evaluate_runtime_document_access(
     document: Document,
     local_decision: Decision | None = None,
 ) -> Decision:
+    if _document_tlp_required_for_action(action) and not has_explicit_document_tlp(document.policy_summary):
+        return Decision(False, "Document TLP is missing or invalid", {}, ("DOCUMENT_TLP_REQUIRED",))
     settings = get_settings()
     decision = (
         Decision(
@@ -1014,6 +1053,11 @@ def evaluate_runtime_document_access(
     )
     if not decision.allowed:
         return decision
+    if principal.service_identity and _document_tlp_required_for_action(action):
+        try:
+            require_fresh_document_profile(document, actor_id=principal.subject_id)
+        except HTTPException:
+            return Decision(False, "Current document profile admission is unavailable or denied", {}, ("DOCUMENT_PROFILE_REQUIRED",))
     if decision.constraints.get("employee_directive_projection") is True:
         return decision
     # The public-projection branch above has already performed a fresh anonymous
@@ -1099,6 +1143,11 @@ def _primary_capability(action: str) -> str:
         Action.rag_check_compliance.value: "akb:chat",
         Action.rag_export.value: "akb:export",
         Action.audit_write.value: "akb:read_audit",
+        # Contributors may create a version within their granted document
+        # scope; management is an alternative local capability, not the
+        # capability sent to the central upload decision.
+        Action.document_version_create.value: "akb:upload",
+        Action.document_ingest.value: "akb:upload",
     }
     if action in preferred:
         return preferred[action]

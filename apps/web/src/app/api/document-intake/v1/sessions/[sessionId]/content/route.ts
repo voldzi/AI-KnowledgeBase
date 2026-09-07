@@ -6,14 +6,14 @@ import {
 } from "@/lib/stratos/document-ai";
 import {
   getServerApiClients,
-  getServerRequestContextForRequest,
+  getOptionalServerRequestContext,
 } from "@/lib/api/server";
+import { authenticateStratosDocumentServiceRequest } from "@/lib/stratos/document-service-auth";
+import { acceptAuthorizedDocumentIntakeContent } from "@/lib/upload/document-intake-authorization";
 import {
-  acceptDocumentIntakeContent,
   assertDocumentIntakePurpose,
 } from "@/lib/upload/document-intake";
 import {
-  CONTROLLED_DOCUMENT_UPLOAD_TOKEN_PURPOSE,
   getUploadSettings,
   UploadPreflightError,
   verifyUploadToken,
@@ -36,15 +36,24 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     const uploadToken = request.headers.get("X-AKL-Upload-Token") ?? "";
     const payload = verifyUploadToken(uploadToken);
     assertDocumentIntakePurpose(payload);
-    await revalidateInteractivePolicy(request, payload);
-    const accepted = await acceptDocumentIntakeContent({
+    const accepted = await acceptAuthorizedDocumentIntakeContent({
       request,
       sessionId,
       uploadToken,
       payload,
       settings: settingsForPurpose(payload),
+    }, {
+      registry: getServerApiClients().registry,
+      getUserContext: async (currentRequest) => {
+        const currentContext = await getOptionalServerRequestContext(currentRequest);
+        if (!currentContext) {
+          throw new UploadPreflightError(401, "UPLOAD_ACTOR_REQUIRED", "An authenticated upload actor is required.");
+        }
+        return currentContext;
+      },
+      getBudgetService: authenticateStratosDocumentServiceRequest,
     });
-    return NextResponse.json(accepted, { status: 201 });
+    return NextResponse.json(accepted, { status: 201, headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return uploadErrorResponse(error);
   }
@@ -55,27 +64,4 @@ function settingsForPurpose(payload: UploadTokenPayload): UploadSettings {
     return getStratosBudgetUploadSettings();
   }
   return getUploadSettings();
-}
-
-async function revalidateInteractivePolicy(
-  request: NextRequest,
-  payload: UploadTokenPayload,
-): Promise<void> {
-  if (payload.purpose !== CONTROLLED_DOCUMENT_UPLOAD_TOKEN_PURPOSE) return;
-  const requestContext = await getServerRequestContextForRequest(request);
-  const document = await getServerApiClients().registry.getDocument(
-    payload.document_id,
-    requestContext,
-  );
-  if (
-    document.policy_binding_id !== payload.policy_binding_id
-    || document.policy_version !== payload.policy_version
-    || document.policy_hash !== payload.policy_hash
-  ) {
-    throw new UploadPreflightError(
-      409,
-      "UPLOAD_POLICY_BINDING_STALE",
-      "Document policy changed after preflight.",
-    );
-  }
 }

@@ -31,7 +31,7 @@ from affected_components import (  # noqa: E402
 from check_production_build_inputs import check_definitions  # noqa: E402
 
 
-PYTHON_BASE = "python:3.12-slim@sha256:e5c9fa26ffb76e11e0f054f30dc2523a2f9693f0c36c0cf1e39b27e152d899fc"
+PYTHON_BASE = "python:3.12.14-slim@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea"
 HARD_BUILD_STOP_GIB = 5
 SUMMARY_KEYS = {
     "schema",

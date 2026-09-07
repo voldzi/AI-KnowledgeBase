@@ -1,3 +1,10 @@
+from tests.document_policy_fixtures import admitted_policy
+from document_profile_fixtures import verified_profile_authority, profiled_document_request, profiled_version_request
+from copy import deepcopy
+import pytest
+
+pytestmark = pytest.mark.usefixtures("verified_profile_authority")
+
 from app.workflow_maintenance import maintain_workflow_tasks
 
 
@@ -11,14 +18,33 @@ def _create_document(client, headers, **overrides):
         "title": "Workflow source",
         "document_type": "directive",
         "owner_id": "user_owner",
-        "gestor_unit": "Knowledge Ops",
+        "gestor_unit": "unit_knowledge_ops",
         "classification": "internal",
         "tags": ["workflow"],
+        "access_policies": [{"subjects": ["role:reviewer"], "actions": ["document.read", "document.version.publish"]}],
+        "assignments": [{"role": "approver", "subject_type": "user", "subject_id": "user_reviewer", "is_primary": True}],
     }
     payload.update(overrides)
-    response = client.post("/api/v1/documents", headers=headers, json=payload)
+    payload["information_policy"] = admitted_policy(
+        handling_class={"confidential": "RESTRICTED"}.get(payload["classification"], payload["classification"].upper()),
+        owner=payload["owner_id"],
+    )
+    response = client.post("/api/v1/documents", headers=headers, json=profiled_document_request(payload))
     assert response.status_code == 201, response.text
     return response.json()
+
+
+def _assignment_request(document, value):
+    profile = deepcopy(document["document_profile"])
+    profile = {key: profile[key] for key in ("profile", "authorship", "provenance", "accountability")}
+    profile["provenance"]["sourceRecordId"] = None
+    required_roles = {"gestor", "approver"}
+    return {**value, "document_profile": profile,
+        "expected_root_metadata_revision": document["current_root_metadata_revision"],
+        "assignments": [*value["assignments"], *[
+            {key: row[key] for key in ("role", "subject_type", "subject_id", "is_primary")}
+            for row in document["assignments"] if row["role"] in required_roles
+        ]]}
 
 
 def test_workflow_tasks_are_derived_from_document_state(client, admin_headers, db_session):
@@ -44,7 +70,7 @@ def test_workflow_tasks_are_derived_from_document_state(client, admin_headers, d
 
 
 def test_document_creation_seeds_owner_and_gestor_assignments(client, admin_headers):
-    document = _create_document(client, admin_headers, owner_id="user_owner", gestor_unit="Knowledge Ops")
+    document = _create_document(client, admin_headers, owner_id="user_owner", gestor_unit="unit_knowledge_ops")
 
     assignments = document["assignments"]
     roles = {assignment["role"]: assignment for assignment in assignments}
@@ -52,20 +78,20 @@ def test_document_creation_seeds_owner_and_gestor_assignments(client, admin_head
     assert roles["owner"]["subject_type"] == "user"
     assert roles["owner"]["is_primary"] is True
     assert roles["owner"]["last_audit_event_id"]
-    assert roles["gestor"]["subject_id"] == "Knowledge Ops"
+    assert roles["gestor"]["subject_id"] == "unit_knowledge_ops"
     assert roles["gestor"]["subject_type"] == "unit"
 
     listed = client.get(f"/api/v1/documents/{document['document_id']}/assignments", headers=admin_headers)
     assert listed.status_code == 200, listed.text
-    assert {item["role"] for item in listed.json()["items"]} == {"owner", "gestor"}
+    assert {item["role"] for item in listed.json()["items"]} == {"owner", "gestor", "approver"}
 
 
 def test_document_assignments_drive_review_task_owner_sla_and_escalation(client, admin_headers, db_session):
-    document = _create_document(client, admin_headers, classification="restricted")
+    document = _create_document(client, admin_headers, document_type="knowledge_base_article", assignments=[], classification="restricted")
     replaced = client.put(
         f"/api/v1/documents/{document['document_id']}/assignments",
         headers=admin_headers,
-        json={
+        json=_assignment_request(document, {
             "assignments": [
                 {
                     "role": "owner",
@@ -95,7 +121,7 @@ def test_document_assignments_drive_review_task_owner_sla_and_escalation(client,
                     "sla_days": 2,
                 },
             ]
-        },
+        }),
     )
     assert replaced.status_code == 200, replaced.text
     reviewer_assignment = next(item for item in replaced.json()["items"] if item["role"] == "reviewer")
@@ -300,20 +326,19 @@ def test_review_workflow_approval_enables_publish_gate(client, admin_headers, db
     created_version = client.post(
         f"/api/v1/documents/{document['document_id']}/versions",
         headers=admin_headers,
-        json={
+        json=profiled_version_request(document, {
             "version_label": "1.0",
             "valid_from": "2026-07-01",
             "valid_to": None,
             "source_file_uri": "s3://akl-documents/doc/ver/file.pdf",
-            "file_hash": "sha256:abc",
+            "file_hash": "sha256:" + "a" * 64,
             "change_summary": "Ready for approval.",
-        },
+        }),
     )
     assert created_version.status_code == 201, created_version.text
-    submitted = client.patch(
-        f"/api/v1/documents/{document['document_id']}",
-        headers=admin_headers,
-        json={"status": "review"},
+    submitted = client.post(
+        f"/api/v1/documents/{document['document_id']}/versions/{created_version.json()['document_version_id']}/submit-review",
+        headers=admin_headers, json={},
     )
     assert submitted.status_code == 200, submitted.text
     _maintain(db_session)
@@ -324,7 +349,7 @@ def test_review_workflow_approval_enables_publish_gate(client, admin_headers, db
 
     approved = client.post(
         f"/api/v1/workflow/tasks/{task['task_id']}/actions",
-        headers=admin_headers,
+        headers={"X-AKL-Subject": "user_reviewer", "X-AKL-Roles": "reviewer"},
         json={"action": "approve", "comment": "Approved for publication."},
     )
     assert approved.status_code == 200, approved.text
@@ -343,11 +368,11 @@ def test_review_workflow_approval_enables_publish_gate(client, admin_headers, db
 
 
 def test_workflow_action_audit_keeps_assignment_context(client, admin_headers, db_session):
-    document = _create_document(client, admin_headers)
+    document = _create_document(client, admin_headers, document_type="knowledge_base_article", assignments=[])
     replaced = client.put(
         f"/api/v1/documents/{document['document_id']}/assignments",
         headers=admin_headers,
-        json={
+        json=_assignment_request(document, {
             "assignments": [
                 {
                     "role": "owner",
@@ -365,7 +390,7 @@ def test_workflow_action_audit_keeps_assignment_context(client, admin_headers, d
                     "escalation_subject_id": "user_escalation",
                 },
             ]
-        },
+        }),
     )
     assert replaced.status_code == 200, replaced.text
     reviewer_assignment = next(item for item in replaced.json()["items"] if item["role"] == "reviewer")

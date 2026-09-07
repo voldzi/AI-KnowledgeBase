@@ -160,9 +160,10 @@ function normalizeCitations(value: unknown): Citation[] {
   if (!Array.isArray(value)) {
     return [];
   }
-  return value.slice(0, 8).flatMap((item) => {
+  if (value.length > 8) throw new AssistantReportValidationError("A report row supports at most eight citations.");
+  return value.map((item) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) {
-      return [];
+      throw new AssistantReportValidationError("Every report citation must be an object.");
     }
     const citation = item as Record<string, unknown>;
     const chunkId = optionalBoundedString(citation.chunk_id, "citation.chunk_id", 96);
@@ -171,22 +172,25 @@ function normalizeCitations(value: unknown): Citation[] {
     const documentTitle = optionalBoundedString(citation.document_title, "citation.document_title", 240);
     const versionLabel = optionalBoundedString(citation.version_label, "citation.version_label", 80);
     if (!chunkId || !documentId || !documentVersionId || !documentTitle || !versionLabel) {
-      return [];
+      throw new AssistantReportValidationError("Every report citation requires complete source coordinates.");
     }
     const pageNumber = typeof citation.page_number === "number" && Number.isInteger(citation.page_number)
       ? citation.page_number
       : null;
     const sectionPath = normalizeStringList(citation.section_path, 12, 120);
-    return [{
+    return {
       chunk_id: chunkId,
       document_id: documentId,
       document_version_id: documentVersionId,
       document_title: documentTitle,
       version_label: versionLabel,
       document_version: optionalBoundedString(citation.document_version, "citation.document_version", 80) ?? versionLabel,
+      policy_binding_id: optionalBoundedString(citation.policy_binding_id, "citation.policy_binding_id", 160),
+      policy_version: optionalBoundedString(citation.policy_version, "citation.policy_version", 80),
+      policy_hash: optionalBoundedString(citation.policy_hash, "citation.policy_hash", 128),
       page_number: pageNumber && pageNumber > 0 ? pageNumber : null,
       section_path: sectionPath,
-    }];
+    };
   });
 }
 
@@ -203,7 +207,7 @@ function buildReportSheet(report: NormalizedReport): SheetModel {
 function buildCitationSheet(items: Array<{ rowId: string; citation: Citation }>): SheetModel {
   const rows: CellValue[][] = [
     ["Citace"],
-    ["row_id", "document_id", "document_version_id", "document_title", "version", "page", "section", "chunk_id"],
+    ["row_id", "document_id", "document_version_id", "document_title", "version", "page", "section", "chunk_id", "policy_binding_id", "policy_version", "policy_hash"],
     ...items.map(({ rowId, citation }) => [
       rowId,
       citation.document_id,
@@ -213,6 +217,9 @@ function buildCitationSheet(items: Array<{ rowId: string; citation: Citation }>)
       citation.page_number,
       citation.section_path.join(" / "),
       citation.chunk_id,
+      citation.policy_binding_id ?? null,
+      citation.policy_version ?? null,
+      citation.policy_hash ?? null,
     ]),
   ];
   return { name: "Citace", rows, headerRowIndex: 2 };

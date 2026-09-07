@@ -3,10 +3,9 @@
 import { forwardRef, useState } from "react";
 import { Dialog } from "@voldzi/stratos-ui";
 import { Copy, ExternalLink, FileText, Maximize2, PanelRightOpen, ShieldAlert, Square } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 
 import { StatusBadge } from "@/components/status-badge";
+import { AssistantMarkdown } from "@/features/assistant/assistant-markdown";
 import { withAppBasePath } from "@/lib/app-url";
 import type { Citation, SourceContext } from "@/lib/types";
 
@@ -23,6 +22,9 @@ export interface CitationViewerLabels {
   chunk: string;
   beforeContext?: string;
   afterContext?: string;
+  sheet?: string;
+  row?: string;
+  slide?: string;
 }
 
 interface CitationListProps {
@@ -166,7 +168,7 @@ export function CitationList({
         <article className={`timeline-item ${activeChunkId === citation.chunk_id ? "timeline-item--active" : ""}`} key={citation.chunk_id}>
           <strong>{citation.document_title}</strong>
           <span>
-            {labels.version} {citation.version_label} - {labels.page} {citation.page_number ?? "n/a"}
+            {labels.version} {citation.version_label}{citation.page_number != null ? ` · ${labels.page} ${citation.page_number}` : ""}
           </span>
           <span>{citation.section_path.join(" / ") || labels.noSection}</span>
           <button
@@ -199,8 +201,7 @@ export const SourceContextCard = forwardRef<HTMLElement, SourceContextCardProps>
   { sourceContext, labels, className = "", showStatus = true, showTechnicalDetails = false },
   ref
 ) {
-  const sectionLabel = sourceContext.location.section_path.join(" / ") || labels.noSection;
-  const locationLabel = `${labels.page} ${sourceContext.location.page_number ?? "n/a"} · ${sectionLabel}`;
+  const locationLabel = sourceLocationLabel(sourceContext.location, labels);
 
   return (
     <article className={`source-viewer ${className}`.trim()} ref={ref}>
@@ -226,14 +227,14 @@ export const SourceContextCard = forwardRef<HTMLElement, SourceContextCardProps>
       {sourceContext.before_text ? (
         <div className="source-context-block">
           {labels.beforeContext ? <strong>{labels.beforeContext}</strong> : null}
-          <SourceContextPreview text={sourceContext.before_text} viewerMode={sourceContext.viewer_mode} contextual />
+          <SourceContextPreview text={sourceContext.before_text} viewerMode={sourceContext.viewer_mode} openLinkLabel={labels.openCitation} contextual />
         </div>
       ) : null}
-      <SourceContextPreview text={sourceContext.chunk_text} viewerMode={sourceContext.viewer_mode} />
+      <SourceContextPreview text={sourceContext.chunk_text} viewerMode={sourceContext.viewer_mode} openLinkLabel={labels.openCitation} />
       {sourceContext.after_text ? (
         <div className="source-context-block">
           {labels.afterContext ? <strong>{labels.afterContext}</strong> : null}
-          <SourceContextPreview text={sourceContext.after_text} viewerMode={sourceContext.viewer_mode} contextual />
+          <SourceContextPreview text={sourceContext.after_text} viewerMode={sourceContext.viewer_mode} openLinkLabel={labels.openCitation} contextual />
         </div>
       ) : null}
       <div className="source-viewer__actions">
@@ -267,19 +268,38 @@ export const SourceContextCard = forwardRef<HTMLElement, SourceContextCardProps>
   );
 });
 
+export function sourceLocationLabel(location: SourceContext["location"], labels: CitationViewerLabels): string {
+  const sections = [...location.section_path];
+  if (location.sheet_name) {
+    if (sections[0] === location.sheet_name) sections.shift();
+    return [
+      `${labels.sheet ?? "List"} ${location.sheet_name}`,
+      sections.join(" / ") || (location.row_number ? `${labels.row ?? "Řádek"} ${location.row_number}` : ""),
+    ].filter(Boolean).join(" · ");
+  }
+  if (location.slide_number) {
+    if (sections[0] === `Snímek ${location.slide_number}`) sections.shift();
+    return [`${labels.slide ?? "Snímek"} ${location.slide_number}`, sections.join(" / ")].filter(Boolean).join(" · ");
+  }
+  return [location.page_number != null ? `${labels.page} ${location.page_number}` : "", sections.join(" / ") || labels.noSection]
+    .filter(Boolean).join(" · ");
+}
+
 function SourceContextPreview({
   text,
   viewerMode,
+  openLinkLabel,
   contextual = false
 }: {
   text: string;
   viewerMode: SourceContext["viewer_mode"];
+  openLinkLabel: string;
   contextual?: boolean;
 }) {
   if (viewerMode === "markdown") {
     return (
       <article className={`native-preview__markdown native-preview__markdown--citation ${contextual ? "native-preview__markdown--context" : ""}`.trim()}>
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+        <AssistantMarkdown content={text} openLinkLabel={openLinkLabel} />
       </article>
     );
   }

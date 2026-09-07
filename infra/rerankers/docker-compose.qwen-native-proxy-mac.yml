@@ -2,7 +2,7 @@ name: akb-qwen-reranker-proxy
 
 services:
   qwen-reranker-proxy:
-    image: alpine/socat@sha256:beb4a68d9e4fe6b0f21ea774a0fde6c31f580dde6368939ed70100c5385b015e
+    image: alpine/socat:1.8.0.3@sha256:beb4a68d9e4fe6b0f21ea774a0fde6c31f580dde6368939ed70100c5385b015e
     restart: unless-stopped
     command:
       - TCP-LISTEN:11435,fork,reuseaddr

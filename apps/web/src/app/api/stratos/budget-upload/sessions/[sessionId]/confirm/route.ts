@@ -3,13 +3,9 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   authenticateStratosDocumentServiceJsonRequest,
   requireStratosDocumentSourceAllowed,
-  type StratosDocumentServicePrincipal,
 } from "@/lib/stratos/document-service-auth";
-import {
-  getServerApiClients,
-  getStratosActorRequestContext,
-  requireStratosActorSubjectMatch,
-} from "@/lib/api/server";
+import { createApiClients } from "@/lib/api";
+import { budgetServiceContext } from "@/lib/stratos/budget-upload-authorization";
 import {
   ingestionJobIdForIdempotencyKey,
   ingestionServiceRequestContext,
@@ -31,7 +27,7 @@ import {
   type StratosBudgetStoredLineage,
   type StratosBudgetUploadConfirmResult,
 } from "@/lib/stratos/document-ai";
-import { ApiClientError, type ApiRequestContext, type IngestionJob } from "@/lib/types";
+import { ApiClientError, type IngestionJob } from "@/lib/types";
 import {
   assertUploadMatchesIngestionPayload,
   assertUploadTokenPurpose,
@@ -40,6 +36,9 @@ import {
   verifyUploadReceipt,
 } from "@/lib/upload/preflight";
 import { getContentSecuritySettings } from "@/lib/upload/content-security";
+import { verifyCanonicalBudgetUploadObject } from "@/lib/stratos/budget-upload-recovery";
+import { authorizeBudgetDocumentUpload } from "@/lib/upload/document-intake-authorization";
+import { equalCanonicalJson } from "@/lib/stratos/canonical-json";
 
 import { stratosBridgeError } from "../../../../errors";
 
@@ -89,13 +88,11 @@ export async function POST(request: NextRequest, routeContext: RouteContext) {
       uploadSettings,
     );
     assertUploadTokenPurpose(payload, STRATOS_BUDGET_UPLOAD_TOKEN_PURPOSE);
+    if (!equalCanonicalJson(payload.document_profile, contract.documentProfile)) {
+      throw new ApiClientError("Document profile differs from the signed intake preparation.", 409,
+        "STRATOS_BUDGET_UPLOAD_PROFILE_CONFLICT", contract.integrationEnvelope.correlationId);
+    }
     const versionLineage = stratosBudgetVersionLineageFromUploadToken(payload);
-    const actorContext = await actorContextForMode(
-      request,
-      contract.ownerSubjectId,
-      versionLineage.upload_mode,
-      contract.integrationEnvelope.correlationId,
-    );
     const receiptPayload = verifyUploadReceipt(
       uploadReceipt,
       uploadToken,
@@ -106,13 +103,15 @@ export async function POST(request: NextRequest, routeContext: RouteContext) {
       receiptPayload,
       getContentSecuritySettings().required,
     );
-    await verifyPersistedUploadedObject(payload, uploadSettings);
     assertSignedBudgetContext(payload, {
       contract,
       documentId,
       externalDocumentId,
       serviceSubjectId: service.subjectId,
     });
+    const clients = createApiClients();
+    const actorContext = await authorizeBudgetDocumentUpload({ request, payload, service, registry: clients.registry });
+    await verifyPersistedUploadedObject(payload, uploadSettings);
 
     const normalizedBody = {
       ...body,
@@ -138,15 +137,16 @@ export async function POST(request: NextRequest, routeContext: RouteContext) {
       serviceContext,
     });
     const version = versionUpsert.version;
+    const expectedVersionStatus = contract.documentProfile.domain_evidence.executionStatus === "draft" ? "draft" : "valid";
     const fileId = version.file_id;
     if (
       version.document_id !== documentId
-      || version.source_file_uri !== payload.source_file_uri
+      || (versionUpsert.created && version.source_file_uri !== payload.source_file_uri)
       || version.file_hash !== contract.fileHash
       || version.policy_binding_id !== contract.informationPolicy.policyBindingId
       || version.policy_version !== contract.informationPolicy.policyVersion
       || version.policy_hash !== contract.integrationEnvelope.policyHash
-      || version.status !== "valid"
+      || version.status !== expectedVersionStatus
       || !fileId
       || versionUpsert.external_document.external_document.external_document_id !== externalDocumentId
       || versionUpsert.external_document.external_document.external_ref !== contract.externalRef
@@ -158,6 +158,13 @@ export async function POST(request: NextRequest, routeContext: RouteContext) {
         contract.integrationEnvelope.correlationId,
       );
     }
+
+    await verifyCanonicalBudgetUploadObject({
+      version,
+      upload: payload,
+      settings: uploadSettings,
+      scanRequired: getContentSecuritySettings().required,
+    });
 
     const lineage: StratosBudgetStoredLineage = {
       informationPolicy: contract.informationPolicy,
@@ -174,7 +181,6 @@ export async function POST(request: NextRequest, routeContext: RouteContext) {
           correlationId: contract.integrationEnvelope.correlationId,
         }
       : serviceContext;
-    const clients = getServerApiClients();
     const authorizationRequest = {
       action: "document.ingest" as const,
       correlation_id: contract.integrationEnvelope.correlationId,
@@ -194,7 +200,7 @@ export async function POST(request: NextRequest, routeContext: RouteContext) {
           authorizationContext,
         );
     if (
-      authorization.confirmed_subject_id !== contract.ownerSubjectId
+      authorization.confirmed_subject_id !== contract.actorSubjectId
       || authorization.document_id !== documentId
       || authorization.document_version_id !== version.document_version_id
       || authorization.correlation_id !== contract.integrationEnvelope.correlationId
@@ -234,22 +240,36 @@ export async function POST(request: NextRequest, routeContext: RouteContext) {
       body: normalizedBody,
       expectedCurrentIngestionJobId: payload.expected_current_ingestion_job_id ?? null,
     });
-    let ingestionJob: IngestionJob = await clients.ingestion.createJob(
-      ingestionRequest,
-      ingestionContext,
-      {
-        delegatedActorSubjectId: authorization.confirmed_subject_id,
-        authorizationToken: authorization.authorization_token,
-      },
-    );
+    const ingestionDelegation = {
+      delegatedActorSubjectId: authorization.confirmed_subject_id,
+      authorizationToken: authorization.authorization_token,
+    };
+    const priorAttempt = priorStatus.ingestion_attempt?.ingestion_job_id === ingestionJobId
+      ? priorStatus.ingestion_attempt
+      : null;
+    let ingestionJob: IngestionJob = priorAttempt
+      ? {
+          job_id: priorAttempt.ingestion_job_id,
+          document_id: priorAttempt.document_id,
+          document_version_id: priorAttempt.document_version_id,
+          status: priorAttempt.ingestion_status === "INDEXED" ? "completed"
+            : priorAttempt.ingestion_status === "FAILED" ? "failed"
+              : priorAttempt.ingestion_status === "QUEUED" ? "queued" : "running",
+          parser_profile: ingestionRequest.parser_profile,
+          ocr_enabled: ingestionRequest.ocr_enabled,
+          chunking_strategy: ingestionRequest.chunking_strategy,
+          embedding_profile: ingestionRequest.embedding_profile,
+          created_at: priorAttempt.created_at,
+          started_at: null,
+          finished_at: priorAttempt.ingestion_status === "INDEXED" || priorAttempt.ingestion_status === "FAILED"
+            ? priorAttempt.updated_at : null,
+        }
+      : await clients.ingestion.createJob(ingestionRequest, ingestionContext, ingestionDelegation);
     if (["pending_authorization", "claiming"].includes(ingestionJob.status)) {
       ingestionJob = await clients.ingestion.createJob(
         ingestionRequest,
         ingestionContext,
-        {
-          delegatedActorSubjectId: authorization.confirmed_subject_id,
-          authorizationToken: authorization.authorization_token,
-        },
+        ingestionDelegation,
       );
     }
     if (
@@ -289,63 +309,13 @@ export async function POST(request: NextRequest, routeContext: RouteContext) {
       file_name: payload.file_name,
       file_type: payload.file_type,
       file_size: payload.file_size,
-      document_version_status: "valid",
+      document_version_status: expectedVersionStatus,
       governance_confirmation: versionUpsert.governance_confirmation,
     };
     return NextResponse.json(result, { status: versionUpsert.created ? 201 : 200 });
   } catch (error) {
     return stratosBridgeError(error);
   }
-}
-
-async function actorContextForMode(
-  request: Request,
-  expectedSubjectId: string,
-  mode: "interactive" | "historical_batch",
-  correlationId: string,
-): Promise<ApiRequestContext | null> {
-  const actorHeaderPresent = request.headers.get("X-STRATOS-Actor-Authorization") !== null;
-  if (mode === "historical_batch") {
-    if (actorHeaderPresent) {
-      throw new ApiClientError(
-        "Historical batch confirmation must remain service-only.",
-        409,
-        "STRATOS_BUDGET_UPLOAD_MODE_CONFLICT",
-        correlationId,
-      );
-    }
-    return null;
-  }
-  if (!actorHeaderPresent) {
-    throw new ApiClientError(
-      "A fresh STRATOS actor bearer is required for interactive confirmation.",
-      401,
-      "STRATOS_BUDGET_ACTOR_AUTH_REQUIRED",
-      correlationId,
-    );
-  }
-  const actorContext = await getStratosActorRequestContext(request);
-  requireStratosActorSubjectMatch(actorContext, expectedSubjectId);
-  return actorContext;
-}
-
-function budgetServiceContext(
-  service: StratosDocumentServicePrincipal,
-  correlationId: string,
-): ApiRequestContext {
-  return {
-    subjectId: service.subjectId,
-    roles: service.roles,
-    organizationId: "org_stratos",
-    identityActive: true,
-    membershipActive: false,
-    applicationAccessActive: false,
-    authorizationSource: "stratos_projection",
-    serviceClientId: service.clientId,
-    accessToken: service.accessToken,
-    requestId: correlationId,
-    correlationId,
-  };
 }
 
 function assertSignedBudgetContext(
@@ -369,7 +339,7 @@ function assertSignedBudgetContext(
     || payload.source_version !== contract.fileHash
     || payload.governance_scope?.type !== contract.governanceScope.type
     || payload.governance_scope?.id !== contract.governanceScope.id
-    || payload.governance_actor_subject_id !== contract.ownerSubjectId
+    || payload.governance_actor_subject_id !== contract.actorSubjectId
     || payload.governance_registered_by_subject_id !== input.serviceSubjectId
     || payload.governance_correlation_id !== contract.integrationEnvelope.correlationId
     || payload.governance_idempotency_key !== contract.integrationEnvelope.idempotencyKey

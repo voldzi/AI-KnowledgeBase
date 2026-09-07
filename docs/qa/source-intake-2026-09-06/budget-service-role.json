@@ -1,0 +1,5 @@
+{
+  "client": "stratos-akb-service",
+  "required_role_present": true,
+  "credentials_rotated": false
+}

@@ -228,7 +228,7 @@ def _service_client_id(claims: dict) -> tuple[str | None, bool]:
 
 
 def _is_minimal_client_credentials_identity(claims: dict) -> bool:
-    """Recognize Keycloak's route-bound minimal service token shape.
+    """Recognize Keycloak client-credentials identities without profile claims.
 
     Minimal service clients intentionally omit profile and session claims. The
     trusted client allowlist and route grant are applied separately after this
@@ -236,6 +236,25 @@ def _is_minimal_client_credentials_identity(claims: dict) -> bool:
     """
     if claims.get("preferred_username") is not None:
         return False
+    resource_access = claims.get("resource_access")
+    if resource_access is not None:
+        if not isinstance(resource_access, dict) or set(resource_access) != {"account"}:
+            return False
+        account_access = resource_access.get("account")
+        if not isinstance(account_access, dict) or set(account_access) != {"roles"}:
+            return False
+        account_roles = account_access.get("roles")
+        # Keycloak's default account roles can accompany client credentials.
+        # They confer no AKB grant; trusted clients and service route scopes are
+        # still checked independently below.
+        if (
+            not isinstance(account_roles, list)
+            or not account_roles
+            or not all(isinstance(role, str) for role in account_roles)
+            or "manage-account" not in account_roles
+            or not set(account_roles) <= {"manage-account", "manage-account-links", "view-profile"}
+        ):
+            return False
     if any(
         claims.get(name) is not None
         for name in (
@@ -252,23 +271,37 @@ def _is_minimal_client_credentials_identity(claims: dict) -> bool:
         )
     ):
         return False
-    if claims.get("scope") not in {None, ""}:
+    scope = claims.get("scope")
+    if not isinstance(scope, (str, type(None))):
         return False
-    if claims.get("resource_access"):
-        return False
+    scope_tokens = set((scope or "").split())
     subject = claims.get("sub")
     authorized_party = claims.get("azp")
     realm_roles = (claims.get("realm_access") or {}).get("roles") or []
+    legacy_route_token = (
+        scope_tokens == set()
+        and bool(realm_roles)
+        and all(isinstance(role, str) and role.startswith("service_") for role in realm_roles)
+    )
+    standard_ingestion_token = (
+        scope_tokens == {"service_ingestion"}
+        and "service_ingestion" in realm_roles
+        and all(
+            isinstance(role, str)
+            and (
+                role.startswith("service_")
+                or role in {"offline_access", "uma_authorization", "default-roles-stratos"}
+            )
+            for role in realm_roles
+        )
+    )
     return bool(
         isinstance(subject, str)
         and subject
         and isinstance(authorized_party, str)
         and authorized_party
-        and realm_roles
-        and all(
-            isinstance(role, str) and role.startswith("service_")
-            for role in realm_roles
-        )
+        and isinstance(realm_roles, list)
+        and (legacy_route_token or standard_ingestion_token)
     )
 
 
@@ -350,6 +383,10 @@ def _service_route_for_request(request: Request) -> str | None:
     path = request.url.path.removeprefix("/api/v1")
     write = request.method.upper() not in {"GET", "HEAD", "OPTIONS"}
     path_segments = path.strip("/").split("/")
+    if path.startswith("/admin/intake-cleanup/"):
+        return "intake-cleanup"
+    if path.startswith("/integrations/stratos-source-intake/"):
+        return "stratos-source-intake"
     if path.startswith("/integrations/stratos-budget-upload/"):
         return "stratos-budget-upload"
     if path.startswith("/integrations/controlled-rules-read/"):

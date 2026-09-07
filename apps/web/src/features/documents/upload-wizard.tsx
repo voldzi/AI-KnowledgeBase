@@ -1,11 +1,16 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, CheckCircle2, FileClock, FileUp, Fingerprint, Play, ShieldCheck } from "lucide-react";
 import { FieldLabelWithHelp, FileDropzone, HelpHint } from "@voldzi/stratos-ui";
 
 import { StatusBadge } from "@/components/status-badge";
+import { InformationPolicyNotice } from "@/components/information-policy-notice";
+import { documentInformationPolicyDetails } from "@/lib/information-policy-display";
 import { StratosButton, StratosSelect } from "@/components/stratos";
+import { documentFormatError, documentFormatHint } from "@/lib/documents/document-formats";
+import { DOCUMENT_PROFILES, readDocumentVersionProfile } from "@/lib/documents/document-profile";
+import { DocumentProfileFields } from "./document-profile-fields";
 import { withAppBasePath } from "@/lib/app-url";
 import { formatDateTime, formatNumber } from "@/lib/format";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
@@ -259,9 +264,12 @@ export function UploadWizard({ document, authorization, versions }: UploadWizard
   const { language } = useLanguage();
   const copy = uploadCopy[language];
   const selectedDocumentId = document.document_id;
+  const sourceFileRequest = useRef(0);
+  const formRef = useRef<HTMLFormElement>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [filePreflight, setFilePreflight] = useState<FilePreflight | null>(null);
   const [uploadPreflight, setUploadPreflight] = useState<UploadPreflightDecision | null>(null);
+  const [pendingConfirmation, setPendingConfirmation] = useState<string | null>(null);
   const [uploadPhase, setUploadPhase] = useState<UploadPhase>("idle");
   const [submitted, setSubmitted] = useState<{ version: DocumentVersion; job: IngestionJob } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -271,7 +279,16 @@ export function UploadWizard({ document, authorization, versions }: UploadWizard
   const [nextStep, setNextStep] = useState<NextStep>("owner");
   const [versionIncrement, setVersionIncrement] = useState<VersionIncrement>("revision");
   const [dirty, setDirty] = useState(false);
+  useEffect(() => {
+    if (pendingConfirmation && error && !submitting) {
+      formRef.current?.querySelector<HTMLButtonElement>('button[type="submit"]')?.focus();
+    }
+  }, [pendingConfirmation, error, submitting]);
   const selectedDocument = document;
+  const selectedProfile = DOCUMENT_PROFILES.find((profile) =>
+    profile.id === document.document_profile?.profile.id &&
+    profile.revision === document.document_profile?.profile.revision
+  );
   const selectedVersions = versions;
   const currentVersionLabel = useMemo(() => latestVersionLabel(selectedVersions), [selectedVersions]);
   const computedVersionLabel = useMemo(
@@ -317,37 +334,6 @@ export function UploadWizard({ document, authorization, versions }: UploadWizard
     [changeImpact, changeKind, changeOptions, copy, nextStep, selectedDocument?.title]
   );
 
-  const prepareUploadSession = useCallback(
-    async (documentId: string, file: File, hash: string) => {
-      setUploadPreflight(null);
-      setUploadPhase("preflight");
-      setError(null);
-
-      const response = await fetch(withAppBasePath("/api/controlled-document/upload/preflight"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          document_id: documentId,
-          file_name: file.name,
-          file_size: file.size,
-          file_type: file.type || "application/octet-stream",
-          sha256: hash
-        })
-      });
-
-      if (!response.ok) {
-        setUploadPhase("idle");
-        setError(`${copy.preflightError} ${response.status}. ${await readErrorMessage(response)}`);
-        return;
-      }
-
-      const body = (await response.json()) as { preflight: UploadPreflightDecision };
-      setUploadPreflight(body.preflight);
-      setUploadPhase("ready");
-    },
-    [copy.preflightError]
-  );
-
   if (!authorization.can_ingest) {
     return (
       <section className="panel">
@@ -360,7 +346,8 @@ export function UploadWizard({ document, authorization, versions }: UploadWizard
   }
 
   const sourceUri = uploadPreflight?.source_file_uri ?? defaultSourceUri(selectedDocumentId, filePreflight?.name ?? "file.md");
-  const canSubmit = Boolean(selectedDocumentId && selectedFile && filePreflight?.hash && uploadPreflight && !submitting);
+  const inheritedPolicy = documentInformationPolicyDetails(selectedDocument);
+  const canSubmit = Boolean(inheritedPolicy?.tlp && selectedProfile && document.current_root_metadata_revision && selectedDocumentId && selectedFile && filePreflight?.hash && !submitting && !submitted);
   const uploadStatusLabel =
     uploadPhase === "stored"
       ? copy.uploadStored
@@ -375,14 +362,14 @@ export function UploadWizard({ document, authorization, versions }: UploadWizard
     {
       label: copy.stepSelectFile,
       detail: copy.stepSelectFileDetail,
-      done: Boolean(filePreflight?.hash && uploadPreflight),
-      active: uploadPhase === "idle" || uploadPhase === "preflight"
+      done: Boolean(filePreflight?.hash),
+      active: !filePreflight?.hash
     },
     {
       label: copy.stepDescribeChange,
       detail: copy.stepDescribeChangeDetail,
       done: Boolean(uploadPreflight),
-      active: uploadPhase === "ready"
+      active: Boolean(filePreflight?.hash) && !uploadPreflight
     },
     {
       label: copy.stepUpload,
@@ -393,6 +380,8 @@ export function UploadWizard({ document, authorization, versions }: UploadWizard
   ];
 
   async function selectSourceFile(file: File | null) {
+    if (submitting || pendingConfirmation) return;
+    const requestId = ++sourceFileRequest.current;
     setSubmitted(null);
     setUploadPreflight(null);
     setUploadPhase("idle");
@@ -404,6 +393,13 @@ export function UploadWizard({ document, authorization, versions }: UploadWizard
       return;
     }
     setSelectedFile(file);
+    const formatError = documentFormatError(file.name, language);
+    if (formatError || file.size > MAX_UPLOAD_SIZE_BYTES) {
+      const message = formatError ?? (language === "cs" ? "Soubor překračuje limit 50 MB." : "File exceeds the 50 MB limit.");
+      setFilePreflight({ name: file.name, size: file.size, type: file.type, hash: null, hashing: false, error: message });
+      setError(message);
+      return;
+    }
     setFilePreflight({
       name: file.name,
       size: file.size,
@@ -414,6 +410,7 @@ export function UploadWizard({ document, authorization, versions }: UploadWizard
     });
     try {
       const hash = await sha256File(file);
+      if (sourceFileRequest.current !== requestId) return;
       setFilePreflight({
         name: file.name,
         size: file.size,
@@ -422,8 +419,8 @@ export function UploadWizard({ document, authorization, versions }: UploadWizard
         hashing: false,
         error: null,
       });
-      await prepareUploadSession(selectedDocumentId, file, hash);
     } catch {
+      if (sourceFileRequest.current !== requestId) return;
       setFilePreflight({
         name: file.name,
         size: file.size,
@@ -438,52 +435,88 @@ export function UploadWizard({ document, authorization, versions }: UploadWizard
   return (
     <section className="grid grid--two">
       <form
+        ref={formRef}
         className="panel"
         onChange={() => setDirty(true)}
         onSubmit={async (event) => {
           event.preventDefault();
-          if (!selectedFile || !filePreflight?.hash || !uploadPreflight) {
+          if (submitting) return;
+          if (!selectedFile || !filePreflight?.hash || !selectedProfile || !document.current_root_metadata_revision) {
             setError(copy.missingFile);
             return;
           }
 
           setSubmitting(true);
-          setUploadPhase("uploading");
+          if (!pendingConfirmation) {
+            setUploadPhase("preflight");
+            setUploadPreflight(null);
+          }
           setError(null);
           const form = new FormData(event.currentTarget);
 
           try {
-            const uploadResponse = await fetch(uploadPreflight.upload_url, {
-              method: uploadPreflight.upload_method,
-              headers: uploadPreflight.required_headers,
-              body: selectedFile
-            });
+            let confirmationBody = pendingConfirmation;
+            if (!confirmationBody) {
+              const versionProfile = readDocumentVersionProfile(form, selectedProfile, document.current_root_metadata_revision);
+              const response = await fetch(withAppBasePath("/api/controlled-document/upload/preflight"), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  document_id: selectedDocumentId,
+                  file_name: selectedFile.name,
+                  file_size: selectedFile.size,
+                  file_type: selectedFile.type || "application/octet-stream",
+                  sha256: filePreflight.hash,
+                  document_profile: versionProfile
+                })
+              });
+              if (!response.ok) {
+                throw new Error(`${copy.preflightError} ${response.status}. ${await readErrorMessage(response)}`);
+              }
+              const { preflight } = (await response.json()) as { preflight: UploadPreflightDecision };
+              setUploadPreflight(preflight);
+              setUploadPhase("uploading");
+              const uploadResponse = await fetch(preflight.upload_url, {
+                method: preflight.upload_method,
+                headers: preflight.required_headers,
+                body: selectedFile
+              });
 
-            if (!uploadResponse.ok) {
-              setError(`${copy.uploadError} ${uploadResponse.status}. ${await readErrorMessage(uploadResponse)}`);
-              setUploadPhase("ready");
-              return;
+              if (!uploadResponse.ok) {
+                setError(`${copy.uploadError} ${uploadResponse.status}. ${await readErrorMessage(uploadResponse)}`);
+                setUploadPhase("ready");
+                return;
+              }
+
+              const uploaded = (await uploadResponse.json()) as UploadContentResponse;
+              setUploadPhase("stored");
+
+              const payload = {
+                version_label: computedVersionLabel,
+                parser_profile: form.get("parser_profile"),
+                chunking_strategy: form.get("chunking_strategy"),
+                embedding_profile: "default",
+                change_summary: changeSummary,
+                document_profile: versionProfile,
+                valid_from: versionProfile.lifecycle.effectiveFrom,
+                valid_to: versionProfile.lifecycle.effectiveTo,
+                document_id: selectedDocumentId,
+                upload_session_id: preflight.upload_session_id,
+                upload_token: preflight.required_headers["X-AKL-Upload-Token"],
+                upload_receipt: uploaded.upload_receipt,
+                source_file_uri: uploaded.source_file_uri,
+                file_hash: uploaded.file.sha256,
+                file_name: uploaded.file.filename,
+                file_size: uploaded.file.size_bytes,
+                file_type: uploaded.file.mime_type
+              };
+              confirmationBody = JSON.stringify(payload);
+              setPendingConfirmation(confirmationBody);
             }
-
-            const uploaded = (await uploadResponse.json()) as UploadContentResponse;
-            setUploadPhase("stored");
-
-            const payload = {
-              ...Object.fromEntries(form.entries()),
-              document_id: selectedDocumentId,
-              upload_session_id: uploadPreflight.upload_session_id,
-              upload_token: uploadPreflight.required_headers["X-AKL-Upload-Token"],
-              upload_receipt: uploaded.upload_receipt,
-              source_file_uri: uploaded.source_file_uri,
-              file_hash: uploaded.file.sha256,
-              file_name: uploaded.file.filename,
-              file_size: uploaded.file.size_bytes,
-              file_type: uploaded.file.mime_type
-            };
             const workflowResponse = await fetch(withAppBasePath("/api/controlled-document/ingestion"), {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(payload)
+              body: confirmationBody
             });
 
             if (!workflowResponse.ok) {
@@ -495,6 +528,7 @@ export function UploadWizard({ document, authorization, versions }: UploadWizard
             setDirty(false);
           } catch (reason: unknown) {
             setError(reason instanceof Error ? reason.message : copy.requestFailed);
+            setUploadPhase("idle");
           } finally {
             setSubmitting(false);
           }
@@ -522,7 +556,7 @@ export function UploadWizard({ document, authorization, versions }: UploadWizard
             <FileUp size={18} aria-hidden="true" />
           </div>
         </div>
-        <div className="panel__body form-grid">
+        <fieldset disabled={submitting || Boolean(submitted) || Boolean(pendingConfirmation)} className="panel__body form-grid document-intake-fields" aria-busy={submitting}>
           <div className="field">
             <div className="stratos-field-label-row">
               <strong>{copy.file}</strong>
@@ -554,6 +588,9 @@ export function UploadWizard({ document, authorization, versions }: UploadWizard
               onRemoveFile={() => void selectSourceFile(null)}
               onValidationError={(validationErrors) => setError(validationErrors[0]?.message ?? copy.missingFile)}
             />
+            {selectedFile && documentFormatHint(selectedFile.name, language) ? (
+              <p className="field__hint">{documentFormatHint(selectedFile.name, language)}</p>
+            ) : null}
           </div>
           {filePreflight ? (
             <div className="preflight-card">
@@ -581,6 +618,16 @@ export function UploadWizard({ document, authorization, versions }: UploadWizard
               <small>{selectedDocument.document_type.replaceAll("_", " ")} · {selectedDocument.classification}</small>
             </div>
           </div>
+          <InformationPolicyNotice
+            policy={inheritedPolicy}
+            language={language}
+            title={language === "cs" ? "Pravidla přebíraná novou verzí" : "Rules inherited by the new version"}
+          />
+          {selectedProfile && document.current_root_metadata_revision ? (
+            <DocumentProfileFields key={selectedProfile.id} profile={selectedProfile} directoryUsers={[]} includeAuthorship={false} disabled={submitting} />
+          ) : (
+            <p className="notice" role="alert">{language === "cs" ? "Dokument nemá ověřený aktuální profil. Nejdříve doplňte odpovědnosti a pravidla dokumentu." : "This document has no verified current profile. Complete its accountability and document rules first."}</p>
+          )}
           <div className="form-grid form-grid--three">
             <StratosSelect
               id="version-increment"
@@ -599,10 +646,6 @@ export function UploadWizard({ document, authorization, versions }: UploadWizard
               <small>
                 {copy.versionBaseLabel}: {currentVersionLabel ?? copy.noPreviousVersion}. {copy.versionIncrementHint}
               </small>
-            </div>
-            <div className="field">
-              <FieldLabelWithHelp htmlFor="valid-from" label={copy.validFrom} helpLabel={copy.validFromHelpLabel} helpText={copy.validFromHelp} />
-              <input id="valid-from" name="valid_from" type="date" defaultValue={new Date().toISOString().slice(0, 10)} />
             </div>
           </div>
           <div className="field">
@@ -684,12 +727,23 @@ export function UploadWizard({ document, authorization, versions }: UploadWizard
             <input type="hidden" name="change_summary" value={changeSummary} />
           </div>
           <input type="hidden" name="embedding_profile" value="default" />
+        </fieldset>
+        <div className="panel__body stack">
           <StratosButton tone="primary" type="submit" disabled={!canSubmit}>
             <Play size={16} aria-hidden="true" />
-            {submitting ? copy.queueing : copy.submit}
+            {submitting ? copy.queueing : pendingConfirmation ? (language === "cs" ? "Zkusit potvrzení znovu" : "Retry confirmation") : copy.submit}
           </StratosButton>
-          {error ? <p className="notice">{error}</p> : null}
+          {error ? <p className="notice" role="alert">{error}</p> : null}
+        {pendingConfirmation && !submitted ? <div className="stack">
+          <p role="status">{language === "cs" ? "Soubor je uložený. Opakování použije stejné potvrzení a znovu ověří oprávnění." : "The file is stored. Retrying uses the same confirmation and checks current access again."}</p>
+          <StratosButton type="button" disabled={submitting} onClick={() => {
+            if (window.confirm(language === "cs" ? "Ukončit tento pokus? Verze už může být vytvořená. Otevřeme aktuální detail dokumentu." : "End this attempt? The version may already exist. Open the current document detail.")) {
+              window.location.assign(withAppBasePath(`/documents/${selectedDocumentId}`));
+            }
+          }}>{language === "cs" ? "Ukončit pokus a otevřít dokument" : "End attempt and open document"}</StratosButton>
+        </div> : null}
         </div>
+
       </form>
 
       <aside className="panel">

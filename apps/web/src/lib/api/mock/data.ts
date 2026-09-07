@@ -12,6 +12,15 @@ export const mockAuthorization: AuthorizationHint = {
 export const mockDocuments: Document[] = [
   {
     document_id: "doc_101",
+    // Explicit local demonstration policy for the admitted native upload scenario.
+    policy_binding_id: "pol_mock_document_101",
+    policy_version: "information-policy-2.0.0",
+    policy_hash: "sha256:5f1467ff421c927909e395b1b7c27f76382d7c2345df7661d35dbda972a3dec4",
+    policy_summary: {"schemaVersion":"stratos-information-policy-2","policyBindingId":"pol_mock_document_101","policyVersion":"information-policy-2.0.0","handlingClass":"INTERNAL","legalClassification":"NONE","tlp":"TLP:CLEAR","pap":null,"contentCategories":[],"obligations":["AUDIT_ACCESS"],"audience":{"organizationId":"org_stratos","scopeType":"organization","scopeIds":[],"recipientSubjectIds":[]},"originatorId":"user_123","issuedAt":"2026-09-05T00:00:00Z","reviewAt":null},
+    // Explicit demonstration metadata; never a production admission confirmation.
+    document_profile: {"schemaVersion":"stratos-document-root-1","organizationId":"org_stratos","documentId":"doc_101","metadataRevision":"mock_meta_doc_101","documentType":"directive","profile":{"id":"akb.controlled-document","revision":"1"},"authorship":[{"kind":"person","id":"user_123","evidenceReference":"mock-authorship-doc_101"}],"provenance":{"sourceSystem":"AKB","sourceRecordId":"doc_101","sourceGovernedResourceId":null},"accountability":{"ownerSubjectId":"user_123","gestor":{"kind":"organization_unit","id":"IT"}}},
+    current_root_metadata_revision: "mock_meta_doc_101",
+    current_root_snapshot_hash: "sha256:a78fcd5e84013481a6e3323621c104e077faea1efdf7117a89fee3638a2cc2c1",
     title: "Smernice pro spravu rizene dokumentace",
     document_type: "directive",
     status: "valid",
@@ -67,6 +76,10 @@ export const mockDocuments: Document[] = [
   },
   {
     document_id: "doc_102",
+    // Explicit demonstration metadata; never a production admission confirmation.
+    document_profile: {"schemaVersion":"stratos-document-root-1","organizationId":"org_stratos","documentId":"doc_102","metadataRevision":"mock_meta_doc_102","documentType":"methodology","profile":{"id":"akb.controlled-document","revision":"1"},"authorship":[{"kind":"person","id":"user_209","evidenceReference":"mock-authorship-doc_102"}],"provenance":{"sourceSystem":"AKB","sourceRecordId":"doc_102","sourceGovernedResourceId":null},"accountability":{"ownerSubjectId":"user_209","gestor":{"kind":"organization_unit","id":"Security"}}},
+    current_root_metadata_revision: "mock_meta_doc_102",
+    current_root_snapshot_hash: "sha256:bfd7672f511be378b64a15c0fbb54750ddb3fad74467c0153f2a17732ab1b02d",
     title: "Metodika vyjimek z bezpecnostnich pravidel",
     document_type: "methodology",
     status: "review",

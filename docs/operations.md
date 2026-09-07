@@ -4,6 +4,11 @@ This document is the flat operational entry point for AKB. Detailed deployment
 and runbook material remains in `docs/deployment/`, `docs/OPERATIONS/`, and
 service README files.
 
+Signed-expiry intake cleanup, its dedicated service grant, dry-run command and
+permanent database reference fences are documented in
+[Intake object cleanup](OPERATIONS/intake-object-cleanup.md). Cleanup remains
+operator-controlled and disabled until the explicit service identity is configured.
+
 Foreign-environment operators start with
 `docs/deployment/external-environment-installation.md`,
 `docs/OPERATIONS/external-environment-runbook.md` and
@@ -720,8 +725,13 @@ python3 -m json.tool openapi/openapi.json >/dev/null
 
 Application smoke checks are listed in `README.md`.
 
+Dependency freshness, vulnerability checks, lock regeneration, local/production
+runtime parity, and SBOM evidence are defined in
+`docs/maintenance/dependency-quality.md`.
+
 Detailed references:
 
+- `docs/maintenance/dependency-quality.md`
 - `docs/deployment/local-dev.md`
 - `docs/deployment/local-production.md`
 - `docs/deployment/docker-home-cz.md`

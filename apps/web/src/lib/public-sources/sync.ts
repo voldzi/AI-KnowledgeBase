@@ -4,7 +4,10 @@ import { createHash, randomUUID } from "node:crypto";
 
 import { retryCurrentGovernedIngestionAttempt } from "@/lib/ingestion/governed-operations";
 import { ingestionServiceRequestContext } from "@/lib/ingestion/service-identity";
-import { createDefaultInformationPolicy } from "@/lib/stratos/information-policy";
+import { canonicalDocumentSnapshot } from "@/lib/documents/document-profile";
+import { parseDocumentVersionProfileInput } from "@/lib/documents/document-profile-validation";
+import { ApiClientError } from "@/lib/types";
+import { authorizeControlledDocumentUpload } from "@/lib/upload/document-intake-authorization";
 import {
   createUploadPreflightDecision,
   getUploadSettings,
@@ -25,6 +28,8 @@ import type {
 
 import { publicSourceCollection } from "./catalog";
 import { assertCzechLawSourceUrl, assertPublicSourceUrl } from "./discovery";
+import { preparePublicSource, validatePreparedPublicSource } from "./approved-collections-client";
+import type { PreparedPublicSource } from "./approved-collections";
 
 const MAX_REDIRECTS = 5;
 const DOWNLOAD_TIMEOUT_MS = 45_000;
@@ -36,6 +41,7 @@ const E_SBIRKA_ASYNC_POLL_INTERVAL_MS = 500;
 
 export interface PublicSourceSyncRequest {
   collectionId: string;
+  collectionRevision: string;
   sourceUrl: string;
   canonicalUrl?: string;
   title: string;
@@ -59,6 +65,7 @@ export async function synchronizePublicSource(
   context: ApiRequestContext,
   fetcher: typeof fetch = fetch,
   transportContextFactory: (correlationId: string) => Promise<ApiRequestContext> = ingestionServiceRequestContext,
+  prepareSource: typeof preparePublicSource = preparePublicSource,
 ): Promise<PublicSourceSyncResult> {
   const collection = publicSourceCollection(input.collectionId);
   if (!collection) throw new Error("Unknown public source collection.");
@@ -73,11 +80,23 @@ export async function synchronizePublicSource(
     effectiveTo,
     expectedEffectiveFrom: legalVersion?.effectiveDate,
   });
+  if (collection.documentType === "regulation" && !effectiveFrom) {
+    throw new ApiClientError("Doplňte doložené datum účinnosti předpisu. Datum získání dokumentu jej nenahrazuje.", 422, "PUBLIC_SOURCE_EFFECTIVITY_REQUIRED", context.requestId ?? "public-source-sync");
+  }
   const canonicalUrl = assertPublicSourceUrl(
     collection.id,
     input.canonicalUrl || input.sourceUrl,
   );
-  const downloaded = await downloadOfficialDocument(sourceUrl, collection, fetcher);
+  if (!input.collectionRevision?.trim()) {
+    throw new ApiClientError("Nejprve vyberte aktuálně schválenou kolekci.", 422, "PUBLIC_SOURCE_APPROVAL_REQUIRED", context.correlationId ?? "public-source-sync");
+  }
+  const proposal = {
+    collectionId: collection.id, expectedCollectionRevision: input.collectionRevision,
+    sourceUrl: sourceUrl.toString(), canonicalUrl: canonicalUrl.toString(), title: normalizeDocumentTitle(input.title, canonicalUrl),
+    effectiveFrom: effectiveFrom ?? null, effectiveTo: effectiveTo ?? null,
+  };
+  // Central source preparation is distinct from the final Registry admission proof.
+  const prepared = validatePreparedPublicSource(await prepareSource(proposal, context), proposal, context);
   const stableId = officialSourceStableId(collection.id, canonicalUrl.toString());
   const stableTag = `official-source-id:${stableId}`;
   const existing = await clients.registry.listDocuments(context, { tag: stableTag });
@@ -85,27 +104,42 @@ export async function synchronizePublicSource(
     throw new Error("The official source identity resolves to multiple AKB documents.");
   }
 
-  const document = existing[0] ?? await createOfficialDocument(
+  const candidateDocument = existing[0] ?? await createOfficialDocument(
     input,
     collection,
     canonicalUrl,
     stableTag,
     clients,
     context,
+    prepared,
   );
+  const { document } = await authorizeControlledDocumentUpload({ registry: clients.registry, context, documentId: candidateDocument.document_id });
+  const root = document.document_profile;
+  const rootInput = root ? { profile: root.profile, authorship: root.authorship, provenance: root.provenance, accountability: root.accountability } : null;
+  if (!root || root.schemaVersion !== "stratos-document-root-1" || root.organizationId !== "org_stratos"
+      || root.documentId !== document.document_id || root.documentType !== collection.documentType
+      || !root.metadataRevision || root.metadataRevision !== document.current_root_metadata_revision
+      || document.current_root_snapshot_hash !== `sha256:${createHash("sha256").update(canonicalDocumentSnapshot(root)).digest("hex")}`
+      || canonicalDocumentSnapshot(rootInput) !== canonicalDocumentSnapshot(prepared.documentProfile)
+      || canonicalDocumentSnapshot(document.policy_summary) !== canonicalDocumentSnapshot(prepared.informationPolicy)
+      || document.metadata?.canonical_url !== canonicalUrl.toString() || document.metadata?.collection_id !== collection.id
+      || document.metadata?.collection_revision !== input.collectionRevision) {
+    throw new ApiClientError("Schválená metadata zdroje se liší od dokumentu. Správce musí nejprve potvrdit změnu metadat vůči aktuální revizi dokumentu.", 409, "PUBLIC_SOURCE_ROOT_METADATA_CONFLICT", context.correlationId ?? "public-source-sync");
+  }
+  const versionProfile = parseDocumentVersionProfileInput({ expected_root_metadata_revision: root.metadataRevision, ...prepared.documentVersionProfile }, prepared.documentProfile);
+  const downloaded = await downloadOfficialDocument(sourceUrl, collection, fetcher);
   const versions = await clients.registry.listDocumentVersions(document.document_id, context);
   const currentVersion = versions[0] ?? null;
   const sameContent = currentVersion?.file_hash === downloaded.sha256;
   const sameVersion = versions.find((version) => (
     version.file_hash === downloaded.sha256
     && currentVersionMatchesDownloadMetadata(version, downloaded)
-    && (
-      !effectiveFrom
-      || (
-        version.valid_from === effectiveFrom
-        && version.valid_to === effectiveTo
-      )
-    )
+    && version.valid_from === versionProfile.lifecycle.effectiveFrom
+    && version.valid_to === versionProfile.lifecycle.effectiveTo
+    && version.document_profile_snapshot?.rootMetadataRevision === root.metadataRevision
+    && version.document_profile_snapshot?.rootSnapshotHash === document.current_root_snapshot_hash
+    && canonicalDocumentSnapshot(version.document_profile_snapshot.lifecycle ?? null) === canonicalDocumentSnapshot(versionProfile.lifecycle)
+    && canonicalDocumentSnapshot(version.document_profile_snapshot.domainEvidence ?? null) === canonicalDocumentSnapshot(versionProfile.domain_evidence)
   )) ?? null;
   if (sameVersion) {
     if (sameVersion.status !== "valid" || document.status !== "valid") {
@@ -175,6 +209,7 @@ export async function synchronizePublicSource(
       policy_binding_id: document.policy_binding_id,
       policy_version: document.policy_version,
       policy_hash: document.policy_hash,
+      document_profile: versionProfile,
       purpose: "official-public-source-sync",
     },
     uploadSettings,
@@ -197,8 +232,9 @@ export async function synchronizePublicSource(
     document.document_id,
     {
       version_label: uniqueSourceVersionLabel(downloaded, capturedAt, versions),
-      valid_from: effectiveFrom ?? capturedAt.slice(0, 10),
-      valid_to: effectiveTo ?? null,
+      valid_from: versionProfile.lifecycle.effectiveFrom,
+      valid_to: versionProfile.lifecycle.effectiveTo,
+      document_profile: versionProfile,
       source_file_uri: preflight.source_file_uri,
       source_location: {
         kind: "url",
@@ -259,21 +295,19 @@ async function createOfficialDocument(
   stableTag: string,
   clients: ApiClients,
   context: ApiRequestContext,
+  prepared: PreparedPublicSource,
 ): Promise<Document> {
   const title = normalizeDocumentTitle(input.title, canonicalUrl);
-  const policy = createDefaultInformationPolicy({
-    classification: "public",
-    ownerSubjectId: context.subjectId,
-    contentCategories: ["PUBLIC_INFORMATION"],
-  });
+  const { ownerSubjectId, gestor } = prepared.documentProfile.accountability;
   return clients.registry.createDocument(
     {
       title,
       document_type: collection.documentType,
-      owner_id: context.subjectId,
-      gestor_unit: `Veřejné zdroje · ${collection.authority}`.slice(0, 128),
+      owner_id: ownerSubjectId,
+      gestor_unit: gestor.id,
       classification: "public",
-      information_policy: policy,
+      information_policy: prepared.informationPolicy,
+      document_profile: prepared.documentProfile,
       tags: [
         PUBLIC_SOURCE_TAG,
         stableTag,
@@ -286,31 +320,30 @@ async function createOfficialDocument(
         audience: "organization",
         anonymous_publication: false,
         collection_id: collection.id,
+        collection_revision: prepared.collectionRevision,
         authority: collection.authority,
         canonical_url: canonicalUrl.toString(),
         license_note: collection.licenseNote,
         lifecycle: "CURRENT",
-        collection_approved_by: context.subjectId,
-        collection_approved_at: new Date().toISOString(),
       },
       assignments: [
         {
           role: "owner",
           subject_type: "user",
-          subject_id: context.subjectId,
-          display_label: context.subjectId,
+          subject_id: ownerSubjectId,
+          display_label: ownerSubjectId,
           is_primary: true,
           active: true,
-          metadata: { source: "official-public-reference-v1" },
+          metadata: { source: "central-source-preparation" },
         },
         {
-          role: "approver",
-          subject_type: "user",
-          subject_id: context.subjectId,
-          display_label: context.subjectId,
+          role: "gestor",
+          subject_type: gestor.kind === "person" ? "user" : "unit",
+          subject_id: gestor.id,
+          display_label: gestor.id,
           is_primary: true,
           active: true,
-          metadata: { source: "collection-level-approval" },
+          metadata: { source: "central-source-preparation" },
         },
       ],
       access_policies: [

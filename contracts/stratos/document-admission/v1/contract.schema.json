@@ -1,0 +1,735 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:stratos:document-admission:1",
+  "title": "Proposed STRATOS atomic document admission contract",
+  "description": "Proposed contract. Local catalog profiles still require central approval.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/DocumentRootSnapshot"
+    },
+    {
+      "$ref": "#/$defs/DocumentVersionSnapshot"
+    },
+    {
+      "$ref": "#/$defs/DocumentAdmissionRequest"
+    },
+    {
+      "$ref": "#/$defs/DocumentAdmissionConfirmation"
+    }
+  ],
+  "$defs": {
+    "DocumentAccountability": {
+      "additionalProperties": false,
+      "properties": {
+        "ownerSubjectId": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Ownersubjectid",
+          "type": "string"
+        },
+        "gestor": {
+          "$ref": "#/$defs/DocumentGestor"
+        }
+      },
+      "required": [
+        "ownerSubjectId",
+        "gestor"
+      ],
+      "title": "DocumentAccountability",
+      "type": "object"
+    },
+    "DocumentAdmissionConfirmation": {
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "const": "stratos-document-admission-confirmation-1",
+          "title": "Schemaversion",
+          "type": "string"
+        },
+        "decision": {
+          "const": "ALLOW",
+          "title": "Decision",
+          "type": "string"
+        },
+        "operation": {
+          "enum": [
+            "register",
+            "revalidate"
+          ],
+          "title": "Operation",
+          "type": "string"
+        },
+        "admissionId": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Admissionid",
+          "type": "string"
+        },
+        "revision": {
+          "minimum": 1,
+          "title": "Revision",
+          "type": "integer"
+        },
+        "organizationId": {
+          "const": "org_stratos",
+          "title": "Organizationid",
+          "type": "string"
+        },
+        "application": {
+          "const": "AKB",
+          "title": "Application",
+          "type": "string"
+        },
+        "resourceType": {
+          "enum": [
+            "document",
+            "document-version",
+            "document_version"
+          ],
+          "title": "Resourcetype",
+          "type": "string"
+        },
+        "resourceId": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Resourceid",
+          "type": "string"
+        },
+        "sourceVersion": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Sourceversion",
+          "type": "string"
+        },
+        "governedResourceId": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Governedresourceid",
+          "type": "string"
+        },
+        "policyBindingId": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Policybindingid",
+          "type": "string"
+        },
+        "policyVersion": {
+          "const": "information-policy-2.0.0",
+          "title": "Policyversion",
+          "type": "string"
+        },
+        "policyHash": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Policyhash",
+          "type": "string"
+        },
+        "scopeHash": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Scopehash",
+          "type": "string"
+        },
+        "snapshotHash": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Snapshothash",
+          "type": "string"
+        },
+        "rootSnapshotHash": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Rootsnapshothash",
+          "type": "string"
+        },
+        "profile": {
+          "$ref": "#/$defs/DocumentProfileReference"
+        },
+        "accountability": {
+          "$ref": "#/$defs/DocumentAccountability"
+        },
+        "currentRootSnapshotHash": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Currentrootsnapshothash",
+          "type": "string"
+        },
+        "currentMetadataRevision": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Currentmetadatarevision",
+          "type": "string"
+        },
+        "currentRootGovernedResourceId": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Currentrootgovernedresourceid",
+          "type": "string"
+        },
+        "currentProfile": {
+          "$ref": "#/$defs/DocumentProfileReference"
+        },
+        "currentAccountability": {
+          "$ref": "#/$defs/DocumentAccountability"
+        },
+        "requestNonce": {
+          "pattern": "^[a-f0-9]{32}$",
+          "title": "Requestnonce",
+          "type": "string"
+        },
+        "correlationId": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Correlationid",
+          "type": "string"
+        },
+        "confirmedBySubjectId": {
+          "const": "service:akb",
+          "title": "Confirmedbysubjectid",
+          "type": "string"
+        },
+        "checkedAt": {
+          "format": "date-time",
+          "title": "Checkedat",
+          "type": "string"
+        },
+        "expiresAt": {
+          "format": "date-time",
+          "title": "Expiresat",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "decision",
+        "operation",
+        "admissionId",
+        "revision",
+        "organizationId",
+        "application",
+        "resourceType",
+        "resourceId",
+        "sourceVersion",
+        "governedResourceId",
+        "policyBindingId",
+        "policyVersion",
+        "policyHash",
+        "scopeHash",
+        "snapshotHash",
+        "rootSnapshotHash",
+        "profile",
+        "accountability",
+        "currentRootSnapshotHash",
+        "currentMetadataRevision",
+        "currentRootGovernedResourceId",
+        "currentProfile",
+        "currentAccountability",
+        "requestNonce",
+        "correlationId",
+        "confirmedBySubjectId",
+        "checkedAt",
+        "expiresAt"
+      ],
+      "title": "DocumentAdmissionConfirmation",
+      "type": "object"
+    },
+    "DocumentAdmissionRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "rootSnapshot": {
+          "$ref": "#/$defs/DocumentRootSnapshot"
+        },
+        "currentRootSnapshot": {
+          "$ref": "#/$defs/DocumentRootSnapshot"
+        },
+        "versionSnapshot": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DocumentVersionSnapshot"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "correlationId": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Correlationid",
+          "type": "string"
+        },
+        "operation": {
+          "enum": [
+            "register",
+            "revalidate"
+          ],
+          "title": "Operation",
+          "type": "string"
+        },
+        "schemaVersion": {
+          "const": "stratos-document-admission-request-1",
+          "title": "Schemaversion",
+          "type": "string"
+        },
+        "requestNonce": {
+          "pattern": "^[a-f0-9]{32}$",
+          "title": "Requestnonce",
+          "type": "string"
+        },
+        "rootSnapshotHash": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Rootsnapshothash",
+          "type": "string"
+        },
+        "snapshotHash": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Snapshothash",
+          "type": "string"
+        },
+        "currentRootSnapshotHash": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Currentrootsnapshothash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rootSnapshot",
+        "currentRootSnapshot",
+        "correlationId",
+        "operation",
+        "schemaVersion",
+        "requestNonce",
+        "rootSnapshotHash",
+        "snapshotHash",
+        "currentRootSnapshotHash"
+      ],
+      "title": "DocumentAdmissionRequest",
+      "type": "object"
+    },
+    "DocumentAuthor": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "person",
+            "organization",
+            "external_authority"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "evidenceReference": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Evidencereference",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "evidenceReference"
+      ],
+      "title": "DocumentAuthor",
+      "type": "object"
+    },
+    "DocumentGestor": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "person",
+            "organization_unit"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "id"
+      ],
+      "title": "DocumentGestor",
+      "type": "object"
+    },
+    "DocumentLifecycle": {
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "enum": [
+            "fixed_interval",
+            "until_superseded",
+            "record"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "effectiveFrom": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Effectivefrom"
+        },
+        "effectiveTo": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Effectiveto"
+        },
+        "recordedOn": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Recordedon"
+        },
+        "reviewAt": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Reviewat"
+        },
+        "reviewRuleId": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Reviewruleid",
+          "type": "string"
+        },
+        "retentionRuleId": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Retentionruleid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "mode",
+        "effectiveFrom",
+        "effectiveTo",
+        "recordedOn",
+        "reviewAt",
+        "reviewRuleId",
+        "retentionRuleId"
+      ],
+      "title": "DocumentLifecycle",
+      "type": "object"
+    },
+    "DocumentProfileReference": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "revision": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Revision",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "title": "DocumentProfileReference",
+      "type": "object"
+    },
+    "DocumentRootProvenance": {
+      "additionalProperties": false,
+      "properties": {
+        "sourceSystem": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Sourcesystem",
+          "type": "string"
+        },
+        "sourceRecordId": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Sourcerecordid",
+          "type": "string"
+        },
+        "sourceGovernedResourceId": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "pattern": "^\\S+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Sourcegovernedresourceid"
+        }
+      },
+      "required": [
+        "sourceSystem",
+        "sourceRecordId",
+        "sourceGovernedResourceId"
+      ],
+      "title": "DocumentRootProvenance",
+      "type": "object"
+    },
+    "DocumentRootSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "const": "stratos-document-root-1",
+          "title": "Schemaversion",
+          "type": "string"
+        },
+        "organizationId": {
+          "const": "org_stratos",
+          "title": "Organizationid",
+          "type": "string"
+        },
+        "documentId": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Documentid",
+          "type": "string"
+        },
+        "metadataRevision": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Metadatarevision",
+          "type": "string"
+        },
+        "profile": {
+          "$ref": "#/$defs/DocumentProfileReference"
+        },
+        "documentType": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Documenttype",
+          "type": "string"
+        },
+        "authorship": {
+          "items": {
+            "$ref": "#/$defs/DocumentAuthor"
+          },
+          "minItems": 1,
+          "title": "Authorship",
+          "type": "array"
+        },
+        "provenance": {
+          "$ref": "#/$defs/DocumentRootProvenance"
+        },
+        "accountability": {
+          "$ref": "#/$defs/DocumentAccountability"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "organizationId",
+        "documentId",
+        "metadataRevision",
+        "profile",
+        "documentType",
+        "authorship",
+        "provenance",
+        "accountability"
+      ],
+      "title": "DocumentRootSnapshot",
+      "type": "object"
+    },
+    "DocumentSourceLineage": {
+      "additionalProperties": false,
+      "properties": {
+        "sourceSystem": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Sourcesystem",
+          "type": "string"
+        },
+        "sourceRecordId": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Sourcerecordid",
+          "type": "string"
+        },
+        "sourceVersion": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Sourceversion",
+          "type": "string"
+        },
+        "sourceGovernedResourceId": {
+          "anyOf": [
+            {
+              "maxLength": 160,
+              "minLength": 1,
+              "pattern": "^\\S+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Sourcegovernedresourceid"
+        },
+        "contentSha256": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Contentsha256",
+          "type": "string"
+        },
+        "contentUri": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Contenturi",
+          "type": "string"
+        },
+        "intakeReceiptId": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Intakereceiptid",
+          "type": "string"
+        },
+        "capturedAt": {
+          "format": "date-time",
+          "title": "Capturedat",
+          "type": "string"
+        }
+      },
+      "required": [
+        "sourceSystem",
+        "sourceRecordId",
+        "sourceVersion",
+        "sourceGovernedResourceId",
+        "contentSha256",
+        "contentUri",
+        "intakeReceiptId",
+        "capturedAt"
+      ],
+      "title": "DocumentSourceLineage",
+      "type": "object"
+    },
+    "DocumentVersionSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "const": "stratos-document-version-1",
+          "title": "Schemaversion",
+          "type": "string"
+        },
+        "organizationId": {
+          "const": "org_stratos",
+          "title": "Organizationid",
+          "type": "string"
+        },
+        "documentId": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Documentid",
+          "type": "string"
+        },
+        "documentVersionId": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Documentversionid",
+          "type": "string"
+        },
+        "rootMetadataRevision": {
+          "maxLength": 160,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Rootmetadatarevision",
+          "type": "string"
+        },
+        "rootSnapshotHash": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Rootsnapshothash",
+          "type": "string"
+        },
+        "sourceLineage": {
+          "$ref": "#/$defs/DocumentSourceLineage"
+        },
+        "lifecycle": {
+          "$ref": "#/$defs/DocumentLifecycle"
+        },
+        "domainEvidence": {
+          "additionalProperties": true,
+          "title": "Domainevidence",
+          "type": "object"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "organizationId",
+        "documentId",
+        "documentVersionId",
+        "rootMetadataRevision",
+        "rootSnapshotHash",
+        "sourceLineage",
+        "lifecycle",
+        "domainEvidence"
+      ],
+      "title": "DocumentVersionSnapshot",
+      "type": "object"
+    }
+  }
+}

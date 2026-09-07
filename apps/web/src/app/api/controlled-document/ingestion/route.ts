@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getServerApiClients, getServerRequestContextForRequest } from "@/lib/api/server";
-import { ingestionServiceRequestContext } from "@/lib/ingestion/service-identity";
+import { ingestionJobIdForIdempotencyKey, ingestionServiceRequestContext } from "@/lib/ingestion/service-identity";
 import type { CreateIngestionJobRequest } from "@/lib/types";
+import { parseDocumentVersionProfileInput } from "@/lib/documents/document-profile-validation";
 import {
   assertUploadMatchesIngestionPayload,
   assertUploadTokenPurpose,
@@ -14,6 +15,8 @@ import {
   verifyUploadReceipt,
 } from "@/lib/upload/preflight";
 import { getContentSecuritySettings } from "@/lib/upload/content-security";
+import { authorizeControlledDocumentUpload } from "@/lib/upload/document-intake-authorization";
+import { canonicalDocumentSnapshot } from "@/lib/documents/document-profile";
 
 import { badRequest, bridgeError } from "../errors";
 import { uploadErrorResponse } from "../upload/errors";
@@ -30,6 +33,7 @@ export async function POST(request: NextRequest) {
     const uploadToken = body.upload_token ? String(body.upload_token).trim() : "";
     const uploadReceipt = body.upload_receipt ? String(body.upload_receipt).trim() : "";
     const uploadSessionId = body.upload_session_id ? String(body.upload_session_id).trim() : "";
+    const documentProfile = parseDocumentVersionProfileInput(body.document_profile);
 
     if (!documentId) {
       return badRequest("document_id is required.");
@@ -57,6 +61,13 @@ export async function POST(request: NextRequest) {
       file_type: body.file_type ? String(body.file_type).trim() : null
     });
     assertUploadTokenPurpose(uploadPayload, CONTROLLED_DOCUMENT_UPLOAD_TOKEN_PURPOSE);
+    if (!Object.hasOwn(uploadPayload, "expected_current_ingestion_job_id")) {
+      throw new UploadPreflightError(409, "UPLOAD_PREDECESSOR_REQUIRED", "Prepare the upload again to bind its ingestion predecessor.");
+    }
+    if (canonicalDocumentSnapshot(documentProfile) !== canonicalDocumentSnapshot(uploadPayload.document_profile ?? null)) {
+      return badRequest("Version metadata differs from its signed upload preparation.", 409);
+    }
+    await authorizeControlledDocumentUpload({ registry: clients.registry, context, documentId, payload: uploadPayload });
     const receiptPayload = verifyUploadReceipt(
       uploadReceipt,
       uploadToken,
@@ -69,10 +80,7 @@ export async function POST(request: NextRequest) {
     );
     await verifyPersistedUploadedObject(uploadPayload, uploadSettings);
 
-    const [document, currentAttempt] = await Promise.all([
-      clients.registry.getDocument(documentId, context),
-      clients.registry.getDocumentIngestionAttempt(documentId, context),
-    ]);
+    const document = await clients.registry.getDocument(documentId, context);
     if (
       document.policy_binding_id !== uploadPayload.policy_binding_id ||
         document.policy_version !== uploadPayload.policy_version ||
@@ -80,26 +88,28 @@ export async function POST(request: NextRequest) {
     ) {
       return badRequest("Document policy changed after upload preflight.", 409);
     }
+    if (document.current_root_metadata_revision !== documentProfile.expected_root_metadata_revision) {
+      return badRequest("Document metadata changed after version preparation.", 409);
+    }
 
     const version = await clients.registry.createDocumentVersion(
       documentId,
       {
+        document_profile: documentProfile,
         version_label: String(body.version_label ?? "1.0").trim(),
-        valid_from: body.valid_from ? String(body.valid_from) : new Date().toISOString().slice(0, 10),
-        valid_to: body.valid_to ? String(body.valid_to) : null,
+        valid_from: documentProfile.lifecycle.effectiveFrom,
+        valid_to: documentProfile.lifecycle.effectiveTo,
         source_file_uri: sourceFileUri,
-        file_hash: body.file_hash ? String(body.file_hash).trim() : null,
+        file_hash: uploadPayload.sha256,
         change_summary: String(body.change_summary ?? "Controlled document workflow upload.").trim(),
-        file: body.file_name
-          ? {
-              filename: String(body.file_name).trim(),
-              mime_type: body.file_type ? String(body.file_type).trim() : null,
-              size_bytes: Number.isFinite(Number(body.file_size)) ? Number(body.file_size) : null,
-              sha256: body.file_hash ? String(body.file_hash).trim() : null,
+        file: {
+              filename: uploadPayload.file_name,
+              mime_type: uploadPayload.file_type,
+              size_bytes: uploadPayload.file_size,
+              sha256: uploadPayload.sha256,
               uploaded_by: context.subjectId,
               intake_receipt: uploadReceipt,
             }
-          : null
       },
       context
     );
@@ -113,7 +123,9 @@ export async function POST(request: NextRequest) {
       ocr_enabled: body.ocr_enabled !== false,
       chunking_strategy: body.chunking_strategy ?? "legal_structured",
       embedding_profile: String(body.embedding_profile ?? "default"),
-      expected_current_ingestion_job_id: currentAttempt?.ingestion_job_id ?? null,
+      // The signed predecessor is immutable across lost replies, including
+      // after the first job has become the document's current attempt.
+      expected_current_ingestion_job_id: uploadPayload.expected_current_ingestion_job_id,
     };
     const correlationId = context.correlationId ?? context.requestId ?? crypto.randomUUID();
     const authorization = await clients.registry.createIngestionAuthorization(
@@ -136,7 +148,7 @@ export async function POST(request: NextRequest) {
       throw new Error("Registry returned a conflicting ingestion authorization.");
     }
     const ingestionContext = await ingestionServiceRequestContext(correlationId);
-    const job = await clients.ingestion.createJob(
+    let job = await clients.ingestion.createJob(
       jobRequest,
       ingestionContext,
       {
@@ -144,8 +156,19 @@ export async function POST(request: NextRequest) {
         authorizationToken: authorization.authorization_token,
       },
     );
+    if (["pending_authorization", "claiming"].includes(job.status)) {
+      job = await clients.ingestion.createJob(jobRequest, ingestionContext, {
+        delegatedActorSubjectId: authorization.confirmed_subject_id,
+        authorizationToken: authorization.authorization_token,
+      });
+    }
+    if (job.job_id !== ingestionJobIdForIdempotencyKey(idempotencyKey)
+      || job.document_id !== documentId || job.document_version_id !== version.document_version_id
+      || ["pending_authorization", "claiming"].includes(job.status)) {
+      throw new UploadPreflightError(503, "INGESTION_ACTIVATION_FAILED", "The ingestion attempt was not activated for the exact immutable version.");
+    }
 
-    return NextResponse.json({ version, job }, { status: 201 });
+    return NextResponse.json({ version, job }, { status: version.idempotent_replay ? 200 : 201, headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     if (error instanceof UploadPreflightError) {
       return uploadErrorResponse(error);

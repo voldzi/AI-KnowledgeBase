@@ -1,3 +1,4 @@
+import { contractVersionProfile } from "./fixtures/document-profiles";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { access, mkdtemp, readFile, unlink, writeFile } from "node:fs/promises";
@@ -34,6 +35,7 @@ describe("upload preflight", () => {
         file_size: 128,
         file_type: "application/pdf",
         sha256: `sha256:${"a".repeat(64)}`,
+        document_profile: contractVersionProfile(),
         purpose,
       }, settings).required_headers["X-AKL-Upload-Token"],
       settings,
@@ -269,6 +271,7 @@ describe("upload preflight", () => {
         sha256: `sha256:${"f".repeat(64)}`,
         governance_actor_subject_id: "subject-document-manager",
         governance_correlation_id: "corr-controlled-upload",
+        document_profile: contractVersionProfile(),
         purpose: "controlled-document-upload",
       },
       settings,
@@ -463,7 +466,7 @@ function testSettings(root: string): UploadSettings {
     bucket: "akl-documents",
     signingSecret: "test-upload-secret",
     maxFileBytes: 1024 * 1024,
-    publicUploadBasePath: "/api/controlled-document/upload/sessions",
+    publicUploadBasePath: "/api/document-intake/v1/sessions",
     expiresInSeconds: 900
   };
 }

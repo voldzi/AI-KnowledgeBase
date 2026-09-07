@@ -4,6 +4,7 @@ import asyncio
 import logging
 
 from app.errors import IngestionError
+from app.document_policy import require_document_policy
 from app.ids import utcnow
 from app.object_storage import ObjectStorageClient
 from app.registry_client import RegistryClient
@@ -115,6 +116,7 @@ class IngestionPipeline:
                 request.document_version_id,
                 auth_context=auth_context,
             )
+            require_document_policy(document_metadata)
             if (
                 self.registry.settings.content_security_required
                 and document_metadata.content_security_status != "clean"

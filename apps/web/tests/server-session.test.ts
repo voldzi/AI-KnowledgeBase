@@ -135,6 +135,12 @@ describe("server-side OIDC session cookie", () => {
       assert.equal(stored.absolute_expires_at, new Date(now + 90 * 86_400_000).toISOString());
       assert.equal(String(stored.encrypted_payload).includes("access-token"), false);
       assert.equal(String(stored.encrypted_payload).includes("refresh-token"), false);
+      const otherClient = { ...config, oidc: { ...config.oidc!, clientId: "akb-chat-web" } };
+      assert.equal(await resolveServerSession(otherClient, selector, now + 1), null);
+      assert.equal((record as Record<string, unknown>).revoked_at, null);
+      assert.equal((await resolveServerSession(config, selector, now + 5 * 60_000, false))?.oidc.subjectId, "user-123");
+      assert.equal((record as Record<string, unknown>).last_seen_at, stored.last_seen_at);
+      assert.equal((record as Record<string, unknown>).idle_expires_at, stored.idle_expires_at);
       assert.equal(await resolveServerSession(config, selector, now + 14 * 60_000).then((value) => value?.oidc.subjectId), "user-123");
 
       record = { ...stored, idle_expires_at: new Date(now - 1).toISOString() };

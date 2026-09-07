@@ -52,3 +52,10 @@ condition = "AND"
 regexTarget = "line"
 paths = ['''docs/integration/DIRECTOR_COPILOT_V2_IMPLEMENTATION\.md$''']
 regexes = ['''OpenAPI SHA-256:\s*`[a-f0-9]{64}`''']
+
+[[rules.allowlists]]
+description = "Local acceptance ProjectFlow policy endpoint, not a credential value"
+condition = "AND"
+regexTarget = "line"
+paths = ['''scripts/local_acceptance\.py$''']
+regexes = ['''PROJECTFLOW_POLICY_DECISION_URL="http://stratos-api:4000/api/v1/policy/decisions"''']

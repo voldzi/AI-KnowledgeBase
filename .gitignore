@@ -44,6 +44,7 @@ data/
 !apps/web/src/lib/director-copilot/data/ssp-cs.snapshot.json
 !apps/web/src/lib/director-copilot/data/stratos-domain-catalog.json
 reports/
+.artifacts/
 !apps/web/src/app/api/assistant/reports/
 !apps/web/src/app/api/assistant/reports/export/
 !apps/web/src/app/api/assistant/reports/export/route.ts

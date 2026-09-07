@@ -93,4 +93,31 @@ describe("AKB information policy display", () => {
       null,
     );
   });
+
+  it("preserves unspecified TLP instead of presenting it as CLEAR", () => {
+    const details = documentInformationPolicyDetails({
+      ...document,
+      policy_summary: { ...policy, tlp: null },
+    });
+    assert.equal(details?.tlp, null);
+  });
+
+  it("does not present unknown or incomplete TLP:RED as usable sharing rules", () => {
+    for (const invalid of [
+      { ...policy, tlp: "RED" },
+      { ...policy, tlp: "TLP:RED" },
+      { ...policy, tlp: "TLP:RED", audience: { ...policy.audience, scopeType: "recipient_set", recipientSubjectIds: [] } },
+    ]) {
+      assert.equal(documentInformationPolicyDetails({
+        ...document,
+        policy_summary: invalid as InformationPolicyBindingSummary,
+      }), null);
+    }
+    assert.equal(documentInformationPolicyDetails({
+      ...document,
+      policy_summary: { ...policy, tlp: "TLP:RED", audience: {
+        ...policy.audience, scopeType: "recipient_set", recipientSubjectIds: ["user_named_recipient"],
+      } },
+    })?.tlp, "TLP:RED");
+  });
 });
