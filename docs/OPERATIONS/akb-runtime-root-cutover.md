@@ -30,6 +30,11 @@ materializes the exact target from the private bare mirror only after proving it
 is reachable from `refs/remotes/origin/main`, then invokes the immutable
 bootstrap entry point. Every later release starts from `/srv/akb/current`.
 
+The first activation starts the complete AKB Compose topology, including the
+new reverse proxy and platform-status service. This is required because the
+gateway has stopped the legacy `akl` project that previously owned the AKB
+public port. Later releases retain the narrow affected-service restart path.
+
 After promotion, verify the target SHA, image identities, `/akb/api/health`,
 `/akb/api/ready`, the governed source intake and Chat citation path. Do not
 retire `/srv/akl` until the separate rollback and data-migration acceptance is

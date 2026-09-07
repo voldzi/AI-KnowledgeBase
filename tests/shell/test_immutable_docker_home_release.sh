@@ -947,9 +947,11 @@ case "$command_name" in
   up)
     [[ " $* " == *" --pull never "* && " $* " == *" --no-build "* ]]
     printf 'up:%s\n' "$*" >>"$CALL_LOG"
+    saw_runtime_service=false
     for argument in "$@"; do
       case "$argument" in
         registry-api|ingestion-service|docling-worker|rag-retrieval-service|evaluation-service|governance-service|web|chat-web|llm-gateway-service)
+          saw_runtime_service=true
           if [[ "${FAKE_IMAGE_RETARGET_DURING_UP_SERVICE:-}" == "$argument" \
             && ! -e "${FAKE_RUNTIME_DIR}/fault-image-retarget-during-up" ]]; then
             : >"${FAKE_RUNTIME_DIR}/fault-image-retarget-during-up"
@@ -965,6 +967,11 @@ case "$command_name" in
           ;;
       esac
     done
+    if [[ "$saw_runtime_service" == "false" ]]; then
+      for argument in registry-api ingestion-service docling-worker rag-retrieval-service evaluation-service governance-service web chat-web llm-gateway-service; do
+        write_container_state "$argument" "$compose_file"
+      done
+    fi
     ;;
   stop)
     [[ "${1-}" == "--timeout" && "${2-}" == "30" && "${3-}" == "registry-api" ]]
@@ -1808,6 +1815,8 @@ grep -Fxq 'docker_exec_readiness:llm-gateway-service' <<<"$first_success_log" \
   || fail 'first rollout did not prove the internal LLM gateway health and readiness'
 grep -Fxq 'build:ingestion-service' <<<"$first_success_log" \
   || fail 'first rollout did not directly build the immutable ingestion image'
+grep -Fxq 'up:-d --pull never --no-build --force-recreate' <<<"$first_success_log" \
+  || fail 'first rollout did not start the complete AKB stack during the legacy cutover'
 grep -Fxq 'docker_exec_readiness:web-ingestion-transport:nextjs' <<<"$first_success_log" \
   || fail 'first rollout did not prove the exact web ingestion transport as the runtime user'
 release_fsync_line="$(grep -n "^fsync_tree:${AKL_RELEASE_ROOT}/releases/.${SHA_ONE}.tmp" <<<"$first_success_log" | head -n 1 | cut -d: -f1)"

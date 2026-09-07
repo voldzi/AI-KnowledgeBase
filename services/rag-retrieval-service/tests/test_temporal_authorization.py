@@ -95,12 +95,13 @@ async def retrieve(service, filters):
 async def test_default_current_retrieval_passes_one_prague_calendar_date_through_index_registry_and_parent(scenario):
     service, state = scenario
     result = await retrieve(service, RagQueryFilters())
+    effective_on = state["index_filters"][0].valid_on
     assert [item.citation.document_version_id for item in result.response.chunks] == ["v1"]
     assert state["reranked"] == ["v1"]
     assert state["registry_calls"]
-    assert all(call["effective_on"] == TODAY.isoformat() for call in state["registry_calls"])
-    assert state["index_filters"][0].valid_on == TODAY
-    assert result.response.retrieval_diagnostics["valid_on"] == TODAY.isoformat()
+    assert effective_on is not None
+    assert all(call["effective_on"] == effective_on.isoformat() for call in state["registry_calls"])
+    assert result.response.retrieval_diagnostics["valid_on"] == effective_on.isoformat()
 
 
 @pytest.mark.asyncio

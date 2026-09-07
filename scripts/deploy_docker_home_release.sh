@@ -1716,23 +1716,33 @@ printf 'Restarting only affected services: %s\n' "$SERVICE_CSV"
 akl_assert_expected_env_snapshot "$ENV_FILE"
 TARGET_SERVICES_START_MAY_HAVE_STARTED="true"
 write_deployment_record target_services_start_may_have_started
-if [[ " ${services[*]} " == *" ingestion-service "* ]]; then
-  "${PINNED_COMPOSE[@]}" up -d --pull never --no-build --no-deps --force-recreate docling-worker
-  assert_runtime_container_bound_to_image \
-    docling-worker "$TARGET_INGESTION_IMAGE_ID" post-worker-restart ingestion-service
-  docling_worker_ready="false"
-  for ((docling_attempt = 1; docling_attempt <= 12; docling_attempt += 1)); do
-    if "${PINNED_COMPOSE[@]}" exec -T docling-worker \
-      python -m parsers.docling_service_probe --health >/dev/null 2>&1; then
-      docling_worker_ready="true"
-      break
-    fi
-    (( docling_attempt == 12 )) || sleep 5
-  done
-  [[ "$docling_worker_ready" == "true" ]] \
-    || akl_fail "The isolated Docling worker did not become healthy"
+if [[ -z "$current_sha" ]]; then
+  # The first AKB release is a cutover from the legacy `akl` Compose project.
+  # Its gateway has stopped that project only after importing the exact target
+  # images, so this activation must bring up the whole AKB topology.  Starting
+  # only the application services would leave the new reverse proxy absent and
+  # make the required localhost/public web checks probe a port with no listener.
+  printf 'Starting complete AKB stack for first immutable activation.\n'
+  "${PINNED_COMPOSE[@]}" up -d --pull never --no-build --force-recreate
+else
+  if [[ " ${services[*]} " == *" ingestion-service "* ]]; then
+    "${PINNED_COMPOSE[@]}" up -d --pull never --no-build --no-deps --force-recreate docling-worker
+    assert_runtime_container_bound_to_image \
+      docling-worker "$TARGET_INGESTION_IMAGE_ID" post-worker-restart ingestion-service
+    docling_worker_ready="false"
+    for ((docling_attempt = 1; docling_attempt <= 12; docling_attempt += 1)); do
+      if "${PINNED_COMPOSE[@]}" exec -T docling-worker \
+        python -m parsers.docling_service_probe --health >/dev/null 2>&1; then
+        docling_worker_ready="true"
+        break
+      fi
+      (( docling_attempt == 12 )) || sleep 5
+    done
+    [[ "$docling_worker_ready" == "true" ]] \
+      || akl_fail "The isolated Docling worker did not become healthy"
+  fi
+  "${PINNED_COMPOSE[@]}" up -d --pull never --no-build --no-deps --force-recreate "${services[@]}"
 fi
-"${PINNED_COMPOSE[@]}" up -d --pull never --no-build --no-deps --force-recreate "${services[@]}"
 if [[ " ${services[*]} " == *" registry-api "* ]]; then
   REGISTRY_QUIESCED="false"
   REGISTRY_STOP_MAY_HAVE_STARTED="false"
