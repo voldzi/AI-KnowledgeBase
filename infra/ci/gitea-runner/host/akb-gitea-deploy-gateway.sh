@@ -43,7 +43,10 @@ import_images() {
   marker="${prebuilt_root}/${release_sha}.env"
   [[ ! -e "$marker" ]] || fail
   chmod 0600 "$archive"
-  timeout 900 dd bs=1M of="$archive" status=none
+  # The immutable archive includes the Docling-enabled ingestion image.  On the
+  # production link it can legitimately take longer than the former 15-minute
+  # ceiling.  Keep a finite bound so a broken sender cannot retain disk space.
+  timeout 3600 dd bs=1M of="$archive" status=none
   [[ "$(sha256sum "$archive" | awk '{print $1}')" == "$archive_sha" ]] || {
     rm -f "$archive"
     fail
