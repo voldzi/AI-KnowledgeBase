@@ -33,9 +33,21 @@ printf '%s' "$AKB_RELEASE_REGISTRY_TOKEN" \
 unset AKB_RELEASE_REGISTRY_TOKEN
 
 declare -A images
+current_service=""
+report_build_failure() {
+  local status="$?"
+  if [[ -n "$current_service" ]]; then
+    printf 'production_image_build_failed=%s exit=%s\n' "$current_service" "$status" >&2
+  fi
+  exit "$status"
+}
+trap report_build_failure ERR
+
 build_image() {
   local service="$1" context="$2" dockerfile="$3"
   shift 3
+  current_service="$service"
+  printf 'production_image_build_start=%s\n' "$service"
   local target="$registry/$owner/akb-$service:$source_sha"
   if docker pull "$target" >/dev/null 2>&1; then
     [[ "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$target")" == "$source_sha" \
@@ -59,6 +71,8 @@ build_image() {
   [[ "$resolved" =~ ^git\.home\.cz/akb/akb-[a-z0-9-]+@sha256:[a-f0-9]{64}$ ]] \
     || { printf 'Registry digest is invalid for %s.\n' "$service" >&2; exit 1; }
   images["$service"]="$resolved"
+  printf 'production_image_build_ready=%s digest=%s\n' "$service" "$resolved"
+  current_service=""
 }
 
 build_image registry-api services/registry-api services/registry-api/Dockerfile
