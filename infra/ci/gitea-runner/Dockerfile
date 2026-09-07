@@ -3,7 +3,8 @@ FROM docker:29.7.2-cli@sha256:3f4743208d2338c934d7b8bcfbe1bb54c0b2355c510ad5e0f3
 
 # Playwright's Linux browser binaries need glibc and the Debian browser
 # dependencies. Alpine can download the cache but cannot reliably execute it.
-FROM node:26.8.1-bookworm-slim@sha256:367679cf9792759492a486e4aa4b421764d71a9546a6dae8aab81a99eb797b3e AS ci-tools
+FROM node:26.8.1-bookworm-slim@sha256:367679cf9792759492a486e4aa4b421764d71a9546a6dae8aab81a99eb797b3e AS node_runtime
+FROM python:3.12.14-slim@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea AS ci-tools
 
 USER root
 
@@ -46,9 +47,6 @@ RUN apt-get update \
         libxss1 \
         libxtst6 \
         openssh-client \
-        python3 \
-        python3-pip \
-        python3-venv \
         ruby-full \
         shellcheck \
         tini \
@@ -58,6 +56,7 @@ RUN apt-get update \
 COPY --from=docker_cli /usr/local/bin/docker /usr/local/bin/docker
 COPY --from=docker_cli /usr/local/libexec/docker/cli-plugins/docker-buildx /usr/local/libexec/docker/cli-plugins/docker-buildx
 COPY --from=docker_cli /usr/local/libexec/docker/cli-plugins/docker-compose /usr/local/libexec/docker/cli-plugins/docker-compose
+COPY --from=node_runtime /usr/local /usr/local
 
 RUN groupadd --gid 107 akbci-docker \
     && useradd --uid 1001 --gid akbci-docker --create-home --home-dir /home/akbci --shell /bin/bash akbci
