@@ -79,8 +79,9 @@ shared contract, an unknown path, or an unavailable comparison base selects
 the complete runtime, Compose, and immutable-release verification set.
 
 Independent selected services run concurrently, but never share a writable
-workspace or environment. The default concurrency is three to avoid exhausting
-Docker Desktop memory. Override it with `--jobs` between 1 and 8.
+workspace or environment. The standard 16-core MacBook profile uses six workers
+with at least 32 GiB allocated to Docker Desktop. Constrained machines can
+override this with `--jobs` between 1 and 8.
 
 ## Cache And Evidence
 

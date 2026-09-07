@@ -29,3 +29,5 @@ Format capabilities: [0019: one format catalog](0019-document-format-capabilitie
 - [0023: Immutable STRATOS UI release artifact](0023-immutable-stratos-ui-delivery.md).
 
 - [0024: Source document intake](0024-source-document-intake.md) — ProjectFlow/ArchFlow source authority, exact service identities and shared document engine.
+
+- [0025: AKB runtime root and high-throughput MacBook CI](0025-akb-runtime-root-and-macbook-ci.md) — staged clean cutover from `/srv/akl` to `/srv/akb` and a bounded fast local preflight.

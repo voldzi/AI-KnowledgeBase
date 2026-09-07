@@ -440,7 +440,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--production-sha")
     parser.add_argument("--full", action="store_true")
     parser.add_argument("--platform", default="linux/arm64", choices=("linux/arm64", "linux/amd64"))
-    parser.add_argument("--jobs", type=int, default=3)
+    # The standard AKB developer machine is the 16-core MacBook Pro profile.
+    # Each selected service receives an independent snapshot and container, so
+    # six workers use the available cores without sharing a writable test
+    # environment.  Constrained machines can still select a lower value.
+    parser.add_argument("--jobs", type=int, default=6)
     parser.add_argument("--summary", type=Path)
     parser.add_argument("--paths-file", type=Path, help=argparse.SUPPRESS)
     parser.add_argument(
