@@ -309,7 +309,7 @@ transfers an integrity-checked image archive through the restricted deployment
 gateway, and activates the imported images. The production host does not run a
 source build in this path.
 
-The gateway accepts only the exact eight `akl/<service>:<full-sha>` images. It
+The gateway accepts only the exact eight `akb/<service>:<full-sha>` images. It
 verifies the archive digest and each image's release SHA, compose project, and
 service ownership labels before writing a private prebuilt marker. The normal
 immutable deployment still performs disk and secret preflight, Registry writer
@@ -317,6 +317,12 @@ quiescence, backup, migration, image-identity checks, health/readiness checks,
 and atomic activation. Missing, malformed, additional, or mismatched evidence
 fails closed. The legacy production build path remains available only for a
 reviewed recovery while the gateway rollout is being completed.
+
+The one-time move from the legacy `akl` Compose project to the clean
+`/srv/akb` root is also handled by the gateway. It records the legacy container
+identities, stops them only after the release images have been built and
+imported, and restores them if target bootstrap fails. This keeps the public
+ports served during the build and gives the first cutover a bounded rollback.
 
 ## Release Tag
 

@@ -175,6 +175,69 @@ deploy_entrypoint() {
   printf '%s\n' "$deploy_script"
 }
 
+# The first AKB release replaces the legacy AKL Compose project, which owns the
+# public AKB ports until the new containers are started.  Do the hand-off in
+# this gateway only after CI has built and imported the immutable images.  A
+# failed bootstrap restores the exact stopped legacy containers before the
+# operation is marked failed.
+legacy_cutover_project() {
+  local configured_project="${AKB_LEGACY_CUTOVER_PROJECT:-akl}"
+  [[ "$configured_project" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || fail
+  printf '%s\n' "$configured_project"
+}
+
+capture_legacy_cutover() {
+  local operation_dir="$1" legacy_project legacy_output
+  [[ ! -L "$CURRENT_LINK" ]] || return 0
+  legacy_project="$(legacy_cutover_project)"
+  legacy_output="$(docker ps -aq --no-trunc --filter "label=com.docker.compose.project=${legacy_project}")" \
+    || fail
+  local -a legacy_ids=()
+  if [[ -n "$legacy_output" ]]; then
+    mapfile -t legacy_ids <<<"$legacy_output"
+  fi
+  for container_id in "${legacy_ids[@]}"; do
+    [[ "$container_id" =~ ^[0-9a-f]{64}$ ]] || fail
+  done
+
+  local cutover_file="${operation_dir}/legacy-cutover"
+  {
+    printf 'project=%s\n' "$legacy_project"
+    for container_id in "${legacy_ids[@]}"; do
+      printf 'container_id=%s\n' "$container_id"
+    done
+  } >"$cutover_file"
+  chmod 0600 "$cutover_file"
+  sync -f "$cutover_file"
+
+  [[ ${#legacy_ids[@]} -gt 0 ]] || return 0
+  if ! docker stop --time 30 "${legacy_ids[@]}" >>"${operation_dir}/operator.log" 2>&1; then
+    docker start "${legacy_ids[@]}" >>"${operation_dir}/operator.log" 2>&1 || true
+    fail
+  fi
+}
+
+restore_legacy_cutover() {
+  local operation_dir="$1" cutover_file legacy_project
+  cutover_file="${operation_dir}/legacy-cutover"
+  [[ -f "$cutover_file" && ! -L "$cutover_file" ]] || return 0
+  legacy_project="$(awk -F= '$1 == "project" { print $2; exit }' "$cutover_file")"
+  [[ "$legacy_project" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || fail
+
+  local target_output
+  target_output="$(docker ps -aq --no-trunc --filter 'label=com.docker.compose.project=akb')" || fail
+  if [[ -n "$target_output" ]]; then
+    local -a target_ids=()
+    mapfile -t target_ids <<<"$target_output"
+    docker stop --time 30 "${target_ids[@]}" >>"${operation_dir}/operator.log" 2>&1 || true
+  fi
+
+  local -a legacy_ids=()
+  mapfile -t legacy_ids < <(awk -F= '$1 == "container_id" { print $2 }' "$cutover_file")
+  [[ ${#legacy_ids[@]} -gt 0 ]] || return 0
+  docker start "${legacy_ids[@]}" >>"${operation_dir}/operator.log" 2>&1 || fail
+}
+
 start_deploy() {
   validate_sha "$ARGUMENT"
   RELEASE_SHA="$ARGUMENT"
@@ -218,6 +281,7 @@ run_deploy() {
   deploy_script="$(deploy_entrypoint "$RELEASE_SHA")"
   local deploy_pid="$BASHPID"
   atomic_status "$operation_dir" running -1 "$deploy_pid"
+  capture_legacy_cutover "$operation_dir"
   set +e
   AKB_RELEASE_ROOT="$RELEASE_ROOT" \
   AKB_RELEASE_GIT_DIR="$GIT_DIR" \
@@ -227,6 +291,7 @@ run_deploy() {
   if [[ $deploy_status -eq 0 ]]; then
     atomic_status "$operation_dir" succeeded 0 "$deploy_pid"
   else
+    restore_legacy_cutover "$operation_dir"
     atomic_status "$operation_dir" failed "$deploy_status" "$deploy_pid"
   fi
 }

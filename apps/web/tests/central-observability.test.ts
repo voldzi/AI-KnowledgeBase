@@ -116,7 +116,7 @@ describe("central production observability", () => {
     assert.match(gatewayEnvironment, /labels: \*immutable-release-labels/);
     assert.match(
       gatewayEnvironment,
-      /image: \$\{LLM_GATEWAY_SERVICE_IMAGE:-akl\/llm-gateway-service:\$\{AKL_IMAGE_TAG:-docker-home\}\}/,
+      /image: \$\{LLM_GATEWAY_SERVICE_IMAGE:-akb\/llm-gateway-service:\$\{AKL_IMAGE_TAG:-docker-home\}\}/,
     );
     assert.match(gatewayEnvironment, /OTEL_SDK_DISABLED: \$\{OTEL_SDK_DISABLED:-false\}/);
     assert.match(gatewayEnvironment, /OTEL_SERVICE_NAME: akb-llm-gateway-service/);
