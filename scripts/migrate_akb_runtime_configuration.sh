@@ -40,10 +40,11 @@ chmod 0700 "$stage" "${stage}/env"
 
 while IFS= read -r -d '' entry; do
   name="$(basename "$entry")"
+  [[ "$name" != "akl.prod.env" ]] || name="akb.prod.env"
   install -m 0600 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$entry" "${stage}/env/${name}"
 done < <(find "$SOURCE_ENV" -mindepth 1 -maxdepth 1 -type f -print0)
 
-python3 - "${stage}/env/akl.prod.env" <<'PY'
+python3 - "${stage}/env/akb.prod.env" <<'PY'
 from pathlib import Path
 import re
 import sys

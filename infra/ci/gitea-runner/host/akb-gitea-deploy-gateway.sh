@@ -137,6 +137,8 @@ bootstrap_target_release() {
   release_dir="${RELEASE_ROOT}/releases/${release_sha}"
   [[ -d "$GIT_DIR" && ! -L "$GIT_DIR" ]] || fail
   trusted_ref="refs/remotes/origin/main"
+  GIT_TERMINAL_PROMPT=0 git --no-replace-objects --git-dir="$GIT_DIR" \
+    fetch --prune origin '+refs/heads/main:refs/remotes/origin/main' >/dev/null 2>&1 || fail
   git --no-replace-objects --git-dir="$GIT_DIR" rev-parse --verify "${release_sha}^{commit}" >/dev/null 2>&1 || fail
   git --no-replace-objects --git-dir="$GIT_DIR" show-ref --verify --quiet "$trusted_ref" || fail
   git --no-replace-objects --git-dir="$GIT_DIR" merge-base --is-ancestor "$release_sha" "$trusted_ref" || fail
