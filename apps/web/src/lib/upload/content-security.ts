@@ -110,17 +110,18 @@ export async function inspectDocumentContent(
   }
 
   const startedAt = performance.now();
-  const [versionResponse, scanResponse] = await Promise.all([
-    clamdCommand("zVERSION\0", settings),
+  const [versionResult, scanResponse] = await Promise.all([
+    clamdCommand("zVERSION\0", settings)
+      .then(parseClamdVersion)
+      .catch(() => null),
     clamdInstream(content, settings),
   ]);
-  const version = parseClamdVersion(versionResponse);
   const verdict = parseClamdScanResponse(scanResponse);
   const result: ContentSecurityResult = {
     status: verdict.status,
     engine: "clamav",
-    engine_version: version.engineVersion,
-    signature_version: version.signatureVersion,
+    engine_version: versionResult?.engineVersion ?? null,
+    signature_version: versionResult?.signatureVersion ?? null,
     signature_name: verdict.signatureName,
     scanned_at: new Date().toISOString(),
     duration_ms: Math.max(0, Math.round(performance.now() - startedAt)),
@@ -144,7 +145,8 @@ export async function contentSecurityReadiness(
     return settings.required ? "not_ready" : "disabled";
   }
   try {
-    parseClamdVersion(await clamdCommand("zVERSION\0", settings));
+    const response = await clamdCommand("zPING\0", settings);
+    if (response !== "PONG") return "not_ready";
     return "ready";
   } catch {
     return "not_ready";
