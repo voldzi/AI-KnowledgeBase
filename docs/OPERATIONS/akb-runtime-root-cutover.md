@@ -23,6 +23,13 @@ bundle is provisioned separately from the exact release manifest. The new env se
 application variables are technical compatibility keys and retain their
 documented semantics.
 
+The new `akb` Compose project has its own isolated Docker networks. Every
+`AKL_STRATOS_*_URL` used by the production stack must therefore use the
+reviewed `https://stratos.zeleznalady.cz` route and its documented API path;
+the Docker-only `http://stratos-api:4000` alias belongs to the legacy shared
+network and is not reachable from the new runtime. First activation rejects a
+non-HTTPS STRATOS authority URL before burning the candidate SHA.
+
 Before the first promotion, build and load the repository's
 `services/platform-infrastructure/Dockerfile` for the production architecture
 as `akb/platform-status:docker-home`. Also pull every infrastructure image

@@ -493,6 +493,24 @@ printf '%s\\n' "$*" >"$FAKE_RECOVERY_LOG"
         self.assertIn(preflight, deploy)
         self.assertLess(deploy.index(preflight), deploy.index(burn))
 
+    def test_first_activation_requires_https_stratos_authorities_before_burning_sha(self) -> None:
+        deploy = (ROOT / "scripts/deploy_docker_home_release.sh").read_text()
+        preflight = 'First immutable activation requires HTTPS for $required_stratos_url_name'
+        burn = 'akl_burn_release_sha "$RELEASE_ROOT" "$TARGET_SHA" build_may_have_started'
+        for name in (
+            "AKL_STRATOS_AUTH_ME_URL",
+            "AKL_STRATOS_POLICY_BINDINGS_URL",
+            "AKL_STRATOS_POLICY_DECISIONS_URL",
+            "AKL_STRATOS_INFORMATION_RESOURCES_URL",
+            "AKL_STRATOS_BUDGET_AKB_RESOURCES_URL",
+            "AKL_STRATOS_INFORMATION_PUBLICATIONS_URL",
+            "AKL_STRATOS_PUBLIC_DECISIONS_URL",
+        ):
+            self.assertIn(name, deploy)
+        self.assertIn('[[ "$required_stratos_url" == https://* ]]', deploy)
+        self.assertIn(preflight, deploy)
+        self.assertLess(deploy.index(preflight), deploy.index(burn))
+
     def test_deploy_workflow_is_manual_and_uses_only_restricted_secrets(self) -> None:
         workflow = (ROOT / ".gitea/workflows/deploy-production.yaml").read_text(
             encoding="utf-8"
