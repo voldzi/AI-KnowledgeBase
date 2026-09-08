@@ -232,6 +232,13 @@ AKL_RAG_REGISTRY_CLIENT_SECRET_FILE=${RAG_REGISTRY_CLIENT_SECRET_FILE}
 AKL_WEB_INGESTION_CLIENT_SECRET_FILE=${WEB_INGESTION_CLIENT_SECRET_FILE}
 AKL_DIRECTOR_COPILOT_ENABLED=false
 AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE=${DIRECTOR_COPILOT_CLIENT_SECRET_FILE}
+AKL_STRATOS_AUTH_ME_URL=https://stratos.example.invalid/api/v1/auth/me
+AKL_STRATOS_POLICY_BINDINGS_URL=https://stratos.example.invalid/api/v1/policy/bindings
+AKL_STRATOS_POLICY_DECISIONS_URL=https://stratos.example.invalid/api/v1/policy/decisions
+AKL_STRATOS_INFORMATION_RESOURCES_URL=https://stratos.example.invalid/api/v1/information/resources
+AKL_STRATOS_BUDGET_AKB_RESOURCES_URL=https://stratos.example.invalid/api/v1/integrations/budget/akb/resources
+AKL_STRATOS_INFORMATION_PUBLICATIONS_URL=https://stratos.example.invalid/api/v1/information/publications
+AKL_STRATOS_PUBLIC_DECISIONS_URL=https://stratos.example.invalid/api/v1/policy/public-decisions
 AKL_WEB_PUBLIC_BASE_URL=https://stratos.example.invalid/akb
 AKL_CHAT_WEB_PUBLIC_BASE_URL=https://chat.example.invalid
 AKL_CHAT_WEB_HTTP_PORT=18221
@@ -1690,6 +1697,21 @@ git -C "$WORK_REPO" add apps/web/fsync-retry.txt
 git -C "$WORK_REPO" commit --quiet -m 'retry after backup durability failure'
 SHA_ONE="$(git -C "$WORK_REPO" rev-parse HEAD)"
 git -C "$WORK_REPO" push --quiet origin main
+
+docker_only_stratos_url="http://stratos-api"
+docker_only_stratos_url+=":4000/api/v1/policy/decisions"
+set_env_value AKL_STRATOS_POLICY_DECISIONS_URL "$docker_only_stratos_url"
+printf 'MARK first-immutable-non-https-stratos-authority\n' >>"$CALL_LOG"
+if "$SOURCE_ROOT/scripts/deploy_docker_home_release.sh" --sha "$SHA_ONE"; then
+  fail 'first immutable rollout continued with a Docker-only STRATOS authority URL'
+fi
+[[ ! -e "${AKL_RELEASE_ROOT}/state/burned-shas/${SHA_ONE}" ]] \
+  || fail 'non-HTTPS STRATOS authority burned the candidate SHA'
+stratos_authority_log="$(awk '/^MARK first-immutable-non-https-stratos-authority$/ {capture=1; next} capture' "$CALL_LOG")"
+if grep -q '^compose:build:' <<<"$stratos_authority_log"; then
+  fail 'non-HTTPS STRATOS authority was detected only after the target build started'
+fi
+set_env_value AKL_STRATOS_POLICY_DECISIONS_URL https://stratos.example.invalid/api/v1/policy/decisions
 
 printf 'MARK first-immutable-infrastructure-image-missing\n' >>"$CALL_LOG"
 if FAKE_INFRASTRUCTURE_IMAGE_MISSING="$FAKE_QDRANT_IMAGE" \

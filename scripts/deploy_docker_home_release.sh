@@ -1412,6 +1412,18 @@ if [[ "$DIRECTOR_COPILOT_ENABLED" == "true" ]]; then
   fi
 fi
 if [[ -z "$current_sha" ]]; then
+  for required_stratos_url_name in \
+    AKL_STRATOS_AUTH_ME_URL \
+    AKL_STRATOS_POLICY_BINDINGS_URL \
+    AKL_STRATOS_POLICY_DECISIONS_URL \
+    AKL_STRATOS_INFORMATION_RESOURCES_URL \
+    AKL_STRATOS_BUDGET_AKB_RESOURCES_URL \
+    AKL_STRATOS_INFORMATION_PUBLICATIONS_URL \
+    AKL_STRATOS_PUBLIC_DECISIONS_URL; do
+    required_stratos_url="$(akl_env_value "$ENV_FILE" "$required_stratos_url_name")"
+    [[ "$required_stratos_url" == https://* ]] \
+      || akl_fail "First immutable activation requires HTTPS for $required_stratos_url_name"
+  done
   infrastructure_image_count=0
   while IFS= read -r required_image; do
     [[ -n "$required_image" ]] || continue
