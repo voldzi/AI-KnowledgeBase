@@ -285,4 +285,32 @@ describe("AKL web config", () => {
       AKL_DIRECTOR_COPILOT_ARCHFLOW_BASE_URL: "http://archflow-api:4000",
     }), /must use AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE/);
   });
+
+  it("rejects container-local Director Copilot routes in production", () => {
+    assert.throws(() => getAklConfig({
+      AKL_ENV: "production",
+      AKL_API_CLIENT_MODE: "production",
+      AKL_AUTH_MODE: "oidc",
+      AKL_WEB_PROFILE: "chat",
+      AKL_WEB_OIDC_ISSUER: "https://login.local/realms/stratos",
+      AKL_WEB_OIDC_CLIENT_ID: "akb-chat-web",
+      AKL_WEB_PUBLIC_BASE_URL: "https://chat.local",
+      AKL_WEB_SESSION_SECRET: "test-session-secret",
+      AKL_WEB_SESSION_ENCRYPTION_KEY_FILE: "/run/secrets/web-session-encryption-key",
+      AKL_WEB_SESSION_STORE_SECRET_FILE: "/run/secrets/web-session-store-secret",
+      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.local/api/v1/auth/me",
+      AKL_REGISTRY_API_BASE_URL: "http://registry-api:8000/api/v1",
+      AKL_INGESTION_API_BASE_URL: "http://ingestion-service:8090/api/v1",
+      AKL_RAG_API_BASE_URL: "http://rag-retrieval-service:8080/api/v1",
+      AKL_GOVERNANCE_API_BASE_URL: "http://governance-service:8080/api/v1",
+      AKL_GOVERNANCE_SERVICE_TOKEN: "governance-service-token",
+      AKL_EVALUATION_API_BASE_URL: "http://evaluation-service:8080/api/v1",
+      AKL_DIRECTOR_COPILOT_ENABLED: "true",
+      AKL_DIRECTOR_COPILOT_TOKEN_URL: "https://login.local/realms/stratos/protocol/openid-connect/token",
+      AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE: "/run/secrets/director-copilot",
+      AKL_DIRECTOR_COPILOT_BUDGET_BASE_URL: "http://stratos-api:4000",
+      AKL_DIRECTOR_COPILOT_PROJECTFLOW_BASE_URL: "https://stratos.local/project",
+      AKL_DIRECTOR_COPILOT_ARCHFLOW_BASE_URL: "https://stratos.local",
+    }), /AKL_DIRECTOR_COPILOT_BUDGET_BASE_URL must use HTTPS in production/);
+  });
 });

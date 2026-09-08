@@ -422,6 +422,17 @@ export function getAklConfig(env: EnvSource = process.env): AklConfig {
   )) {
     throw new Error("Director Copilot requires Budget, ProjectFlow and ArchFlow base URLs");
   }
+  if (directorCopilot.enabled && environment === "production") {
+    const productionDirectorBaseUrls: Array<[string, string | undefined]> = [
+      ["Budget", directorCopilot.budgetBaseUrl],
+      ["ProjectFlow", directorCopilot.projectflowBaseUrl],
+      ["ArchFlow", directorCopilot.archflowBaseUrl],
+    ];
+    const insecureDomain = productionDirectorBaseUrls.find(([, baseUrl]) => !baseUrl?.startsWith("https://"));
+    if (insecureDomain) {
+      throw new Error(`AKL_DIRECTOR_COPILOT_${insecureDomain[0].toUpperCase()}_BASE_URL must use HTTPS in production`);
+    }
+  }
 
   return {
     environment,
