@@ -894,7 +894,11 @@ already durable link. A rollback wrapper or mismatched `--failed-sha` is never
 accepted as a reconciliation shortcut.
 
 Record the failed SHA and error/correlation identifiers. Prepare and review a
-new commit that is a descendant of the failed commit, then run:
+new commit that is a descendant of the failed commit. The normal Gitea
+production workflow accepts the failed marker in `forward_fix_from_sha`; the
+restricted gateway validates both SHAs, records the recovery context, performs
+the same legacy first-cutover hand-off, and invokes the wrapper below from its
+detached worker. For an operator-run recovery, use:
 
 ```bash
 FAILED_SHA=0123456789abcdef0123456789abcdef01234567
