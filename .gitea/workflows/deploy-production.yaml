@@ -224,9 +224,16 @@ jobs:
           for coordinate in "${release_images[@]}"; do
             service="${coordinate%%=*}"
             reference="${coordinate#*=}"
-            docker pull "${reference}" >/dev/null
+            local_registry_tag="git.home.cz/akb/akb-${service}:${RELEASE_SHA}"
+            local_reference="$(docker image inspect "${local_registry_tag}" \
+              --format '{{range .RepoDigests}}{{println .}}{{end}}' \
+              | awk -v expected="${reference}" '$0 == expected {print; exit}')"
+            [[ "${local_reference}" == "${reference}" ]] || {
+              printf 'Locally verified production image is missing or has a different digest: %s\n' "${service}" >&2
+              exit 1
+            }
             tag="akb/${service}:${RELEASE_SHA}"
-            docker tag "${reference}" "${tag}"
+            docker tag "${local_registry_tag}" "${tag}"
             image_tags+=("${tag}")
           done
           archive="${ssh_dir}/akb-images.tgz"

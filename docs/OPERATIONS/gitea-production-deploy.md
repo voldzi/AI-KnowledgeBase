@@ -148,6 +148,13 @@ documented descendant forward-fix procedure. Cancelling the Gitea job does not
 cancel a detached host deployment; use its operation ID and host evidence to
 determine the actual state.
 
+The image publisher leaves each verified production image in the runner's
+local Docker image store. The deployment step must compare that local image's
+repository digest with the closed manifest and create the transfer tag from
+the verified local image. It must not pull the same digest back from Gitea a
+second time before creating the release archive; that redundant large pull can
+exhaust or stall the Docker Desktop content store.
+
 ## Rollback Of This Integration
 
 Disable the `AKB production deploy` workflow, remove the four repository secrets
