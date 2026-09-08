@@ -241,12 +241,13 @@ fail-closed with `REQUIRED=true`.
 `GET /api/ready` reports `document_intake_content_security`. A required or
 configured scanner that is unavailable makes web readiness fail.
 
-Scanner readiness verifies a well-formed ClamAV VERSION reply including engine
-and database versions. It does not run INSTREAM, measure signature freshness or
-prove end-to-end upload. A malformed VERSION reply also prevents creation of a
-clean scan result with missing scanner metadata. The web readiness aggregate's
-ingestion probe is liveness; full ingestion readiness requires its dedicated
-operational identity.
+Scanner readiness verifies a ClamAV `PING`/`PONG` exchange. A clean `INSTREAM`
+verdict remains mandatory before publication. Engine and signature versions are
+recorded when the scanner endpoint exposes `VERSION`; managed proxies may omit
+those optional metadata without weakening the clean-verdict requirement.
+Readiness does not run `INSTREAM`, measure signature freshness, or prove an
+end-to-end upload. The web readiness aggregate's ingestion probe is liveness;
+full ingestion readiness requires its dedicated operational identity.
 
 ## Retry and immutable evidence
 

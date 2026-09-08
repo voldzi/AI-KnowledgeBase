@@ -19,36 +19,19 @@ afterEach(async () => {
 });
 
 describe("document content security", () => {
-  it("checks scanner readiness using VERSION without submitting document bytes", async () => {
-    for (const version of [
-      "ClamAV 1.4.3/27632/Sat Jul 25 00:00:00 2026",
-      "ClamAV 1.4.3-rc/27632",
-    ]) {
-      const { port, server, commands } = await fakeClamd("stream: OK", version);
-      servers.push(server);
+  it("checks scanner readiness using PING without requiring version metadata", async () => {
+    const { port, server, commands } = await fakeClamd("stream: OK", "COMMAND UNAVAILABLE");
+    servers.push(server);
 
-      assert.equal(await contentSecurityReadiness(settings(port)), "ready");
-      assert.deepEqual(commands, ["VERSION"]);
-    }
+    assert.equal(await contentSecurityReadiness(settings(port)), "ready");
+    assert.deepEqual(commands, ["PING"]);
   });
 
-  it("does not report readiness for malformed or incomplete scanner versions", async () => {
-    for (const version of [
-      "COMMAND UNAVAILABLE",
-      "UNKNOWN COMMAND",
-      "stream: OK",
-      "ClamAV 1.4.3",
-      "ClamAV /27632/Sat Jul 25 00:00:00 2026",
-      "ClamAV invalid/27632",
-      "ClamAV 1.4.3/not-loaded",
-      "ClamAV 1.4.3/27632/",
-      "ClamAV 1.4.3/27632/Sat Jul 25 00:00:00 2026\nUNKNOWN COMMAND",
-    ]) {
-      const { port, server } = await fakeClamd("stream: OK", version);
-      servers.push(server);
+  it("does not report readiness when the scanner does not answer PONG", async () => {
+    const { port, server } = await fakeClamd("stream: OK", undefined, "COMMAND UNAVAILABLE");
+    servers.push(server);
 
-      assert.equal(await contentSecurityReadiness(settings(port)), "not_ready", version);
-    }
+    assert.equal(await contentSecurityReadiness(settings(port)), "not_ready");
   });
 
   it("preserves required and optional disabled-scanner readiness", async () => {
@@ -91,19 +74,18 @@ describe("document content security", () => {
     );
   });
 
-  it("rejects a clean scan with invalid engine or signature metadata", async () => {
+  it("accepts a clean scan when the proxy omits engine and signature metadata", async () => {
     const { port, server } = await fakeClamd("stream: OK", "COMMAND UNAVAILABLE");
     servers.push(server);
 
-    await assert.rejects(
-      () => inspectDocumentContent(
-        new TextEncoder().encode("%PDF-1.7\nsafe"),
-        "application/pdf",
-        settings(port),
-      ),
-      (error: unknown) => error instanceof UploadPreflightError
-        && error.code === "CONTENT_SECURITY_INVALID_RESPONSE",
+    const result = await inspectDocumentContent(
+      new TextEncoder().encode("%PDF-1.7\nsafe"),
+      "application/pdf",
+      settings(port),
     );
+    assert.equal(result.status, "clean");
+    assert.equal(result.engine_version, null);
+    assert.equal(result.signature_version, null);
   });
 
   it("fails closed when the scanner is unavailable", async () => {
@@ -146,6 +128,7 @@ function settings(port: number): ContentSecuritySettings {
 async function fakeClamd(
   scanResponse: string,
   versionResponse = "ClamAV 1.4.3/27632/Sat Jul 25 00:00:00 2026",
+  pingResponse = "PONG",
 ): Promise<{
   port: number;
   server: net.Server;
@@ -160,6 +143,11 @@ async function fakeClamd(
       if (request.subarray(0, 9).toString("utf8") === "zVERSION\0") {
         commands.push("VERSION");
         socket.end(`${versionResponse}\0`);
+        return;
+      }
+      if (request.subarray(0, 6).toString("utf8") === "zPING\0") {
+        commands.push("PING");
+        socket.end(`${pingResponse}\0`);
         return;
       }
       if (
