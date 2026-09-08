@@ -7,6 +7,7 @@ source_sha="${AKB_RELEASE_SOURCE_SHA:-}"
 output="${AKB_RELEASE_MANIFEST_OUTPUT:-akb-production-image-manifest.json}"
 platform="${AKB_RELEASE_PLATFORM:-linux/amd64}"
 build_jobs="${AKB_RELEASE_BUILD_JOBS:-4}"
+cache_from_sha="${AKB_RELEASE_CACHE_FROM_SHA:-}"
 
 [[ "$registry" == "git.home.cz" && "$owner" == "akb" ]] \
   || { printf 'Production image registry is not approved.\n' >&2; exit 1; }
@@ -16,6 +17,8 @@ build_jobs="${AKB_RELEASE_BUILD_JOBS:-4}"
   || { printf 'Production image platform must be linux/amd64.\n' >&2; exit 1; }
 [[ "$build_jobs" =~ ^[1-8]$ ]] \
   || { printf 'AKB_RELEASE_BUILD_JOBS must be an integer from 1 to 8.\n' >&2; exit 1; }
+[[ -z "$cache_from_sha" || "$cache_from_sha" =~ ^[0-9a-f]{40}$ ]] \
+  || { printf 'AKB_RELEASE_CACHE_FROM_SHA must be empty or a full lowercase Git SHA.\n' >&2; exit 1; }
 [[ -n "${AKB_RELEASE_REGISTRY_USER:-}" && -n "${AKB_RELEASE_REGISTRY_TOKEN:-}" ]] \
   || { printf 'Ephemeral registry credentials are required.\n' >&2; exit 1; }
 
@@ -24,6 +27,17 @@ source_date_epoch="$(git show -s --format=%ct "$source_sha")"
   || { printf 'Source commit timestamp is invalid.\n' >&2; exit 1; }
 docker buildx version >/dev/null
 python3 scripts/ci/check_clean_pilot_c4_inputs.py
+
+declare -a cache_shas=()
+if [[ -n "$cache_from_sha" ]]; then
+  git merge-base --is-ancestor "$cache_from_sha" "$source_sha" \
+    || { printf 'Production cache source must be an ancestor of the release SHA.\n' >&2; exit 1; }
+  cache_shas+=("$cache_from_sha")
+  cache_parent="$(git rev-parse "$cache_from_sha^1" 2>/dev/null || true)"
+  if [[ "$cache_parent" =~ ^[0-9a-f]{40}$ ]]; then
+    cache_shas+=("$cache_parent")
+  fi
+fi
 
 tmp_dir="$(mktemp -d)"
 cleanup() {
@@ -46,12 +60,18 @@ build_image() {
       && "$(docker image inspect --format '{{index .Config.Labels "cz.zeleznalady.akl.service"}}' "$target")" == "$service" ]] \
       || { printf 'Existing immutable image provenance is invalid for %s.\n' "$service" >&2; exit 1; }
   else
+  local -a cache_args=()
+  local cache_sha
+  for cache_sha in "${cache_shas[@]}"; do
+    cache_args+=(--cache-from "type=registry,ref=$registry/$owner/akb-$service:$cache_sha")
+  done
   BUILDX_NO_DEFAULT_ATTESTATIONS=1 docker buildx build --pull \
     --platform "$platform" --provenance=false --sbom=false \
     --build-arg "SOURCE_DATE_EPOCH=$source_date_epoch" \
     --label "org.opencontainers.image.revision=$source_sha" \
     --label 'cz.zeleznalady.akl.compose-project=akb' \
     --label "cz.zeleznalady.akl.service=$service" \
+    "${cache_args[@]}" \
     --output "type=image,name=$target,push=true,unpack=false,rewrite-timestamp=true" \
     --file "$dockerfile" "$@" "$context"
     docker pull "$target" >/dev/null

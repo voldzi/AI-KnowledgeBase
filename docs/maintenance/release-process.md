@@ -284,6 +284,10 @@ fail-closed release controls while avoiding repeated merge/build/deploy loops.
   the relevant local gate before required CI.
 - A failed production build that has crossed the immutable SHA-burn boundary
   requires a reviewed descendant. Do not retry the burned SHA.
+- A reviewed forward-fix image build imports BuildKit cache metadata from the
+  failed ancestor and its first parent. The new images still receive the exact
+  descendant revision labels and immutable tags; missing cache entries only
+  cause the affected image to rebuild normally.
 - Before opening that descendant PR, reproduce and fix the exact production
   image failure locally, then rerun the full production image preflight.
 - A failure after migration or runtime side effects follows only the
