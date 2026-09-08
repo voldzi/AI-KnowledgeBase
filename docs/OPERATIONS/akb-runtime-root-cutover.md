@@ -25,11 +25,14 @@ documented semantics.
 
 Before the first promotion, build and load the repository's
 `services/platform-infrastructure/Dockerfile` for the production architecture
-as `akb/platform-status:docker-home`. The first immutable deployment verifies
-that this base image exists before burning its target SHA or stopping a writer.
-An explicit `PLATFORM_STATUS_IMAGE` in the protected production environment may
-select another pre-provisioned immutable reference. The release never builds
-this unmanaged infrastructure image after the mutation boundary.
+as `akb/platform-status:docker-home`. Also pull every infrastructure image
+resolved by the production Compose file, including the exact Caddy and Qdrant
+references. The first immutable deployment renders the complete image list and
+verifies every non-release image before burning its target SHA or stopping a
+writer. Explicit `PLATFORM_STATUS_IMAGE`, `CADDY_IMAGE`, and `QDRANT_IMAGE`
+values in the protected production environment may select other reviewed,
+pre-provisioned references. The release never builds or pulls these unmanaged
+infrastructure images after the mutation boundary.
 
 Install the reviewed forced-command gateway from the merged release before
 adding its deployment key. It defaults to `/srv/akb` and rejects conflicting
