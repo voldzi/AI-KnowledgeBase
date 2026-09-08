@@ -31,6 +31,13 @@ and the pinned V2 manifest catalog. Setting it to `false` is the controlled
 kill switch and returns a bounded unavailable response for recognized live-data
 requests.
 
+All three production source URLs must be externally routable HTTPS addresses.
+For the consolidated STRATOS host use `https://stratos.zeleznalady.cz` for
+Budget and ArchFlow, and `https://stratos.zeleznalady.cz/project` for
+ProjectFlow. Container-local names such as `stratos-api` or `projectflow-api`
+are valid only inside a shared local Compose network and are rejected by the
+production AKB configuration.
+
 ## Post-deployment verification
 
 1. Confirm `/akb/api/health` returns `200` and `/akb/api/ready` returns `200`
