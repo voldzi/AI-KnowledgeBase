@@ -99,6 +99,7 @@ jobs:
           AKB_RELEASE_SOURCE_SHA: ${{ inputs.approved_sha }}
           AKB_RELEASE_REGISTRY_USER: ${{ github.actor }}
           AKB_RELEASE_REGISTRY_TOKEN: ${{ secrets.AKB_GITEA_PACKAGE_RW_TOKEN }}
+          AKB_RELEASE_BUILD_JOBS: "4"
         run: bash scripts/ci/publish_production_images.sh
 
       - name: Publish closed production image manifest

@@ -277,7 +277,7 @@ def check(root: Path) -> None:
         ("--build-arg AKL_INSTALL_DOCLING=true", "production Docling image"),
     ):
         require(production_publisher, value, label)
-    services = re.findall(r"^build_image\s+([a-z0-9-]+)\s", production_publisher, re.MULTILINE)
+    services = re.findall(r"^queue_build\s+([a-z0-9-]+)\s", production_publisher, re.MULTILINE)
     if services != [
         "registry-api", "ingestion-service", "rag-retrieval-service",
         "evaluation-service", "governance-service", "llm-gateway-service",

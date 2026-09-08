@@ -1,6 +1,6 @@
 # AKB Gitea Actions Runner Image
 
-This Dockerfile builds two non-production AKB CI images for VM125:
+This Dockerfile builds two non-production AKB CI images for the MacBook runner:
 
 - `akb/gitea-actions-runner:0.2.0` is the repository-scoped Gitea Actions
   runner.
@@ -16,7 +16,11 @@ the same Docker CLI build stage. Buildx is mandatory for immutable release
 images whose Dockerfiles use BuildKit cache mounts. The image build must stop
 unless both `docker buildx version` and `docker compose version` succeed.
 
-Build and operate it only on VM125 through the runner's local Compose project.
+Build and operate it in Docker Desktop through the runner's isolated local
+Compose project. The job image is built natively for Apple Silicon for normal
+CI. The production publisher explicitly targets `linux/amd64`, runs up to four
+independent service builds concurrently, and publishes immutable digests before
+the production host is contacted.
 The private `git.home.cz.crt` is provisioned on the VM and is not tracked in
 this repository. The normal CI workflow has no production environment file,
 deployment credential, or SSH key for `docker.home.cz`. The separately
@@ -33,7 +37,7 @@ The repository-scoped systemd runner must advertise exactly:
 akb-gitea-ci:docker://akb/gitea-ci-tools@sha256:2be3431e52dc1cfae642ea744821980c60774485b98c5881593a95558ed518c9
 ```
 
-Its capacity is one. Labels beginning with `stratos-gitea-ci` are reserved for
+Its capacity is two. Labels beginning with `stratos-gitea-ci` are reserved for
 the STRATOS runner and must not be configured on the AKB runner.
 
 The coordinated digest migration, cache retention, monitoring installation and
