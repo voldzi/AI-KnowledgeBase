@@ -136,6 +136,7 @@ if [[ "$*" == *" archive "* ]]; then cat "$FAKE_GIT_ARCHIVE"; fi
             operation = release / "ci-deployments" / f"20260907T120000Z-{sha[:12]}-123"
             operation.mkdir(parents=True)
             (operation / "release-sha").write_text(f"{sha}\n")
+            (operation / "forward-fix-from").write_text("none\n")
             log = root / "docker.log"
             environment = {
                 **os.environ,
@@ -162,6 +163,74 @@ if [[ "$*" == *" archive "* ]]; then cat "$FAKE_GIT_ARCHIVE"; fi
             self.assertIn(f"start {legacy_id}", actions)
             self.assertLess(actions.index(f"stop --time 30 {legacy_id}"), actions.index(f"start {legacy_id}"))
             self.assertIn("state=failed", (operation / "status").read_text(encoding="utf-8"))
+
+    def test_forward_fix_uses_recovery_wrapper_inside_legacy_cutover(self) -> None:
+        failed_sha = "a" * 40
+        target_sha = "b" * 40
+        legacy_id = "c" * 64
+        gateway = ROOT / "infra/ci/gitea-runner/host/akb-gitea-deploy-gateway.sh"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            docker_log = root / "docker.log"
+            recovery_log = root / "recovery.log"
+            docker = fake_bin / "docker"
+            docker.write_text(f"""#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "$*" >>"$FAKE_DOCKER_LOG"
+if [[ "$1 ${'{'}2:-{'}'}" == "ps -aq" && "$*" == *'project=akl'* ]]; then
+  printf '{legacy_id}\\n'
+elif [[ "$1" == "stop" ]]; then
+  exit 0
+else
+  exit 2
+fi
+""")
+            docker.chmod(0o755)
+            git = fake_bin / "git"
+            git.write_text("#!/usr/bin/env bash\nexit 0\n")
+            git.chmod(0o755)
+            sync = fake_bin / "sync"
+            sync.write_text("#!/usr/bin/env bash\nexit 0\n")
+            sync.chmod(0o755)
+
+            release = root / "release"
+            (release / "git" / "AI-KnowledgeBase.git").mkdir(parents=True)
+            failed_release = release / "releases" / failed_sha
+            (failed_release / "scripts").mkdir(parents=True)
+            recovery = failed_release / "scripts" / "rollback_docker_home_release.sh"
+            recovery.write_text("""#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "$*" >"$FAKE_RECOVERY_LOG"
+""")
+            recovery.chmod(0o755)
+            operation = release / "ci-deployments" / f"20260908T120000Z-{target_sha[:12]}-123"
+            operation.mkdir(parents=True)
+            (operation / "release-sha").write_text(f"{target_sha}\n")
+            (operation / "forward-fix-from").write_text(f"{failed_sha}\n")
+            environment = {
+                **os.environ,
+                "AKL_RELEASE_ROOT": str(release),
+                "PATH": f"{fake_bin}:{os.environ['PATH']}",
+                "FAKE_DOCKER_LOG": str(docker_log),
+                "FAKE_RECOVERY_LOG": str(recovery_log),
+            }
+            result = subprocess.run(
+                ["bash", str(gateway), "--internal-run", operation.name, target_sha, failed_sha],
+                capture_output=True,
+                text=True,
+                env=environment,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(
+                recovery_log.read_text(encoding="utf-8").strip(),
+                f"--failed-sha {failed_sha} --forward-fix-sha {target_sha}",
+            )
+            self.assertIn(f"stop --time 30 {legacy_id}", docker_log.read_text(encoding="utf-8"))
+            status = (operation / "status").read_text(encoding="utf-8")
+            self.assertIn("state=succeeded", status)
+            self.assertIn(f"forward_fix_from={failed_sha}", status)
 
     def test_api_client_uses_system_ca_without_token_in_process_args(self) -> None:
         token = "a" * 40
@@ -402,9 +471,14 @@ if [[ "$*" == *" archive "* ]]; then cat "$FAKE_GIT_ARCHIVE"; fi
         self.assertIn('akb-production-images-${{ github.sha }}', workflow)
         self.assertIn('verify_gitea_action_artifact.py', workflow)
         self.assertIn('"import ${RELEASE_SHA} ${archive_sha}"', workflow)
+        self.assertIn('deploy_command="deploy ${RELEASE_SHA}"', workflow)
+        self.assertIn('deploy_command+=" ${FORWARD_FIX_FROM_SHA}"', workflow)
+        self.assertIn('forward_fix_from_sha:', workflow)
+        self.assertIn('--failed-sha "$FORWARD_FIX_FROM_SHA"', gateway)
+        self.assertIn('--forward-fix-sha "$RELEASE_SHA"', gateway)
         self.assertLess(workflow.index("Require successful trusted main CI"), workflow.index("Build and publish immutable production images once"))
         self.assertLess(workflow.index("Build and publish immutable production images once"), workflow.index('"import ${RELEASE_SHA} ${archive_sha}"'))
-        self.assertLess(workflow.index('"import ${RELEASE_SHA} ${archive_sha}"'), workflow.index('"deploy ${RELEASE_SHA}"'))
+        self.assertLess(workflow.index('"import ${RELEASE_SHA} ${archive_sha}"'), workflow.index('deploy_command="deploy ${RELEASE_SHA}"'))
 
     def test_deploy_workflow_is_manual_and_uses_only_restricted_secrets(self) -> None:
         workflow = (ROOT / ".gitea/workflows/deploy-production.yaml").read_text(

@@ -27,11 +27,11 @@ parse_command() {
     ARGUMENT="$2"
     EXTRA="${3:-}"
   fi
-  if [[ "$ACTION" == "import" ]]; then
-    [[ -n "${EXTRA:-}" ]] || fail
-  else
-    [[ -z "${EXTRA:-}" ]] || fail
-  fi
+  case "$ACTION" in
+    import) [[ -n "${EXTRA:-}" ]] || fail ;;
+    deploy) ;;
+    *) [[ -z "${EXTRA:-}" ]] || fail ;;
+  esac
 }
 
 import_images() {
@@ -123,8 +123,8 @@ atomic_status() {
   local exit_code="$3"
   local pid="$4"
   local temporary="${operation_dir}/.status.${BASHPID}.tmp"
-  printf 'state=%s\nexit_code=%s\npid=%s\nrelease_sha=%s\noperator_log=%s\n' \
-    "$state" "$exit_code" "$pid" "$RELEASE_SHA" "${operation_dir}/operator.log" \
+  printf 'state=%s\nexit_code=%s\npid=%s\nrelease_sha=%s\nforward_fix_from=%s\noperator_log=%s\n' \
+    "$state" "$exit_code" "$pid" "$RELEASE_SHA" "${FORWARD_FIX_FROM_SHA:-none}" "${operation_dir}/operator.log" \
     >"$temporary"
   chmod 0600 "$temporary"
   mv -f "$temporary" "${operation_dir}/status"
@@ -173,6 +173,18 @@ deploy_entrypoint() {
   fi
   [[ -x "$deploy_script" ]] || fail
   printf '%s\n' "$deploy_script"
+}
+
+forward_fix_entrypoint() {
+  local failed_sha="$1" recovery_script
+  validate_sha "$failed_sha"
+  if [[ -L "$CURRENT_LINK" ]]; then
+    recovery_script="${CURRENT_LINK}/scripts/rollback_docker_home_release.sh"
+  else
+    recovery_script="${RELEASE_ROOT}/releases/${failed_sha}/scripts/rollback_docker_home_release.sh"
+  fi
+  [[ -x "$recovery_script" && ! -L "$recovery_script" ]] || fail
+  printf '%s\n' "$recovery_script"
 }
 
 # The first AKB release replaces the legacy AKL Compose project, which owns the
@@ -241,20 +253,30 @@ restore_legacy_cutover() {
 start_deploy() {
   validate_sha "$ARGUMENT"
   RELEASE_SHA="$ARGUMENT"
-  local deploy_script
-  deploy_script="$(deploy_entrypoint "$RELEASE_SHA")"
+  FORWARD_FIX_FROM_SHA="${EXTRA:-}"
+  if [[ -n "$FORWARD_FIX_FROM_SHA" ]]; then
+    validate_sha "$FORWARD_FIX_FROM_SHA"
+    [[ "$FORWARD_FIX_FROM_SHA" != "$RELEASE_SHA" ]] || fail
+    bootstrap_target_release "$RELEASE_SHA" >/dev/null
+    git --no-replace-objects --git-dir="$GIT_DIR" merge-base --is-ancestor \
+      "$FORWARD_FIX_FROM_SHA" "$RELEASE_SHA" || fail
+    forward_fix_entrypoint "$FORWARD_FIX_FROM_SHA" >/dev/null
+  else
+    deploy_entrypoint "$RELEASE_SHA" >/dev/null
+  fi
   install -d -m 0700 "$OPERATIONS_ROOT"
   local operation_id
   operation_id="$(date -u +%Y%m%dT%H%M%SZ)-${RELEASE_SHA:0:12}-$$"
   local operation_dir="${OPERATIONS_ROOT}/${operation_id}"
   mkdir -m 0700 "$operation_dir"
   printf '%s\n' "$RELEASE_SHA" >"${operation_dir}/release-sha"
-  chmod 0600 "${operation_dir}/release-sha"
+  printf '%s\n' "${FORWARD_FIX_FROM_SHA:-none}" >"${operation_dir}/forward-fix-from"
+  chmod 0600 "${operation_dir}/release-sha" "${operation_dir}/forward-fix-from"
 
   command -v nohup >/dev/null || fail
   command -v setsid >/dev/null || fail
   nohup env -u SSH_ORIGINAL_COMMAND setsid "$0" --internal-run \
-    "$operation_id" "$RELEASE_SHA" \
+    "$operation_id" "$RELEASE_SHA" "${FORWARD_FIX_FROM_SHA:-}" \
     </dev/null >/dev/null 2>&1 &
 
   local status_file="${operation_dir}/status"
@@ -270,22 +292,43 @@ start_deploy() {
 run_deploy() {
   local operation_id="$1"
   RELEASE_SHA="$2"
+  FORWARD_FIX_FROM_SHA="${3:-}"
   validate_operation_id "$operation_id"
   validate_sha "$RELEASE_SHA"
   local operation_dir="${OPERATIONS_ROOT}/${operation_id}"
   local release_sha_file="${operation_dir}/release-sha"
+  local forward_fix_file="${operation_dir}/forward-fix-from"
   [[ -d "$operation_dir" && ! -L "$operation_dir" ]] || fail
   [[ -f "$release_sha_file" && ! -L "$release_sha_file" ]] || fail
+  [[ -f "$forward_fix_file" && ! -L "$forward_fix_file" ]] || fail
   [[ "$(cat "$release_sha_file")" == "$RELEASE_SHA" ]] || fail
+  [[ "$(cat "$forward_fix_file")" == "${FORWARD_FIX_FROM_SHA:-none}" ]] || fail
   local deploy_script
-  deploy_script="$(deploy_entrypoint "$RELEASE_SHA")"
+  if [[ -n "$FORWARD_FIX_FROM_SHA" ]]; then
+    validate_sha "$FORWARD_FIX_FROM_SHA"
+    [[ "$FORWARD_FIX_FROM_SHA" != "$RELEASE_SHA" ]] || fail
+    git --no-replace-objects --git-dir="$GIT_DIR" merge-base --is-ancestor \
+      "$FORWARD_FIX_FROM_SHA" "$RELEASE_SHA" || fail
+    deploy_script="$(forward_fix_entrypoint "$FORWARD_FIX_FROM_SHA")"
+  else
+    deploy_script="$(deploy_entrypoint "$RELEASE_SHA")"
+  fi
   local deploy_pid="$BASHPID"
   atomic_status "$operation_dir" running -1 "$deploy_pid"
   capture_legacy_cutover "$operation_dir"
   set +e
-  AKB_RELEASE_ROOT="$RELEASE_ROOT" \
-  AKB_RELEASE_GIT_DIR="$GIT_DIR" \
-    "$deploy_script" --sha "$RELEASE_SHA" >>"${operation_dir}/operator.log" 2>&1
+  if [[ -n "$FORWARD_FIX_FROM_SHA" ]]; then
+    AKB_RELEASE_ROOT="$RELEASE_ROOT" \
+    AKB_RELEASE_GIT_DIR="$GIT_DIR" \
+      "$deploy_script" \
+        --failed-sha "$FORWARD_FIX_FROM_SHA" \
+        --forward-fix-sha "$RELEASE_SHA" \
+        >>"${operation_dir}/operator.log" 2>&1
+  else
+    AKB_RELEASE_ROOT="$RELEASE_ROOT" \
+    AKB_RELEASE_GIT_DIR="$GIT_DIR" \
+      "$deploy_script" --sha "$RELEASE_SHA" >>"${operation_dir}/operator.log" 2>&1
+  fi
   local deploy_status=$?
   set -e
   if [[ $deploy_status -eq 0 ]]; then
@@ -324,8 +367,8 @@ verify_release() {
 }
 
 if [[ -z "${SSH_ORIGINAL_COMMAND:-}" && "${1:-}" == "--internal-run" ]]; then
-  [[ $# -eq 3 ]] || fail
-  run_deploy "$2" "$3"
+  [[ $# -ge 3 && $# -le 4 ]] || fail
+  run_deploy "$2" "$3" "${4:-}"
   exit 0
 fi
 

@@ -13,6 +13,10 @@ on:
         description: Enter deploy-production
         required: true
         type: string
+      forward_fix_from_sha:
+        description: Optional exact failed applied-runtime SHA for forward-fix recovery
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -34,6 +38,7 @@ jobs:
           APPROVED_SHA: ${{ inputs.approved_sha }}
           CANDIDATE_SHA: ${{ github.sha }}
           CONFIRMATION: ${{ inputs.confirmation }}
+          FORWARD_FIX_FROM_SHA: ${{ inputs.forward_fix_from_sha }}
           EVENT_NAME: ${{ github.event_name }}
           REF_NAME: ${{ github.ref }}
         run: |
@@ -54,6 +59,14 @@ jobs:
             printf 'The approved SHA is not the selected main revision.\n' >&2
             exit 1
           }
+          [[ -z "${FORWARD_FIX_FROM_SHA}" || "${FORWARD_FIX_FROM_SHA}" =~ ^[0-9a-f]{40}$ ]] || {
+            printf 'forward_fix_from_sha must be empty or a full lowercase Git SHA.\n' >&2
+            exit 1
+          }
+          [[ -z "${FORWARD_FIX_FROM_SHA}" || "${FORWARD_FIX_FROM_SHA}" != "${APPROVED_SHA}" ]] || {
+            printf 'forward_fix_from_sha must differ from approved_sha.\n' >&2
+            exit 1
+          }
           [[ "${CONFIRMATION}" == "deploy-production" ]] || {
             printf 'The production confirmation text is incorrect.\n' >&2
             exit 1
@@ -62,6 +75,7 @@ jobs:
       - name: Check out exact release candidate
         env:
           GITEA_TOKEN: ${{ github.token }}
+          FORWARD_FIX_FROM_SHA: ${{ inputs.forward_fix_from_sha }}
         run: |
           set -euo pipefail
           git init .
@@ -71,6 +85,10 @@ jobs:
             fetch --depth=1 origin "${{ github.sha }}"
           git checkout --detach FETCH_HEAD
           [[ "$(git rev-parse HEAD)" == "${{ inputs.approved_sha }}" ]]
+          if [[ -n "${FORWARD_FIX_FROM_SHA}" ]]; then
+            git fetch --unshallow origin main
+            git merge-base --is-ancestor "${FORWARD_FIX_FROM_SHA}" HEAD
+          fi
 
       - name: Require successful trusted main CI
         env:
@@ -146,6 +164,7 @@ jobs:
           AKB_RELEASE_REGISTRY_USER: ${{ github.actor }}
           AKB_RELEASE_REGISTRY_TOKEN: ${{ secrets.AKB_GITEA_PACKAGE_RW_TOKEN }}
           RELEASE_SHA: ${{ inputs.approved_sha }}
+          FORWARD_FIX_FROM_SHA: ${{ inputs.forward_fix_from_sha }}
         run: |
           set +x
           set -euo pipefail
@@ -216,7 +235,11 @@ jobs:
           "${ssh_command[@]}" "import ${RELEASE_SHA} ${archive_sha}" <"${archive}"
           unlink "${archive}"
 
-          start_output="$("${ssh_command[@]}" "deploy ${RELEASE_SHA}")"
+          deploy_command="deploy ${RELEASE_SHA}"
+          if [[ -n "${FORWARD_FIX_FROM_SHA}" ]]; then
+            deploy_command+=" ${FORWARD_FIX_FROM_SHA}"
+          fi
+          start_output="$("${ssh_command[@]}" "${deploy_command}")"
           operation_id="$(printf '%s\n' "${start_output}" | awk -F= '$1 == "operation_id" {print $2}')"
           [[ "${operation_id}" =~ ^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{12}-[0-9]+$ ]] || {
             printf 'Deployment gateway returned an invalid operation id.\n' >&2
