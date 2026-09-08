@@ -23,6 +23,14 @@ bundle is provisioned separately from the exact release manifest. The new env se
 application variables are technical compatibility keys and retain their
 documented semantics.
 
+Before the first promotion, build and load the repository's
+`services/platform-infrastructure/Dockerfile` for the production architecture
+as `akb/platform-status:docker-home`. The first immutable deployment verifies
+that this base image exists before burning its target SHA or stopping a writer.
+An explicit `PLATFORM_STATUS_IMAGE` in the protected production environment may
+select another pre-provisioned immutable reference. The release never builds
+this unmanaged infrastructure image after the mutation boundary.
+
 Install the reviewed forced-command gateway from the merged release before
 adding its deployment key. It defaults to `/srv/akb` and rejects conflicting
 `AKB_RELEASE_ROOT` and legacy `AKL_RELEASE_ROOT` values. On its first deploy it
