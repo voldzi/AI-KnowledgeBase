@@ -474,6 +474,8 @@ printf '%s\\n' "$*" >"$FAKE_RECOVERY_LOG"
         self.assertIn('deploy_command="deploy ${RELEASE_SHA}"', workflow)
         self.assertIn('deploy_command+=" ${FORWARD_FIX_FROM_SHA}"', workflow)
         self.assertIn('forward_fix_from_sha:', workflow)
+        self.assertIn('http.extraheader="Authorization: token ${GITEA_TOKEN}"', workflow)
+        self.assertIn('fetch --unshallow origin main', workflow)
         self.assertIn('--failed-sha "$FORWARD_FIX_FROM_SHA"', gateway)
         self.assertIn('--forward-fix-sha "$RELEASE_SHA"', gateway)
         self.assertLess(workflow.index("Require successful trusted main CI"), workflow.index("Build and publish immutable production images once"))

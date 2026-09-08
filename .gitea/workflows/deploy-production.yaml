@@ -86,7 +86,8 @@ jobs:
           git checkout --detach FETCH_HEAD
           [[ "$(git rev-parse HEAD)" == "${{ inputs.approved_sha }}" ]]
           if [[ -n "${FORWARD_FIX_FROM_SHA}" ]]; then
-            git fetch --unshallow origin main
+            git -c http.extraheader="Authorization: token ${GITEA_TOKEN}" \
+              fetch --unshallow origin main
             git merge-base --is-ancestor "${FORWARD_FIX_FROM_SHA}" HEAD
           fi
 
