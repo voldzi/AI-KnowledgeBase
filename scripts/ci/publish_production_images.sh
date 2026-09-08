@@ -6,6 +6,7 @@ owner="${AKB_RELEASE_REGISTRY_OWNER:-akb}"
 source_sha="${AKB_RELEASE_SOURCE_SHA:-}"
 output="${AKB_RELEASE_MANIFEST_OUTPUT:-akb-production-image-manifest.json}"
 platform="${AKB_RELEASE_PLATFORM:-linux/amd64}"
+build_jobs="${AKB_RELEASE_BUILD_JOBS:-4}"
 
 [[ "$registry" == "git.home.cz" && "$owner" == "akb" ]] \
   || { printf 'Production image registry is not approved.\n' >&2; exit 1; }
@@ -13,6 +14,8 @@ platform="${AKB_RELEASE_PLATFORM:-linux/amd64}"
   || { printf 'Production image source SHA is invalid.\n' >&2; exit 1; }
 [[ "$platform" == "linux/amd64" ]] \
   || { printf 'Production image platform must be linux/amd64.\n' >&2; exit 1; }
+[[ "$build_jobs" =~ ^[1-8]$ ]] \
+  || { printf 'AKB_RELEASE_BUILD_JOBS must be an integer from 1 to 8.\n' >&2; exit 1; }
 [[ -n "${AKB_RELEASE_REGISTRY_USER:-}" && -n "${AKB_RELEASE_REGISTRY_TOKEN:-}" ]] \
   || { printf 'Ephemeral registry credentials are required.\n' >&2; exit 1; }
 
@@ -32,21 +35,9 @@ printf '%s' "$AKB_RELEASE_REGISTRY_TOKEN" \
   | docker login "$registry" --username "$AKB_RELEASE_REGISTRY_USER" --password-stdin >/dev/null
 unset AKB_RELEASE_REGISTRY_TOKEN
 
-declare -A images
-current_service=""
-report_build_failure() {
-  local status="$?"
-  if [[ -n "$current_service" ]]; then
-    printf 'production_image_build_failed=%s exit=%s\n' "$current_service" "$status" >&2
-  fi
-  exit "$status"
-}
-trap report_build_failure ERR
-
 build_image() {
   local service="$1" context="$2" dockerfile="$3"
   shift 3
-  current_service="$service"
   printf 'production_image_build_start=%s\n' "$service"
   local target="$registry/$owner/akb-$service:$source_sha"
   if docker pull "$target" >/dev/null 2>&1; then
@@ -70,26 +61,50 @@ build_image() {
     | awk -v prefix="$registry/$owner/akb-$service@" 'index($0,prefix)==1 {print; exit}')"
   [[ "$resolved" =~ ^git\.home\.cz/akb/akb-[a-z0-9-]+@sha256:[a-f0-9]{64}$ ]] \
     || { printf 'Registry digest is invalid for %s.\n' "$service" >&2; exit 1; }
-  images["$service"]="$resolved"
+  printf '%s\n' "$resolved" >"$tmp_dir/$service"
   printf 'production_image_build_ready=%s digest=%s\n' "$service" "$resolved"
-  current_service=""
 }
 
-build_image registry-api services/registry-api services/registry-api/Dockerfile
-build_image ingestion-service services/ingestion-service services/ingestion-service/Dockerfile \
+declare -a build_pids=()
+declare -A build_services=()
+build_failed=0
+
+reap_build() {
+  local pid="$1" service="${build_services[$1]}"
+  if ! wait "$pid"; then
+    printf 'production_image_build_failed=%s\n' "$service" >&2
+    build_failed=1
+  fi
+}
+
+queue_build() {
+  local service="$1"
+  while (( ${#build_pids[@]} >= build_jobs )); do
+    reap_build "${build_pids[0]}"
+    build_pids=("${build_pids[@]:1}")
+  done
+  build_image "$@" &
+  local pid=$!
+  build_pids+=("$pid")
+  build_services["$pid"]="$service"
+}
+
+queue_build registry-api services/registry-api services/registry-api/Dockerfile
+queue_build ingestion-service services/ingestion-service services/ingestion-service/Dockerfile \
   --build-arg AKL_INSTALL_DOCLING=true
-build_image rag-retrieval-service services/rag-retrieval-service services/rag-retrieval-service/Dockerfile
-build_image evaluation-service services/evaluation-service services/evaluation-service/Dockerfile
-build_image governance-service services/governance-service services/governance-service/Dockerfile
-build_image llm-gateway-service services/llm-gateway-service services/llm-gateway-service/Dockerfile
-build_image web . apps/web/Dockerfile \
+queue_build rag-retrieval-service services/rag-retrieval-service services/rag-retrieval-service/Dockerfile
+queue_build evaluation-service services/evaluation-service services/evaluation-service/Dockerfile
+queue_build governance-service services/governance-service services/governance-service/Dockerfile
+queue_build llm-gateway-service services/llm-gateway-service services/llm-gateway-service/Dockerfile
+queue_build web . apps/web/Dockerfile \
   --build-arg AKL_IMAGE_SERVICE=web --build-arg NEXT_PUBLIC_AKL_BASE_PATH=/akb
-build_image chat-web . apps/web/Dockerfile \
+queue_build chat-web . apps/web/Dockerfile \
   --build-arg AKL_IMAGE_SERVICE=chat-web --build-arg NEXT_PUBLIC_AKL_BASE_PATH=
 
-for service in "${!images[@]}"; do
-  printf '%s\n' "${images[$service]}" >"$tmp_dir/$service"
+for pid in "${build_pids[@]}"; do
+  reap_build "$pid"
 done
+(( build_failed == 0 )) || exit 1
 python3 - "$tmp_dir" "$source_sha" "$source_date_epoch" "$platform" "$output" <<'PY'
 import hashlib, json, pathlib, sys
 root, source, epoch, platform, output = pathlib.Path(sys.argv[1]), sys.argv[2], int(sys.argv[3]), sys.argv[4], pathlib.Path(sys.argv[5])
