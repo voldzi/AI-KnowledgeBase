@@ -482,6 +482,14 @@ printf '%s\\n' "$*" >"$FAKE_RECOVERY_LOG"
         self.assertLess(workflow.index("Build and publish immutable production images once"), workflow.index('"import ${RELEASE_SHA} ${archive_sha}"'))
         self.assertLess(workflow.index('"import ${RELEASE_SHA} ${archive_sha}"'), workflow.index('deploy_command="deploy ${RELEASE_SHA}"'))
 
+    def test_first_activation_checks_platform_status_before_burning_sha(self) -> None:
+        deploy = (ROOT / "scripts/deploy_docker_home_release.sh").read_text()
+        preflight = 'docker image inspect "$PLATFORM_STATUS_IMAGE"'
+        burn = 'akl_burn_release_sha "$RELEASE_ROOT" "$TARGET_SHA" build_may_have_started'
+        self.assertIn('PLATFORM_STATUS_IMAGE="akb/platform-status:docker-home"', deploy)
+        self.assertIn(preflight, deploy)
+        self.assertLess(deploy.index(preflight), deploy.index(burn))
+
     def test_deploy_workflow_is_manual_and_uses_only_restricted_secrets(self) -> None:
         workflow = (ROOT / ".gitea/workflows/deploy-production.yaml").read_text(
             encoding="utf-8"
