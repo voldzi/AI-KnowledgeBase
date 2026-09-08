@@ -942,7 +942,9 @@ akl_assert_no_ambient_compose_overrides \
   "$COMPOSE_FILE" \
   AKL_SERVICE_VERSION \
   AKL_RELEASE_COMPOSE_PROJECT \
+  CADDY_IMAGE \
   PLATFORM_STATUS_IMAGE \
+  QDRANT_IMAGE \
   REGISTRY_API_IMAGE \
   INGESTION_SERVICE_IMAGE \
   RAG_RETRIEVAL_SERVICE_IMAGE \
@@ -1410,8 +1412,22 @@ if [[ "$DIRECTOR_COPILOT_ENABLED" == "true" ]]; then
   fi
 fi
 if [[ -z "$current_sha" ]]; then
-  docker image inspect "$PLATFORM_STATUS_IMAGE" >/dev/null 2>&1 \
-    || akl_fail "First immutable activation requires the provisioned platform-status image: $PLATFORM_STATUS_IMAGE"
+  infrastructure_image_count=0
+  while IFS= read -r required_image; do
+    [[ -n "$required_image" ]] || continue
+    case "$required_image" in
+      "$REGISTRY_API_IMAGE"|"$INGESTION_SERVICE_IMAGE"|"$RAG_RETRIEVAL_SERVICE_IMAGE"|\
+      "$EVALUATION_SERVICE_IMAGE"|"$GOVERNANCE_SERVICE_IMAGE"|"$WEB_IMAGE"|\
+      "$CHAT_WEB_IMAGE"|"$LLM_GATEWAY_SERVICE_IMAGE")
+        continue
+        ;;
+    esac
+    infrastructure_image_count=$((infrastructure_image_count + 1))
+    docker image inspect "$required_image" >/dev/null 2>&1 \
+      || akl_fail "First immutable activation requires the provisioned infrastructure image: $required_image"
+  done < <("${COMPOSE[@]}" config --images)
+  (( infrastructure_image_count > 0 )) \
+    || akl_fail "First immutable activation did not resolve any infrastructure images"
 fi
 if ! akl_assert_release_sha_not_burned "$RELEASE_ROOT" "$TARGET_SHA"; then
   TARGET_BUILD_MAY_HAVE_STARTED="true"

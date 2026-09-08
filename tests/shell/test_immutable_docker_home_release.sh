@@ -121,6 +121,8 @@ FAKE_POSTGRES_TOOL_IMAGE="postgres:17-alpine@sha256:$(printf 'a%.0s' {1..64})"
 FAKE_POSTGRES_TOOL_IMAGE_ID="sha256:$(printf 'b%.0s' {1..64})"
 FAKE_POSTGRES_TOOL_REPO_DIGEST="postgres@sha256:$(printf 'a%.0s' {1..64})"
 FAKE_PLATFORM_STATUS_IMAGE="akb/platform-status:docker-home"
+FAKE_CADDY_IMAGE="caddy:2.11.4-alpine@sha256:$(printf 'c%.0s' {1..64})"
+FAKE_QDRANT_IMAGE="qdrant/qdrant:v1.19.1@sha256:$(printf 'd%.0s' {1..64})"
 AKL_RELEASE_ROOT="${TMP_ROOT}/srv/akl"
 AKL_PROD_ENV_FILE="${AKL_RELEASE_ROOT}/env/akl.prod.env"
 FAKE_PERSISTENT_ENV_FILE="$AKL_PROD_ENV_FILE"
@@ -130,7 +132,8 @@ RAG_REGISTRY_CLIENT_SECRET_FILE="${AKL_RELEASE_ROOT}/env/akb-rag-service.client-
 WEB_INGESTION_CLIENT_SECRET_FILE="${AKL_RELEASE_ROOT}/env/svc-akb-web-ingestion.client-secret"
 DIRECTOR_COPILOT_CLIENT_SECRET_FILE="${AKL_RELEASE_ROOT}/env/svc-akb-director-copilot.client-secret"
 export CALL_LOG FAKE_ALEMBIC_STATE FAKE_WEB_STATE FAKE_RUNTIME_DIR
-export FAKE_POSTGRES_TOOL_IMAGE FAKE_POSTGRES_TOOL_IMAGE_ID FAKE_POSTGRES_TOOL_REPO_DIGEST FAKE_PLATFORM_STATUS_IMAGE REAL_PYTHON3
+export FAKE_POSTGRES_TOOL_IMAGE FAKE_POSTGRES_TOOL_IMAGE_ID FAKE_POSTGRES_TOOL_REPO_DIGEST
+export FAKE_PLATFORM_STATUS_IMAGE FAKE_CADDY_IMAGE FAKE_QDRANT_IMAGE REAL_PYTHON3
 export AKL_RELEASE_ROOT AKL_PROD_ENV_FILE FAKE_PERSISTENT_ENV_FILE
 export AKL_RELEASE_VERIFY_ATTEMPTS=1
 export AKL_RELEASE_VERIFY_DELAY_SECONDS=0
@@ -394,8 +397,8 @@ if [[ "${1-}" == "image" && "${2-}" == "inspect" ]]; then
     shift 2
   fi
   ref="${1-}"
-  if [[ "$ref" == "$FAKE_PLATFORM_STATUS_IMAGE" ]]; then
-    [[ "${FAKE_PLATFORM_STATUS_IMAGE_MISSING:-false}" != "true" ]] || exit 1
+  if [[ "$ref" == "$FAKE_PLATFORM_STATUS_IMAGE" || "$ref" == "$FAKE_CADDY_IMAGE" || "$ref" == "$FAKE_QDRANT_IMAGE" ]]; then
+    [[ "${FAKE_INFRASTRUCTURE_IMAGE_MISSING:-}" != "$ref" ]] || exit 1
     [[ -z "$format" ]] || exit 90
     printf '{}\n'
     exit 0
@@ -926,7 +929,24 @@ command_name="${1-}"
 shift || true
 case "$command_name" in
   config)
-    [[ "${1-}" == "--quiet" ]]
+    if [[ "${1-}" == "--quiet" ]]; then
+      :
+    elif [[ "${1-}" == "--images" ]]; then
+      printf '%s\n' \
+        "$FAKE_CADDY_IMAGE" \
+        "$FAKE_PLATFORM_STATUS_IMAGE" \
+        "akb/web:${AKL_SERVICE_VERSION}" \
+        "akb/chat-web:${AKL_SERVICE_VERSION}" \
+        "akb/registry-api:${AKL_SERVICE_VERSION}" \
+        "akb/ingestion-service:${AKL_SERVICE_VERSION}" \
+        "akb/rag-retrieval-service:${AKL_SERVICE_VERSION}" \
+        "akb/llm-gateway-service:${AKL_SERVICE_VERSION}" \
+        "akb/evaluation-service:${AKL_SERVICE_VERSION}" \
+        "akb/governance-service:${AKL_SERVICE_VERSION}" \
+        "$FAKE_QDRANT_IMAGE"
+    else
+      exit 95
+    fi
     ;;
   build)
     [[ "${SOURCE_DATE_EPOCH:-}" =~ ^[1-9][0-9]*$ ]] || {
@@ -1671,16 +1691,16 @@ git -C "$WORK_REPO" commit --quiet -m 'retry after backup durability failure'
 SHA_ONE="$(git -C "$WORK_REPO" rev-parse HEAD)"
 git -C "$WORK_REPO" push --quiet origin main
 
-printf 'MARK first-immutable-platform-status-missing\n' >>"$CALL_LOG"
-if FAKE_PLATFORM_STATUS_IMAGE_MISSING=true \
+printf 'MARK first-immutable-infrastructure-image-missing\n' >>"$CALL_LOG"
+if FAKE_INFRASTRUCTURE_IMAGE_MISSING="$FAKE_QDRANT_IMAGE" \
   "$SOURCE_ROOT/scripts/deploy_docker_home_release.sh" --sha "$SHA_ONE"; then
-  fail 'first immutable rollout continued without the provisioned platform-status image'
+  fail 'first immutable rollout continued without every provisioned infrastructure image'
 fi
 [[ ! -e "${AKL_RELEASE_ROOT}/state/burned-shas/${SHA_ONE}" ]] \
-  || fail 'missing platform-status image burned the candidate SHA'
-platform_missing_log="$(awk '/^MARK first-immutable-platform-status-missing$/ {capture=1; next} capture' "$CALL_LOG")"
-if grep -q '^compose:build:' <<<"$platform_missing_log"; then
-  fail 'missing platform-status image was detected only after the target build started'
+  || fail 'missing infrastructure image burned the candidate SHA'
+infrastructure_missing_log="$(awk '/^MARK first-immutable-infrastructure-image-missing$/ {capture=1; next} capture' "$CALL_LOG")"
+if grep -q '^compose:build:' <<<"$infrastructure_missing_log"; then
+  fail 'missing infrastructure image was detected only after the target build started'
 fi
 
 LEGACY_FAILED_SHA="$SHA_ONE"
