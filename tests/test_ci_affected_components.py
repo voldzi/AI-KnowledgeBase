@@ -43,6 +43,11 @@ class AffectedComponentsTests(unittest.TestCase):
             },
         )
 
+    def test_fast_web_deployer_is_repository_only(self) -> None:
+        path = "scripts/fast_deploy_docker_home_web.sh"
+        self.assertEqual(impact_profile([path]), "repository-only")
+        self.assertFalse(any(plan_paths([path]).as_dict().values()))
+
     def test_web_change_selects_only_web(self) -> None:
         plan = plan_paths(["apps/web/src/app/api/auth/login/route.ts"])
         self.assertTrue(plan.web)

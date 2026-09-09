@@ -79,6 +79,8 @@ def _impact_owner(raw_path: str) -> str | None:
         "scripts/ci/publish_production_images.sh",
     }:
         return "immutable_release"
+    if path == "scripts/fast_deploy_docker_home_web.sh":
+        return "ci"
     if (
         path.startswith(".gitea/workflows/")
         or path.startswith("scripts/ci/")

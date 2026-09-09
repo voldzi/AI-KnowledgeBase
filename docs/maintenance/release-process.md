@@ -170,6 +170,24 @@ This is an early feedback layer, not a release approval. The final candidate
 still runs on the repo-scoped VM125 runner, where the Linux/amd64 toolchain and
 persistent caches match the production build environment.
 
+During the pre-pilot development phase, a change confined to `apps/web/` can
+use the operator-invoked fast path after it has reached `origin/main`:
+
+```bash
+AKB_FAST_SSH_HOSTNAME=192.168.10.116 \
+  bash scripts/fast_deploy_docker_home_web.sh "$(git rev-parse HEAD)"
+```
+
+The helper compares the candidate with the SHA currently running in the web
+container and rejects every runtime path outside `apps/web/`. It runs the web
+tests and type check concurrently, builds the exact two Linux/amd64 production
+web images concurrently, transfers only those images, and recreates only
+`web` and `chat-web`. Both containers must become healthy and the public health
+and readiness endpoints must pass. Any activation failure restores the exact
+previous image IDs. The immutable release pointer is deliberately unchanged;
+run the formal release before pilot acceptance to reconcile the complete stack
+and preserve the normal audit, migration, backup, and rollback gates.
+
 Trusted CI also retains the version-pinned OpenAPI linter and content-addressed
 Python test environments. Each Python cache key binds the interpreter and the
 exact hash-locked dependency file. A missing, changed, open or unhashed lock
