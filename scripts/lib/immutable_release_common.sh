@@ -577,9 +577,14 @@ def normalize_one_time_central_opensearch_platform_status(value: str) -> str:
     return value.replace(",opensearch=http://opensearch:9200", "")
 
 
+def normalize_one_time_external_qdrant_platform_status(value: str) -> str:
+    return value.replace(",qdrant=http://qdrant:6333/readyz", "")
+
+
 removed = set(current_services) - set(target_services)
 added = set(target_services) - set(current_services)
 central_opensearch_cutover = removed == {"opensearch"} and not added
+external_qdrant_cutover = removed == {"qdrant"} and not added
 docling_sidecar_transition = (
     (added == {DOCLING_SIDECAR} and not removed)
     or (removed == {DOCLING_SIDECAR} and not added)
@@ -615,7 +620,12 @@ if current_services.keys() != target_services.keys():
         {"llm-gateway-service"},
         {DOCLING_SIDECAR},
     ) and not removed
-    if not central_opensearch_cutover and not docling_sidecar_transition and not allowed_single_addition:
+    if (
+        not central_opensearch_cutover
+        and not external_qdrant_cutover
+        and not docling_sidecar_transition
+        and not allowed_single_addition
+    ):
         raise SystemExit("shared production Compose change adds or removes an unsupported service")
 
 changed = []
@@ -628,11 +638,19 @@ for name, target_block in target_services.items():
         current_block = normalize_one_time_central_opensearch_platform_status(
             current_block
         )
+    if external_qdrant_cutover and name == "platform-status":
+        current_block = normalize_one_time_external_qdrant_platform_status(
+            current_block
+        )
     if current_block != target_block:
         changed.append("ingestion-service" if name == DOCLING_SIDECAR else name)
 if DOCLING_SIDECAR in removed and "ingestion-service" not in changed:
     changed.append("ingestion-service")
 if central_opensearch_cutover:
+    for service in ("ingestion-service", "rag-retrieval-service"):
+        if service not in changed:
+            changed.append(service)
+if external_qdrant_cutover:
     for service in ("ingestion-service", "rag-retrieval-service"):
         if service not in changed:
             changed.append(service)
