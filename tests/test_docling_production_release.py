@@ -202,9 +202,9 @@ class DoclingProductionReleaseTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("  docling-worker:\n", compose)
         self.assertEqual(
-            deploy.count("AKL_IMMUTABLE_MANAGED_BOUNDARY_REVISION=5"), 1
+            deploy.count("AKL_IMMUTABLE_MANAGED_BOUNDARY_REVISION=6"), 1
         )
-        self.assertNotIn("AKL_IMMUTABLE_MANAGED_BOUNDARY_REVISION=4", deploy)
+        self.assertNotIn("AKL_IMMUTABLE_MANAGED_BOUNDARY_REVISION=5", deploy)
 
     def test_release_derives_registry_build_epoch_from_exact_target(self) -> None:
         deploy = (ROOT / "scripts/deploy_docker_home_release.sh").read_text(
