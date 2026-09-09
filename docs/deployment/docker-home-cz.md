@@ -324,9 +324,20 @@ AKL_INGESTION_DOCLING_SOCKET_PATH=/run/akb-docling/worker.sock
 AKL_INGESTION_DOCLING_ARTIFACTS_SOURCE_DIR=/srv/akl/models/docling-standard-<digest-prefix>
 AKL_INGESTION_DOCLING_ARTIFACTS_SHA256=sha256:<canonical-bundle-digest>
 AKL_QDRANT_COLLECTION=akl_document_chunks
+AKL_QDRANT_BASE_URL=https://qdrant.internal.example
+AKL_QDRANT_API_KEY_FILE=/run/secrets/akb-qdrant-api-key
+AKL_QDRANT_API_KEY_SOURCE_FILE=/srv/akb/env/qdrant-api-key
+AKL_QDRANT_CA_FILE=/run/secrets/akb-qdrant-ca.pem
+AKL_QDRANT_CA_SOURCE_FILE=/srv/akb/env/qdrant-ca.pem
 AKL_OPENSEARCH_BASE_URL=https://opensearch.home.cz:9200
 AKL_OPENSEARCH_INDEX=akl_document_chunks
 ```
+
+Produkce nespouští lokální Qdrant kontejner. Ingestion i retrieval používají
+uvedený externí endpoint a čtou společný API klíč z operátorem vlastněného
+souboru s režimem `0600`. Důvěra v dedikovanou Qdrant CA se předává odděleným
+read-only souborem a používá se pouze pro Qdrant klienty. Endpoint musí používat TLS, být dostupný před
+nasazením a obsahovat prázdné nebo s embedding profilem kompatibilní kolekce.
 
 `docling-worker` používá stejný immutable image jako `ingestion-service`, ale
 běží bez sítě, tajných údajů a datových volume. Modelový balík se před

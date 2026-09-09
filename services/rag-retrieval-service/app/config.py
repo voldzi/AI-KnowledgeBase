@@ -189,6 +189,8 @@ class Settings:
     registry_service_client_id: str | None
     registry_service_client_secret: str | None
     qdrant_base_url: str
+    qdrant_api_key: str | None
+    qdrant_ca_file: Path | None
     qdrant_collection: str
     opensearch_base_url: str
     opensearch_index: str
@@ -578,6 +580,12 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
             "AKL_REGISTRY_SERVICE_CLIENT_SECRET_FILE",
         ),
         qdrant_base_url=_get(source, "AKL_QDRANT_BASE_URL", "http://localhost:6333").rstrip("/"),
+        qdrant_api_key=_file_preferred_secret_value(
+            source,
+            "AKL_QDRANT_API_KEY",
+            "AKL_QDRANT_API_KEY_FILE",
+        ),
+        qdrant_ca_file=_optional_readable_file(source, "AKL_QDRANT_CA_FILE"),
         qdrant_collection=_get(source, "AKL_QDRANT_COLLECTION", "akl_document_chunks"),
         opensearch_base_url=opensearch_base_url,
         opensearch_index=_get(source, "AKL_OPENSEARCH_INDEX", "akl_document_chunks"),

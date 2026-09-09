@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import ssl
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -30,7 +31,7 @@ class QdrantIndexer:
         if self.settings.indexer_mode == "mock":
             return "mock"
         try:
-            async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
+            async with self._client() as client:
                 response = await client.get(f"{self.settings.qdrant_base_url}/readyz", headers=self._headers())
                 if response.status_code == 404:
                     response = await client.get(f"{self.settings.qdrant_base_url}/", headers=self._headers())
@@ -150,7 +151,7 @@ class QdrantIndexer:
 
     async def _ensure_v2_collection(self, vector_size: int) -> None:
         collection = self.settings.qdrant_v2_collection
-        async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
+        async with self._client() as client:
             response = await client.get(
                 f"{self.settings.qdrant_base_url}/collections/{collection}",
                 headers=self._headers(),
@@ -227,7 +228,7 @@ class QdrantIndexer:
         )
 
     async def _ensure_collection(self, vector_size: int) -> None:
-        async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
+        async with self._client() as client:
             response = await client.get(
                 f"{self.settings.qdrant_base_url}/collections/{self.settings.qdrant_collection}",
                 headers=self._headers(),
@@ -291,7 +292,7 @@ class QdrantIndexer:
         retrieval falls back to a full collection scan (slower, still correct).
         Index creation is non-fatal: a warning is logged but indexing continues.
         """
-        async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
+        async with self._client() as client:
             response = await client.put(
                 f"{self.settings.qdrant_base_url}/collections/{self.settings.qdrant_collection}/index",
                 headers=self._headers(),
@@ -312,7 +313,7 @@ class QdrantIndexer:
                 response.status_code,
                 response.text,
             )
-        async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
+        async with self._client() as client:
             index_response = await client.put(
                 f"{self.settings.qdrant_base_url}/collections/{self.settings.qdrant_collection}/index",
                 headers=self._headers(),
@@ -345,7 +346,7 @@ class QdrantIndexer:
             "policy_summary.audience.recipientSubjectIds",
             "policy_summary.obligations",
         ):
-            async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
+            async with self._client() as client:
                 policy_response = await client.put(
                     f"{self.settings.qdrant_base_url}/collections/{self.settings.qdrant_collection}/index",
                     headers=self._headers(),
@@ -369,7 +370,7 @@ class QdrantIndexer:
                 ]
             }
         }
-        async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
+        async with self._client() as client:
             response = await client.post(
                 f"{self.settings.qdrant_base_url}/collections/{collection}/points/delete",
                 params={"wait": "true"},
@@ -388,7 +389,7 @@ class QdrantIndexer:
         await self._upsert_points_to(self.settings.qdrant_collection, points)
 
     async def _upsert_points_to(self, collection: str, points: list[dict[str, Any]]) -> None:
-        async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
+        async with self._client() as client:
             response = await client.put(
                 f"{self.settings.qdrant_base_url}/collections/{collection}/points",
                 params={"wait": "true"},
@@ -460,6 +461,15 @@ class QdrantIndexer:
         if not self.settings.qdrant_api_key:
             return {}
         return {"api-key": self.settings.qdrant_api_key}
+
+    def _client(self) -> httpx.AsyncClient:
+        verify: ssl.SSLContext | bool = True
+        if self.settings.qdrant_ca_file is not None:
+            verify = ssl.create_default_context(cafile=str(self.settings.qdrant_ca_file))
+        return httpx.AsyncClient(
+            timeout=self.settings.request_timeout_seconds,
+            verify=verify,
+        )
 
 
 def _collection_vector_config(data: dict[str, Any]) -> tuple[int | None, str | None]:

@@ -574,7 +574,8 @@ def test_get_context_chunks_returns_coordinates_for_authorization(monkeypatch) -
         sparse_score=0.9,
     )
 
-    async def fake_scroll(*, dependency, settings, method, url, json_body=None, auth_context=None, prefer_upstream_token=False):
+    async def fake_scroll(*, dependency, settings, method, url, json_body=None, auth_context=None, prefer_upstream_token=False, bearer_token_override=None, verify=True):
+        assert bearer_token_override is None
         assert "scroll" in url
         return {
             "result": {
@@ -632,7 +633,8 @@ def test_get_context_chunks_uses_requested_context_window(monkeypatch) -> None:
         sparse_score=0.9,
     )
 
-    async def fake_scroll(*, dependency, settings, method, url, json_body=None, auth_context=None, prefer_upstream_token=False):
+    async def fake_scroll(*, dependency, settings, method, url, json_body=None, auth_context=None, prefer_upstream_token=False, bearer_token_override=None, verify=True):
+        assert bearer_token_override is None
         range_filter = json_body["filter"]["must"][1]["range"]
         assert range_filter == {"gte": 3, "lte": 7}
         return {

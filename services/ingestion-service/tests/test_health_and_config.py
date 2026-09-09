@@ -34,6 +34,30 @@ def test_default_file_limit_covers_trusted_budget_upload_boundary(tmp_path) -> N
     assert settings.max_file_bytes == 100 * 1024 * 1024
 
 
+def test_qdrant_api_key_prefers_secret_file(tmp_path) -> None:
+    secret_file = tmp_path / "qdrant-api-key"
+    secret_file.write_text("qdrant-secret\n")
+    ca_file = tmp_path / "qdrant-ca.pem"
+    ca_file.write_text("test-ca\n")
+    settings = load_settings(
+        {
+            "AKL_ENV": "test",
+            "AKL_AUTH_MODE": "mock",
+            "AKL_INGESTION_REGISTRY_CLIENT_MODE": "mock",
+            "AKL_INGESTION_OBJECT_STORAGE_MODE": "local",
+            "AKL_OBJECT_STORAGE_ROOT": str(tmp_path / "objects"),
+            "AKL_INGESTION_EMBEDDING_CLIENT_MODE": "mock",
+            "AKL_INGESTION_INDEXER_MODE": "mock",
+            "AKL_QDRANT_API_KEY": "ignored-direct-value",
+            "AKL_QDRANT_API_KEY_FILE": str(secret_file),
+            "AKL_QDRANT_CA_FILE": str(ca_file),
+        }
+    )
+
+    assert settings.qdrant_api_key == "qdrant-secret"
+    assert settings.qdrant_ca_file == ca_file
+
+
 def test_ready_returns_503_when_registry_service_identity_is_unavailable(
     tmp_path,
     monkeypatch,
