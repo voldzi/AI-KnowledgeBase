@@ -24,6 +24,17 @@ export interface DirectorCopilotConfig {
   managedClients?: Record<"budget-api" | "projectflow-api" | "archflow-api", ManagedServiceClient>;
 }
 
+export interface OfficialSourceAutomationConfig {
+  enabled: boolean;
+  tokenUrl?: string;
+  clientId: string;
+  audience: string;
+  clientSecret?: string;
+  clientSecretFile?: string;
+  internalSecret?: string;
+  internalSecretFile?: string;
+}
+
 export interface AklConfig {
   environment: AklEnvironment;
   apiClientMode: ApiClientMode;
@@ -69,6 +80,7 @@ export interface AklConfig {
     serviceToken: string;
   };
   directorCopilot?: DirectorCopilotConfig;
+  officialSourceAutomation?: OfficialSourceAutomationConfig;
   devAccessToken?: string;
 }
 
@@ -434,6 +446,53 @@ export function getAklConfig(env: EnvSource = process.env): AklConfig {
     }
   }
 
+  const officialSourceAutomationEnabled = strictBoolean(
+    env.AKB_OFFICIAL_SOURCE_AUTOMATION_ENABLED,
+    false,
+    "AKB_OFFICIAL_SOURCE_AUTOMATION_ENABLED",
+  );
+  const officialSourceAutomation: OfficialSourceAutomationConfig = {
+    enabled: officialSourceAutomationEnabled,
+    tokenUrl: env.AKB_OFFICIAL_SOURCE_TOKEN_URL?.replace(/\/+$/, "") || undefined,
+    clientId: env.AKB_OFFICIAL_SOURCE_CLIENT_ID || "svc-akb-official-source-sync",
+    audience: env.AKB_OFFICIAL_SOURCE_OIDC_AUDIENCE || "stratos-official-sources",
+    clientSecret: env.AKB_OFFICIAL_SOURCE_CLIENT_SECRET || undefined,
+    clientSecretFile: env.AKB_OFFICIAL_SOURCE_CLIENT_SECRET_FILE || undefined,
+    internalSecret: env.AKB_OFFICIAL_SOURCE_INTERNAL_SECRET || undefined,
+    internalSecretFile: env.AKB_OFFICIAL_SOURCE_INTERNAL_SECRET_FILE || undefined,
+  };
+  if (officialSourceAutomation.clientSecret && officialSourceAutomation.clientSecretFile) {
+    throw new Error("Configure only one AKB official-source client secret source");
+  }
+  if (officialSourceAutomation.internalSecret && officialSourceAutomation.internalSecretFile) {
+    throw new Error("Configure only one AKB official-source internal secret source");
+  }
+  if (officialSourceAutomation.enabled) {
+    if (authMode !== "oidc" || !officialSourceAutomation.tokenUrl) {
+      throw new Error("AKB official-source automation requires OIDC and a token URL");
+    }
+    if (!officialSourceAutomation.clientSecret && !officialSourceAutomation.clientSecretFile) {
+      throw new Error("AKB official-source automation requires a client credential");
+    }
+    if (!officialSourceAutomation.internalSecret && !officialSourceAutomation.internalSecretFile) {
+      throw new Error("AKB official-source automation requires an internal trigger secret");
+    }
+    if (environment === "production") {
+      if (officialSourceAutomation.clientId !== "svc-akb-official-source-sync") {
+        throw new Error("Production official-source automation requires the dedicated service client");
+      }
+      if (officialSourceAutomation.audience !== "stratos-official-sources") {
+        throw new Error("Production official-source automation requires the dedicated audience");
+      }
+      if (!officialSourceAutomation.tokenUrl.startsWith("https://")) {
+        throw new Error("Production official-source token URL must use HTTPS");
+      }
+      if (!officialSourceAutomation.clientSecretFile || !officialSourceAutomation.internalSecretFile) {
+        throw new Error("Production official-source automation requires file-backed secrets");
+      }
+    }
+  }
+
   return {
     environment,
     apiClientMode,
@@ -449,6 +508,7 @@ export function getAklConfig(env: EnvSource = process.env): AklConfig {
     ingestionTransport,
     governanceTransport,
     directorCopilot,
+    officialSourceAutomation,
     devAccessToken: env.AKL_DEV_ACCESS_TOKEN || undefined
   };
 }

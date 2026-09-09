@@ -272,6 +272,22 @@ file signatures and SHA-256 version identity. It never creates an anonymous
 publication record. Details are in
 `docs/ingestion/official-public-sources.md`.
 
+Unattended synchronization uses the dedicated confidential client
+`svc-akb-official-source-sync`. AKB verifies the token subject, exact matching
+`client_id` and `azp`, technical service-account username, and the exact
+unordered audience set `stratos-official-sources` plus `akl-api`. STRATOS
+permits that client only for a centrally
+approved collection and its allowlisted proposals. No human bearer, generic
+service role or different service client is accepted. A separate random
+internal secret protects the worker-to-web hop; it is never used as a policy
+credential. Both credentials are file-backed in production and their values
+must not be logged.
+
+Registry additionally requires exactly `authz|documents-read|documents-write|ingestion-status`.
+Every service document operation rechecks the complete official-source marker,
+`collection_id=czech-law`, `TLP:CLEAR`, organization audience and the current
+STRATOS policy decision. The account cannot operate on another AKB document.
+
 For these strictly marked official references only, an active authenticated
 employee with `akb:chat` and the `public` chat scope may perform `rag.query`
 over an exact valid indexed version. This does not grant Registry document

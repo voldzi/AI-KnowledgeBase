@@ -1,0 +1,115 @@
+{
+  "schemaVersion": "stratos-czech-law-pilot-1",
+  "collectionId": "czech-law",
+  "revision": "1",
+  "displayName": "České zákony — e-Sbírka",
+  "authorityDisplayName": "Ministerstvo vnitra České republiky — e-Sbírka",
+  "authorityReference": "authority:cz-mv-esbirka",
+  "authorityEvidenceUrl": "https://portal.gov.cz/sluzby-vs/esbirka-S66167",
+  "ownerEmail": "jiri.volek@voldzi.cz",
+  "tlp": "TLP:CLEAR",
+  "audience": {
+    "organizationId": "org_stratos",
+    "scopeType": "organization",
+    "scopeIds": [],
+    "recipientSubjectIds": []
+  },
+  "allowedUrlPrefixes": [
+    "https://e-sbirka.gov.cz/sb/"
+  ],
+  "profile": {
+    "id": "akb.official-public-reference",
+    "revision": "1"
+  },
+  "documentType": "regulation",
+  "sourceKind": "regulation",
+  "reviewAt": "2027-09-09",
+  "reviewRuleLabel": "Při změně zdroje a nejpozději 9. 9. 2027; každé znění se ověřuje proti oficiálním metadatům e-Sbírky.",
+  "lifecycleNote": "Versioned regulation URLs and their effective intervals are authorized from fresh bounded e-Sbírka JSON-LD má-znění metadata for the exact allowlisted act. Caller dates never establish legal effectivity. Binary document contents remain exclusively in AKB.",
+  "sources": [
+    {
+      "canonicalUrl": "https://e-sbirka.gov.cz/sb/2012/89",
+      "title": "89/2012 Sb. – Občanský zákoník",
+      "year": 2012,
+      "number": "89",
+      "firstEffectiveFrom": "2014-01-01",
+      "firstEffectiveEvidenceUrl": "https://www.psp.cz/sqw/sbirka.sqw?cz=89&r=2012"
+    },
+    {
+      "canonicalUrl": "https://e-sbirka.gov.cz/sb/2012/90",
+      "title": "90/2012 Sb. – Zákon o obchodních korporacích",
+      "year": 2012,
+      "number": "90",
+      "firstEffectiveFrom": "2014-01-01",
+      "firstEffectiveEvidenceUrl": "https://www.psp.cz/sqw/sbirka.sqw?cz=90&r=2012"
+    },
+    {
+      "canonicalUrl": "https://e-sbirka.gov.cz/sb/2006/262",
+      "title": "262/2006 Sb. – Zákoník práce",
+      "year": 2006,
+      "number": "262",
+      "firstEffectiveFrom": "2007-01-01",
+      "firstEffectiveEvidenceUrl": "https://www.psp.cz/sqw/sbirka.sqw?cz=262&r=2006"
+    },
+    {
+      "canonicalUrl": "https://e-sbirka.gov.cz/sb/2004/500",
+      "title": "500/2004 Sb. – Zákon správní řád",
+      "year": 2004,
+      "number": "500",
+      "firstEffectiveFrom": "2006-01-01",
+      "firstEffectiveEvidenceUrl": "https://www.psp.cz/sqw/sbirka.sqw?cz=500&r=2004"
+    },
+    {
+      "canonicalUrl": "https://e-sbirka.gov.cz/sb/1999/106",
+      "title": "106/1999 Sb. – Zákon o svobodném přístupu k informacím",
+      "year": 1999,
+      "number": "106",
+      "firstEffectiveFrom": "2000-01-01",
+      "firstEffectiveEvidenceUrl": "https://www.psp.cz/sqw/sbirka.sqw?cz=106&r=1999"
+    },
+    {
+      "canonicalUrl": "https://e-sbirka.gov.cz/sb/2016/134",
+      "title": "134/2016 Sb. – Zákon o zadávání veřejných zakázek",
+      "year": 2016,
+      "number": "134",
+      "firstEffectiveFrom": "2016-10-01",
+      "firstEffectiveEvidenceUrl": "https://www.psp.cz/sqw/sbirka.sqw?cz=134&r=2016"
+    },
+    {
+      "canonicalUrl": "https://e-sbirka.gov.cz/sb/2000/218",
+      "title": "218/2000 Sb. – Zákon o rozpočtových pravidlech a o změně některých souvisejících zákonů (rozpočtová pravidla)",
+      "year": 2000,
+      "number": "218",
+      "firstEffectiveFrom": "2001-01-01",
+      "firstEffectiveEvidenceUrl": "https://www.psp.cz/sqw/sbirka.sqw?cz=218&r=2000"
+    },
+    {
+      "canonicalUrl": "https://e-sbirka.gov.cz/sb/2000/250",
+      "title": "250/2000 Sb. – Zákon o rozpočtových pravidlech územních rozpočtů",
+      "year": 2000,
+      "number": "250",
+      "firstEffectiveFrom": "2001-01-01",
+      "firstEffectiveEvidenceUrl": "https://www.psp.cz/sqw/sbirka.sqw?cz=250&r=2000"
+    },
+    {
+      "canonicalUrl": "https://e-sbirka.gov.cz/sb/1991/563",
+      "title": "563/1991 Sb. – Zákon o účetnictví",
+      "year": 1991,
+      "number": "563",
+      "firstEffectiveFrom": "1992-01-01",
+      "firstEffectiveEvidenceUrl": "https://www.psp.cz/sqw/sbirka.sqw?cz=563&r=1991"
+    },
+    {
+      "canonicalUrl": "https://e-sbirka.gov.cz/sb/2015/340",
+      "title": "340/2015 Sb. – Zákon o zvláštních podmínkách účinnosti některých smluv, uveřejňování těchto smluv a o registru smluv (zákon o registru smluv)",
+      "year": 2015,
+      "number": "340",
+      "firstEffectiveFrom": "2016-07-01",
+      "firstEffectiveEvidenceUrl": "https://www.psp.cz/sqw/sbirka.sqw?cz=340&r=2015"
+    }
+  ],
+  "versionEvidencePolicy": {
+    "schemaVersion": "stratos-official-source-version-evidence-policy-1",
+    "resolver": "esbirka-eli-1"
+  }
+}

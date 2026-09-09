@@ -13,7 +13,51 @@ describe("AKL web config", () => {
     assert.equal(config.webProfile, "platform");
     assert.equal(config.directorCopilot?.enabled, false);
     assert.equal(config.directorCopilot?.clientId, "svc-akb-director-copilot");
+    assert.equal(config.officialSourceAutomation?.enabled, false);
+    assert.equal(config.officialSourceAutomation?.audience, "stratos-official-sources");
     assert.equal(config.ragAssistantTimeoutMs, 45_000);
+  });
+
+  it("requires dedicated file-backed credentials for production official-source automation", () => {
+    const base = {
+      AKL_ENV: "production",
+      AKL_API_CLIENT_MODE: "production",
+      AKL_AUTH_MODE: "oidc",
+      AKL_WEB_PROFILE: "chat",
+      AKL_REGISTRY_API_BASE_URL: "http://registry-api:8000/api/v1",
+      AKL_INGESTION_API_BASE_URL: "http://ingestion-service:8090/api/v1",
+      AKL_RAG_API_BASE_URL: "http://rag-retrieval-service:8080/api/v1",
+      AKL_GOVERNANCE_API_BASE_URL: "http://governance-service:8080/api/v1",
+      AKL_EVALUATION_API_BASE_URL: "http://evaluation-service:8080/api/v1",
+      AKL_WEB_OIDC_ISSUER: "https://login.local/realms/stratos",
+      AKL_WEB_OIDC_CLIENT_ID: "akb-chat-web",
+      AKL_WEB_PUBLIC_BASE_URL: "https://chat.local",
+      AKL_WEB_SESSION_SECRET: "separate-chat-session-secret",
+      AKL_WEB_SESSION_ENCRYPTION_KEY_FILE: "/run/secrets/web-session-encryption-key",
+      AKL_WEB_SESSION_STORE_SECRET_FILE: "/run/secrets/web-session-store-secret",
+      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.local/api/v1/auth/me",
+      AKB_OFFICIAL_SOURCE_AUTOMATION_ENABLED: "true",
+      AKB_OFFICIAL_SOURCE_TOKEN_URL: "https://login.local/token",
+      AKB_OFFICIAL_SOURCE_CLIENT_ID: "svc-akb-official-source-sync",
+    };
+    assert.throws(() => getAklConfig(base), /requires a client credential/);
+    const configured = getAklConfig({ ...base,
+      AKB_OFFICIAL_SOURCE_CLIENT_SECRET_FILE: "/run/secrets/official-source-client",
+      AKB_OFFICIAL_SOURCE_INTERNAL_SECRET_FILE: "/run/secrets/official-source-internal",
+    });
+    assert.equal(configured.officialSourceAutomation?.enabled, true);
+    assert.equal(configured.officialSourceAutomation?.clientId, "svc-akb-official-source-sync");
+    assert.equal(configured.officialSourceAutomation?.audience, "stratos-official-sources");
+    assert.throws(() => getAklConfig({ ...base,
+      AKB_OFFICIAL_SOURCE_CLIENT_ID: "shared-client",
+      AKB_OFFICIAL_SOURCE_CLIENT_SECRET_FILE: "/run/secrets/official-source-client",
+      AKB_OFFICIAL_SOURCE_INTERNAL_SECRET_FILE: "/run/secrets/official-source-internal",
+    }), /dedicated service client/);
+    assert.throws(() => getAklConfig({ ...base,
+      AKB_OFFICIAL_SOURCE_OIDC_AUDIENCE: "akl-api",
+      AKB_OFFICIAL_SOURCE_CLIENT_SECRET_FILE: "/run/secrets/official-source-client",
+      AKB_OFFICIAL_SOURCE_INTERNAL_SECRET_FILE: "/run/secrets/official-source-internal",
+    }), /dedicated audience/);
   });
 
   it("accepts a bounded RAG assistant timeout", () => {

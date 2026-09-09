@@ -158,6 +158,31 @@ describe("Document Intake current authorization before binary read", () => {
     assert.equal(run.events.includes("document"), false);
   });
 
+  it("keeps the official-source service confined to the Czech-law collection", async () => {
+    const run = harness();
+    const officialService = {
+      ...context,
+      authorizationSource: "service" as const,
+      serviceClientId: "svc-akb-official-source-sync",
+    };
+    await assert.rejects(
+      authorizeControlledDocumentUpload({
+        registry: run.dependencies.registry,
+        context: officialService,
+        documentId: document.document_id,
+      }),
+      { code: "OFFICIAL_SOURCE_SERVICE_SCOPE_FORBIDDEN" },
+    );
+    await assert.rejects(
+      authorizeControlledDocumentUpload({
+        registry: run.dependencies.registry,
+        context: { ...officialService, serviceClientId: "another-service" },
+        documentId: document.document_id,
+      }),
+      { code: "UPLOAD_ACTOR_REQUIRED" },
+    );
+  });
+
   it("checks version-create authority before accepting a controlled upload", async () => {
     const run = harness();
     await run.execute();

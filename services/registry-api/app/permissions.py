@@ -1217,6 +1217,18 @@ def require_global_action(principal: Principal, action: Action, db: Session | No
 def require_document_action(
     principal: Principal, action: Action, document: Document, db: Session | None = None
 ) -> SubjectContext:
+    if (
+        principal.service_client_id == "svc-akb-official-source-sync"
+        and (
+            not is_official_public_source_document(document)
+            or (document.document_metadata or {}).get("collection_id") != "czech-law"
+        )
+    ):
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "official_source_service_scope_forbidden",
+            "The official-source service is restricted to governed official public sources",
+        )
     context = context_for_principal(principal, db)
     decision = evaluate_document_access(context, action.value, document)
     if not decision.allowed and not principal.service_identity:
@@ -1242,6 +1254,18 @@ def require_document_version_action(
     version: DocumentVersion,
     db: Session | None = None,
 ) -> DocumentVersionAuthority:
+    if (
+        principal.service_client_id == "svc-akb-official-source-sync"
+        and (
+            not is_official_public_source_document(document)
+            or (document.document_metadata or {}).get("collection_id") != "czech-law"
+        )
+    ):
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "official_source_service_scope_forbidden",
+            "The official-source service is restricted to governed official public sources",
+        )
     try:
         authority = resolve_document_version_authority(document, version)
     except ValueError as exc:

@@ -304,7 +304,7 @@ async function createOfficialDocument(
       title,
       document_type: collection.documentType,
       owner_id: ownerSubjectId,
-      gestor_unit: gestor.id,
+      gestor_unit: gestor.kind === "organization_unit" ? gestor.id : null,
       classification: "public",
       information_policy: prepared.informationPolicy,
       document_profile: prepared.documentProfile,

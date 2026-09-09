@@ -55,6 +55,7 @@ COPY --from=builder --chown=nextjs:nextjs /app/public ./public
 COPY --from=builder --chown=nextjs:nextjs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nextjs /app/.next/static ./.next/static
 COPY --chown=nextjs:nextjs apps/web/otel-bootstrap.cjs ./otel-bootstrap.cjs
+COPY --chown=nextjs:nextjs apps/web/official-source-worker.mjs ./official-source-worker.mjs
 COPY apps/web/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 

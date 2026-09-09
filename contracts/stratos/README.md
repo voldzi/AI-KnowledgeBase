@@ -27,3 +27,14 @@ python3 scripts/verify_stratos_contract_snapshot.py \
 
 The expected SHA-256 values are held in the verifier. The snapshot contains no
 credentials, tenant data, prompts, answers, or document content.
+
+The governed official-source integration accepted on 2026-09-09 is stored
+separately under `official-sources/`:
+
+- `stratos-authority.openapi.json` — STRATOS authority contract 1.1.0, SHA-256
+  `50735d8a7cf6b02f924137625e979b0be2eb1c34b48a5dc40d8c90d820f4a84e`;
+- `czech-law-pilot.v1.json` — exact ten-law pilot manifest, SHA-256
+  `e354849214aa05cbbca3b4464a47a5c8a46dfac4f9b9556c8d0ba257b2eddcf2`.
+
+These files are byte-identical to STRATOS commit
+`36fd4ac3411619c9687a54796654f53577484d69`.

@@ -1,11 +1,12 @@
 # Official Public Sources
 
 AKB prepares and imports centrally approved official-source documents under the
-`akb.official-public-reference` profile. The AKB picker/client and strict intake
-path are implemented; live collection approval and exact source preparation
-require the new [STRATOS collections V1 contract](../integration/STRATOS_OFFICIAL_SOURCE_COLLECTIONS_V1.md).
-Until that contract is jointly verified and configured, synchronization is
-unavailable. The local discovery catalog does not grant approval.
+`akb.official-public-reference` profile. The interactive picker and the bounded
+server worker use the same strict intake path and the
+[STRATOS collections V1 contract](../integration/STRATOS_OFFICIAL_SOURCE_COLLECTIONS_V1.md).
+Production synchronization remains disabled until that contract, the exact
+service identity and the selected collection are jointly verified and
+configured. The local discovery catalog never grants approval.
 
 ## Product Model
 
@@ -108,8 +109,11 @@ HTML is accepted only for collections with an explicit code-reviewed
 content signature, immutable hash and Registry policy as file downloads.
 
 The e-Sbírka connector reads the legal-act JSON-LD description and selects the
-effective versions needed to cover the timeline from 2023 through the
-synchronization date. For each selected permanent URL it asks the public
+version references needed to cover the timeline from 2023 through the
+synchronization date. It then reads each dated version's JSON-LD metadata and
+requires an exact identity plus explicit `účinnost-znění-od` and
+`účinnost-znění-do`; dates inferred from neighboring links are not accepted.
+For each verified permanent URL it asks the public
 e-Sbírka download catalogue for the informative PDF, waits for the bounded
 public preparation job when necessary and accepts only a size-bounded response
 with a valid PDF signature. The initial preparation response uses
@@ -122,13 +126,43 @@ duplicate document. Download catalogue responses, preparation states and file
 identifiers are validated and cannot redirect the intake outside the approved
 e-Sbírka origin.
 
-No user/client or central collection is created automatically by AKB. The new
-collection/proposal API forwards the current interactive actor's bearer only to
-the configured STRATOS origin, without redirects. Public source downloads never
-receive that bearer. Registry's documented governance identity and fresh
+No human user or central collection is created automatically by AKB. The
+collection/proposal API forwards either the current interactive actor's bearer
+or the short-lived token of the exact `svc-akb-official-source-sync` client only
+to the configured STRATOS origin, without redirects. The service path is
+limited to the approved `czech-law` collection. Public source downloads never
+receive either bearer. Registry's documented governance identity and fresh
 admission contracts remain separate from this source preparation operation.
 Missing configuration, unknown upstream endpoints or invalid central responses
 fail closed before downloading.
+
+## Automated Czech-law rollout
+
+The binding STRATOS contract snapshot and exact pilot manifest are
+`contracts/stratos/official-sources/stratos-authority.openapi.json` and
+`contracts/stratos/official-sources/czech-law-pilot.v1.json`. They are pinned to
+STRATOS commit `36fd4ac3411619c9687a54796654f53577484d69`.
+
+The independent `official-source-sync-worker` checks e-Sbírka every six hours.
+An initial cycle selects at most ten unseen laws, while importing all effective
+versions discovered for each selected law. Completion is stored per immutable
+source URL and effective date. Subsequent cycles continue with the next ten
+laws; after the catalog is complete, the worker revalidates it weekly in the
+same bounded batches. Changes become new immutable AKB versions and unchanged
+hashes remain idempotent.
+
+The pilot is accepted only when ten distinct canonical e-Sbírka laws reach
+`INDEXED`, each retains its official PDF, TLP:CLEAR, organization audience,
+active owner and gestor, and a representative Chat answer cites and opens the
+exact stored source. The negative acceptance also verifies that another
+service identity, a URL outside the approved proposal, missing TLP, revoked
+collection access and anonymous source access all fail closed.
+
+The initial manifest contains 89/2012, 90/2012, 262/2006, 500/2004,
+106/1999, 134/2016, 218/2000, 250/2000, 563/1991 and 340/2015 Sb. AKB keeps
+these ten entries first in its reviewed catalog and the internal worker limits
+initial discovery to that set. Expanding the centrally approved manifest and
+the worker boundary is a separate reviewed rollout after pilot acceptance.
 
 Licensed or copyrighted internal references, including organization-owned ITIL
 copies, are not added to this public-source catalog. They are imported as
@@ -195,5 +229,7 @@ implemented in the adjacent `discovery.ts` and `sync.ts` modules. A source is
 never accepted only because a browser supplied its URL. The new optional web
 setting `AKL_STRATOS_OFFICIAL_SOURCES_URL` defaults to empty. Configure it only
 after the joint collections/prepare and final Registry snapshot-admission
-acceptance in the integration handoff. No collection-level rollout or upstream
-readiness is inferred from passing local fixture tests.
+acceptance in the integration handoff. Enable the worker only after its
+dedicated service client and file-backed secrets have been provisioned. No
+collection-level rollout or upstream readiness is inferred from passing local
+fixture tests.

@@ -64,6 +64,9 @@ class Settings(BaseSettings):
     service_client_route_grants: str = Field(
         default="", alias="AKL_SERVICE_CLIENT_ROUTE_GRANTS"
     )
+    official_source_automation_enabled: bool = Field(
+        default=False, alias="AKB_OFFICIAL_SOURCE_AUTOMATION_ENABLED"
+    )
     web_session_store_secret: str | None = Field(
         default=None, alias="AKL_WEB_SESSION_STORE_SECRET"
     )
@@ -346,6 +349,24 @@ class Settings(BaseSettings):
                 "Service client mapping contains untrusted callers: "
                 + ", ".join(sorted(unknown_service_clients))
             )
+        if self.official_source_automation_enabled:
+            official_client = "svc-akb-official-source-sync"
+            required_official_routes = frozenset(
+                {"authz", "documents-read", "documents-write", "ingestion-status"}
+            )
+            if official_client not in trusted_service_clients:
+                raise ValueError(
+                    "Official-source automation requires its exact trusted service client"
+                )
+            if route_grants.get(official_client) != required_official_routes:
+                raise ValueError(
+                    "Official-source automation service routes must be exactly "
+                    "authz|documents-read|documents-write|ingestion-status"
+                )
+            if official_client in service_delegations:
+                raise ValueError(
+                    "Official-source automation service must not receive namespace delegation"
+                )
         invalid_routes = {
             route
             for routes in route_grants.values()

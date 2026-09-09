@@ -130,6 +130,13 @@ services:
       AKL_WEB_STRATOS_ACCESS_TIMEOUT_MS: ${AKL_WEB_STRATOS_ACCESS_TIMEOUT_MS:-3000}
       AKL_WEB_RAG_ASSISTANT_TIMEOUT_MS: ${AKL_WEB_RAG_ASSISTANT_TIMEOUT_MS:-45000}
       AKL_WEB_STRATOS_ACCESS_CACHE_TTL_MS: ${AKL_WEB_STRATOS_ACCESS_CACHE_TTL_MS:-0}
+      AKL_STRATOS_OFFICIAL_SOURCES_URL: ${AKL_STRATOS_OFFICIAL_SOURCES_URL:-}
+      AKB_OFFICIAL_SOURCE_AUTOMATION_ENABLED: ${AKB_OFFICIAL_SOURCE_AUTOMATION_ENABLED:-false}
+      AKB_OFFICIAL_SOURCE_TOKEN_URL: ${AKB_OFFICIAL_SOURCE_TOKEN_URL:-}
+      AKB_OFFICIAL_SOURCE_CLIENT_ID: ${AKB_OFFICIAL_SOURCE_CLIENT_ID:-svc-akb-official-source-sync}
+      AKB_OFFICIAL_SOURCE_OIDC_AUDIENCE: ${AKB_OFFICIAL_SOURCE_OIDC_AUDIENCE:-stratos-official-sources}
+      AKB_OFFICIAL_SOURCE_CLIENT_SECRET_FILE: /run/secrets/svc-akb-official-source-sync-client-secret
+      AKB_OFFICIAL_SOURCE_INTERNAL_SECRET_FILE: /run/secrets/akb-official-source-sync-internal-secret
       AKL_WEB_PUBLIC_BASE_URL: ${AKL_WEB_PUBLIC_BASE_URL:?AKL_WEB_PUBLIC_BASE_URL must be set}
       NEXT_PUBLIC_AKL_BASE_PATH: ${AKL_WEB_BASE_PATH:-/akb}
       AKL_WEB_SESSION_SECRET: ${AKL_WEB_SESSION_SECRET:?AKL_WEB_SESSION_SECRET must be set}
@@ -190,6 +197,8 @@ services:
       - ${AKL_DIRECTOR_COPILOT_ARCHFLOW_CLIENT_SECRET_FILE:-/dev/null}:/run/secrets/akb-director-archflow:ro
       - ${AKL_WEB_SESSION_ENCRYPTION_KEY_SOURCE_FILE:?AKL_WEB_SESSION_ENCRYPTION_KEY_SOURCE_FILE must be set}:/run/secrets/akb-web-session-encryption-key:ro
       - ${AKL_WEB_SESSION_STORE_SECRET_SOURCE_FILE:?AKL_WEB_SESSION_STORE_SECRET_SOURCE_FILE must be set}:/run/secrets/akb-web-session-store-secret:ro
+      - ${AKB_OFFICIAL_SOURCE_CLIENT_SECRET_FILE:-/dev/null}:/run/secrets/svc-akb-official-source-sync-client-secret:ro
+      - ${AKB_OFFICIAL_SOURCE_INTERNAL_SECRET_FILE:-/dev/null}:/run/secrets/akb-official-source-sync-internal-secret:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     tmpfs:
@@ -219,6 +228,43 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+    logging: *json-logging
+
+  official-source-sync-worker:
+    image: ${WEB_IMAGE:-akb/web:${AKL_IMAGE_TAG:-docker-home}}
+    restart: unless-stopped
+    read_only: true
+    user: "100:101"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    entrypoint: ["node", "/app/official-source-worker.mjs"]
+    environment:
+      AKB_OFFICIAL_SOURCE_AUTOMATION_ENABLED: ${AKB_OFFICIAL_SOURCE_AUTOMATION_ENABLED:-false}
+      AKB_OFFICIAL_SOURCE_WEB_URL: http://web:3000${AKL_WEB_BASE_PATH:-/akb}
+      AKB_OFFICIAL_SOURCE_INTERNAL_SECRET_FILE: /run/secrets/akb-official-source-sync-internal-secret
+      AKB_OFFICIAL_SOURCE_STATE_DIR: /data/official-source-sync
+      AKB_OFFICIAL_SOURCE_COLLECTION_ID: ${AKB_OFFICIAL_SOURCE_COLLECTION_ID:-czech-law}
+      AKB_OFFICIAL_SOURCE_INTERVAL_SECONDS: ${AKB_OFFICIAL_SOURCE_INTERVAL_SECONDS:-21600}
+      AKB_OFFICIAL_SOURCE_FULL_INTERVAL_SECONDS: ${AKB_OFFICIAL_SOURCE_FULL_INTERVAL_SECONDS:-604800}
+      AKB_OFFICIAL_SOURCE_MAX_NEW_PER_RUN: ${AKB_OFFICIAL_SOURCE_MAX_NEW_PER_RUN:-10}
+      AKB_OFFICIAL_SOURCE_REQUEST_TIMEOUT_SECONDS: ${AKB_OFFICIAL_SOURCE_REQUEST_TIMEOUT_SECONDS:-180}
+      AKB_OFFICIAL_SOURCE_START_DELAY_SECONDS: ${AKB_OFFICIAL_SOURCE_START_DELAY_SECONDS:-30}
+    volumes:
+      - official-source-sync-state:/data/official-source-sync
+      - ${AKB_OFFICIAL_SOURCE_INTERNAL_SECRET_FILE:-/dev/null}:/run/secrets/akb-official-source-sync-internal-secret:ro
+    depends_on:
+      web:
+        condition: service_healthy
+    networks:
+      - app_zone
+    healthcheck:
+      test: ["CMD", "node", "/app/official-source-worker.mjs", "--health"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
     logging: *json-logging
 
   chat-web:
@@ -388,6 +434,7 @@ services:
       AKL_TRUSTED_SERVICE_CLIENT_IDS: ${AKL_REGISTRY_TRUSTED_SERVICE_CLIENT_IDS:?AKL_REGISTRY_TRUSTED_SERVICE_CLIENT_IDS must be set}
       AKL_SERVICE_CLIENT_ROUTE_GRANTS: ${AKL_REGISTRY_SERVICE_CLIENT_ROUTE_GRANTS:?AKL_REGISTRY_SERVICE_CLIENT_ROUTE_GRANTS must be set}
       AKL_SERVICE_CLIENT_DELEGATIONS: ${AKL_REGISTRY_SERVICE_CLIENT_DELEGATIONS:-}
+      AKB_OFFICIAL_SOURCE_AUTOMATION_ENABLED: ${AKB_OFFICIAL_SOURCE_AUTOMATION_ENABLED:-false}
       AKL_STRATOS_AUTH_ME_URL: ${AKL_STRATOS_AUTH_ME_URL:?AKL_STRATOS_AUTH_ME_URL must be set}
       AKL_STRATOS_POLICY_BINDINGS_URL: ${AKL_STRATOS_POLICY_BINDINGS_URL:?AKL_STRATOS_POLICY_BINDINGS_URL must be set}
       AKL_STRATOS_POLICY_DECISIONS_URL: ${AKL_STRATOS_POLICY_DECISIONS_URL:?AKL_STRATOS_POLICY_DECISIONS_URL must be set}
@@ -951,3 +998,4 @@ volumes:
   docling-runtime:
   evaluation-reports:
   evaluation-datasets:
+  official-source-sync-state:

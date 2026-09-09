@@ -65,7 +65,7 @@ technical compatibility prefixes unless an explicit migration changes them.
 ```text
 browser -> AKB web bridge -> Registry API
 browser -> AKB web bridge -> upload session -> AKB object storage
-approved official collection -> allowlisted discovery -> immutable AKB version -> Ingestion Service
+approved official collection -> interactive manager or bounded official-source worker -> allowlisted discovery -> immutable AKB version -> Ingestion Service
 Registry document/version write -> STRATOS GovernedInformationResource registration
 Registry document/version -> Ingestion Service -> parser/OCR/chunker
 Ingestion Service -> LLM Gateway embeddings -> Qdrant
