@@ -92,12 +92,16 @@ for service_name in ("ingestion-service", "rag-retrieval-service"):
         raise SystemExit(f"{service_name} must use the configured external Qdrant endpoint.")
     if environment.get("AKL_QDRANT_API_KEY_FILE") != "/run/secrets/akb-qdrant-api-key":
         raise SystemExit(f"{service_name} must read the Qdrant API key from a file.")
+    if environment.get("AKL_QDRANT_CA_FILE") != "/run/secrets/akb-qdrant-ca.pem":
+        raise SystemExit(f"{service_name} must use the dedicated Qdrant CA file.")
     mounts = {
         mount["target"]: (mount["type"], bool(mount.get("read_only")))
         for mount in service.get("volumes", [])
     }
     if mounts.get("/run/secrets/akb-qdrant-api-key") != ("bind", True):
         raise SystemExit(f"{service_name} must mount the Qdrant API key read-only.")
+    if mounts.get("/run/secrets/akb-qdrant-ca.pem") != ("bind", True):
+        raise SystemExit(f"{service_name} must mount the Qdrant CA read-only.")
 
 worker = services["docling-worker"]
 if worker.get("labels", {}).get("cz.zeleznalady.akl.service") != "ingestion-service":

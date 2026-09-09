@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import ssl
 from typing import Any
 
 import httpx
@@ -66,12 +67,16 @@ async def request_json_with_retry(
     bearer_token_override: str | None = None,
     service_identity: bool = False,
     audience: str | None = None,
+    verify: ssl.SSLContext | bool = True,
 ) -> dict[str, Any]:
     last_error: Exception | None = None
 
     for attempt in range(settings.retry_attempts + 1):
         try:
-            async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
+            async with httpx.AsyncClient(
+                timeout=settings.request_timeout_seconds,
+                verify=verify,
+            ) as client:
                 response = await client.request(
                     method,
                     url,

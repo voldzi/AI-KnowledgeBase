@@ -248,6 +248,7 @@ class Settings:
     indexer_targets: tuple[str, ...]
     qdrant_base_url: str
     qdrant_api_key: str | None
+    qdrant_ca_file: Path | None
     qdrant_collection: str
     qdrant_vector_size: int
     qdrant_distance: str
@@ -804,6 +805,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
             "AKL_QDRANT_API_KEY",
             "AKL_QDRANT_API_KEY_FILE",
         ),
+        qdrant_ca_file=_optional_readable_file(source, "AKL_QDRANT_CA_FILE"),
         qdrant_collection=_get(source, "AKL_QDRANT_COLLECTION", "akl_document_chunks"),
         qdrant_vector_size=qdrant_vector_size,
         qdrant_distance=_get(source, "AKL_QDRANT_DISTANCE", "Cosine"),

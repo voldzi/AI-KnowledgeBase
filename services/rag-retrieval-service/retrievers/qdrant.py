@@ -455,11 +455,18 @@ async def _request_qdrant_json_allow_missing(
             url=url,
             json_body=json_body,
             bearer_token_override=settings.qdrant_api_key,
+            verify=_qdrant_tls_verifier(settings.qdrant_ca_file),
         )
     except RetrievalError as exc:
         if (exc.details or {}).get("status_code") == 404:
             return {}
         raise
+
+
+def _qdrant_tls_verifier(ca_file: Any) -> ssl.SSLContext | bool:
+    if ca_file is None:
+        return True
+    return ssl.create_default_context(cafile=str(ca_file))
 
 
 def _points_to_hybrid_chunks(*, query: str, points: Any, dense_weight: float) -> list[RetrievedChunk]:

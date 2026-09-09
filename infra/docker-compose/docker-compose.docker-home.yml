@@ -593,6 +593,7 @@ services:
       AKL_INGESTION_INDEXER_MODE: ${AKL_INGESTION_INDEXER_MODE:-qdrant,opensearch}
       AKL_QDRANT_BASE_URL: ${AKL_QDRANT_BASE_URL:?AKL_QDRANT_BASE_URL must be set}
       AKL_QDRANT_API_KEY_FILE: /run/secrets/akb-qdrant-api-key
+      AKL_QDRANT_CA_FILE: /run/secrets/akb-qdrant-ca.pem
       AKL_QDRANT_COLLECTION: ${AKL_QDRANT_COLLECTION:-akl_document_chunks}
       AKL_QDRANT_VECTOR_SIZE: ${AKL_QDRANT_VECTOR_SIZE:-1024}
       AKL_QDRANT_DISTANCE: ${AKL_QDRANT_DISTANCE:-Cosine}
@@ -620,6 +621,7 @@ services:
       - ${AKL_OPENSEARCH_CA_SOURCE_FILE:-/srv/akb/env/opensearch-root-ca.pem}:/run/secrets/opensearch-root-ca.pem:ro
       - ${AKL_OPENSEARCH_INGESTION_PASSWORD_SOURCE_FILE:-/srv/akb/env/akl-opensearch-ingestion.password}:/run/secrets/akl-opensearch-password:ro
       - ${AKL_QDRANT_API_KEY_SOURCE_FILE:?AKL_QDRANT_API_KEY_SOURCE_FILE must be set}:/run/secrets/akb-qdrant-api-key:ro
+      - ${AKL_QDRANT_CA_SOURCE_FILE:?AKL_QDRANT_CA_SOURCE_FILE must be set}:/run/secrets/akb-qdrant-ca.pem:ro
     depends_on:
       docling-worker:
         condition: service_healthy
@@ -682,6 +684,7 @@ services:
       AKL_REGISTRY_SERVICE_CLIENT_SECRET_FILE: /run/secrets/akb-rag-service-client-secret
       AKL_QDRANT_BASE_URL: ${AKL_QDRANT_BASE_URL:?AKL_QDRANT_BASE_URL must be set}
       AKL_QDRANT_API_KEY_FILE: /run/secrets/akb-qdrant-api-key
+      AKL_QDRANT_CA_FILE: /run/secrets/akb-qdrant-ca.pem
       AKL_QDRANT_COLLECTION: ${AKL_QDRANT_COLLECTION:-akl_document_chunks}
       AKL_OPENSEARCH_BASE_URL: ${AKL_OPENSEARCH_BASE_URL:-https://opensearch.home.cz:9200}
       AKL_OPENSEARCH_INDEX: ${AKL_OPENSEARCH_INDEX:-akl_document_chunks}
@@ -739,6 +742,7 @@ services:
       - ${AKL_OPENSEARCH_RAG_PASSWORD_SOURCE_FILE:-/srv/akb/env/akl-opensearch-rag.password}:/run/secrets/akl-opensearch-password:ro
       - ${AKL_RAG_RERANKER_API_KEY_SOURCE_FILE:-/dev/null}:/run/secrets/akl-rag-reranker-api-key:ro
       - ${AKL_QDRANT_API_KEY_SOURCE_FILE:?AKL_QDRANT_API_KEY_SOURCE_FILE must be set}:/run/secrets/akb-qdrant-api-key:ro
+      - ${AKL_QDRANT_CA_SOURCE_FILE:?AKL_QDRANT_CA_SOURCE_FILE must be set}:/run/secrets/akb-qdrant-ca.pem:ro
     depends_on:
       registry-api:
         condition: service_healthy
