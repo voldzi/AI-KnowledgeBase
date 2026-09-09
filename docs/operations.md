@@ -524,7 +524,10 @@ deployment runbook; the sequence is mandatory:
    `registry-api` image. A shared production Compose change is accepted only
    when a structural comparison proves that it changes complete blocks of
    those eight services and leaves every unmanaged block and the top-level
-   envelope byte-identical. Durably record each post-build image ID and verify exact
+   envelope byte-identical. The one-time external-Qdrant cutover may remove the
+   local `qdrant` service and its matching platform readiness entry; it selects
+   only Ingestion and RAG and still requires the normal immutable image,
+   authorization, readiness, and rollback gates. Durably record each post-build image ID and verify exact
    SHA/project/service labels again before Alembic/restart, after recreation,
    and after all smoke tests immediately before activation. Reconciliation loads
    the original IDs from the deployment record named by the verified runtime
