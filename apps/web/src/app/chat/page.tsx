@@ -10,7 +10,7 @@ import {
 } from "@/lib/api/server";
 import { getAklConfig } from "@/lib/api/config";
 import { personalizedAssistantSuggestions } from "@/lib/assistant/personalized-suggestions";
-import { requirePageAccess } from "@/lib/auth/server-route-guard";
+import { canUseEmployeeChat } from "@/lib/auth/authorization";
 import type {
   AssistantConversationListItem,
 } from "@/lib/types";
@@ -26,7 +26,18 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
   const context = await getServerRequestContextForPath(
     getAklConfig().webProfile === "chat" ? "/" : "/chat",
   );
-  requirePageAccess(context, "employee_chat");
+  if (!canUseEmployeeChat(context)) {
+    return (
+      <main className="workspace-error" role="alert">
+        <h1>Chat zatím není přidělen</h1>
+        <p>
+          Přihlášení proběhlo správně, ale váš aktuální přístup ve STRATOS
+          Access Center neobsahuje oprávnění používat AKB Chat.
+        </p>
+        <p>Po přidělení oprávnění stránku znovu načtěte.</p>
+      </main>
+    );
+  }
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const requestedId = requestedConversationId(resolvedSearchParams.thread);
   let initialConversations: AssistantConversationListItem[] = [];
