@@ -83,8 +83,21 @@ for service_name in release_services:
             f"{service_name} does not inherit the immutable AKL_IMAGE_TAG: {image}"
         )
 
-if "qdrant" not in services:
-    raise SystemExit("Production Compose must retain the shared Qdrant service.")
+if "qdrant" in services:
+    raise SystemExit("Production Compose must use the external Qdrant service.")
+for service_name in ("ingestion-service", "rag-retrieval-service"):
+    service = services[service_name]
+    environment = service.get("environment", {})
+    if environment.get("AKL_QDRANT_BASE_URL") != "https://qdrant.internal.example":
+        raise SystemExit(f"{service_name} must use the configured external Qdrant endpoint.")
+    if environment.get("AKL_QDRANT_API_KEY_FILE") != "/run/secrets/akb-qdrant-api-key":
+        raise SystemExit(f"{service_name} must read the Qdrant API key from a file.")
+    mounts = {
+        mount["target"]: (mount["type"], bool(mount.get("read_only")))
+        for mount in service.get("volumes", [])
+    }
+    if mounts.get("/run/secrets/akb-qdrant-api-key") != ("bind", True):
+        raise SystemExit(f"{service_name} must mount the Qdrant API key read-only.")
 
 worker = services["docling-worker"]
 if worker.get("labels", {}).get("cz.zeleznalady.akl.service") != "ingestion-service":

@@ -454,6 +454,7 @@ async def _request_qdrant_json_allow_missing(
             method=method,
             url=url,
             json_body=json_body,
+            bearer_token_override=settings.qdrant_api_key,
         )
     except RetrievalError as exc:
         if (exc.details or {}).get("status_code") == 404:

@@ -91,6 +91,8 @@ def test_invalid_assistant_history_bounds_are_rejected(key: str, value: str) -> 
 def test_current_http_profile_uses_explicit_akl_env_names(tmp_path) -> None:
     secret_file = tmp_path / "registry-client-secret"
     secret_file.write_text("registry-secret\n")
+    qdrant_secret_file = tmp_path / "qdrant-api-key"
+    qdrant_secret_file.write_text("qdrant-secret\n")
     settings = load_settings(
         {
             "AKL_ENV": "development",
@@ -99,6 +101,7 @@ def test_current_http_profile_uses_explicit_akl_env_names(tmp_path) -> None:
             "AKL_RAG_RETRIEVER_MODE": "qdrant",
             "AKL_RAG_FULLTEXT_MODE": "opensearch",
             "AKL_QDRANT_BASE_URL": "http://qdrant:6333",
+            "AKL_QDRANT_API_KEY_FILE": str(qdrant_secret_file),
             "AKL_QDRANT_COLLECTION": "document_chunks",
             "AKL_OPENSEARCH_BASE_URL": "http://opensearch:9200",
             "AKL_OPENSEARCH_INDEX": "document_chunks_search",
@@ -125,6 +128,7 @@ def test_current_http_profile_uses_explicit_akl_env_names(tmp_path) -> None:
     assert settings.registry_client_mode == "http"
     assert settings.llm_client_mode == "http"
     assert settings.qdrant_base_url == "http://qdrant:6333"
+    assert settings.qdrant_api_key == "qdrant-secret"
     assert settings.qdrant_collection == "document_chunks"
     assert settings.opensearch_base_url == "http://opensearch:9200"
     assert settings.opensearch_index == "document_chunks_search"
