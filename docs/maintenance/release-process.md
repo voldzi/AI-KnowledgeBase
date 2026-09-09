@@ -170,6 +170,24 @@ This is an early feedback layer, not a release approval. The final candidate
 still runs on the repo-scoped VM125 runner, where the Linux/amd64 toolchain and
 persistent caches match the production build environment.
 
+During the pre-pilot development phase, a change confined to `apps/web/` can
+use the operator-invoked fast path after it has reached `origin/main`:
+
+```bash
+AKB_FAST_SSH_HOSTNAME=192.168.10.116 \
+  bash scripts/fast_deploy_docker_home_web.sh "$(git rev-parse HEAD)"
+```
+
+The helper compares the candidate with the SHA currently running in the web
+container and rejects every runtime path outside `apps/web/`. It runs the web
+tests and type check concurrently, builds the exact two Linux/amd64 production
+web images concurrently, transfers only those images, and recreates only
+`web` and `chat-web`. Both containers must become healthy and the public health
+and readiness endpoints must pass. Any activation failure restores the exact
+previous image IDs. The immutable release pointer is deliberately unchanged;
+run the formal release before pilot acceptance to reconcile the complete stack
+and preserve the normal audit, migration, backup, and rollback gates.
+
 Trusted CI also retains the version-pinned OpenAPI linter and content-addressed
 Python test environments. Each Python cache key binds the interpreter and the
 exact hash-locked dependency file. A missing, changed, open or unhashed lock
@@ -303,6 +321,45 @@ These are operating targets, not reasons to weaken a gate:
 - production activation after verified images exist: at most 3 minutes;
 - ordinary final-candidate-to-production path: at most 15 minutes;
 - forward-fix or rollback decision: within 2 minutes of a verified failure.
+
+### Fast routine release path
+
+The 9 September 2026 production cutover established a concrete performance
+baseline. Trusted CI took about 16 minutes, the eight-image production build
+took about 14 minutes, and transferring and importing the approximately
+1.1 GB gzip archive took about 20 minutes. Repeating those stages after each
+forward fix caused the release to span days. Low Docker Desktop CPU usage
+during the transfer was expected: the critical path was serial compression,
+network throughput, and target-side import rather than available MacBook CPU.
+
+For each subsequent release, use this sequence and record the duration of each
+stage:
+
+1. Reconcile the candidate onto current `origin/main` and the independently
+   verified production SHA before editing.
+2. Run the MacBook local fast check for the exact affected-component plan. Run
+   the full local profile only for shared contracts, Compose, identity,
+   database, or release-boundary changes.
+3. Run trusted exact-SHA Gitea CI once for the final candidate. A changed
+   candidate requires new evidence; an unchanged candidate must reuse its
+   existing successful evidence rather than rerun it.
+4. Build and distribute only images selected by the production diff. Ordinary
+   one-service changes must not package all eight application images.
+5. Prefer content-addressed registry transfer to a whole-stack SSH archive.
+   Until selective registry import is implemented and verified, treat the
+   current eight-image archive as a known performance limitation, not as the
+   desired steady-state path.
+6. Activate and verify only the selected services, followed by public health,
+   readiness, and the narrow authorized smoke owned by the change.
+7. Stop immediately on the first deterministic failure, preserve its evidence,
+   fix it locally, and create one reviewed descendant. Do not repeatedly start
+   unchanged CI or production workflows.
+
+The release operator must investigate rather than continue waiting when an
+ordinary warm-cache release exceeds 15 minutes. Check the per-stage timestamps,
+selected image set, archive size, registry/cache hits, transfer throughput, and
+target import time. Adding CPU cannot repair a network or serialization
+bottleneck.
 
 Production deployment uses build-once promotion. After the exact main SHA has
 passed trusted CI, the protected manual workflow builds all eight application
