@@ -202,7 +202,7 @@ class DoclingProductionReleaseTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("  docling-worker:\n", compose)
         self.assertEqual(
-            deploy.count("AKL_IMMUTABLE_MANAGED_BOUNDARY_REVISION=6"), 1
+            deploy.count("AKL_IMMUTABLE_MANAGED_BOUNDARY_REVISION=7"), 1
         )
         self.assertNotIn("AKL_IMMUTABLE_MANAGED_BOUNDARY_REVISION=5", deploy)
 
