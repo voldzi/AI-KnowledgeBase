@@ -2248,8 +2248,8 @@ import sys
 
 path = Path(sys.argv[1])
 text = path.read_text()
-old = "AKL_IMMUTABLE_MANAGED_BOUNDARY_REVISION=6"
-new = "AKL_IMMUTABLE_MANAGED_BOUNDARY_REVISION=7"
+old = "AKL_IMMUTABLE_MANAGED_BOUNDARY_REVISION=7"
+new = "AKL_IMMUTABLE_MANAGED_BOUNDARY_REVISION=8"
 if text.count(old) != 1:
     raise SystemExit("fixture managed-boundary revision is not unique")
 path.write_text(text.replace(old, new))
