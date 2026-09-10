@@ -481,7 +481,9 @@ state-sensitive checks under the standard lock and skips prepare/fetch. After
 contract 2 is active, the same target-side entry point remains available only
 for a declared exact-next `AKL_IMMUTABLE_MANAGED_BOUNDARY_REVISION`. This is
 the controlled path for adding a newly managed service to the immutable
-boundary. Equal, skipped, duplicate, or decreasing revisions fail before image
+boundary. Revision 7 adds the governed `official-source-sync-worker` that uses
+the immutable web image and is activated together with the web service. Equal,
+skipped, duplicate, or decreasing revisions fail before image
 build, writer stop, backup, or migration.
 After contract 2 is current, use the ordinary current entry point for every
 descendant. Exact commands and crash/forward-fix handling are in
