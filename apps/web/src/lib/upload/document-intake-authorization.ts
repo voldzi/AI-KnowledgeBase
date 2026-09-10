@@ -11,6 +11,7 @@ import {
 import { stratosBudgetVersionLineageFromUploadToken } from "@/lib/stratos/document-ai";
 import type { StratosDocumentServicePrincipal } from "@/lib/stratos/document-service-auth";
 import { parseDocumentInformationPolicy, policyHash } from "@/lib/stratos/information-policy";
+import { OFFICIAL_SOURCE_SERVICE_CLIENT_ID } from "@/lib/public-sources/automation-service-identity";
 import type {
   ApiRequestContext,
   BudgetIntakeAuthorizationRequest,
@@ -37,7 +38,8 @@ export async function authorizeControlledDocumentUpload(input: {
   payload?: UploadTokenPayload;
 }) {
   const { registry, context, documentId, payload } = input;
-  if (!context.subjectId || context.serviceClientId) {
+  const officialSourceService = context.serviceClientId === OFFICIAL_SOURCE_SERVICE_CLIENT_ID;
+  if (!context.subjectId || (context.serviceClientId && !officialSourceService)) {
     deny("UPLOAD_ACTOR_REQUIRED", "An interactive document actor is required.");
   }
   if (payload && payload.governance_actor_subject_id !== context.subjectId) {
@@ -49,6 +51,19 @@ export async function authorizeControlledDocumentUpload(input: {
     deny("UPLOAD_NOT_AUTHORIZED", "The current document authorization does not allow an upload.");
   }
   const document = await registry.getDocument(documentId, context);
+  if (officialSourceService && (
+    document.classification !== "public"
+    || !document.tags.includes("official-public-reference")
+    || document.metadata?.source_model !== "official-public-reference-v1"
+    || document.metadata?.collection_id !== "czech-law"
+    || document.metadata?.audience !== "organization"
+    || document.metadata?.anonymous_publication !== false
+    || document.policy_summary?.tlp !== "TLP:CLEAR"
+    || document.policy_summary?.audience?.organizationId !== "org_stratos"
+    || document.policy_summary?.audience?.scopeType !== "organization"
+  )) {
+    deny("OFFICIAL_SOURCE_SERVICE_SCOPE_FORBIDDEN", "The official-source service may upload only governed Czech-law documents.");
+  }
   if (["STRATOS_BUDGET", "STRATOS_PROJECTFLOW", "STRATOS_ARCHFLOW"].includes(document.document_profile?.provenance.sourceSystem ?? "")) {
     deny("SOURCE_INTAKE_REQUIRED", "Documents from this source require their authenticated source intake.");
   }

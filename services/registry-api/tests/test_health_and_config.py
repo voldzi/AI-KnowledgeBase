@@ -83,6 +83,38 @@ def test_production_rejects_unknown_service_route():
         )
 
 
+def test_official_source_automation_requires_only_the_exact_bounded_routes():
+    trusted = (
+        "akb-rag-service,stratos-akb-service,svc-budget-controlled-rules,"
+        "svc-ingestion,svc-akb-director-copilot,svc-akb-official-source-sync"
+    )
+    routes = (
+        "akb-rag-service=authz|audit|idempotency,"
+        "stratos-akb-service=stratos-budget-upload,"
+        "svc-budget-controlled-rules=controlled-rules-read,"
+        "svc-ingestion=authz|audit|documents-read|ingestion-status,"
+        "svc-akb-director-copilot=audit,"
+        "svc-akb-official-source-sync=authz|documents-read|documents-write|ingestion-status"
+    )
+    settings = _production_settings(
+        AKB_OFFICIAL_SOURCE_AUTOMATION_ENABLED=True,
+        AKL_TRUSTED_SERVICE_CLIENT_IDS=trusted,
+        AKL_SERVICE_CLIENT_ROUTE_GRANTS=routes,
+    )
+    assert settings.service_route_grants["svc-akb-official-source-sync"] == frozenset(
+        {"authz", "documents-read", "documents-write", "ingestion-status"}
+    )
+    with pytest.raises(ValidationError, match="must be exactly"):
+        _production_settings(
+            AKB_OFFICIAL_SOURCE_AUTOMATION_ENABLED=True,
+            AKL_TRUSTED_SERVICE_CLIENT_IDS=trusted,
+            AKL_SERVICE_CLIENT_ROUTE_GRANTS=routes.replace(
+                "svc-akb-official-source-sync=authz|documents-read|documents-write|ingestion-status",
+                "svc-akb-official-source-sync=authz|documents-read|documents-write",
+            ),
+        )
+
+
 def test_production_ignores_retired_aiip_route_without_granting_it():
     settings = _production_settings(
         AKL_SERVICE_CLIENT_ROUTE_GRANTS=(

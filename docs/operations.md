@@ -275,6 +275,47 @@ for compatibility. Production values belong outside Git, for example in
 When configuration changes, update `.env.example`, this document, and the
 specific deployment document.
 
+### Automated e-Sbírka synchronization
+
+The `official-source-sync-worker` uses the production web image and calls only
+the private web automation endpoint. It checks the centrally approved
+`czech-law` collection every six hours, admits at most ten previously unseen
+laws per cycle and processes every selected law's discovered effective
+versions. After the initial catalog is complete it revalidates the complete
+collection weekly in batches of ten laws. Its state and lock are durable in the
+`official-source-sync-state` volume, so restarts resume without duplicating a
+completed immutable version.
+
+Keep automation disabled until STRATOS has provisioned the collection and the
+exact confidential client. Production requires these file-backed secrets with
+mode `0600`:
+
+```dotenv
+AKL_STRATOS_OFFICIAL_SOURCES_URL=http://stratos-api:4000/api/v1/integrations/akb/official-sources
+AKB_OFFICIAL_SOURCE_AUTOMATION_ENABLED=true
+AKB_OFFICIAL_SOURCE_TOKEN_URL=https://login.zeleznalady.cz/realms/stratos/protocol/openid-connect/token
+AKB_OFFICIAL_SOURCE_CLIENT_ID=svc-akb-official-source-sync
+AKB_OFFICIAL_SOURCE_OIDC_AUDIENCE=stratos-official-sources
+AKB_OFFICIAL_SOURCE_CLIENT_SECRET_FILE=/srv/akb/env/svc-akb-official-source-sync.client-secret
+AKB_OFFICIAL_SOURCE_INTERNAL_SECRET_FILE=/srv/akb/env/akb-official-source-sync.internal-secret
+AKB_OFFICIAL_SOURCE_COLLECTION_ID=czech-law
+AKB_OFFICIAL_SOURCE_INTERVAL_SECONDS=21600
+AKB_OFFICIAL_SOURCE_FULL_INTERVAL_SECONDS=604800
+AKB_OFFICIAL_SOURCE_MAX_NEW_PER_RUN=10
+```
+
+The token itself must contain exactly two audiences, `stratos-official-sources`
+and `akl-api`; the singular setting above names the STRATOS endpoint audience
+that must be present. Add the client to Registry's trusted service list and
+grant exactly `authz|documents-read|documents-write|ingestion-status`, with no
+namespace delegation.
+
+Verify `docker compose ps official-source-sync-worker`, its JSON logs, and the
+timestamp in `/data/official-source-sync/heartbeat`. A cycle stops after three
+candidate failures and retries transient network, 429 and 5xx responses once.
+Disable the worker through `AKB_OFFICIAL_SOURCE_AUTOMATION_ENABLED=false` for a
+reversible stop; do not delete its state volume during a normal rollback.
+
 Document-grounded chat requests use
 `AKL_WEB_RAG_ASSISTANT_TIMEOUT_MS` (default `45000`). When the bounded timeout
 expires, the web bridge fails the turn explicitly instead of leaving the chat

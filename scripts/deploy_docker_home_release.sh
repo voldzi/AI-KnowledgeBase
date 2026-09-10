@@ -246,8 +246,25 @@ DIRECTOR_COPILOT_CLIENT_SECRET_FILE="$(
     AKL_DIRECTOR_COPILOT_CLIENT_SECRET_FILE \
     "${RELEASE_ROOT}/env/svc-akb-director-copilot.client-secret"
 )"
+OFFICIAL_SOURCE_AUTOMATION_ENABLED="$(
+  akl_env_value "$ENV_FILE" AKB_OFFICIAL_SOURCE_AUTOMATION_ENABLED false
+)"
+OFFICIAL_SOURCE_CLIENT_SECRET_FILE="$(
+  akl_env_value \
+    "$ENV_FILE" \
+    AKB_OFFICIAL_SOURCE_CLIENT_SECRET_FILE \
+    "${RELEASE_ROOT}/env/svc-akb-official-source-sync.client-secret"
+)"
+OFFICIAL_SOURCE_INTERNAL_SECRET_FILE="$(
+  akl_env_value \
+    "$ENV_FILE" \
+    AKB_OFFICIAL_SOURCE_INTERNAL_SECRET_FILE \
+    "${RELEASE_ROOT}/env/akb-official-source-sync.internal-secret"
+)"
 [[ "$DIRECTOR_COPILOT_ENABLED" == "true" || "$DIRECTOR_COPILOT_ENABLED" == "false" ]] \
   || akl_fail "AKL_DIRECTOR_COPILOT_ENABLED must be true or false"
+[[ "$OFFICIAL_SOURCE_AUTOMATION_ENABLED" == "true" || "$OFFICIAL_SOURCE_AUTOMATION_ENABLED" == "false" ]] \
+  || akl_fail "AKB_OFFICIAL_SOURCE_AUTOMATION_ENABLED must be true or false"
 akl_validate_project_name "$PROJECT_NAME"
 [[ "$TRUSTED_REF" == refs/remotes/origin/* ]] \
   || akl_fail "Trusted release ref must be an origin remote-tracking ref"
@@ -779,6 +796,10 @@ quarantine_unverified_target_services() {
   if [[ " ${services[*]} " == *" ingestion-service "* ]]; then
     quarantine_services=(docling-worker "${quarantine_services[@]}")
   fi
+  if [[ "$OFFICIAL_SOURCE_AUTOMATION_ENABLED" == "true" \
+    && " ${services[*]} " == *" web "* ]]; then
+    quarantine_services=(official-source-sync-worker "${quarantine_services[@]}")
+  fi
   for service in "${quarantine_services[@]}"; do
     image_owner="$service"
     case "$service" in
@@ -787,6 +808,10 @@ quarantine_unverified_target_services() {
       docling-worker)
         target_image_id="$TARGET_INGESTION_IMAGE_ID"
         image_owner="ingestion-service"
+        ;;
+      official-source-sync-worker)
+        target_image_id="$TARGET_WEB_IMAGE_ID"
+        image_owner="web"
         ;;
       rag-retrieval-service) target_image_id="$TARGET_RAG_IMAGE_ID" ;;
       evaluation-service) target_image_id="$TARGET_EVALUATION_IMAGE_ID" ;;
@@ -811,7 +836,7 @@ quarantine_unverified_target_services() {
         rag-retrieval-service) TARGET_RAG_QUARANTINED="true" ;;
         evaluation-service) TARGET_EVALUATION_QUARANTINED="true" ;;
         governance-service) TARGET_GOVERNANCE_QUARANTINED="true" ;;
-        web) TARGET_WEB_QUARANTINED="true" ;;
+        web|official-source-sync-worker) TARGET_WEB_QUARANTINED="true" ;;
         chat-web) TARGET_CHAT_WEB_QUARANTINED="true" ;;
         llm-gateway-service) TARGET_LLM_GATEWAY_QUARANTINED="true" ;;
       esac
@@ -824,7 +849,7 @@ quarantine_unverified_target_services() {
         rag-retrieval-service) TARGET_RAG_QUARANTINE_FAILED="true" ;;
         evaluation-service) TARGET_EVALUATION_QUARANTINE_FAILED="true" ;;
         governance-service) TARGET_GOVERNANCE_QUARANTINE_FAILED="true" ;;
-        web) TARGET_WEB_QUARANTINE_FAILED="true" ;;
+        web|official-source-sync-worker) TARGET_WEB_QUARANTINE_FAILED="true" ;;
         chat-web) TARGET_CHAT_WEB_QUARANTINE_FAILED="true" ;;
         llm-gateway-service) TARGET_LLM_GATEWAY_QUARANTINE_FAILED="true" ;;
       esac
@@ -1403,6 +1428,14 @@ if [[ " ${services[*]} " == *" web "* ]]; then
   [[ "$WEB_INGESTION_CLIENT_SECRET_FILE" == /* ]] \
     || akl_fail "AKL_WEB_INGESTION_CLIENT_SECRET_FILE must be an absolute path"
   akl_require_private_secret_file "$WEB_INGESTION_CLIENT_SECRET_FILE"
+  if [[ "$OFFICIAL_SOURCE_AUTOMATION_ENABLED" == "true" ]]; then
+    [[ "$OFFICIAL_SOURCE_CLIENT_SECRET_FILE" == /* ]] \
+      || akl_fail "AKB_OFFICIAL_SOURCE_CLIENT_SECRET_FILE must be an absolute path"
+    [[ "$OFFICIAL_SOURCE_INTERNAL_SECRET_FILE" == /* ]] \
+      || akl_fail "AKB_OFFICIAL_SOURCE_INTERNAL_SECRET_FILE must be an absolute path"
+    akl_require_private_secret_file "$OFFICIAL_SOURCE_CLIENT_SECRET_FILE"
+    akl_require_private_secret_file "$OFFICIAL_SOURCE_INTERNAL_SECRET_FILE" 32
+  fi
 fi
 if [[ "$DIRECTOR_COPILOT_ENABLED" == "true" ]]; then
   if [[ " ${services[*]} " == *" web "* || " ${services[*]} " == *" chat-web "* ]]; then
@@ -1779,6 +1812,12 @@ else
       || akl_fail "The isolated Docling worker did not become healthy"
   fi
   "${PINNED_COMPOSE[@]}" up -d --pull never --no-build --no-deps --force-recreate "${services[@]}"
+  if [[ "$OFFICIAL_SOURCE_AUTOMATION_ENABLED" == "true" \
+    && " ${services[*]} " == *" web "* ]]; then
+    "${PINNED_COMPOSE[@]}" up -d --pull never --no-build --no-deps --force-recreate official-source-sync-worker
+    assert_runtime_container_bound_to_image \
+      official-source-sync-worker "$TARGET_WEB_IMAGE_ID" post-worker-restart web
+  fi
 fi
 if [[ " ${services[*]} " == *" registry-api "* ]]; then
   REGISTRY_QUIESCED="false"
@@ -1800,6 +1839,11 @@ done
 if [[ " ${services[*]} " == *" ingestion-service "* ]]; then
   assert_runtime_container_bound_to_image \
     docling-worker "$TARGET_INGESTION_IMAGE_ID" post-restart ingestion-service
+fi
+if [[ "$OFFICIAL_SOURCE_AUTOMATION_ENABLED" == "true" \
+  && " ${services[*]} " == *" web "* ]]; then
+  assert_runtime_container_bound_to_image \
+    official-source-sync-worker "$TARGET_WEB_IMAGE_ID" post-restart web
 fi
 
 mark_runtime applying verifying
@@ -1833,6 +1877,11 @@ done
 if [[ " ${services[*]} " == *" ingestion-service "* ]]; then
   assert_runtime_container_bound_to_image \
     docling-worker "$TARGET_INGESTION_IMAGE_ID" pre-verified-marker ingestion-service
+fi
+if [[ "$OFFICIAL_SOURCE_AUTOMATION_ENABLED" == "true" \
+  && " ${services[*]} " == *" web "* ]]; then
+  assert_runtime_container_bound_to_image \
+    official-source-sync-worker "$TARGET_WEB_IMAGE_ID" pre-verified-marker web
 fi
 akl_assert_expected_env_snapshot "$ENV_FILE"
 akl_require_read_only_release_tree "$release_dir"

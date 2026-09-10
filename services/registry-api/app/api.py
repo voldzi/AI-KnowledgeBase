@@ -1103,12 +1103,47 @@ def _require_ingestion_service_route(principal: Principal, route: str) -> None:
         )
 
 
+def _is_official_source_sync_service(principal: Principal) -> bool:
+    return bool(
+        get_settings().official_source_automation_enabled
+        and principal.service_identity
+        and principal.service_client_id == "svc-akb-official-source-sync"
+    )
+
+
+def _require_official_source_sync_service(
+    principal: Principal,
+    route: str,
+    document: Document | None = None,
+) -> None:
+    if not _is_official_source_sync_service(principal):
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "official_source_service_forbidden",
+            "The exact official-source synchronization service is required",
+        )
+    _require_service_route(principal, route)
+    if document is not None and (
+        not _is_official_public_source_document(document)
+        or (document.document_metadata or {}).get("collection_id") != "czech-law"
+    ):
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "official_source_service_scope_forbidden",
+            "The official-source service is restricted to governed Czech-law documents",
+        )
+
+
 def _require_document_read_or_ingestion_metadata(
     principal: Principal,
     document: Document,
     db: Session,
 ) -> None:
     if principal.service_identity:
+        if _is_official_source_sync_service(principal):
+            _require_official_source_sync_service(principal, "documents-read", document)
+            require_document_action(principal, Action.document_read, document, db)
+            return
         _require_ingestion_service_route(principal, "documents-read")
         # Background ingestion has already consumed a nonce-bound Registry
         # authorization proof for the delegated person.  The exact
@@ -1163,6 +1198,7 @@ def _service_action_decision(
     document: Document | None,
     capability_override: str | None = None,
     operation_override: str | None = None,
+    credential_token_override: str | None = None,
 ) -> Decision:
     if not principal.service_identity:
         raise problem(status.HTTP_403_FORBIDDEN, "forbidden", "Service identity is required")
@@ -1205,7 +1241,7 @@ def _service_action_decision(
     if document is not None and (not policy_summary or not policy_hash):
         return Decision(False, "Document policy binding is unavailable", {}, ("POLICY_UNAVAILABLE",))
     try:
-        response = governance_client(settings).decide(
+        decision_arguments = dict(
             capability_id=capability,
             operation=operation,
             scope=(
@@ -1216,6 +1252,9 @@ def _service_action_decision(
             policy_binding=policy_summary,
             policy_hash=policy_hash,
         )
+        if credential_token_override is not None:
+            decision_arguments["credential_token"] = credential_token_override
+        response = governance_client(settings).decide(**decision_arguments)
     except GovernanceDenied as exc:
         raise problem(
             status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -1390,8 +1429,16 @@ def _require_own_scope_owner(
         )
 
 
-def _require_official_public_source_operator(context: SubjectContext) -> None:
+def _require_official_public_source_operator(
+    context: SubjectContext,
+    *,
+    principal: Principal | None = None,
+    document: Document | None = None,
+) -> None:
     if "akb:manage_document" not in context.capabilities:
+        if principal is not None and _is_official_source_sync_service(principal):
+            _require_official_source_sync_service(principal, "documents-write", document)
+            return
         raise problem(
             status.HTTP_403_FORBIDDEN,
             "official_public_source_operator_required",
@@ -4632,7 +4679,11 @@ def get_document_external_references_current(
 ) -> ExternalDocumentCurrentListResponse:
     document = _get_document(db, document_id)
     if principal.service_identity:
-        _require_ingestion_service_route(principal, "ingestion-status")
+        if _is_official_source_sync_service(principal):
+            _require_official_source_sync_service(principal, "ingestion-status", document)
+            require_document_action(principal, Action.document_read, document, db)
+        else:
+            _require_ingestion_service_route(principal, "ingestion-status")
     else:
         require_document_action(principal, Action.document_read, document, db)
     external_refs = list(
@@ -6489,10 +6540,43 @@ def create_document(
         payload.governance_scope,
         owner_subject_id=payload.owner_id,
     )
-    subject_context = require_global_action(principal, Action.document_create, db)
     official_public_source = _is_official_public_source_create(payload)
+    official_source_service = _is_official_source_sync_service(principal)
+    if official_source_service:
+        if not official_public_source or payload.metadata.get("collection_id") != "czech-law":
+            raise problem(
+                status.HTTP_403_FORBIDDEN,
+                "official_source_service_scope_forbidden",
+                "The official-source service may create only governed Czech-law documents",
+            )
+        _require_official_source_sync_service(principal, "documents-write")
+        decision = _service_action_decision(
+            principal=principal,
+            subject_id=principal.subject_id,
+            action=Action.document_create.value,
+            document=None,
+            capability_override="akb:manage_document",
+            operation_override="upload",
+            credential_token_override=principal.bearer_token,
+        )
+        if not decision.allowed:
+            raise problem(
+                status.HTTP_403_FORBIDDEN,
+                "official_source_service_forbidden",
+                decision.reason,
+                {"reason_codes": list(decision.reason_codes)},
+            )
+        subject_context = SubjectContext(
+            subject_id=principal.subject_id,
+            roles=set(), groups=set(), capabilities={"akb:manage_document"},
+            scopes={"organization:org_stratos"}, organization_id="org_stratos",
+            identity_active=True, membership_active=True,
+            application_access_active=False, access_v2=True,
+        )
+    else:
+        subject_context = require_global_action(principal, Action.document_create, db)
     if official_public_source:
-        _require_official_public_source_operator(subject_context)
+        _require_official_public_source_operator(subject_context, principal=principal)
     _ensure_policy_binding_registered(payload.information_policy)
     binding_columns = policy_columns(payload.information_policy)
     document_id = make_id("doc")
@@ -7330,6 +7414,18 @@ def _authorized_document_metadata_rows(
         if context_tags and not all(_document_matches_context_tag(document, candidate) for candidate in context_tags):
             continue
         local_decision = evaluate_document_access(context, authorization_action.value, document)
+        if (
+            _is_official_source_sync_service(principal)
+            and _is_official_public_source_document(document)
+            and (document.document_metadata or {}).get("collection_id") == "czech-law"
+        ):
+            _require_official_source_sync_service(principal, "documents-read", document)
+            local_decision = Decision(
+                True,
+                "The exact official-source service may inspect its Czech-law corpus",
+                {"official_source_service": True},
+                ("OFFICIAL_SOURCE_SERVICE_ALLOW",),
+            )
         if not local_decision.allowed and employee_packages:
             local_decision = evaluate_employee_directive_projection(
                 db=db, context=context, action=authorization_action.value,
@@ -7661,7 +7757,7 @@ def patch_document(
     if governance_update_requested:
         official_public_source = _is_official_public_source_document(document)
         if official_public_source:
-            _require_official_public_source_operator(subject_context)
+            _require_official_public_source_operator(subject_context, principal=principal, document=document)
         _require_own_scope_owner(
             payload.governance_scope,
             owner_subject_id=payload.owner_id or document.owner_id,
@@ -7831,7 +7927,7 @@ def _create_document_version(document_id, payload, response, db, principal, *, s
     )
     official_public_source = _is_official_public_source_document(document)
     if official_public_source:
-        _require_official_public_source_operator(subject_context)
+        _require_official_public_source_operator(subject_context, principal=principal, document=document)
     if payload.governance_scope is not None and payload.governance_scope.type == "own":
         expected_owner_subject_id = (
             document.governance_scope_owner_subject_id or document.owner_id
@@ -8453,7 +8549,8 @@ def create_ingestion_authorization_proof(
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> IngestionAuthorizationResponse:
-    if principal.service_identity:
+    official_source_service = _is_official_source_sync_service(principal)
+    if principal.service_identity and not official_source_service:
         raise problem(
             status.HTTP_403_FORBIDDEN,
             "ingestion_authorization_actor_required",
@@ -8467,7 +8564,9 @@ def create_ingestion_authorization_proof(
         )
     document = _get_document(db, document_id)
     version = _get_version(db, document_id, version_id)
-    if not (
+    if official_source_service:
+        _require_official_source_sync_service(principal, "ingestion-status", document)
+    elif not (
         principal.identity_active
         and principal.membership_active
         and principal.application_access_active
@@ -8485,7 +8584,7 @@ def create_ingestion_authorization_proof(
         version,
         db,
     )
-    authorization_basis = "application_access"
+    authorization_basis = "official_source_service" if official_source_service else "application_access"
     token, confirmation = issue_ingestion_authorization(
         get_settings(),
         subject_id=principal.subject_id,

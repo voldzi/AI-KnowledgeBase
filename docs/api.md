@@ -201,6 +201,7 @@ operations:
 ```text
 POST /api/public-sources/discover
 POST /api/public-sources/sync
+POST /api/internal/public-sources/automation
 ```
 
 Discovery accepts only a catalog collection id. Synchronization accepts one
@@ -209,6 +210,16 @@ downloads and verifies the original, creates or updates the immutable AKB
 version, publishes it under collection-level approval and starts exact
 Registry-governed ingestion. See
 `docs/ingestion/official-public-sources.md`.
+
+The internal automation endpoint accepts only a private worker secret and then
+obtains a short-lived token for the exact `svc-akb-official-source-sync`
+identity. Its closed action set is `collections`, `discover` and `sync`, and it
+is restricted to the configured `czech-law` collection. STRATOS remains the
+authority for the current collection, exact source proposal, TLP, audience and
+owner/gestor policy. The endpoint is not a public or browser API.
+The client token must carry matching `client_id` and `azp`, the technical
+service-account username, and exactly the audiences `stratos-official-sources`
+and `akl-api`.
 
 Registry exposes effective-dated document packages and cited, human-verified
 rules:

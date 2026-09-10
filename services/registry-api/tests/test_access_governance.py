@@ -30,7 +30,7 @@ from app.config import Settings
 from app.information_policy import InformationPolicyBinding, canonical_policy_hash
 from app.models import Document, DocumentVersion
 from app.official_public_sources import is_official_public_source_document
-from app.schemas import DocumentCreate
+from app.schemas import Action, DocumentCreate
 from app.permissions import (
     Decision,
     DocumentVersionAuthority,
@@ -39,7 +39,23 @@ from app.permissions import (
     evaluate_document_version_access,
     evaluate_runtime_document_access,
     evaluate_runtime_document_version_access,
+    require_document_action,
 )
+
+
+def test_official_source_service_cannot_authorize_an_unrelated_document() -> None:
+    principal = Principal(
+        subject_id="official-source-service-subject",
+        roles=set(),
+        groups=set(),
+        service_identity=True,
+        service_client_id="svc-akb-official-source-sync",
+        bearer_token="official-source-service-token",
+    )
+    with pytest.raises(HTTPException) as denied:
+        require_document_action(principal, Action.document_read, _document(_policy()))
+    assert denied.value.status_code == 403
+    assert denied.value.detail["error"]["code"] == "official_source_service_scope_forbidden"
 
 
 def _settings(**overrides) -> Settings:

@@ -6,9 +6,11 @@ import { NextRequest } from "next/server";
 import { GET as collectionsGet } from "../src/app/api/public-sources/collections/route";
 import { POST as sourceSyncPost } from "../src/app/api/public-sources/sync/route";
 import { createApiClients } from "../src/lib/api";
+import { getAklConfig } from "../src/lib/api/config";
 import { createMockContext } from "../src/lib/api/correlation";
 import { canonicalDocumentSnapshot } from "../src/lib/documents/document-profile";
 import { listApprovedPublicSourceCollections, preparePublicSource, validatePreparedPublicSource } from "../src/lib/public-sources/approved-collections-client";
+import { officialSourceServiceRequestContext, resetOfficialSourceServiceTokenCacheForTests } from "../src/lib/public-sources/automation-service-identity";
 import type { PreparePublicSourceRequest, PreparedPublicSource } from "../src/lib/public-sources/approved-collections";
 import { synchronizePublicSource } from "../src/lib/public-sources/sync";
 import { ApiClientError } from "../src/lib/types";
@@ -35,6 +37,58 @@ test("approved collection client forwards actor only to the configured nonredire
     return Response.json({ schemaVersion: "stratos-official-source-collections-1", collections: [listItem] });
   }, endpoint);
   assert.equal(result[0]?.ownerDisplayName, "Vlastník zdrojů");
+});
+
+test("approved collection client accepts only the dedicated automation service identity", async () => {
+  const automationContext = { ...context, serviceClientId: "svc-akb-official-source-sync" };
+  const result = await listApprovedPublicSourceCollections(automationContext, async (_url, init) => {
+    assert.equal(new Headers(init?.headers).get("authorization"), "Bearer fixture-actor-access");
+    return Response.json({ schemaVersion: "stratos-official-source-collections-1", collections: [listItem] });
+  }, endpoint);
+  assert.equal(result.length, 1);
+  await assert.rejects(listApprovedPublicSourceCollections({ ...context, serviceClientId: "shared-service" }, noBytes, endpoint), {
+    code: "PUBLIC_SOURCE_APPROVAL_UNAVAILABLE",
+  });
+});
+
+test("automation obtains only the exact dedicated OAuth client identity", async () => {
+  const config = getAklConfig({
+    AKL_ENV: "test", AKL_API_CLIENT_MODE: "mock", AKL_AUTH_MODE: "oidc",
+    AKL_WEB_OIDC_ISSUER: "https://login.example/realms/stratos",
+    AKL_WEB_PUBLIC_BASE_URL: "https://akb.example", AKL_WEB_SESSION_SECRET: "test-session-secret",
+    AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.example/api/v1/auth/me",
+    AKB_OFFICIAL_SOURCE_AUTOMATION_ENABLED: "true",
+    AKB_OFFICIAL_SOURCE_TOKEN_URL: "https://login.example/token",
+    AKB_OFFICIAL_SOURCE_CLIENT_ID: "svc-akb-official-source-sync",
+    AKB_OFFICIAL_SOURCE_CLIENT_SECRET: "test-only-client-secret",
+    AKB_OFFICIAL_SOURCE_INTERNAL_SECRET: "test-only-internal-secret-at-least-32-bytes",
+  });
+  const savedFetch = globalThis.fetch;
+  try {
+    for (const clientId of ["svc-akb-official-source-sync", "shared-service"]) {
+      resetOfficialSourceServiceTokenCacheForTests();
+      globalThis.fetch = async (_url, init) => {
+        assert.equal(new URLSearchParams(String(init?.body)).get("client_id"), "svc-akb-official-source-sync");
+        return Response.json({ access_token: jwt({
+          sub: "service-subject", azp: clientId, client_id: clientId,
+          preferred_username: `service-account-${clientId}`,
+          aud: ["akl-api", "stratos-official-sources"],
+        }), expires_in: 300 });
+      };
+      if (clientId === "svc-akb-official-source-sync") {
+        const serviceContext = await officialSourceServiceRequestContext("correlation", config);
+        assert.equal(serviceContext.serviceClientId, clientId);
+        assert.equal(serviceContext.subjectId, "service-subject");
+      } else {
+        await assert.rejects(officialSourceServiceRequestContext("correlation", config), {
+          code: "OFFICIAL_SOURCE_AUTOMATION_UNAVAILABLE",
+        });
+      }
+    }
+  } finally {
+    globalThis.fetch = savedFetch;
+    resetOfficialSourceServiceTokenCacheForTests();
+  }
 });
 
 for (const status of [404, 500, 503]) test(`missing/unavailable central contract (${status}) never turns local discovery into approval`, async () => {
@@ -142,3 +196,11 @@ test("central outage before prepare does not reach the Registry or the source", 
     throw new ApiClientError("Unavailable", 503, "PUBLIC_SOURCE_APPROVAL_UNAVAILABLE", "test");
   }), { status: 503 });
 });
+
+function jwt(claims: Record<string, unknown>): string {
+  return [
+    Buffer.from(JSON.stringify({ alg: "none" })).toString("base64url"),
+    Buffer.from(JSON.stringify(claims)).toString("base64url"),
+    "signature",
+  ].join(".");
+}

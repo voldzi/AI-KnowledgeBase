@@ -68,6 +68,19 @@ test("e-Sbírka discovery uses credential-free open data and preserves versions 
     assert.equal(new Headers(init?.headers).get("authorization"), null);
     assert.match(new Headers(init?.headers).get("accept") ?? "", /application\/ld\+json/);
     const path = new URL(String(input)).pathname;
+    const dated = path.match(/\/(\d{4}-\d{2}-\d{2})$/);
+    if (dated) {
+      const effectiveTo: Record<string, string | null> = {
+        "2022-09-01": "2023-07-15",
+        "2023-07-16": "2024-12-31",
+        "2025-01-01": null,
+      };
+      return new Response(JSON.stringify({
+        "@id": path.slice(1),
+        "účinnost-znění-od": dated[1],
+        "účinnost-znění-do": effectiveTo[dated[1]],
+      }), { status: 200, headers: { "Content-Type": "application/ld+json" } });
+    }
     return new Response(JSON.stringify({
       "má-vyhlášené-znění": `${path.slice(1)}/0000-00-00`,
       "má-znění": [
@@ -89,8 +102,8 @@ test("e-Sbírka discovery uses credential-free open data and preserves versions 
 
   assert.equal(collection?.syncMode, "open_data");
   assert.equal(result.candidates.length, (collection?.openDataActs?.length ?? 0) * 3);
-  assert.equal(result.pagesVisited, collection?.openDataActs?.length);
-  assert.equal(requests, collection?.openDataActs?.length);
+  assert.equal(result.pagesVisited, (collection?.openDataActs?.length ?? 0) * 4);
+  assert.equal(requests, (collection?.openDataActs?.length ?? 0) * 4);
   assert.equal(result.warnings.length, 0);
   assert.equal(procurementAct.length, 3);
   assert.equal(procurementAct[0]?.canonicalUrl, "https://e-sbirka.gov.cz/sb/2016/134");
@@ -113,6 +126,14 @@ test("e-Sbírka discovery uses credential-free open data and preserves versions 
   assert.equal(
     procurementAct[2]?.sourceUrl,
     "https://e-sbirka.gov.cz/sb/2016/134/2025-01-01",
+  );
+});
+
+test("e-Sbírka pilot starts with the ten centrally governed laws", () => {
+  const collection = publicSourceCollection("czech-law");
+  assert.deepEqual(
+    collection?.openDataActs?.slice(0, 10).map((act) => `${act.number}/${act.year}`),
+    ["89/2012", "90/2012", "262/2006", "500/2004", "106/1999", "134/2016", "218/2000", "250/2000", "563/1991", "340/2015"],
   );
 });
 

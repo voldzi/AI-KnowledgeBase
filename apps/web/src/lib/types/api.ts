@@ -151,7 +151,7 @@ export interface ApiRequestContext {
     effectiveScopes?: string[];
     validUntil?: string | null;
   }>;
-  authorizationSource?: "mock" | "stratos_projection";
+  authorizationSource?: "mock" | "stratos_projection" | "service";
   serviceClientId?: string;
   accessToken?: string;
   requestId?: string;

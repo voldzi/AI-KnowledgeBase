@@ -6,6 +6,7 @@ import { parseDocumentInformationPolicy } from "@/lib/stratos/information-policy
 import { ApiClientError, type ApiRequestContext } from "@/lib/types";
 import { publicSourceCollection } from "./catalog";
 import type { ApprovedPublicSourceCollection, PreparedPublicSource, PreparePublicSourceRequest } from "./approved-collections";
+import { OFFICIAL_SOURCE_SERVICE_CLIENT_ID } from "./automation-service-identity";
 
 const MAX_RESPONSE_BYTES = 256 * 1024;
 const SCHEMA = "stratos-official-source-collections-1";
@@ -30,7 +31,7 @@ export function officialSourceRecordId(collectionId: string, canonicalUrl: strin
 /** Never follows redirects with the actor's bearer and never falls back to an unapproved catalog. */
 async function centralRequest(path: string, context: ApiRequestContext, body: unknown | undefined,
   fetcher: typeof fetch, endpoint: string | undefined): Promise<unknown> {
-  if (!context.accessToken || context.serviceClientId || !endpoint) unavailable(context);
+  if (!context.accessToken || (context.serviceClientId && context.serviceClientId !== OFFICIAL_SOURCE_SERVICE_CLIENT_ID) || !endpoint) unavailable(context);
   let url: URL;
   try {
     url = new URL(endpoint.replace(/\/+$/, "") + path);

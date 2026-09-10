@@ -31,11 +31,12 @@ type Fetcher = typeof fetch;
 export async function discoverPublicSourceCollection(
   collectionId: string,
   fetcher: Fetcher = fetch,
+  options: { openDataActLimit?: number } = {},
 ): Promise<PublicSourceDiscoveryResult> {
   const collection = publicSourceCollection(collectionId);
   if (!collection) throw new Error("Unknown public source collection.");
   if (collection.syncMode === "open_data") {
-    return discoverCzechLawOpenData(collection, fetcher);
+    return discoverCzechLawOpenData(collection, fetcher, options.openDataActLimit);
   }
 
   const fixed = (collection.fixedDocuments ?? []).map((document) => ({
@@ -164,8 +165,11 @@ async function safeFetch(
 async function discoverCzechLawOpenData(
   collection: PublicSourceCollection,
   fetcher: Fetcher,
+  actLimit?: number,
 ): Promise<PublicSourceDiscoveryResult> {
-  const acts = collection.openDataActs ?? [];
+  const acts = Number.isInteger(actLimit) && Number(actLimit) > 0
+    ? (collection.openDataActs ?? []).slice(0, Number(actLimit))
+    : collection.openDataActs ?? [];
   const candidates: PublicSourceCandidate[] = [];
   const warnings: string[] = [];
   const today = new Date().toISOString().slice(0, 10);
@@ -189,14 +193,25 @@ async function discoverCzechLawOpenData(
         );
         pagesVisited += 1;
         const payload = JSON.parse(await readBoundedText(response, PAGE_MAX_BYTES)) as unknown;
-        const effectiveVersions = selectEffectiveCzechLawVersions(
+        const effectiveVersions = selectEffectiveCzechLawVersionReferences(
           payload,
           act.year,
           act.number,
           collection.historyFrom ?? today,
           today,
         );
-        for (const version of effectiveVersions) {
+        const verifiedVersions = await Promise.all(effectiveVersions.map(async (version) => {
+          const versionResponse = await safeFetch(
+            version.url,
+            collection,
+            fetcher,
+            "application/ld+json,application/json;q=0.9",
+          );
+          pagesVisited += 1;
+          const versionPayload = JSON.parse(await readBoundedText(versionResponse, PAGE_MAX_BYTES)) as unknown;
+          return verifiedCzechLawEffectiveInterval(versionPayload, version.url, version.date);
+        }));
+        for (const version of verifiedVersions) {
           candidates.push({
             title: `${act.number}/${act.year} Sb. – ${act.title}`,
             sourceUrl: `${E_SBIRKA_PUBLIC_ORIGIN}/sb/${act.year}/${act.number}/${version.effectiveFrom}`,
@@ -224,13 +239,13 @@ async function discoverCzechLawOpenData(
   };
 }
 
-function selectEffectiveCzechLawVersions(
+function selectEffectiveCzechLawVersionReferences(
   payload: unknown,
   year: number,
   number: string,
   historyFrom: string,
   today: string,
-): Array<{ url: URL; effectiveFrom: string; effectiveTo: string | null }> {
+): Array<{ url: URL; date: string }> {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw new Error("Open data returned an unsupported legal-act shape.");
   }
@@ -258,20 +273,31 @@ function selectEffectiveCzechLawVersions(
   const selected = available.filter(
     ({ date }, index) => date >= historyFrom || index === baselineIndex,
   );
-  return selected.map(({ value, date }, index) => {
-    const next = selected[index + 1];
-    return {
-      url: new URL(value.replace(/^\/+/, ""), `${E_SBIRKA_OPEN_DATA_ORIGIN}/`),
-      effectiveFrom: date,
-      effectiveTo: next ? previousIsoDate(next.date) : null,
-    };
-  });
+  return selected.map(({ value, date }) => ({
+    url: new URL(value.replace(/^\/+/, ""), `${E_SBIRKA_OPEN_DATA_ORIGIN}/`),
+    date,
+  }));
 }
 
-function previousIsoDate(value: string): string {
-  const date = new Date(`${value}T00:00:00Z`);
-  date.setUTCDate(date.getUTCDate() - 1);
-  return date.toISOString().slice(0, 10);
+function verifiedCzechLawEffectiveInterval(
+  payload: unknown,
+  expectedUrl: URL,
+  expectedDate: string,
+): { effectiveFrom: string; effectiveTo: string | null } {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error("Open data returned unsupported legal-version metadata.");
+  }
+  const record = payload as Record<string, unknown>;
+  const identity = record["@id"];
+  const expectedIdentity = expectedUrl.pathname.replace(/^\/+/, "");
+  const effectiveFrom = record["účinnost-znění-od"];
+  const effectiveTo = record["účinnost-znění-do"] ?? null;
+  if (identity !== expectedIdentity || effectiveFrom !== expectedDate
+      || (effectiveTo !== null && (typeof effectiveTo !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(effectiveTo)))
+      || (typeof effectiveFrom === "string" && typeof effectiveTo === "string" && effectiveTo < effectiveFrom)) {
+    throw new Error("Open data did not prove the exact legal-version effective interval.");
+  }
+  return { effectiveFrom: expectedDate, effectiveTo: effectiveTo as string | null };
 }
 
 function normalizedAllowedUrl(value: string, collection: PublicSourceCollection): URL {
