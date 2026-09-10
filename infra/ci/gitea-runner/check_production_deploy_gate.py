@@ -17,6 +17,7 @@ from urllib.parse import urlencode
 
 
 FULL_SHA = re.compile(r"^[0-9a-f]{40}$")
+TRUSTED_CI_EVENTS = {"push", "workflow_dispatch"}
 
 
 def read_token(path: Path) -> str:
@@ -82,7 +83,7 @@ def is_trusted_ci_run(run: dict[str, Any], sha: str) -> bool:
     return all(
         (
             run.get("head_sha") == sha,
-            run.get("event") == "push",
+            run.get("event") in TRUSTED_CI_EVENTS,
             branch in {None, "main"},
             conclusion == "success",
             workflow_file in {"ci.yaml", ".gitea/workflows/ci.yaml"}
@@ -100,7 +101,7 @@ def is_trusted_ci_identity(run: dict[str, Any], sha: str) -> bool:
     return all(
         (
             run.get("head_sha") == sha,
-            run.get("event") == "push",
+            run.get("event") in TRUSTED_CI_EVENTS,
             branch in {None, "main"},
             workflow_file in {"ci.yaml", ".gitea/workflows/ci.yaml"}
             or workflow_name == "AKB CI",

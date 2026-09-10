@@ -194,6 +194,12 @@ exact hash-locked dependency file. A missing, changed, open or unhashed lock
 fails closed; a valid cache hit skips only dependency installation, never the
 tests, same-SHA evidence or immutable release contract.
 
+The production gate accepts the trusted CI workflow from either its automatic
+`push` trigger on `main` or its reviewed `workflow_dispatch` path. The manual
+path remains bound to the full current `main` SHA by its required
+`approved_sha`; the gate still requires a successful non-empty job set for that
+exact SHA. Pull-request and other event types remain ineligible for production.
+
 ## Optimized Release Candidate Workflow
 
 The required runtime impact job now runs Docker Buildx `--check` for the

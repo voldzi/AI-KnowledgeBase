@@ -256,7 +256,7 @@ printf '%s\\n' "$*" >"$FAKE_RECOVERY_LOG"
                 {"ok": True},
             )
 
-    def test_trusted_ci_requires_push_success_and_exact_sha(self) -> None:
+    def test_trusted_ci_requires_approved_event_success_and_exact_sha(self) -> None:
         sha = "a" * 40
         valid = {
             "head_sha": sha,
@@ -265,9 +265,15 @@ printf '%s\\n' "$*" >"$FAKE_RECOVERY_LOG"
             "path": ".gitea/workflows/ci.yaml",
         }
         self.assertTrue(production_gate.is_trusted_ci_run(valid, sha))
+        self.assertTrue(
+            production_gate.is_trusted_ci_run(
+                {**valid, "event": "workflow_dispatch", "head_branch": "main"},
+                sha,
+            )
+        )
         for key, value in (
             ("head_sha", "b" * 40),
-            ("event", "workflow_dispatch"),
+            ("event", "pull_request"),
             ("conclusion", "failure"),
             ("path", ".gitea/workflows/deploy-production.yaml"),
             ("head_branch", "feature/untrusted"),
