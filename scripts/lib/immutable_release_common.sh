@@ -506,6 +506,7 @@ SUPPORTED = (
     "llm-gateway-service",
 )
 DOCLING_SIDECAR = "docling-worker"
+OFFICIAL_SOURCE_WORKER = "official-source-sync-worker"
 SERVICE_HEADER = re.compile(r"^  ([a-z0-9][a-z0-9_-]*):(?:[ \t]*#[^\r\n]*)?\r?\n?$")
 TOP_LEVEL = re.compile(r"^[A-Za-z0-9_.-]+:")
 
@@ -589,11 +590,23 @@ docling_sidecar_transition = (
     (added == {DOCLING_SIDECAR} and not removed)
     or (removed == {DOCLING_SIDECAR} and not added)
 )
+official_source_worker_transition = (
+    (added == {OFFICIAL_SOURCE_WORKER} and not removed)
+    or (removed == {OFFICIAL_SOURCE_WORKER} and not added)
+)
 
 
 def normalize_docling_runtime_volume(value: str) -> str:
     return re.sub(
         r"(?m)^  docling-runtime:[ \t]*(?:#[^\r\n]*)?\r?\n",
+        "",
+        value,
+    )
+
+
+def normalize_official_source_state_volume(value: str) -> str:
+    return re.sub(
+        r"(?m)^  official-source-sync-state:[ \t]*(?:[^\r\n]*)?\r?\n",
         "",
         value,
     )
@@ -610,6 +623,13 @@ if docling_sidecar_transition:
         current_envelope_for_comparison
     )
     target_envelope_for_comparison = normalize_docling_runtime_volume(target_envelope)
+if official_source_worker_transition:
+    current_envelope_for_comparison = normalize_official_source_state_volume(
+        current_envelope_for_comparison
+    )
+    target_envelope_for_comparison = normalize_official_source_state_volume(
+        target_envelope_for_comparison
+    )
 if current_envelope_for_comparison != target_envelope_for_comparison:
     raise SystemExit(
         "shared production Compose change modifies top-level configuration outside the managed-service release boundary"
@@ -619,11 +639,13 @@ if current_services.keys() != target_services.keys():
         {"chat-web"},
         {"llm-gateway-service"},
         {DOCLING_SIDECAR},
+        {OFFICIAL_SOURCE_WORKER},
     ) and not removed
     if (
         not central_opensearch_cutover
         and not external_qdrant_cutover
         and not docling_sidecar_transition
+        and not official_source_worker_transition
         and not allowed_single_addition
     ):
         raise SystemExit("shared production Compose change adds or removes an unsupported service")
@@ -631,7 +653,11 @@ if current_services.keys() != target_services.keys():
 changed = []
 for name, target_block in target_services.items():
     if name not in current_services:
-        changed.append("ingestion-service" if name == DOCLING_SIDECAR else name)
+        changed.append(
+            "ingestion-service" if name == DOCLING_SIDECAR
+            else "web" if name == OFFICIAL_SOURCE_WORKER
+            else name
+        )
         continue
     current_block = current_services[name]
     if central_opensearch_cutover and name == "platform-status":
@@ -646,6 +672,8 @@ for name, target_block in target_services.items():
         changed.append("ingestion-service" if name == DOCLING_SIDECAR else name)
 if DOCLING_SIDECAR in removed and "ingestion-service" not in changed:
     changed.append("ingestion-service")
+if OFFICIAL_SOURCE_WORKER in removed and "web" not in changed:
+    changed.append("web")
 if central_opensearch_cutover:
     for service in ("ingestion-service", "rag-retrieval-service"):
         if service not in changed:
