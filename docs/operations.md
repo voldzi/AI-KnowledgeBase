@@ -304,6 +304,13 @@ AKB_OFFICIAL_SOURCE_FULL_INTERVAL_SECONDS=604800
 AKB_OFFICIAL_SOURCE_MAX_NEW_PER_RUN=10
 ```
 
+The worker runs as the image's unprivileged `node` user (`1000:1000`). The
+production release operator and both mode-`0600` source files use UID `1000`,
+so the worker can read its internal secret without making it group-readable.
+Its container remains read-only, drops every Linux capability and uses
+`no-new-privileges`. The durable state volume must also be owned by
+`1000:1000`; preserve that ownership during restore or migration.
+
 The token itself must contain exactly two audiences, `stratos-official-sources`
 and `akl-api`; the singular setting above names the STRATOS endpoint audience
 that must be present. Add the client to Registry's trusted service list and
