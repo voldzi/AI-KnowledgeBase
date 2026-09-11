@@ -208,6 +208,32 @@ class DoclingProductionReleaseTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.strip().splitlines(), ["ingestion-service"])
 
+    def test_compose_change_maps_official_source_worker_to_web_owner(self) -> None:
+        target = (ROOT / "infra/docker-compose/docker-compose.docker-home.yml").read_text(
+            encoding="utf-8"
+        )
+        worker_uid = 'user: "1000:1000"'
+        self.assertEqual(target.count(worker_uid), 1)
+        current = target.replace(worker_uid, 'user: "100:101"')
+        with tempfile.TemporaryDirectory() as directory:
+            current_path = Path(directory) / "current.yml"
+            target_path = Path(directory) / "target.yml"
+            current_path.write_text(current, encoding="utf-8")
+            target_path.write_text(target, encoding="utf-8")
+            command = (
+                f'source "{ROOT / "scripts/lib/immutable_release_common.sh"}"; '
+                f'akl_changed_supported_compose_services "{current_path}" "{target_path}"'
+            )
+            result = subprocess.run(
+                ["bash", "-c", command],
+                cwd=ROOT,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip().splitlines(), ["web"])
+
     def test_deploy_builds_docling_and_verifies_sidecar_same_image(self) -> None:
         deploy = (ROOT / "scripts/deploy_docker_home_release.sh").read_text(
             encoding="utf-8"
@@ -242,7 +268,7 @@ class DoclingProductionReleaseTests(unittest.TestCase):
         self.assertIn('local image_owner="${6:-$service_name}"', common)
         self.assertIn('release_service" == "$image_owner"', common)
 
-    def test_docling_sidecar_advances_managed_boundary_revision(self) -> None:
+    def test_managed_worker_boundary_revision_is_current(self) -> None:
         deploy = (ROOT / "scripts/deploy_docker_home_release.sh").read_text(
             encoding="utf-8"
         )
@@ -251,9 +277,9 @@ class DoclingProductionReleaseTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("  docling-worker:\n", compose)
         self.assertEqual(
-            deploy.count("AKL_IMMUTABLE_MANAGED_BOUNDARY_REVISION=7"), 1
+            deploy.count("AKL_IMMUTABLE_MANAGED_BOUNDARY_REVISION=8"), 1
         )
-        self.assertNotIn("AKL_IMMUTABLE_MANAGED_BOUNDARY_REVISION=6", deploy)
+        self.assertNotIn("AKL_IMMUTABLE_MANAGED_BOUNDARY_REVISION=7", deploy)
 
     def test_release_derives_registry_build_epoch_from_exact_target(self) -> None:
         deploy = (ROOT / "scripts/deploy_docker_home_release.sh").read_text(

@@ -669,7 +669,11 @@ for name, target_block in target_services.items():
             current_block
         )
     if current_block != target_block:
-        changed.append("ingestion-service" if name == DOCLING_SIDECAR else name)
+        changed.append(
+            "ingestion-service" if name == DOCLING_SIDECAR
+            else "web" if name == OFFICIAL_SOURCE_WORKER
+            else name
+        )
 if DOCLING_SIDECAR in removed and "ingestion-service" not in changed:
     changed.append("ingestion-service")
 if OFFICIAL_SOURCE_WORKER in removed and "web" not in changed:
