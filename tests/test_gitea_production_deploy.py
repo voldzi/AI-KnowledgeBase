@@ -93,6 +93,55 @@ fi
             self.assertNotEqual(bad.returncode, 0)
             self.assertFalse((root / "release/prebuilt" / f"{other_sha}.env").exists())
 
+    def test_gateway_uses_target_bootstrap_for_exact_next_boundary(self) -> None:
+        gateway = ROOT / "infra/ci/gitea-runner/host/akb-gitea-deploy-gateway.sh"
+        source = gateway.read_text(encoding="utf-8").split(
+            'if [[ -z "${SSH_ORIGINAL_COMMAND:-}" && "${1:-}" == "--internal-run" ]]',
+            1,
+        )[0]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            release = root / "release"
+            current_release = release / "releases" / ("a" * 40)
+            target_release = release / "releases" / ("b" * 40)
+            for candidate, revision in ((current_release, 7), (target_release, 8)):
+                scripts = candidate / "scripts"
+                scripts.mkdir(parents=True)
+                deploy = scripts / "deploy_docker_home_release.sh"
+                deploy.write_text(
+                    f"#!/usr/bin/env bash\nAKL_IMMUTABLE_MANAGED_BOUNDARY_REVISION={revision}\n",
+                    encoding="utf-8",
+                )
+                deploy.chmod(0o755)
+            bootstrap = target_release / "scripts" / "bootstrap_docker_home_target.sh"
+            bootstrap.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+            bootstrap.chmod(0o755)
+            release.mkdir(parents=True, exist_ok=True)
+            (release / "current").symlink_to(current_release)
+            harness = root / "gateway-entrypoint-test.sh"
+            harness.write_text(
+                source
+                + "\nbootstrap_target_release() { printf '%s\\n' \"$FAKE_TARGET_RELEASE\"; }\n"
+                + "deploy_entrypoint \"$FAKE_TARGET_SHA\"\n",
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                ["bash", str(harness)],
+                capture_output=True,
+                text=True,
+                env={
+                    **os.environ,
+                    "AKB_RELEASE_ROOT": str(release),
+                    "FAKE_TARGET_RELEASE": str(target_release),
+                    "FAKE_TARGET_SHA": "b" * 40,
+                },
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(
+                result.stdout.strip(),
+                f"{bootstrap}\ttransition-existing-current",
+            )
+
     def test_first_akb_cutover_restores_legacy_containers_after_failed_bootstrap(self) -> None:
         sha = "a" * 40
         legacy_id = "b" * 64
