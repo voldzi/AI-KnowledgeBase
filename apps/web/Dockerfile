@@ -49,7 +49,9 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_PUBLIC_AKL_BASE_PATH=$NEXT_PUBLIC_AKL_BASE_PATH
 
 RUN addgroup -S nextjs && adduser -S nextjs -G nextjs
-RUN mkdir -p /data/object-storage && chown -R nextjs:nextjs /data
+RUN mkdir -p /data/object-storage /data/official-source-sync && \
+  chown -R nextjs:nextjs /data/object-storage && \
+  chown -R node:node /data/official-source-sync
 
 COPY --from=builder --chown=nextjs:nextjs /app/public ./public
 COPY --from=builder --chown=nextjs:nextjs /app/.next/standalone ./

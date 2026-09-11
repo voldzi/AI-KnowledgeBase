@@ -130,6 +130,31 @@ class DoclingProductionReleaseTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_official_source_worker_matches_private_secret_owner(self) -> None:
+        dockerfile = (ROOT / "apps/web/Dockerfile").read_text(encoding="utf-8")
+        self.assertIn("adduser -S nextjs", dockerfile)
+        self.assertIn("chown -R node:node /data/official-source-sync", dockerfile)
+
+        for compose_path, following_service in (
+            (
+                ROOT / "infra/docker-compose/docker-compose.docker-home.yml",
+                "chat-web",
+            ),
+            (ROOT / "infra/docker-compose/docker-compose.dev.yml", "registry-api"),
+        ):
+            compose = compose_path.read_text(encoding="utf-8")
+            worker = compose.split("  official-source-sync-worker:\n", 1)[1].split(
+                f"\n  {following_service}:\n", 1
+            )[0]
+            self.assertIn('\n    user: "1000:1000"', worker)
+            self.assertIn("    read_only: true", worker)
+            self.assertIn("      - no-new-privileges:true", worker)
+            self.assertIn("      - ALL", worker)
+            self.assertIn(
+                "/run/secrets/akb-official-source-sync-internal-secret:ro",
+                worker,
+            )
+
     def test_compose_transition_maps_sidecar_to_ingestion_owner(self) -> None:
         target = (ROOT / "infra/docker-compose/docker-compose.docker-home.yml").read_text(
             encoding="utf-8"

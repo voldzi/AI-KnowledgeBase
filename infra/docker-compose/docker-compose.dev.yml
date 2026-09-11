@@ -421,7 +421,7 @@ services:
     image: ${WEB_IMAGE:-akl/web:local}
     restart: unless-stopped
     read_only: true
-    user: "100:101"
+    user: "1000:1000"
     security_opt:
       - no-new-privileges:true
     cap_drop:
