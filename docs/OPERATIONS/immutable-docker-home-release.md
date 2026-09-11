@@ -96,14 +96,15 @@ deploy from the mutable `/srv/akl/repo` working tree.
   ingestion image, and are verified together. Any other added/removed service
   or volume, or a change to reverse proxy, platform-status, networks or another
   unmanaged block fails before build.
-  `infra/keycloak/realm-stratos.json` and
-  `infra/keycloak/update-stratos-public-routing.sh` are the only explicit
-  non-runtime exceptions: the shared STRATOS realm and its public-routing
-  clients are reconciled and verified through the independent Keycloak
-  administration workflow, so changing either resource neither selects nor
-  mutates an AKB Compose service. Every other path below `infra/keycloak/`
-  remains fail-closed. The exceptions do not apply live Keycloak changes and
-  must not be used as evidence that the realm matches the repository.
+  `infra/keycloak/realm-stratos.json`,
+  `infra/keycloak/update-stratos-public-routing.sh`, and
+  `infra/keycloak/ensure-akb-chat-mcp-client.sh` are the explicit non-runtime
+  exceptions: the shared STRATOS realm and its client reconcilers are applied
+  and verified through the independent Keycloak administration workflow, so
+  changing these resources neither selects nor mutates an AKB Compose service.
+  Every other path below `infra/keycloak/` remains fail-closed. The exceptions
+  do not apply live Keycloak changes and must not be used as evidence that the
+  realm matches the repository.
 - Immediately before Compose may recreate an affected service, the workflow
   durably records `target_services_start_may_have_started=true`. Any handled
   failure after that boundary and before the verified marker quarantines every
