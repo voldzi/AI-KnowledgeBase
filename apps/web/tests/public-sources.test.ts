@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -131,9 +132,17 @@ test("e-Sbírka discovery uses credential-free open data and preserves versions 
 
 test("e-Sbírka pilot starts with the ten centrally governed laws", () => {
   const collection = publicSourceCollection("czech-law");
+  const approved = JSON.parse(readFileSync(
+    new URL("../../../contracts/stratos/official-sources/czech-law-pilot.v1.json", import.meta.url),
+    "utf8",
+  )) as { sources: Array<{ number: string; year: number; title: string }> };
   assert.deepEqual(
     collection?.openDataActs?.slice(0, 10).map((act) => `${act.number}/${act.year}`),
     ["89/2012", "90/2012", "262/2006", "500/2004", "106/1999", "134/2016", "218/2000", "250/2000", "563/1991", "340/2015"],
+  );
+  assert.deepEqual(
+    collection?.openDataActs?.slice(0, 10).map((act) => `${act.number}/${act.year} Sb. – ${act.title}`),
+    approved.sources.map((source) => source.title),
   );
 });
 
