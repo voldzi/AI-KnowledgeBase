@@ -74,7 +74,7 @@ docker compose \
 ```
 
 `docker.home.cz` reaches the MacBook VPN addresses from its host namespace,
-while containers in `akl_app_zone` deliberately have no direct VPN route.
+while containers in `akb_app_zone` deliberately have no direct VPN route.
 Run the pinned host-network proxy set on `docker.home.cz`:
 
 ```bash
@@ -86,13 +86,13 @@ docker compose \
 The stable AKB-side endpoints are:
 
 ```text
-http://10.246.241.1:11435  -> 192.168.200.3:11435
-http://10.246.241.1:11436  -> 192.168.200.2:11435
-http://10.246.241.1:11437  -> 192.168.1.176:11435
+http://10.246.246.1:11435  -> 192.168.200.3:11435
+http://10.246.246.1:11436  -> 192.168.200.2:11435
+http://10.246.246.1:11437  -> 192.168.1.176:11435
 ```
 
-`10.246.241.1` is the gateway of the explicitly configured
-`AKL_APP_ZONE_SUBNET` (`10.246.241.0/24` by default), not an incidental Docker
+The proxy bind address is the gateway of the explicitly configured AKB
+application network (`10.246.246.0/24` by default), not an incidental Docker
 bridge address. Keep the URL order aligned with the preferred VPN address.
 The three proxy URLs are alternative addresses of one MacBook, not a
 load-balanced pool. AKB probes them concurrently when it has no active route,
@@ -168,9 +168,9 @@ docker compose \
 The stable AKB-side endpoints are:
 
 ```text
-http://10.246.241.1:11438  -> 192.168.200.3:11438
-http://10.246.241.1:11439  -> 192.168.200.2:11438
-http://10.246.241.1:11440  -> 192.168.1.176:11438
+http://10.246.246.1:11438  -> 192.168.200.3:11438
+http://10.246.246.1:11439  -> 192.168.200.2:11438
+http://10.246.246.1:11440  -> 192.168.1.176:11438
 ```
 
 Use the same active-route and cooldown semantics as Qwen. The three endpoints
@@ -192,7 +192,7 @@ selected for the production latency path.
 
 ## docker.home.cz GTE CPU rollback
 
-The service joins the existing `akl_app_zone` and publishes no host port. Only
+The service joins the existing `akb_app_zone` and publishes no host port. Only
 AKB application containers on that Docker network can reach it. This profile
 is retained for compatibility and disaster recovery; it is not a performant
 production target. Qwen and BGE also remain rollback options until the
@@ -206,7 +206,7 @@ Verification runs inside the application network without exposing GTE to the
 host network:
 
 ```bash
-docker run --rm --network akl_app_zone \
+docker run --rm --network akb_app_zone \
   -v "$PWD:/work:ro" -w /work python:3.11-alpine \
   python3 scripts/reranker_smoke.py \
   --provider tei --base-url http://gte-reranker:3000
