@@ -1285,13 +1285,15 @@ else
       services/llm-gateway-service/*)
         add_service llm-gateway-service
         ;;
-      infra/keycloak/README.md|infra/keycloak/realm-akl.json|infra/keycloak/realm-stratos.json|infra/keycloak/update-stratos-public-routing.sh)
+      infra/keycloak/README.md|infra/keycloak/realm-akl.json|infra/keycloak/realm-stratos.json|infra/keycloak/update-stratos-public-routing.sh|infra/keycloak/ensure-akb-chat-mcp-client.sh)
         # The shared Keycloak realm and public-routing client reconciliation
         # are applied and verified outside the AKB Compose release. realm-akl
         # is the standalone/local bootstrap template and is likewise not read
         # by the docker.home.cz Compose runtime. These exact paths do not
         # select or mutate an AKB runtime service.
-        # Live-realm reconciliation evidence remains an independent prerequisite.
+        # The Chat MCP client reconciler is likewise operator-run tooling; it
+        # is never read or executed by an AKB Compose service. Live-realm
+        # reconciliation evidence remains an independent prerequisite.
         ;;
       services/*|apps/*|infra/reverse-proxy/*|infra/keycloak/*|infra/monitoring/*|infra/postgres/*)
         akl_fail "Release changes unsupported runtime path outside registry/ingestion/rag/web/chat-web/llm-gateway: $path"

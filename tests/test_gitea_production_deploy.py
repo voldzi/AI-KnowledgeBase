@@ -564,7 +564,8 @@ printf '%s\\n' "$*" >"$FAKE_RECOVERY_LOG"
         self.assertIn(
             "infra/keycloak/README.md|infra/keycloak/realm-akl.json|"
             "infra/keycloak/realm-stratos.json|"
-            "infra/keycloak/update-stratos-public-routing.sh)",
+            "infra/keycloak/update-stratos-public-routing.sh|"
+            "infra/keycloak/ensure-akb-chat-mcp-client.sh)",
             deploy_script,
         )
         self.assertIn(
