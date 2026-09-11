@@ -52,6 +52,17 @@ install_secret \
   "${AKL_WEB_SESSION_STORE_SECRET_SOURCE_FILE:-}" \
   "${AKL_WEB_SESSION_STORE_SECRET_FILE:-}"
 
+if [ "${AKB_OFFICIAL_SOURCE_AUTOMATION_ENABLED:-false}" = "true" ]; then
+  install_secret \
+    "official source service" \
+    "${AKB_OFFICIAL_SOURCE_CLIENT_SECRET_SOURCE_FILE:-}" \
+    "${AKB_OFFICIAL_SOURCE_CLIENT_SECRET_FILE:-}"
+  install_secret \
+    "official source internal" \
+    "${AKB_OFFICIAL_SOURCE_INTERNAL_SECRET_SOURCE_FILE:-}" \
+    "${AKB_OFFICIAL_SOURCE_INTERNAL_SECRET_FILE:-}"
+fi
+
 if [ "${AKL_OBJECT_STORAGE_MODE:-local}" = "s3" ]; then
   install_secret \
     "S3 access key id" \
