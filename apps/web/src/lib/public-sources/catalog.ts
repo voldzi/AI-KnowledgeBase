@@ -87,7 +87,7 @@ const eurLexDocuments: PublicSourceFixedDocument[] = eurLexActs.map(([title, cel
 const czechLawActs: PublicSourceOpenDataAct[] = [
   { title: "Zákon občanský zákoník", year: 2012, number: "89" },
   { title: "Zákon o obchodních společnostech a družstvech (zákon o obchodních korporacích)", year: 2012, number: "90" },
-  { title: "Zákon zákoník práce", year: 2006, number: "262" },
+  { title: "Zákoník práce", year: 2006, number: "262" },
   { title: "Zákon správní řád", year: 2004, number: "500" },
   { title: "Zákon o svobodném přístupu k informacím", year: 1999, number: "106" },
   { title: "Zákon o zadávání veřejných zakázek", year: 2016, number: "134" },

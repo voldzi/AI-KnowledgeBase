@@ -36,6 +36,10 @@ class LogicalStructureChunker:
         chunks: list[DocumentChunk] = []
         warnings: list[tuple[str, str]] = []
         pending: list[ParsedBlock] = []
+        official_legal_source = _is_official_legal_source(
+            document_metadata,
+            chunking_strategy=chunking_strategy,
+        )
 
         for block in parser_result.blocks:
             if len(block.text) > self.settings.max_chunk_chars:
@@ -71,6 +75,14 @@ class LogicalStructureChunker:
             section_changed = pending and pending[-1].section_path != block.section_path
             page_changed = pending and pending[-1].page_number != block.page_number
             locator_changed = pending and pending[-1].metadata.get("source_locator") != block.metadata.get("source_locator")
+            if official_legal_source and pending:
+                # Docling assigns a distinct source locator to virtually every PDF
+                # item. Treating that as a chunk boundary produced one-sentence
+                # legal evidence. Official statutes are grouped by their top-level
+                # section/article and the configured target size instead.
+                section_changed = _legal_unit(pending[-1]) != _legal_unit(block)
+                page_changed = False
+                locator_changed = False
             would_exceed_target = _text_length(pending) + len(block.text) > self.settings.chunk_target_chars
             if pending and (section_changed or page_changed or locator_changed or would_exceed_target):
                 chunks.append(
@@ -166,6 +178,7 @@ class LogicalStructureChunker:
             "block_type": first.block_type,
             "first_block_metadata": first.metadata,
             "source_locator": first.metadata.get("source_locator"),
+            "page_end": last.page_number,
             "parser_quality": {
                 "pages_processed": parser_result.pages_processed,
                 "pages_with_text": parser_result.metadata.get("pages_with_text"),
@@ -333,6 +346,26 @@ def _source_section_path(block: ParsedBlock) -> list[str]:
     if labels:
         path.append(" · ".join(labels))
     return path
+
+
+def _is_official_legal_source(
+    metadata: DocumentMetadata,
+    *,
+    chunking_strategy: str,
+) -> bool:
+    return (
+        chunking_strategy == "legal_structured"
+        and metadata.document_type == "regulation"
+        and "official-public-reference" in metadata.tags
+    )
+
+
+def _legal_unit(block: ParsedBlock) -> str | None:
+    """Return the enclosing legal unit without splitting every numbered clause."""
+    for label in block.section_path:
+        if re.match(r"^(?:§|Čl\.|Cl\.|Article|Článek|Clanek)\s*", label, flags=re.I):
+            return normalize_text(label)
+    return None
 
 
 def normalize_text(text: str) -> str:

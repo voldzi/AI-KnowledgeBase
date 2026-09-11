@@ -23,6 +23,12 @@ The goal in this repository is:
 - If MCP tools are not exposed as native tools in the current agent session, use the CLI fallback:
   - `"/Users/voldzi/Developer/18 2026/chromadb/tools/chroma-dev.sh" search-all "<query>" --root . --limit 5`
   - then read only the selected files or ranges directly
+- The CLI connects to the local Chroma service on `127.0.0.1:8000`. In a
+  sandboxed agent session, run Chroma CLI, heartbeat, Docker status and reindex
+  checks with local-network/Docker access. A sandbox connection error does not
+  prove that Chroma is stopped. Verify `/api/v2/heartbeat` outside the network
+  sandbox before reporting availability; distinguish service liveness from a
+  collection/index query failure.
 - CLI fallback is still compliant retrieval-first behavior. Mention it once if relevant; do not repeat it as a blocker when retrieval succeeded.
 - If the index may be stale after meaningful repository changes, use `reindex_repo` when MCP tools are available, otherwise run:
   - `"/Users/voldzi/Developer/18 2026/chromadb/tools/chroma-dev.sh" reindex --root .`

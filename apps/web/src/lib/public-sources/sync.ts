@@ -113,7 +113,7 @@ export async function synchronizePublicSource(
     context,
     prepared,
   );
-  const { document } = await authorizeControlledDocumentUpload({ registry: clients.registry, context, documentId: candidateDocument.document_id });
+  const { document, informationPolicy } = await authorizeControlledDocumentUpload({ registry: clients.registry, context, documentId: candidateDocument.document_id });
   const root = document.document_profile;
   const rootInput = root ? { profile: root.profile, authorship: root.authorship, provenance: root.provenance, accountability: root.accountability } : null;
   if (!root || root.schemaVersion !== "stratos-document-root-1" || root.organizationId !== "org_stratos"
@@ -121,7 +121,7 @@ export async function synchronizePublicSource(
       || !root.metadataRevision || root.metadataRevision !== document.current_root_metadata_revision
       || document.current_root_snapshot_hash !== `sha256:${createHash("sha256").update(canonicalDocumentSnapshot(root)).digest("hex")}`
       || canonicalDocumentSnapshot(rootInput) !== canonicalDocumentSnapshot(prepared.documentProfile)
-      || canonicalDocumentSnapshot(document.policy_summary) !== canonicalDocumentSnapshot(prepared.informationPolicy)
+      || canonicalDocumentSnapshot(informationPolicy) !== canonicalDocumentSnapshot(prepared.informationPolicy)
       || document.metadata?.canonical_url !== canonicalUrl.toString() || document.metadata?.collection_id !== collection.id
       || document.metadata?.collection_revision !== input.collectionRevision) {
     throw new ApiClientError("Schválená metadata zdroje se liší od dokumentu. Správce musí nejprve potvrdit změnu metadat vůči aktuální revizi dokumentu.", 409, "PUBLIC_SOURCE_ROOT_METADATA_CONFLICT", context.correlationId ?? "public-source-sync");

@@ -1111,6 +1111,16 @@ def _is_official_source_sync_service(principal: Principal) -> bool:
     )
 
 
+def _document_profile_actor_id(principal: Principal, document: Document) -> str:
+    if (
+        _is_official_source_sync_service(principal)
+        and _is_official_public_source_document(document)
+        and (document.document_metadata or {}).get("collection_id") == "czech-law"
+    ):
+        return document.owner_id
+    return principal.subject_id
+
+
 def _require_official_source_sync_service(
     principal: Principal,
     route: str,
@@ -6557,7 +6567,6 @@ def create_document(
             document=None,
             capability_override="akb:manage_document",
             operation_override="upload",
-            credential_token_override=principal.bearer_token,
         )
         if not decision.allowed:
             raise problem(
@@ -6605,7 +6614,7 @@ def create_document(
             parent_resource_id=payload.parent_governed_resource_id,
             reason="Register AKB document policy root",
             delegated_actor_subject_id=(
-                principal.subject_id if official_public_source else None
+                payload.owner_id if official_public_source else None
             ),
             use_fixed_akb_identity=official_public_source,
             document_admission=DocumentAdmissionExpectation(root_snapshot=profile_root,
@@ -7742,7 +7751,11 @@ def patch_document(
                     raise problem(409, "source_provenance_immutable", "Budget assignment updates must preserve the exact admitted document profile")
                 profile_root = None
         else:
-            require_fresh_document_profile(document, version=_latest_document_version(db, document_id), actor_id=principal.subject_id)
+            require_fresh_document_profile(
+                document,
+                version=_latest_document_version(db, document_id),
+                actor_id=_document_profile_actor_id(principal, document),
+            )
     if payload.title is not None:
         document.title = payload.title
     if payload.document_type is not None:
@@ -8042,6 +8055,12 @@ def _create_document_version(document_id, payload, response, db, principal, *, s
             if existing is None:
                 raise problem(409, "conflict", "The immutable version identity conflicts with an existing version") from exc
             return replay(existing, current_document)
+    else:
+        # Imported official sources do not carry a native upload-session
+        # identity. Flush their parent version before the independently mapped
+        # immutable profile snapshot so PostgreSQL can enforce the FK ordering.
+        db.add(version)
+        db.flush()
     profile_registrations = []
     effective_policy = payload.information_policy
     if effective_policy is None and document.policy_summary:
@@ -8059,7 +8078,7 @@ def _create_document_version(document_id, payload, response, db, principal, *, s
                 parent_resource_id=document.governed_resource_id,
                 reason="Register immutable AKB document version",
                 delegated_actor_subject_id=(
-                    principal.subject_id if official_public_source else None
+                    document.owner_id if official_public_source else None
                 ),
                 use_fixed_akb_identity=official_public_source,
                 document_admission=DocumentAdmissionExpectation(root_snapshot=profile_root,
@@ -8655,7 +8674,12 @@ def publish_document_version(
     context = require_document_action(principal, Action.document_version_publish, document, db)
     if context.access_v2:
         require_document_version_action(principal, Action.document_version_publish, document, version, db)
-    _publish_version(db, document=document, version=version, actor_id=principal.subject_id)
+    _publish_version(
+        db,
+        document=document,
+        version=version,
+        actor_id=_document_profile_actor_id(principal, document),
+    )
     _commit_or_conflict(db)
     db.refresh(version)
     return _document_version_response(version)

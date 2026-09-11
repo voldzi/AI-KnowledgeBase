@@ -962,7 +962,11 @@ def evaluate_runtime_document_version_access(
     if not local_decision.allowed:
         return local_decision
     try:
-        require_fresh_document_profile(document, version=version, actor_id=principal.subject_id)
+        require_fresh_document_profile(
+            document,
+            version=version,
+            actor_id=_document_profile_audit_actor(principal, document),
+        )
     except HTTPException:
         return Decision(False, "Current exact-version profile admission is unavailable or denied", {}, ("DOCUMENT_PROFILE_REQUIRED",))
     if local_decision.constraints.get("employee_directive_projection") is True:
@@ -1055,7 +1059,10 @@ def evaluate_runtime_document_access(
         return decision
     if principal.service_identity and _document_tlp_required_for_action(action):
         try:
-            require_fresh_document_profile(document, actor_id=principal.subject_id)
+            require_fresh_document_profile(
+                document,
+                actor_id=_document_profile_audit_actor(principal, document),
+            )
         except HTTPException:
             return Decision(False, "Current document profile admission is unavailable or denied", {}, ("DOCUMENT_PROFILE_REQUIRED",))
     if decision.constraints.get("employee_directive_projection") is True:
@@ -1133,6 +1140,16 @@ def evaluate_runtime_document_access(
         },
         reason_codes or decision.reason_codes,
     )
+
+
+def _document_profile_audit_actor(principal: Principal, document: Document) -> str:
+    if (
+        principal.service_client_id == "svc-akb-official-source-sync"
+        and is_official_public_source_document(document)
+        and (document.document_metadata or {}).get("collection_id") == "czech-law"
+    ):
+        return document.owner_id
+    return principal.subject_id
 
 
 def _primary_capability(action: str) -> str:
@@ -1254,12 +1271,12 @@ def require_document_version_action(
     version: DocumentVersion,
     db: Session | None = None,
 ) -> DocumentVersionAuthority:
-    if (
+    official_source_service = (
         principal.service_client_id == "svc-akb-official-source-sync"
-        and (
-            not is_official_public_source_document(document)
-            or (document.document_metadata or {}).get("collection_id") != "czech-law"
-        )
+    )
+    if official_source_service and (
+        not is_official_public_source_document(document)
+        or (document.document_metadata or {}).get("collection_id") != "czech-law"
     ):
         raise problem(
             status.HTTP_403_FORBIDDEN,
@@ -1275,15 +1292,29 @@ def require_document_version_action(
             "The immutable document version governance authority is unavailable or conflicting",
         ) from exc
     context = context_for_principal(principal, db)
-    decision = evaluate_document_version_access(
-        context,
-        action.value,
-        version,
-        authority,
-        official_public_reference=(
-            document.status == "valid"
-            and is_official_public_source_document(document)
-        ),
+    decision = (
+        Decision(
+            True,
+            "The exact official-source service may manage its governed Czech-law version",
+            {
+                "organization_id": authority.organization_id,
+                "governed_resource_id": authority.governed_resource_id,
+                "policy_binding_id": authority.policy_binding_id,
+                "policy_hash": authority.policy_hash,
+            },
+            ("VERSION_OFFICIAL_SOURCE_SERVICE_ALLOW",),
+        )
+        if official_source_service
+        else evaluate_document_version_access(
+            context,
+            action.value,
+            version,
+            authority,
+            official_public_reference=(
+                document.status == "valid"
+                and is_official_public_source_document(document)
+            ),
+        )
     )
     if not decision.allowed and not principal.service_identity:
         employee_directive_decision = evaluate_employee_directive_projection(
