@@ -24,6 +24,26 @@ test("explicit specialized API mode remains compatible", () => {
 });
 
 describe("assistant tool router", () => {
+  it("routes an exact statute question to cited document retrieval", () => {
+    for (const message of [
+      "Co stanoví zákon č. 218/2000 Sb.?",
+      "Vysvětli zákon 134/2016 Sb. o zadávání veřejných zakázek.",
+    ]) {
+      const route = routeAssistantMessage(message, "cs");
+      assert.equal(route.tool, "rag_document_answer");
+      assert.equal(route.controlledRuleIntent, null);
+      assert.equal(route.queryPlan.quality_gates.citations_required, true);
+    }
+  });
+
+  it("keeps a threshold decision on the governed rule path", () => {
+    const route = routeAssistantMessage(
+      "Jaký je limit VZMR podle zákona č. 134/2016 Sb.?",
+      "cs",
+    );
+    assert.equal(route.tool, "controlled_rule_answer");
+  });
+
   it("routes public procurement rules to the governed rule catalog", () => {
     const route = routeAssistantMessage(
       "Jaký je limit pro veřejnou zakázku malého rozsahu podle směrnice č. 2/2023?",

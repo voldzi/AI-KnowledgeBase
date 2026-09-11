@@ -32,6 +32,8 @@ const CONTROLLED_RULE_QUESTION_RE = /(?:limit|částk|castk|hran(?:ice|ičn)|do\
 const LEGAL_SOURCE_RE = /(?:zákon|zakon|zákonn|zakonn|legislativ|právn|pravn)/i;
 const INTERNAL_SOURCE_RE = /(?:směrnic|smernic|intern\w*(?:\s+(?:pravidl|limit|postup|směrnic|smernic))?|vnitřn|vnitrn)/i;
 const EXPLICIT_NON_PROCUREMENT_LEGAL_TOPIC_RE = /(?:\bnis\s*2?\b|\bnis2\b|kybernetick\w*\s+bezpečnost|\bgdpr\b|ochran\w*\s+osobn\w*\s+údaj|\bai\s+act\b|akt\w*\s+o\s+uměl\w*\s+inteligenc)/i;
+const EXPLICIT_LEGAL_ACT_IDENTIFIER_RE = /(?:\b(?:zákon|zakon|vyhlášk|vyhlask|nařízení|narizeni)\w*(?:\s+č\.?|\s+c\.?)?\s*)?\b[0-9]{1,4}\s*\/\s*[0-9]{4}\s*(?:Sb\.?|sb\.?)/i;
+const CONTROLLED_RULE_DECISION_RE = /(?:\bvzmr\b|limit|částk|castk|hran(?:ice|ičn)|do\s+kolika|od\s+kolika|přím\w*\s+nákup|prim\w*\s+nakup|průzkum\s+trhu|pruzkum\s+trhu)/i;
 const INTERNAL_RULE_SOURCE_TYPES = new Set<ControlledRule["source_type"]>([
   "internal_directive",
   "internal_instruction",
@@ -98,6 +100,9 @@ export function controlledRuleIntentFromMessage(
   context: Record<string, unknown> = {},
   now = new Date(),
 ): ControlledRuleIntent | null {
+  if (hasExplicitLegalActIdentifier(message) && !CONTROLLED_RULE_DECISION_RE.test(message)) {
+    return null;
+  }
   const contextDomain = contextString(
     context,
     "controlled_rule_domain",
@@ -118,7 +123,12 @@ export function controlledRuleIntentFromMessage(
 }
 
 export function hasExplicitNonProcurementLegalTopic(message: string): boolean {
-  return EXPLICIT_NON_PROCUREMENT_LEGAL_TOPIC_RE.test(message);
+  return EXPLICIT_NON_PROCUREMENT_LEGAL_TOPIC_RE.test(message)
+    || hasExplicitLegalActIdentifier(message);
+}
+
+export function hasExplicitLegalActIdentifier(message: string): boolean {
+  return EXPLICIT_LEGAL_ACT_IDENTIFIER_RE.test(message);
 }
 
 export function buildControlledRuleAssistantResponse(input: {

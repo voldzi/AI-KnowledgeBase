@@ -117,4 +117,14 @@ describe("recipient documentation and operational source boundaries", () => {
     const route = routeAssistantMessage("Jaké jsou zákonné limity pro VZMR?", "cs");
     assert.equal(route.tool, "controlled_rule_answer");
   });
+
+  it("does not classify an exact statute lookup as live STRATOS data", () => {
+    for (const message of [
+      "Co stanoví zákon č. 218/2000 Sb. o rozpočtových pravidlech?",
+      "Jak zákon 563/1991 Sb. vymezuje účetní období?",
+    ]) {
+      assert.equal(classifyDirectorCopilotV2Intent(message), null);
+      assert.equal(routeAssistantMessage(message, "cs").tool, "rag_document_answer");
+    }
+  });
 });

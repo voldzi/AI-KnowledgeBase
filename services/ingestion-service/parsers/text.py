@@ -149,6 +149,22 @@ def _detect_heading(text: str) -> dict[str, str] | None:
 
 
 def _detect_structured_heading(text: str) -> dict[str, str] | None:
+    czech_section = re.match(
+        r"^§\s*([0-9]+[a-z]?)\b[.:]?\s*(?:[-–—]\s*)?(.*)$",
+        text,
+        flags=re.I,
+    )
+    if czech_section:
+        number = czech_section.group(1)
+        suffix = czech_section.group(2).strip()
+        label = f"§ {number}"
+        return {
+            "level": "article",
+            "label": label,
+            "title": suffix or label,
+            "article_number": number,
+        }
+
     article = re.match(
         r"^(?:Čl\.|Cl\.|Article|Článek|Clanek)\s+([0-9IVXLCDM]+)\b[.:]?\s*(?:[-–—]\s*)?(.*)$",
         text,

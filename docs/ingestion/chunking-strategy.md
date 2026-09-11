@@ -41,6 +41,13 @@ odpovídají extrahovanému textu (`offset_basis=extracted_text`).
 ## Pravidla
 
 - Chunk se flushne při změně `section_path`.
+- U oficiálních právních předpisů s profilem
+  `official-public-reference` se Docling položky seskupují podle nadřazeného
+  `§` nebo článku až do cílové velikosti. Samostatný PDF lokátor každé věty ani
+  přechod stránky nevytváří nový krátký chunk. Metadata zachovávají počáteční
+  `page_number` a koncovou stránku v `metadata.page_end`.
+- Český marker `§ N` se rozpoznává jako právní strukturální jednotka; číslované
+  odstavce zůstávají pod příslušným paragrafem.
 - Chunk se flushne při překročení `AKL_INGESTION_CHUNK_TARGET_CHARS`.
 - Blok větší než `AKL_INGESTION_MAX_CHUNK_CHARS` se rozdělí s překryvem `AKL_INGESTION_CHUNK_OVERLAP_CHARS`.
 - Výjimkou jsou tabulky s rozpoznanou hlavičkou: dělí se pouze mezi řádky,

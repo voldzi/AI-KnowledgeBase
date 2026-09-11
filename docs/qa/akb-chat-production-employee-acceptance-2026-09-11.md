@@ -67,3 +67,12 @@ The repository-owned GTE and BGE rollback compose profiles now join
 5. Record supported-claim rate, citation purity and p95 latency before pilot
    acceptance.
 
+## Prepared remediation
+
+The next release groups official Czech-law PDF items by their enclosing
+section or article instead of closing a chunk for every Docling source locator
+or page transition. Exact statute identifiers such as `218/2000 Sb.` and
+`563/1991 Sb.` take the cited document-retrieval path before live STRATOS data
+routing; threshold decisions such as a VZMR limit remain on the governed-rule
+path. Existing indexed law versions must be reprocessed after deployment before
+the fixed employee question set is repeated.
