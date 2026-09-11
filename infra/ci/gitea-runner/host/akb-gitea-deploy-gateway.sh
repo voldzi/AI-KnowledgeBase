@@ -162,17 +162,40 @@ bootstrap_target_release() {
   printf '%s\n' "$release_dir"
 }
 
+gateway_boundary_revision() {
+  local deploy_script="$1" matches revision
+  [[ -f "$deploy_script" && ! -L "$deploy_script" ]] || fail
+  matches="$(grep -E '^AKL_IMMUTABLE_MANAGED_BOUNDARY_REVISION=[1-9][0-9]*$' "$deploy_script" || true)"
+  [[ -n "$matches" && "$(wc -l <<<"$matches" | tr -d '[:space:]')" == "1" ]] || fail
+  revision="${matches#*=}"
+  [[ "$revision" =~ ^[1-9][0-9]*$ ]] || fail
+  printf '%s\n' "$revision"
+}
+
 deploy_entrypoint() {
-  local release_sha="$1" deploy_script
+  local release_sha="$1" deploy_script deploy_mode="standard"
   if [[ -L "$CURRENT_LINK" ]]; then
-    deploy_script="${CURRENT_LINK}/scripts/deploy_docker_home_release.sh"
+    local bootstrap_release current_deploy target_deploy current_revision target_revision
+    bootstrap_release="$(bootstrap_target_release "$release_sha")"
+    current_deploy="${CURRENT_LINK}/scripts/deploy_docker_home_release.sh"
+    target_deploy="${bootstrap_release}/scripts/deploy_docker_home_release.sh"
+    current_revision="$(gateway_boundary_revision "$current_deploy")"
+    target_revision="$(gateway_boundary_revision "$target_deploy")"
+    if [[ "$target_revision" -eq $((current_revision + 1)) ]]; then
+      deploy_script="${bootstrap_release}/scripts/bootstrap_docker_home_target.sh"
+      deploy_mode="transition-existing-current"
+    elif [[ "$target_revision" -eq "$current_revision" ]]; then
+      deploy_script="$current_deploy"
+    else
+      fail
+    fi
   else
     local bootstrap_release
     bootstrap_release="$(bootstrap_target_release "$release_sha")"
     deploy_script="${bootstrap_release}/scripts/bootstrap_docker_home_target.sh"
   fi
   [[ -x "$deploy_script" ]] || fail
-  printf '%s\n' "$deploy_script"
+  printf '%s\t%s\n' "$deploy_script" "$deploy_mode"
 }
 
 forward_fix_entrypoint() {
@@ -303,7 +326,7 @@ run_deploy() {
   [[ -f "$forward_fix_file" && ! -L "$forward_fix_file" ]] || fail
   [[ "$(cat "$release_sha_file")" == "$RELEASE_SHA" ]] || fail
   [[ "$(cat "$forward_fix_file")" == "${FORWARD_FIX_FROM_SHA:-none}" ]] || fail
-  local deploy_script
+  local deploy_script deploy_mode
   if [[ -n "$FORWARD_FIX_FROM_SHA" ]]; then
     validate_sha "$FORWARD_FIX_FROM_SHA"
     [[ "$FORWARD_FIX_FROM_SHA" != "$RELEASE_SHA" ]] || fail
@@ -311,7 +334,7 @@ run_deploy() {
       "$FORWARD_FIX_FROM_SHA" "$RELEASE_SHA" || fail
     deploy_script="$(forward_fix_entrypoint "$FORWARD_FIX_FROM_SHA")"
   else
-    deploy_script="$(deploy_entrypoint "$RELEASE_SHA")"
+    IFS=$'\t' read -r deploy_script deploy_mode < <(deploy_entrypoint "$RELEASE_SHA")
   fi
   local deploy_pid="$BASHPID"
   atomic_status "$operation_dir" running -1 "$deploy_pid"
@@ -325,9 +348,16 @@ run_deploy() {
         --forward-fix-sha "$RELEASE_SHA" \
         >>"${operation_dir}/operator.log" 2>&1
   else
-    AKB_RELEASE_ROOT="$RELEASE_ROOT" \
-    AKB_RELEASE_GIT_DIR="$GIT_DIR" \
-      "$deploy_script" --sha "$RELEASE_SHA" >>"${operation_dir}/operator.log" 2>&1
+    if [[ "$deploy_mode" == "transition-existing-current" ]]; then
+      AKB_RELEASE_ROOT="$RELEASE_ROOT" \
+      AKB_RELEASE_GIT_DIR="$GIT_DIR" \
+        "$deploy_script" --sha "$RELEASE_SHA" --transition-existing-current \
+          >>"${operation_dir}/operator.log" 2>&1
+    else
+      AKB_RELEASE_ROOT="$RELEASE_ROOT" \
+      AKB_RELEASE_GIT_DIR="$GIT_DIR" \
+        "$deploy_script" --sha "$RELEASE_SHA" >>"${operation_dir}/operator.log" 2>&1
+    fi
   fi
   local deploy_status=$?
   set -e
