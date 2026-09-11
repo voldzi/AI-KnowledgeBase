@@ -304,11 +304,13 @@ AKB_OFFICIAL_SOURCE_FULL_INTERVAL_SECONDS=604800
 AKB_OFFICIAL_SOURCE_MAX_NEW_PER_RUN=10
 ```
 
-The worker runs as the image's unprivileged `node` user (`1000:1000`). The
-production release operator and both mode-`0600` source files use UID `1000`,
-so the worker can read its internal secret without making it group-readable.
-Its container remains read-only, drops every Linux capability and uses
-`no-new-privileges`. The durable state volume must also be owned by
+The host source files use UID `1000` and mode `0600`. At Web startup the
+privileged entrypoint copies both values into the private in-container runtime
+directory as read-only files owned by the `nextjs` process, then drops
+privileges before starting Next.js. The isolated worker runs as the image's
+unprivileged `node` user (`1000:1000`) and directly mounts only its internal
+trigger secret. Its container remains read-only, drops every Linux capability
+and uses `no-new-privileges`. The durable state volume must also be owned by
 `1000:1000`; preserve that ownership during restore or migration.
 
 The token itself must contain exactly two audiences, `stratos-official-sources`

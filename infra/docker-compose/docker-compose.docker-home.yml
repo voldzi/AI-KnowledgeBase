@@ -135,8 +135,10 @@ services:
       AKB_OFFICIAL_SOURCE_TOKEN_URL: ${AKB_OFFICIAL_SOURCE_TOKEN_URL:-}
       AKB_OFFICIAL_SOURCE_CLIENT_ID: ${AKB_OFFICIAL_SOURCE_CLIENT_ID:-svc-akb-official-source-sync}
       AKB_OFFICIAL_SOURCE_OIDC_AUDIENCE: ${AKB_OFFICIAL_SOURCE_OIDC_AUDIENCE:-stratos-official-sources}
-      AKB_OFFICIAL_SOURCE_CLIENT_SECRET_FILE: /run/secrets/svc-akb-official-source-sync-client-secret
-      AKB_OFFICIAL_SOURCE_INTERNAL_SECRET_FILE: /run/secrets/akb-official-source-sync-internal-secret
+      AKB_OFFICIAL_SOURCE_CLIENT_SECRET_SOURCE_FILE: /run/secrets/svc-akb-official-source-sync-client-secret
+      AKB_OFFICIAL_SOURCE_CLIENT_SECRET_FILE: /run/akl-secrets/svc-akb-official-source-sync-client-secret
+      AKB_OFFICIAL_SOURCE_INTERNAL_SECRET_SOURCE_FILE: /run/secrets/akb-official-source-sync-internal-secret
+      AKB_OFFICIAL_SOURCE_INTERNAL_SECRET_FILE: /run/akl-secrets/akb-official-source-sync-internal-secret
       AKL_WEB_PUBLIC_BASE_URL: ${AKL_WEB_PUBLIC_BASE_URL:?AKL_WEB_PUBLIC_BASE_URL must be set}
       NEXT_PUBLIC_AKL_BASE_PATH: ${AKL_WEB_BASE_PATH:-/akb}
       AKL_WEB_SESSION_SECRET: ${AKL_WEB_SESSION_SECRET:?AKL_WEB_SESSION_SECRET must be set}

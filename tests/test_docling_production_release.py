@@ -132,8 +132,32 @@ class DoclingProductionReleaseTests(unittest.TestCase):
 
     def test_official_source_worker_matches_private_secret_owner(self) -> None:
         dockerfile = (ROOT / "apps/web/Dockerfile").read_text(encoding="utf-8")
+        entrypoint = (ROOT / "apps/web/docker-entrypoint.sh").read_text(
+            encoding="utf-8"
+        )
+        production_compose = (
+            ROOT / "infra/docker-compose/docker-compose.docker-home.yml"
+        ).read_text(encoding="utf-8")
         self.assertIn("adduser -S nextjs", dockerfile)
         self.assertIn("chown -R node:node /data/official-source-sync", dockerfile)
+        self.assertIn('"official source service"', entrypoint)
+        self.assertIn('"official source internal"', entrypoint)
+        self.assertIn(
+            "AKB_OFFICIAL_SOURCE_CLIENT_SECRET_SOURCE_FILE: /run/secrets/svc-akb-official-source-sync-client-secret",
+            production_compose,
+        )
+        self.assertIn(
+            "AKB_OFFICIAL_SOURCE_CLIENT_SECRET_FILE: /run/akl-secrets/svc-akb-official-source-sync-client-secret",
+            production_compose,
+        )
+        self.assertIn(
+            "AKB_OFFICIAL_SOURCE_INTERNAL_SECRET_SOURCE_FILE: /run/secrets/akb-official-source-sync-internal-secret",
+            production_compose,
+        )
+        self.assertIn(
+            "AKB_OFFICIAL_SOURCE_INTERNAL_SECRET_FILE: /run/akl-secrets/akb-official-source-sync-internal-secret",
+            production_compose,
+        )
 
         for compose_path, following_service in (
             (
