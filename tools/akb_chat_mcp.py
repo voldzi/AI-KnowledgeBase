@@ -442,7 +442,14 @@ def device_login(session_file: Path, issuer: str, client_id: str, no_browser: bo
         discovery = _json_object(json.loads(_read_http_body(response)), "OIDC discovery")
     device_endpoint = _safe_url(str(discovery.get("device_authorization_endpoint", "")))
     token_endpoint = _safe_url(str(discovery.get("token_endpoint", "")))
-    authorization = _form_request(device_endpoint, {"client_id": client_id, "scope": "openid profile email"})
+    verifier = secrets.token_urlsafe(64)
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+    authorization = _form_request(device_endpoint, {
+        "client_id": client_id,
+        "scope": "openid profile email",
+        "code_challenge": challenge,
+        "code_challenge_method": "S256",
+    })
     device_code = authorization.get("device_code")
     verification_uri = authorization.get("verification_uri_complete") or authorization.get("verification_uri")
     user_code = authorization.get("user_code")
@@ -462,6 +469,7 @@ def device_login(session_file: Path, issuer: str, client_id: str, no_browser: bo
                 "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
                 "client_id": client_id,
                 "device_code": device_code,
+                "code_verifier": verifier,
             })
             break
         except McpFailure as exc:

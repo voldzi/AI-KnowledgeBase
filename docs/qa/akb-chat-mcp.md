@@ -33,10 +33,27 @@ Run the one-time device login:
 python3 tools/akb_chat_mcp.py login --device
 ```
 
+The device authorization request also uses PKCE S256. This keeps the client
+compatible with the realm-wide PKCE policy while avoiding a browser-to-local
+callback dependency.
+
+The provisioning helper also installs the canonical STRATOS
+`identity_audience` user-attribute mapper. Without that verified claim,
+Access Center must reject the otherwise valid user token.
+
 Creating or changing that client is an IAM operation and is intentionally not
 performed by the MCP itself. Until the client is provisioned, use the
 short-lived bearer-file mode below; it exercises the same AKB authorization
 path and does not change central identity configuration.
+
+An authorized operator can provision or reconcile the production client with
+the idempotent helper below. It uses a unique, short-lived Keycloak bootstrap
+service, verifies the persisted PKCE/device-flow settings and both required
+audiences, and removes the bootstrap identity before it exits:
+
+```bash
+infra/keycloak/ensure-akb-chat-mcp-client.sh
+```
 
 The refresh token is stored outside the repository in
 `~/.config/akb-chat-mcp/session.json` with mode `0600`. The MCP refreshes the

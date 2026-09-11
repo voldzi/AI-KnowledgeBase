@@ -1,3 +1,5 @@
+import base64
+import hashlib
 import importlib.util
 import json
 import os
@@ -70,6 +72,54 @@ class AkbChatMcpTests(unittest.TestCase):
         response = mcp.dispatch(FakeClient(), {"jsonrpc": "2.0", "id": 3, "method": "initialize", "params": {}})
         self.assertEqual(response["result"]["protocolVersion"], mcp.PROTOCOL_VERSION)
         self.assertEqual(response["result"]["serverInfo"]["name"], "akb-chat")
+
+    def test_device_login_uses_pkce_and_stores_only_refresh_session(self):
+        class DiscoveryResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def read(self, _limit):
+                return json.dumps({
+                    "device_authorization_endpoint": "https://login.example/device",
+                    "token_endpoint": "https://login.example/token",
+                }).encode()
+
+        calls = []
+
+        def form_request(url, values):
+            calls.append((url, values))
+            if url.endswith("/device"):
+                return {
+                    "device_code": "device-code",
+                    "verification_uri": "https://login.example/activate",
+                    "expires_in": 120,
+                    "interval": 2,
+                }
+            return {"refresh_token": "refresh-only", "access_token": "not-persisted"}
+
+        with tempfile.TemporaryDirectory() as directory:
+            session_file = Path(directory) / "session.json"
+            with (
+                patch.object(mcp.urllib.request, "urlopen", return_value=DiscoveryResponse()),
+                patch.object(mcp, "_form_request", side_effect=form_request),
+                patch.object(mcp.time, "sleep"),
+                patch.object(mcp.secrets, "token_urlsafe", return_value="fixed-verifier"),
+            ):
+                mcp.device_login(session_file, "https://login.example/realms/test", "client", True)
+
+            authorization = calls[0][1]
+            exchange = calls[1][1]
+            expected = base64.urlsafe_b64encode(hashlib.sha256(b"fixed-verifier").digest()).rstrip(b"=").decode()
+            self.assertEqual(authorization["code_challenge"], expected)
+            self.assertEqual(authorization["code_challenge_method"], "S256")
+            self.assertEqual(exchange["code_verifier"], "fixed-verifier")
+            stored = json.loads(session_file.read_text(encoding="utf-8"))
+            self.assertEqual(stored["refresh_token"], "refresh-only")
+            self.assertNotIn("access_token", stored)
+            self.assertEqual(stat.S_IMODE(session_file.stat().st_mode), 0o600)
 
 
 if __name__ == "__main__":
