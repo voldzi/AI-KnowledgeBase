@@ -27,7 +27,7 @@ from typing import Any
 
 
 PROTOCOL_VERSION = "2025-11-25"
-SERVER_VERSION = "1.0.0"
+SERVER_VERSION = "1.1.0"
 MAX_HTTP_BYTES = 8 * 1024 * 1024
 DEFAULT_BASE_URL = "https://stratos.zeleznalady.cz/akb"
 DEFAULT_ISSUER = "https://login.zeleznalady.cz/realms/stratos"
@@ -244,6 +244,13 @@ TOOLS = [
                 "questions": {"type": "array", "minItems": 1, "maxItems": 20, "items": {"type": "string", "minLength": 1, "maxLength": 12000}},
                 "response_language": {"type": "string", "enum": ["cs", "en"], "default": "cs"},
                 "verify_citations": {"type": "boolean", "default": True},
+                "require_citations": {"type": "boolean", "default": False},
+                "accepted_response_types": {
+                    "type": "array",
+                    "maxItems": 3,
+                    "uniqueItems": True,
+                    "items": {"type": "string", "enum": ["answer", "clarification", "no_answer"]},
+                },
             },
             "additionalProperties": False,
         },
@@ -296,6 +303,15 @@ def call_tool(client: AkbClient, name: str, arguments: dict[str, Any]) -> dict[s
             raise McpFailure("questions must contain 1 to 20 items")
         language = arguments.get("response_language", "cs")
         verify = arguments.get("verify_citations", True) is not False
+        require_citations = arguments.get("require_citations", False) is True
+        accepted_types = arguments.get("accepted_response_types")
+        if accepted_types is not None and (
+            not isinstance(accepted_types, list)
+            or len(accepted_types) > 3
+            or len(set(accepted_types)) != len(accepted_types)
+            or any(item not in {"answer", "clarification", "no_answer"} for item in accepted_types)
+        ):
+            raise McpFailure("accepted_response_types contains an unsupported value")
         results: list[dict[str, Any]] = []
         for index, question in enumerate(questions):
             message = _required_string({"message": question}, "message", 12000)
@@ -308,8 +324,24 @@ def call_tool(client: AkbClient, name: str, arguments: dict[str, Any]) -> dict[s
                     chunk_id = _citation_id(citation)
                     if chunk_id:
                         citation_checks.append(client.request("GET", f"/api/assistant/citations/{urllib.parse.quote(chunk_id, safe='')}/open"))
-            results.append({"index": index, "question": message, "chat": chat, "citation_checks": citation_checks})
-        passed = sum(1 for item in results if item["chat"]["ok"] and all(check["ok"] for check in item["citation_checks"]))
+            failures = []
+            if not chat["ok"]:
+                failures.append("CHAT_REQUEST_FAILED")
+            if accepted_types is not None and response.get("response_type") not in accepted_types:
+                failures.append("UNEXPECTED_RESPONSE_TYPE")
+            if require_citations and (not isinstance(citations, list) or not citations):
+                failures.append("CITATION_REQUIRED")
+            if any(not check["ok"] for check in citation_checks):
+                failures.append("CITATION_REAUTHORIZATION_FAILED")
+            results.append({
+                "index": index,
+                "question": message,
+                "passed": not failures,
+                "failures": failures,
+                "chat": chat,
+                "citation_checks": citation_checks,
+            })
+        passed = sum(1 for item in results if item["passed"])
         return {"passed": passed, "total": len(results), "all_passed": passed == len(results), "results": results}
     raise McpFailure(f"Unknown tool: {name}")
 

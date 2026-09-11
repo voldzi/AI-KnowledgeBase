@@ -44,7 +44,22 @@ class AkbChatMcpTests(unittest.TestCase):
         client = FakeClient()
         result = mcp.call_tool(client, "akb_chat_evaluate", {"questions": ["Dotaz"]})
         self.assertTrue(result["all_passed"])
+        self.assertTrue(result["results"][0]["passed"])
         self.assertEqual(client.calls[1][1], "/api/assistant/citations/chunk%3A1/open")
+
+    def test_evaluation_fails_when_a_required_citation_is_missing(self):
+        class NoCitationClient(FakeClient):
+            def request(self, method, path, body=None, authenticated=True):
+                self.calls.append((method, path, body, authenticated))
+                return {"ok": True, "status": 200, "latency_ms": 1.0, "data": {"response": {"response_type": "no_answer", "citations": []}}}
+
+        result = mcp.call_tool(NoCitationClient(), "akb_chat_evaluate", {
+            "questions": ["Dotaz"],
+            "require_citations": True,
+            "accepted_response_types": ["answer"],
+        })
+        self.assertFalse(result["all_passed"])
+        self.assertEqual(result["results"][0]["failures"], ["UNEXPECTED_RESPONSE_TYPE", "CITATION_REQUIRED"])
 
     def test_secret_file_rejects_group_permissions(self):
         with tempfile.TemporaryDirectory() as directory:

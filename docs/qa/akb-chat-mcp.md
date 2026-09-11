@@ -13,7 +13,9 @@ The server exposes:
 - `akb_get_citation` for a fresh authorization of a returned citation;
 - `akb_get_conversation` for authorization-filtered history;
 - `akb_chat_evaluate` for a bounded set of up to 20 questions, optionally
-  checking every returned citation.
+  checking every returned citation. Acceptance runs can require at least one
+  citation and restrict accepted response types, so an HTTP 200 `no_answer`
+  cannot be mistaken for a successful grounded-answer test.
 
 ## Authentication
 
