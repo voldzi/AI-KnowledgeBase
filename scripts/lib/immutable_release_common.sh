@@ -2233,7 +2233,11 @@ current_link = root / "current"
 for path, label in ((root, "release root"), (env_file, "production env"), (git_dir, "Git mirror")):
     if not path.is_absolute():
         raise SystemExit(f"transition {label} path must be absolute")
-if env_file != root / "env" / "akl.prod.env":
+trusted_env_files = {
+    root / "env" / "akb.prod.env",
+    root / "env" / "akl.prod.env",
+}
+if env_file not in trusted_env_files:
     raise SystemExit("transition requires the canonical production env path")
 if git_dir != root / "git" / "AI-KnowledgeBase.git":
     raise SystemExit("transition requires the canonical bare Git mirror path")

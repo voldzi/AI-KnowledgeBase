@@ -23,6 +23,65 @@ GATE_SPEC.loader.exec_module(production_gate)
 
 
 class ProductionGateTests(unittest.TestCase):
+    def test_existing_current_transition_accepts_akb_production_env(self) -> None:
+        common = ROOT / "scripts/lib/immutable_release_common.sh"
+        with tempfile.TemporaryDirectory() as directory:
+            release = Path(directory).resolve() / "srv" / "akb"
+            current_sha = "a" * 40
+            target_sha = "b" * 40
+            git_dir = release / "git" / "AI-KnowledgeBase.git"
+            for path in (
+                release / "env",
+                release / "backups",
+                release / "deployments",
+                release / "releases",
+                release / "git",
+                git_dir,
+                release / "state",
+            ):
+                path.mkdir(parents=True, exist_ok=True)
+            env_file = release / "env" / "akb.prod.env"
+            env_file.write_text("AKB_TEST=true\n", encoding="utf-8")
+            env_file.chmod(0o600)
+            marker = release / "state" / "applied-runtime.env"
+            marker.write_text("state=verified\n", encoding="utf-8")
+            marker.chmod(0o600)
+            for sha in (current_sha, target_sha):
+                candidate = release / "releases" / sha
+                scripts = candidate / "scripts" / "lib"
+                scripts.mkdir(parents=True)
+                for relative in (
+                    "scripts/bootstrap_docker_home_target.sh",
+                    "scripts/deploy_docker_home_release.sh",
+                    "scripts/lib/immutable_release_common.sh",
+                ):
+                    path = candidate / relative
+                    path.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+                    path.chmod(0o555)
+                for path in sorted(candidate.rglob("*"), reverse=True):
+                    if path.is_dir():
+                        path.chmod(0o555)
+                candidate.chmod(0o555)
+            (release / "current").symlink_to(release / "releases" / current_sha)
+
+            result = subprocess.run(
+                [
+                    "bash",
+                    "-c",
+                    'source "$1"; akl_require_existing_current_transition_trust "$2" "$3" "$4" "$5" "$6"',
+                    "bash",
+                    str(common),
+                    str(release),
+                    str(env_file),
+                    str(git_dir),
+                    target_sha,
+                    current_sha,
+                ],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+
     @staticmethod
     def _docker_archive(sha: str, *, extra: bool = False) -> bytes:
         services = ["registry-api", "ingestion-service", "rag-retrieval-service", "evaluation-service", "governance-service", "llm-gateway-service", "web", "chat-web"]
