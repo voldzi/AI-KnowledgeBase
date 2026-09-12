@@ -99,9 +99,23 @@ The goal in this repository is:
 - Keep build fixes in the same PR until the exact production images pass.
   Do not merge a candidate and discover ordinary Docker context or executable
   errors by building it for the first time on `docker.home.cz`.
-- Required CI and security checks must not be skipped. Run them once on the
-  final candidate, merge only when all required checks pass, and deploy the
-  exact resulting full SHA once.
+- Until the pilot start is explicitly approved, `docker.home.cz` is the
+  pre-pilot integration environment. Ordinary development changes use the
+  bounded local fast path: focused local tests, exact affected production
+  image builds on the MacBook, activation of affected services only with
+  `--no-build --no-deps`, health/readiness, one narrow functional smoke, and
+  automatic rollback. Full remote CI is not required for that development
+  path. Stop and diagnose the stage if the path exceeds 15 minutes; never keep
+  an unchanged job or deployment waiting for hours.
+- Database migrations, identity or authorization, TLP/information-policy,
+  public API contracts, secrets, storage, shared Compose, and release
+  infrastructure changes require the broader relevant local checks before the
+  pre-pilot deployment. They still do not require the complete remote suite
+  unless they are being promoted as a pilot candidate.
+- The complete required CI, security, AKB-STRATOS integration, backup,
+  migration, rollback, and acceptance suite is mandatory once per immutable
+  pilot candidate. Merge and pilot promotion only when every required check
+  passes for the exact resulting full SHA.
 - If production build starts and the immutable workflow burns the SHA, never
   reuse it. Diagnose the recorded failure, prepare a reviewed descendant, and
   repeat the exact pre-merge image build before another deployment.
