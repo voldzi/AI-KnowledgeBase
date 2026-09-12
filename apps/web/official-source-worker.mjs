@@ -11,7 +11,11 @@ const fullIntervalSeconds = positive("AKB_OFFICIAL_SOURCE_FULL_INTERVAL_SECONDS"
 const maxNewPerRun = positive("AKB_OFFICIAL_SOURCE_MAX_NEW_PER_RUN", 10);
 const concurrency = Math.min(maxNewPerRun, positive("AKB_OFFICIAL_SOURCE_CONCURRENCY", 2));
 const failureBackoffSeconds = positive("AKB_OFFICIAL_SOURCE_FAILURE_BACKOFF_SECONDS", 900);
-const requestTimeoutSeconds = positive("AKB_OFFICIAL_SOURCE_REQUEST_TIMEOUT_SECONDS", 180);
+// Full-quality Docling conversion of large legal PDFs can legitimately take
+// several minutes before the registry and both search indexes are committed.
+// Keep the caller deadline above the ingestion worker's 930-second bound so a
+// successful immutable version is never mistaken for a failed synchronization.
+const requestTimeoutSeconds = positive("AKB_OFFICIAL_SOURCE_REQUEST_TIMEOUT_SECONDS", 1_200);
 const startDelaySeconds = nonnegative("AKB_OFFICIAL_SOURCE_START_DELAY_SECONDS", 30);
 const enabled = process.env.AKB_OFFICIAL_SOURCE_AUTOMATION_ENABLED === "true";
 const once = process.argv.includes("--once");

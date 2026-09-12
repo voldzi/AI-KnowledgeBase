@@ -302,7 +302,13 @@ AKB_OFFICIAL_SOURCE_COLLECTION_ID=czech-law
 AKB_OFFICIAL_SOURCE_INTERVAL_SECONDS=21600
 AKB_OFFICIAL_SOURCE_FULL_INTERVAL_SECONDS=604800
 AKB_OFFICIAL_SOURCE_MAX_NEW_PER_RUN=10
+AKB_OFFICIAL_SOURCE_REQUEST_TIMEOUT_SECONDS=1200
 ```
+
+The request timeout intentionally exceeds the isolated Docling worker's
+930-second bound. A large legal PDF must be allowed to finish its immutable
+version, registry confirmation and both search-index writes before the
+synchronization caller can retry it.
 
 The host source files use UID `1000` and mode `0600`. At Web startup the
 privileged entrypoint copies both values into the private in-container runtime
