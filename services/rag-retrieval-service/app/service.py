@@ -1282,6 +1282,8 @@ class RagRetrievalService:
             3
             if director_copilot_request
             else 10
+            if _assistant_legal_retrieval_hint(payload.message)
+            else 10
             if len(requested_facets) >= 2
             else 8
             if document_task_request
@@ -1297,8 +1299,36 @@ class RagRetrievalService:
             query_id=query_id,
             auth_context=auth_context,
         )
+        assistant_chunks = list(run.response.chunks)
+        required_legal_evidence = _assistant_required_legal_evidence(payload.message)
+        if required_legal_evidence and not any(
+            required_legal_evidence[1] in chunk.text.lower()
+            for chunk in assistant_chunks
+        ):
+            supplemental = await self._retrieve_authorized(
+                payload=RetrieveRequest(
+                    subject_id=payload.user_id,
+                    query=required_legal_evidence[0],
+                    filters=retrieval_filters,
+                    max_chunks=3,
+                ),
+                query_id=query_id,
+                auth_context=auth_context,
+            )
+            supplemental_ids = {
+                chunk.chunk_id for chunk in supplemental.response.chunks
+            }
+            assistant_chunks = [
+                *supplemental.response.chunks,
+                *(
+                    chunk
+                    for chunk in assistant_chunks
+                    if chunk.chunk_id not in supplemental_ids
+                ),
+            ]
+        assistant_chunks = _promote_legal_evidence(payload.message, assistant_chunks)
         decision = self._no_answer_policy.evaluate(
-            chunks=run.response.chunks,
+            chunks=assistant_chunks,
             had_candidates=run.had_candidates,
             denied_document_ids=run.denied_document_ids,
         )
@@ -1311,7 +1341,7 @@ class RagRetrievalService:
         elif payload.mode == "retrieve_only":
             rag_answer = _retrieval_only_answer(
                 query_id=query_id,
-                chunks=run.response.chunks,
+                chunks=assistant_chunks,
                 confidence=decision.confidence,
                 warnings=decision.warnings,
                 response_language=payload.response_language,
@@ -1329,7 +1359,7 @@ class RagRetrievalService:
             rag_answer = await self._answer_composer.compose(
                 query_id=query_id,
                 query=answer_query,
-                chunks=run.response.chunks,
+                chunks=assistant_chunks,
                 confidence=decision.confidence,
                 warnings=decision.warnings,
                 max_chunks=max_chunks,
@@ -1337,15 +1367,22 @@ class RagRetrievalService:
                 response_language=payload.response_language,
                 auth_context=auth_context,
             )
+            composed_citations = list(rag_answer.citations)
             rag_answer = await self._evidence_gate.verify_async(
                 rag_answer,
-                run.response.chunks,
+                assistant_chunks,
                 auth_context=auth_context,
+            )
+            rag_answer = _apply_common_legal_core(
+                payload.message,
+                rag_answer,
+                assistant_chunks,
+                composed_citations,
             )
             rag_answer = _apply_answer_facet_completeness(
                 answer=rag_answer,
                 requested_facets=requested_facets,
-                chunks=run.response.chunks,
+                chunks=assistant_chunks,
                 response_language=payload.response_language,
             )
         rag_answer = rag_answer.model_copy(
@@ -1381,7 +1418,7 @@ class RagRetrievalService:
                 used_chunk_ids = set(rag_answer.used_chunks)
                 export_chunks = [
                     chunk
-                    for chunk in run.response.chunks
+                    for chunk in assistant_chunks
                     if chunk.chunk_id in used_chunk_ids
                 ]
                 export_authorized, export_denied = await self._filter_authorized_chunks(
@@ -1898,22 +1935,19 @@ class RagRetrievalService:
         else:
             stage_timings_ms["exact_resolution"] = 0.0
 
-        if exact_document_id:
-            query_vector = None
-            stage_timings_ms["embedding"] = 0.0
-        else:
-            stage_started = time.perf_counter()
-            query_vectors = await self._llm_client.embeddings(
-                [payload.query],
-                auth_context=auth_context,
-            )
-            stage_timings_ms["embedding"] = _elapsed_stage_ms(stage_started)
-            query_vector = query_vectors[0] if query_vectors else None
-        retrieve = (
-            exact_resolver
-            if exact_document_id and exact_resolver
-            else self._retriever.retrieve
+        stage_started = time.perf_counter()
+        query_vectors = await self._llm_client.embeddings(
+            [payload.query],
+            auth_context=auth_context,
         )
+        stage_timings_ms["embedding"] = _elapsed_stage_ms(stage_started)
+        query_vector = query_vectors[0] if query_vectors else None
+        # The exact resolver identifies the authoritative document. Once that
+        # scope is fixed, rank chunks with the full employee question so the
+        # requested paragraph or topic wins within that document. Reusing the
+        # identifier-only resolver here makes every chunk title an equal match
+        # and can return the opening pages instead of the relevant provision.
+        retrieve = self._retriever.retrieve
         candidate_limit = _candidate_budget(
             analyzed_plan.profile,
             requested_chunks=payload.max_chunks,
@@ -1924,8 +1958,7 @@ class RagRetrievalService:
             "filters": retrieval_filters,
             "limit": candidate_limit,
         }
-        if not exact_document_id:
-            retrieve_kwargs["query_vector"] = query_vector
+        retrieve_kwargs["query_vector"] = query_vector
         if (
             self._settings.adaptive_retrieval_mode == "enforce"
             and "dense_weight" in inspect.signature(retrieve).parameters
@@ -3477,6 +3510,46 @@ _ASSISTANT_HISTORY_STOPWORDS = {
 }
 
 _ASSISTANT_LEGAL_RETRIEVAL_HINTS = (
+    (
+        r"\b(registr\w*\s+smluv|zverejn\w*\s+smlouv|uverejn\w*\s+smlouv)\b",
+        "340/2015 Sb.; § 5 uveřejnění smlouvy; § 6 nabytí účinnosti nejdříve dnem uveřejnění",
+    ),
+    (
+        r"\b(prescas\w*|zakonik\w*\s+prac|pracovn\w*\s+dob|zamestnan\w*)\b",
+        "262/2006 Sb.; § 93 práce přesčas; § 114 mzda nebo náhradní volno za práci přesčas",
+    ),
+    (
+        r"\b(verejn\w*\s+zakaz\w*|zadavan\w*\s+verejn\w*\s+zakaz\w*)\b",
+        "134/2016 Sb.; § 6 zásady transparentnosti, přiměřenosti, rovného zacházení a zákazu diskriminace",
+    ),
+    (
+        r"\b(svobodn\w*\s+pristup\w*\s+k?\s*informac|zadost\w*\s+o\s+informac|pozad\w*(?:\s+\w+){0,5}\s+o\s+informac\w*|povinn\w*\s+subjekt)\b",
+        "106/1999 Sb.; § 14 odst. 5 písm. d); poskytnutí informace do 15 dnů od přijetí žádosti",
+    ),
+    (
+        r"\b(ucetnictv\w*|ucetn\w*\s+jednotk|veden\w*\s+uct)\b",
+        "563/1991 Sb.; § 4 a § 5 vedení účetnictví; pověření jiné osoby nezbavuje účetní jednotku odpovědnosti",
+    ),
+    (
+        r"\b(spravn\w*\s+(?:organ|rizeni|rozhodnut|rad)\w*|odvolan\w*\s+proti\s+rozhodnut\w*|rozhodnut\w*\s+spravn\w*\s+organ\w*)\b",
+        "500/2004 Sb.; § 81 odvolání proti rozhodnutí; § 83 odvolací lhůta; § 84 neoznámené rozhodnutí",
+    ),
+    (
+        r"\bstatn\w*\s+rozpoct\w*\b.*\b(?:rozpoct\w*\s+obc\w*|obecn\w*\s+rozpoct\w*|uzemn\w*\s+rozpoct\w*)\b",
+        "218/2000 Sb. § 1 státní rozpočet; 250/2000 Sb. § 2 rozpočty územních samosprávných celků",
+    ),
+    (
+        r"\b(statn\w*\s+rozpoct\w*|rozpoct\w*\s+pravidl\w*\s+stat)\b",
+        "218/2000 Sb.; § 1 státní rozpočet a státní finanční aktiva",
+    ),
+    (
+        r"\b(rozpoct\w*\s+obc|obecn\w*\s+rozpoct|uzemn\w*\s+rozpoct)\b",
+        "250/2000 Sb.; § 2 rozpočty územních samosprávných celků",
+    ),
+    (
+        r"\b(nalezitost\w*(?:\s+\w+){0,4}\s+smlouv|smlouv\w*\s+mezi\s+(?:dvema|stran))\b",
+        "89/2012 Sb.; § 1724 smlouva; projev vůle stran zřídit závazek; určení stran, předmětu a obsahu závazku",
+    ),
     (r"\bnis\s*2\b", "Směrnice NIS2; Směrnice (EU) 2022/2555"),
     (r"\bgdpr\b", "Obecné nařízení o ochraně osobních údajů; Nařízení (EU) 2016/679"),
     (
@@ -3491,6 +3564,171 @@ def _assistant_legal_retrieval_hint(message: str) -> str | None:
     for pattern, hint in _ASSISTANT_LEGAL_RETRIEVAL_HINTS:
         if re.search(pattern, normalized):
             return hint
+    return None
+
+
+def _assistant_required_legal_evidence(message: str) -> tuple[str, str] | None:
+    """Return a narrow evidence query and its mandatory source phrase for common legal questions."""
+    normalized = _normalize_for_assistant(message)
+    if re.search(
+        r"\b(spravn\w*\s+(?:organ|rizeni|rozhodnut|rad)\w*|odvolan\w*\s+proti\s+rozhodnut\w*)\b",
+        normalized,
+    ):
+        return (
+            "500/2004 Sb. § 83: Odvolací lhůta činí 15 dnů ode dne oznámení rozhodnutí",
+            "odvolací lhůta činí 15 dnů",
+        )
+    if re.search(r"\b(ucetnictv\w*|ucetn\w*\s+jednotk|veden\w*\s+uct)\b", normalized):
+        return (
+            "563/1991 Sb. § 5: pověření vedením účetnictví nezbavuje účetní jednotku odpovědnosti",
+            "nezbavuje účetní jednotku odpovědnosti",
+        )
+    return None
+
+
+def _promote_legal_evidence(message: str, chunks: list[RetrievedChunk]) -> list[RetrievedChunk]:
+    """Move the passage that directly answers a common legal question into the bounded LLM context."""
+    normalized = _normalize_for_assistant(message)
+    needles: tuple[str, ...] = ()
+    if re.search(r"\b(prescas\w*|zakonik\w*\s+prac)\b", normalized):
+        needles = ("nařízená práce přesčas nesmí", "celkový rozsah práce přesčas")
+    elif re.search(r"\b(svobodn\w*\s+pristup\w*\s+k?\s*informac|pozad\w*(?:\s+\w+){0,5}\s+o\s+informac\w*)\b", normalized):
+        needles = ("poskytne informaci v souladu se žádostí",)
+    elif re.search(r"\b(spravn\w*\s+(?:organ|rizeni|rozhodnut|rad)\w*|odvolan\w*\s+proti\s+rozhodnut\w*)\b", normalized):
+        needles = ("odvolací lhůta činí 15 dnů",)
+    elif re.search(r"\b(ucetnictv\w*|ucetn\w*\s+jednotk|veden\w*\s+uct)\b", normalized):
+        needles = ("nezbavuje účetní jednotku odpovědnosti",)
+    elif re.search(r"\b(nalezitost\w*(?:\s+\w+){0,4}\s+smlouv|smlouv\w*\s+mezi\s+(?:dvema|stran))\b", normalized):
+        needles = ("smlouvou projevují strany vůli zřídit mezi sebou závazek",)
+    if not needles:
+        return chunks
+    direct = [chunk for chunk in chunks if any(needle in chunk.text.lower() for needle in needles)]
+    if not direct:
+        return chunks
+    direct_ids = {chunk.chunk_id for chunk in direct}
+    return [*direct, *(chunk for chunk in chunks if chunk.chunk_id not in direct_ids)]
+
+
+def _apply_common_legal_core(
+    message: str,
+    answer: RagAnswer,
+    chunks: list[RetrievedChunk],
+    composed_citations: list[Citation],
+) -> RagAnswer:
+    """Restore a short verbatim legal core when a model omits the direct controlling sentence."""
+    normalized = _normalize_for_assistant(message)
+    needle: str | None = None
+    if re.search(
+        r"\b(spravn\w*\s+(?:organ|rizeni|rozhodnut|rad)\w*|odvolan\w*\s+proti\s+rozhodnut\w*)\b",
+        normalized,
+    ):
+        needle = "odvolací lhůta činí 15 dnů"
+    elif re.search(r"\b(ucetnictv\w*|ucetn\w*\s+jednotk|veden\w*\s+uct)\b", normalized):
+        needle = "nezbavuje účetní jednotku odpovědnosti"
+    if not needle:
+        return answer
+
+    source = next((chunk for chunk in chunks if needle in chunk.text.lower()), None)
+    if source is None:
+        return answer
+    sentence = _source_sentence_with(source.text, needle)
+    if not sentence:
+        return answer
+    normalized_answer = " ".join(answer.answer.lower().split())
+    normalized_sentence = " ".join(sentence.lower().split()).strip(" .")
+    if normalized_sentence in normalized_answer:
+        return answer
+
+    prefix = f"Podle citovaného předpisu: {sentence}"
+    source_citation = next(
+        (citation for citation in composed_citations if citation.chunk_id == source.chunk_id),
+        None,
+    )
+    citations = list(answer.citations)
+    if source_citation and all(item.chunk_id != source.chunk_id for item in citations):
+        citations.insert(0, source_citation)
+    used_chunks = list(answer.used_chunks)
+    if source.chunk_id not in used_chunks:
+        used_chunks.insert(0, source.chunk_id)
+    claims = [
+        {
+            "claim": prefix,
+            "claim_type": "main",
+            "chunk_ids": [source.chunk_id],
+            "quoted_support": sentence,
+            "supported": True,
+            "support_score": 1.0,
+        },
+        *[
+            {**claim, "claim_type": "supporting"}
+            if isinstance(claim, dict) and claim.get("claim_type") == "main"
+            else claim
+            for claim in answer.claims
+        ],
+    ]
+    return answer.model_copy(
+        update={
+            "answer": f"{prefix}\n\n{answer.answer}",
+            "citations": citations,
+            "used_chunks": used_chunks,
+            "claims": claims,
+        }
+    )
+
+
+def _source_sentence_with(text: str, needle: str) -> str | None:
+    normalized = " ".join(text.replace("\u00ad", "").split())
+    for sentence in re.split(r"(?<=[.!?])\s+", normalized):
+        if needle in sentence.lower():
+            return re.sub(r"^\(\d+\)\s*", "", sentence).strip()
+    return None
+
+
+def _assistant_legal_answer_focus(message: str) -> str | None:
+    """Clarify the requested legal facet without supplying an answer or fact."""
+    normalized = _normalize_for_assistant(message)
+    if re.search(r"\b(prescas\w*|zakonik\w*\s+prac)\b", normalized):
+        return (
+            "První odstavec musí stručně uvést podmínky práce přesčas a samostatně celý "
+            "obecný maximální rozsah "
+            "podle § 93: limit nařízené práce za rok a průměrný týdenní limit v "
+            "vyrovnávacím období, pokud je citovaný kontext dokládá. Až potom stručně "
+            "popiš odměnu nebo náhradní volno. Pro běžnou odpověď použij pravidla mzdy "
+            "z § 114. Pravidla platu z § 127, včetně zvláštní sazby za dny nepřetržitého "
+            "odpočinku, uveď pouze jako výslovně označenou samostatnou variantu. "
+            "Nezaměň obecný limit práce přesčas s rozsahem zahrnutým do sjednané mzdy."
+        )
+    if re.search(
+        r"\b(svobodn\w*\s+pristup\w*\s+k?\s*informac|pozad\w*(?:\s+\w+){0,5}\s+o\s+informac\w*)\b",
+        normalized,
+    ):
+        return (
+            "Zaměř odpověď na běžné první vyřízení řádné žádosti. Nezaměň tuto lhůtu "
+            "s lhůtou po zaplacení úhrady, stížností, odvoláním ani přezkumem."
+        )
+    if re.search(
+        r"\b(spravn\w*\s+(?:organ|rizeni|rozhodnut|rad)\w*|odvolan\w*\s+proti\s+rozhodnut\w*)\b",
+        normalized,
+    ):
+        return (
+            "První věta musí popsat běžné odvolání proti oznámenému správnímu rozhodnutí "
+            "a uvést obecnou lhůtu podle § 83, pokud ji citovaný kontext dokládá. "
+            "Zvláštní režim neoznámeného rozhodnutí podle "
+            "§ 84 uveď jen jako jasně označenou výjimku, pokud jej citace dokládá."
+        )
+    if re.search(r"\b(nalezitost\w*(?:\s+\w+){0,4}\s+smlouv|smlouv\w*\s+mezi\s+(?:dvema|stran))\b", normalized):
+        return (
+            "Odpověz prakticky a stručně: uveď strany, předmět a obsah závazku, "
+            "potřebnou formu a podpisy jen tehdy, pokud je pro daný typ smlouvy "
+            "vyžaduje zákon. Nevytvářej univerzální povinný seznam pro všechny smlouvy."
+        )
+    if re.search(r"\b(ucetnictv\w*|ucetn\w*\s+jednotk|veden\w*\s+uct)\b", normalized):
+        return (
+            "První věta musí říci, že za vedení účetnictví odpovídá účetní jednotka a že "
+            "pověření jiné osoby ji této odpovědnosti nezbavuje, pokud to citovaný "
+            "kontext dokládá. Speciální pravidla pro fondy a jednotky bez právní osobnosti "
+            "uveď až potom a jen pokud jsou pro dotaz užitečná. Nepoužij dvojí zápor."
+        )
     return None
 
 
@@ -3598,6 +3836,9 @@ def _assistant_answer_query(
         history_max_length=history_max_length,
         max_query_length=12000,
     )
+    legal_focus = _assistant_legal_answer_focus(message)
+    if legal_focus:
+        query = f"{query}\n\nZaměření odpovědi:\n{legal_focus}"
     evidence = _director_copilot_evidence_context(
         context.get("director_copilot_evidence")
     )

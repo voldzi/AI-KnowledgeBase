@@ -20,6 +20,31 @@ from retrievers.qdrant import (
 )
 
 
+def test_exact_candidate_resolution_uses_only_statute_identifier() -> None:
+    settings = load_settings({"AKL_RAG_DEPENDENCY_MODE": "http"})
+    retriever = QdrantHybridRetriever(settings)
+    calls: list[str] = []
+
+    class FakeOpenSearch:
+        async def retrieve(self, *, query, filters, limit):
+            calls.append(query)
+            return []
+
+    retriever._opensearch = FakeOpenSearch()
+    asyncio.run(
+        retriever.resolve_exact_candidates(
+            query=(
+                "Co musí zaměstnavatel řešit při práci přesčas? "
+                "Kanonický právní zdroj: 262/2006 Sb.; § 93 a § 114"
+            ),
+            filters=RagQueryFilters(),
+            limit=16,
+        )
+    )
+
+    assert calls == ["262/2006 sb"]
+
+
 def test_missing_qdrant_collection_is_an_empty_retrieval_result(monkeypatch) -> None:
     settings = load_settings({"AKL_RAG_DEPENDENCY_MODE": "http"})
     retriever = QdrantHybridRetriever(settings)

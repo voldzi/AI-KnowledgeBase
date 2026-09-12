@@ -466,7 +466,7 @@ def _merge_warnings(*groups: list[str]) -> list[str]:
 def _system_prompt(answer_mode: AnswerMode, response_language: ResponseLanguage = "cs") -> str:
     if answer_mode == "it_support_answer":
         base = (
-            "You are the AKL employee assistant. Answer only from the supplied context. "
+            "You are the AKB employee assistant. Answer only from the supplied context. "
             "The API returns source citations separately, so do not include chunk ids, document ids, "
             "version ids, or bracket citation markers in the final prose. "
             "Do not add facts that are not supported by the supplied context. If the context is insufficient, "
@@ -474,7 +474,7 @@ def _system_prompt(answer_mode: AnswerMode, response_language: ResponseLanguage 
         )
     else:
         base = (
-            "You are the AKL Retrieval answer composer. Answer only from the supplied context. "
+            "You are the AKB Retrieval answer composer. Answer only from the supplied context. "
             "Every factual or normative claim must be supported by cited chunk ids in square brackets. "
             "Do not add facts that are not supported by cited chunks. If the context is insufficient, "
             "say that the source support is insufficient."
@@ -541,10 +541,16 @@ def _system_prompt(answer_mode: AnswerMode, response_language: ResponseLanguage 
         "Identify every independently requested facet of the question. Address each facet from the supplied context, "
         "or state explicitly that the context does not establish that facet; never silently omit a requested facet."
     )
+    employee_readability_instruction = (
+        "Start with the direct answer. Be concise: use at most six short sentences or six bullets unless the user explicitly "
+        "asks for detail. Select only provisions relevant to the question. Do not add side cases or exceptions the user did "
+        "not ask about. Explain legal wording in practical employee-facing language without weakening its conditions."
+    )
     return (
         f"{base} {trust_boundary} {source_qualification} {language_instruction} "
         f"{mode_prompts.get(answer_mode, mode_prompts['standard_answer'])} "
         f"{completeness_instruction} "
+        f"{employee_readability_instruction} "
         f"{no_answer_instruction}"
     )
 

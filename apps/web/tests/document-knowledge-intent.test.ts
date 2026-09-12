@@ -53,8 +53,20 @@ describe("document knowledge intent", () => {
       "extract_deadlines",
     );
     assert.equal(
+      resolveDocumentKnowledgeIntent("Jaká je běžná lhůta pro odpověď?").answerMode,
+      "extract_deadlines",
+    );
+    assert.equal(
       resolveDocumentKnowledgeIntent("Jaké doklady potřebuji k žádosti?").answerMode,
       "extract_obligations",
+    );
+    assert.equal(
+      resolveDocumentKnowledgeIntent("Co musí zaměstnavatel dodržet u práce přesčas?").answerMode,
+      "extract_obligations",
+    );
+    assert.equal(
+      resolveDocumentKnowledgeIntent("Jaké jsou základní zásady zadávání veřejných zakázek?").answerMode,
+      "normative_with_citations",
     );
   });
 

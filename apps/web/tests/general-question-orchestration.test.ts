@@ -6,6 +6,13 @@ import { queryStateForAssistantGoal } from "../src/lib/assistant/user-goal";
 import { resolveConversationQuery } from "../src/lib/director-copilot/query-state";
 import { classifyDirectorCopilotV2Intent } from "../src/lib/director-copilot-v2/intent-router";
 
+it("keeps a legal budget comparison on governed document retrieval", () => {
+  assert.equal(
+    classifyDirectorCopilotV2Intent("Jaký je rozdíl mezi státním rozpočtem a rozpočtem obce?"),
+    null,
+  );
+});
+
 describe("general question orchestration", () => {
   it("plans the reported financial-improvement question as governed mixed evidence", () => {
     const message = "Jak je možno vylepšit finanční plán?";

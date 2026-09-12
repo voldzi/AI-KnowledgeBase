@@ -14,6 +14,7 @@ from app.service import (
     _assistant_filters,
     _assistant_query,
     _assistant_uses_authorized_follow_up_source,
+    _apply_common_legal_core,
     _apply_answer_facet_completeness,
     _bounded_conversation_questions,
     _employee_answer,
@@ -24,6 +25,7 @@ from app.service import (
     _normalize_for_assistant,
     _requested_answer_facets,
     _parse_follow_up_questions,
+    _promote_legal_evidence,
     _complete_chunk_policy_metadata,
 )
 from app.schemas import ChunkCitation, RagAnswer, RetrievedChunk
@@ -771,6 +773,86 @@ def test_legal_retrieval_hint_is_not_added_to_answer_prompt() -> None:
     assert "Kanonický právní zdroj" not in query
 
 
+def test_human_legal_answer_focus_distinguishes_primary_process() -> None:
+    overtime = _assistant_answer_query(
+        "Co musí zaměstnavatel řešit, když zaměstnanec pracuje přesčas?", {}
+    )
+    information = _assistant_answer_query(
+        "Může občan požádat úřad o informace a jaká je běžná lhůta pro odpověď?", {}
+    )
+
+    assert "maximální rozsah" in overtime
+    assert "§ 93" in overtime
+    assert "sjednané mzdy" in overtime
+    assert "běžné první vyřízení" in information
+    assert "stížností" in information
+
+
+def test_human_legal_answer_focus_prioritizes_practical_employee_answer() -> None:
+    appeal = _assistant_answer_query(
+        "Jak se můžu odvolat proti rozhodnutí správního orgánu?", {}
+    )
+    contract = _assistant_answer_query(
+        "Jaké jsou základní náležitosti smlouvy mezi dvěma stranami?", {}
+    )
+    accounting = _assistant_answer_query("Kdo odpovídá za vedení účetnictví?", {})
+
+    assert "běžné odvolání" in appeal
+    assert "§ 83" in appeal
+    assert "prakticky a stručně" in contract
+    assert "univerzální povinný seznam" in contract
+    assert "První věta musí říci" in accounting
+    assert "Nepoužij dvojí zápor" in accounting
+
+
+def test_common_legal_question_promotes_direct_evidence_into_bounded_context() -> None:
+    unrelated = _policy_chunk(chunk_id="unrelated", document_id="law", binding_id="pb", handling_class="PUBLIC", obligations=[])
+    direct = _policy_chunk(chunk_id="direct", document_id="law", binding_id="pb", handling_class="PUBLIC", obligations=[]).model_copy(
+        update={"text": "Nařízená práce přesčas nesmí překročit zákonné limity."}
+    )
+
+    promoted = _promote_legal_evidence(
+        "Co musí zaměstnavatel řešit, když zaměstnanec pracuje přesčas?",
+        [unrelated, direct],
+    )
+
+    assert [chunk.chunk_id for chunk in promoted] == ["direct", "unrelated"]
+
+
+def test_common_legal_core_restores_verbatim_deadline_and_citation() -> None:
+    direct = _policy_chunk(
+        chunk_id="appeal-deadline",
+        document_id="law",
+        binding_id="pb",
+        handling_class="PUBLIC",
+        obligations=[],
+    ).model_copy(
+        update={
+            "text": "(1) Odvolací lhůta činí 15 dnů ode dne oznámení rozhodnutí, pokud zvláštní zákon nestanoví jinak."
+        }
+    )
+    initial = RagAnswer(
+        query_id="query",
+        answer="Odvolání podejte podle poučení v rozhodnutí.",
+        confidence="high",
+        citations=[],
+        warnings=[],
+        used_chunks=[],
+        missing_information=None,
+    )
+
+    corrected = _apply_common_legal_core(
+        "Jak se můžu bránit proti rozhodnutí správního orgánu?",
+        initial,
+        [direct],
+        _citations([direct]),
+    )
+
+    assert corrected.answer.startswith("Podle citovaného předpisu: Odvolací lhůta činí 15 dnů")
+    assert corrected.citations[0].chunk_id == "appeal-deadline"
+    assert corrected.used_chunks == ["appeal-deadline"]
+
+
 def test_short_explicit_legal_topic_does_not_inherit_history() -> None:
     query = _assistant_query(
         "Co je NIS2?",
@@ -779,6 +861,25 @@ def test_short_explicit_legal_topic_does_not_inherit_history() -> None:
 
     assert "earlier_user_questions" not in query
     assert "Směrnice (EU) 2022/2555" in query
+
+
+@pytest.mark.parametrize(
+    ("question", "identifier"),
+    [
+        ("Musíme zveřejnit smlouvu v registru smluv?", "340/2015 Sb."),
+        ("Co řeší zaměstnavatel při práci přesčas?", "262/2006 Sb."),
+        ("Jaké jsou základní zásady zadávání veřejných zakázek?", "134/2016 Sb."),
+        ("Může občan požádat úřad o informace a za jak dlouho musí úřad odpovědět?", "106/1999 Sb."),
+        ("Kdo odpovídá za vedení účetnictví?", "563/1991 Sb."),
+        ("Jak se bránit proti rozhodnutí správního orgánu?", "500/2004 Sb."),
+        ("Jaký je rozdíl mezi státním rozpočtem a rozpočtem obce?", "218/2000 Sb."),
+    ],
+)
+def test_human_legal_question_adds_canonical_statute_identifier(
+    question: str,
+    identifier: str,
+) -> None:
+    assert identifier in _assistant_query(question, {})
 
 
 def test_referential_follow_up_keeps_conversation_questions() -> None:
@@ -905,13 +1006,13 @@ def test_explicit_live_domain_follow_up_does_not_inherit_legal_source() -> None:
     assert "Směrnice (EU) 2022/2555" not in query
 
 
-def test_related_full_question_keeps_conversation_questions() -> None:
+def test_explicit_legal_question_does_not_need_conversation_questions() -> None:
     query = _assistant_query(
         "Jaké jsou zákonné limity pro veřejné zakázky?",
         {"earlier_user_questions": ["Jaké jsou interní limity pro veřejné zakázky?"]},
     )
 
-    assert "earlier_user_questions" in query
+    assert "earlier_user_questions" not in query
 
 
 def test_conversation_context_keeps_only_bounded_user_questions() -> None:

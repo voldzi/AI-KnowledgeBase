@@ -226,11 +226,13 @@ def test_profile_budgets_bound_expensive_retrieval_stages() -> None:
 
 
 @pytest.mark.asyncio
-async def test_exact_resolver_scopes_before_retrieval_and_skips_embedding() -> None:
+async def test_exact_resolver_scopes_before_retrieval_and_uses_full_query_embedding() -> None:
     target = _chunk("law", "doc_law", "Působnost zákona.")
     target.citation.document_title = "365/2000 Sb. - Zákon o informačních systémech"
     noise = _chunk("noise", "doc_noise", "Výroční zpráva.")
     resolver_filters: list[RagQueryFilters] = []
+    retrieval_filters: list[RagQueryFilters] = []
+    embedded_queries: list[list[str]] = []
 
     class Retriever:
         async def resolve_exact_candidates(self, *, query, filters, limit):
@@ -240,11 +242,13 @@ async def test_exact_resolver_scopes_before_retrieval_and_skips_embedding() -> N
             return [target, noise]
 
         async def retrieve(self, **kwargs):
-            raise AssertionError("exact retrieval must stay on the lexical resolver")
+            retrieval_filters.append(kwargs["filters"])
+            return [target]
 
     class LlmClient:
-        async def embeddings(self, *args, **kwargs):
-            raise AssertionError("exact resolved retrieval must not request an embedding")
+        async def embeddings(self, queries, **kwargs):
+            embedded_queries.append(queries)
+            return [[0.1, 0.2]]
 
     class Reranker:
         async def rerank(self, *, query, chunks, limit):
@@ -280,7 +284,8 @@ async def test_exact_resolver_scopes_before_retrieval_and_skips_embedding() -> N
 
     assert [chunk.citation.document_id for chunk in run.response.chunks] == ["doc_law"]
     assert resolver_filters[0].document_ids == []
-    assert resolver_filters[1].document_ids == ["doc_law"]
+    assert retrieval_filters[0].document_ids == ["doc_law"]
+    assert embedded_queries == [["365/2000 Sb."]]
     assert run.response.retrieval_diagnostics["exact_document_scope_applied"] is True
     assert run.response.retrieval_diagnostics["stage_timings_ms"]["embedding"] == 0.0
     assert run.response.retrieval_diagnostics["stage_timings_ms"]["parent_expansion"] == 0.0

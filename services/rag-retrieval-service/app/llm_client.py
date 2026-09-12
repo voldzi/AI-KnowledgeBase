@@ -206,7 +206,7 @@ class HttpLLMGatewayClient:
             json_body={
                 "model": selected_model,
                 "messages": messages,
-                "temperature": 0.1,
+                "temperature": 0,
                 "max_tokens": self._settings.answer_max_tokens,
                 "stream": False,
                 "metadata": metadata,
@@ -253,7 +253,7 @@ class HttpLLMGatewayClient:
                     json={
                         "model": selected_model,
                         "messages": messages,
-                        "temperature": 0.1,
+                        "temperature": 0,
                         "max_tokens": self._settings.answer_max_tokens,
                         "stream": True,
                         "metadata": metadata,

@@ -129,7 +129,10 @@ export async function synchronizePublicSource(
   const versionProfile = parseDocumentVersionProfileInput({ expected_root_metadata_revision: root.metadataRevision, ...prepared.documentVersionProfile }, prepared.documentProfile);
   const downloaded = await downloadOfficialDocument(sourceUrl, collection, fetcher);
   const versions = await clients.registry.listDocumentVersions(document.document_id, context);
-  const currentVersion = versions[0] ?? null;
+  const currentVersion = [...versions]
+    .sort((left, right) => (
+      (right.valid_from ?? right.created_at).localeCompare(left.valid_from ?? left.created_at)
+    ))[0] ?? null;
   const sameContent = currentVersion?.file_hash === downloaded.sha256;
   const sameVersion = versions.find((version) => (
     version.file_hash === downloaded.sha256
@@ -408,35 +411,48 @@ async function createIngestionJob(
   const idempotencyKey = `official-source:${version.document_version_id}`;
   const correlationId = context.correlationId ?? context.requestId ?? randomUUID();
   const actorContext = { ...context, requestId: correlationId, correlationId };
-  const authorization = await clients.registry.createIngestionAuthorization(
-    document.document_id,
-    version.document_version_id,
-    {
-      action: "document.ingest",
-      correlation_id: correlationId,
-      idempotency_key: idempotencyKey,
-    },
-    actorContext,
-  );
-  const transportContext = await transportContextFactory(correlationId);
-  return clients.ingestion.createJob(
-    {
-      idempotency_key: idempotencyKey,
-      document_id: document.document_id,
-      document_version_id: version.document_version_id,
-      source_file_uri: version.source_file_uri,
-      parser_profile: "controlled_document",
-      ocr_enabled: true,
-      chunking_strategy: "legal_structured",
-      embedding_profile: "default",
-      expected_current_ingestion_job_id: currentAttempt?.ingestion_job_id ?? null,
-    },
-    transportContext,
-    {
-      delegatedActorSubjectId: authorization.confirmed_subject_id,
-      authorizationToken: authorization.authorization_token,
-    },
-  );
+  const submit = async (key: string): Promise<IngestionJob> => {
+    const authorization = await clients.registry.createIngestionAuthorization(
+      document.document_id,
+      version.document_version_id,
+      {
+        action: "document.ingest",
+        correlation_id: correlationId,
+        idempotency_key: key,
+      },
+      actorContext,
+    );
+    const transportContext = await transportContextFactory(correlationId);
+    return clients.ingestion.createJob(
+      {
+        idempotency_key: key,
+        document_id: document.document_id,
+        document_version_id: version.document_version_id,
+        source_file_uri: version.source_file_uri,
+        parser_profile: "controlled_document",
+        ocr_enabled: true,
+        chunking_strategy: "legal_structured",
+        embedding_profile: "default",
+        expected_current_ingestion_job_id: currentAttempt?.ingestion_job_id ?? null,
+      },
+      transportContext,
+      {
+        delegatedActorSubjectId: authorization.confirmed_subject_id,
+        authorizationToken: authorization.authorization_token,
+      },
+    );
+  };
+  try {
+    return await submit(idempotencyKey);
+  } catch (error) {
+    if (!(error instanceof ApiClientError) || error.status !== 409 || error.code !== "IDEMPOTENCY_CONFLICT") {
+      throw error;
+    }
+    // A previous immutable attempt can retain the stable key after an indexer
+    // failure. Recover with a new governed attempt while preserving Registry's
+    // compare-and-swap coordinate for the currently visible attempt.
+    return submit(`${idempotencyKey}:recovery:${randomUUID()}`);
+  }
 }
 
 interface DownloadedOfficialDocument {

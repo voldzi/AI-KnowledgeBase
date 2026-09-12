@@ -210,6 +210,17 @@ describe("assistant tool router", () => {
     assert.equal(route.queryPlan.quality_gates.citations_required, true);
   });
 
+  it("routes registry-of-contracts legal questions to authorized document RAG", () => {
+    const route = routeAssistantMessage(
+      "Musíme zveřejnit smlouvu v registru smluv a kdy začne být účinná?",
+      "cs",
+    );
+
+    assert.equal(route.tool, "rag_document_answer");
+    assert.equal(route.reason, "rag_grounded_answer");
+    assert.equal(route.queryPlan.quality_gates.citations_required, true);
+  });
+
   it("adds obligation-specific guidance for structured obligation answers", () => {
     const route = routeAssistantMessage("Vytvoř tabulku povinností podle citovaných zdrojů.", "cs");
 

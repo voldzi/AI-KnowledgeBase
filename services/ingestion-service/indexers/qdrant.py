@@ -16,6 +16,8 @@ from intelligence.entities import intelligence_payload_fields
 
 logger = logging.getLogger(__name__)
 
+QDRANT_UPSERT_BATCH_SIZE = 64
+
 
 @dataclass(frozen=True)
 class IndexingResult:
@@ -390,19 +392,25 @@ class QdrantIndexer:
 
     async def _upsert_points_to(self, collection: str, points: list[dict[str, Any]]) -> None:
         async with self._client() as client:
-            response = await client.put(
-                f"{self.settings.qdrant_base_url}/collections/{collection}/points",
-                params={"wait": "true"},
-                headers=self._headers(),
-                json={"points": points},
-            )
-        if response.status_code >= 400:
-            raise IngestionError(
-                "QDRANT_UPSERT_FAILED",
-                "Qdrant vector upsert failed",
-                status_code=502,
-                details={"status_code": response.status_code},
-            )
+            for start in range(0, len(points), QDRANT_UPSERT_BATCH_SIZE):
+                batch = points[start : start + QDRANT_UPSERT_BATCH_SIZE]
+                response = await client.put(
+                    f"{self.settings.qdrant_base_url}/collections/{collection}/points",
+                    params={"wait": "true"},
+                    headers=self._headers(),
+                    json={"points": batch},
+                )
+                if response.status_code >= 400:
+                    raise IngestionError(
+                        "QDRANT_UPSERT_FAILED",
+                        "Qdrant vector upsert failed",
+                        status_code=502,
+                        details={
+                            "status_code": response.status_code,
+                            "batch_start": start,
+                            "batch_size": len(batch),
+                        },
+                    )
 
     def _point(self, chunk: DocumentChunk, vector: list[float], *, embedding_model: str) -> dict[str, Any]:
         payload = chunk.model_dump(mode="json")

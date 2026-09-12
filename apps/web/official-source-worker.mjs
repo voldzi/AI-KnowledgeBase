@@ -9,6 +9,8 @@ const collectionId = process.env.AKB_OFFICIAL_SOURCE_COLLECTION_ID || "czech-law
 const intervalSeconds = positive("AKB_OFFICIAL_SOURCE_INTERVAL_SECONDS", 21_600);
 const fullIntervalSeconds = positive("AKB_OFFICIAL_SOURCE_FULL_INTERVAL_SECONDS", 604_800);
 const maxNewPerRun = positive("AKB_OFFICIAL_SOURCE_MAX_NEW_PER_RUN", 10);
+const concurrency = Math.min(maxNewPerRun, positive("AKB_OFFICIAL_SOURCE_CONCURRENCY", 2));
+const failureBackoffSeconds = positive("AKB_OFFICIAL_SOURCE_FAILURE_BACKOFF_SECONDS", 900);
 const requestTimeoutSeconds = positive("AKB_OFFICIAL_SOURCE_REQUEST_TIMEOUT_SECONDS", 180);
 const startDelaySeconds = nonnegative("AKB_OFFICIAL_SOURCE_START_DELAY_SECONDS", 30);
 const enabled = process.env.AKB_OFFICIAL_SOURCE_AUTOMATION_ENABLED === "true";
@@ -18,7 +20,7 @@ const health = process.argv.includes("--health");
 await mkdir(stateDir, { recursive: true });
 if (health) {
   const heartbeat = await stat(`${stateDir}/heartbeat`).catch(() => null);
-  const maxAgeMs = Math.max(intervalSeconds * 2, 600) * 1_000;
+  const maxAgeMs = Math.max(intervalSeconds * 2, requestTimeoutSeconds * maxNewPerRun * 2, 600) * 1_000;
   process.exit(heartbeat && Date.now() - heartbeat.mtimeMs <= maxAgeMs ? 0 : 1);
 }
 
@@ -55,35 +57,50 @@ async function runCycle() {
     const revision = string(discovery.collectionRevision, "collectionRevision");
     const laws = groupByLaw(candidates);
     const fullCursor = Number.isInteger(state.fullCursor) && state.fullCursor >= 0 ? state.fullCursor : 0;
+    const incompleteLaws = laws.filter((law) => law.candidates.some((candidate) => !state.completed[candidateKey(candidate)]));
+    const eligibleLaws = incompleteLaws.filter((law) => law.candidates.some((candidate) => retryEligible(candidate, state, now)));
+    const currentIncompleteLaws = eligibleLaws.filter((law) => law.candidates.some((candidate) => isCurrent(candidate)
+      && !state.completed[candidateKey(candidate)] && retryEligible(candidate, state, now)));
     const selectedLaws = full
       ? laws.slice(fullCursor, fullCursor + maxNewPerRun)
-      : laws.filter((law) => law.candidates.some((candidate) => !state.completed[candidateKey(candidate)]))
-        .slice(0, maxNewPerRun);
-    const selected = selectedLaws.flatMap((law) => full
+      : (currentIncompleteLaws.length > 0 ? currentIncompleteLaws : eligibleLaws).slice(0, maxNewPerRun);
+    const candidatesByLaw = new Map(selectedLaws.map((law) => [law.canonicalUrl, full
       ? law.candidates
-      : law.candidates.filter((candidate) => !state.completed[candidateKey(candidate)]));
-    let succeeded = 0;
-    const failures = [];
-    for (const candidate of selected) {
-      const key = candidateKey(candidate);
-      try {
-        const result = await invoke({ action: "sync", source: {
-          collectionId, collectionRevision: revision,
-          sourceUrl: string(candidate.sourceUrl, "sourceUrl"),
-          canonicalUrl: string(candidate.canonicalUrl, "canonicalUrl"),
-          title: string(candidate.title, "title"),
-          ...(candidate.versionLabel ? { versionLabel: string(candidate.versionLabel, "versionLabel") } : {}),
-          effectiveFrom: string(candidate.effectiveFrom, "effectiveFrom"),
-          effectiveTo: candidate.effectiveTo === null ? null : candidate.effectiveTo ? string(candidate.effectiveTo, "effectiveTo") : null,
-        } });
-        state.completed[key] = { at: new Date().toISOString(), sha256: string(result.sha256, "sha256") };
-        succeeded += 1;
-        await saveState(state);
-      } catch (error) {
-        failures.push({ key, message: safeMessage(error) });
-        if (failures.length >= 3) break;
+      : currentIncompleteLaws.length > 0
+        ? newestFirst(law.candidates.filter((candidate) => isCurrent(candidate)
+          && !state.completed[candidateKey(candidate)] && retryEligible(candidate, state, now))).slice(0, 1)
+        : law.candidates.filter((candidate) => !state.completed[candidateKey(candidate)] && retryEligible(candidate, state, now))]));
+    const selected = selectedLaws.flatMap((law) => candidatesByLaw.get(law.canonicalUrl) || []);
+    const outcomes = await mapWithConcurrency(selectedLaws, concurrency, async (law) => {
+      let succeeded = 0;
+      const failures = [];
+      for (const candidate of candidatesByLaw.get(law.canonicalUrl) || []) {
+        const key = candidateKey(candidate);
+        try {
+          const result = await invoke({ action: "sync", source: {
+            collectionId, collectionRevision: revision,
+            sourceUrl: string(candidate.sourceUrl, "sourceUrl"),
+            canonicalUrl: string(candidate.canonicalUrl, "canonicalUrl"),
+            title: string(candidate.title, "title"),
+            ...(candidate.versionLabel ? { versionLabel: string(candidate.versionLabel, "versionLabel") } : {}),
+            effectiveFrom: string(candidate.effectiveFrom, "effectiveFrom"),
+            effectiveTo: candidate.effectiveTo === null ? null : candidate.effectiveTo ? string(candidate.effectiveTo, "effectiveTo") : null,
+          } });
+          state.completed[key] = { at: new Date().toISOString(), sha256: string(result.sha256, "sha256") };
+          delete state.failures[key];
+          succeeded += 1;
+        } catch (error) {
+          const message = safeMessage(error);
+          const previous = state.failures[key];
+          state.failures[key] = { at: new Date().toISOString(), count: Number(previous?.count || 0) + 1, message };
+          failures.push({ key, message });
+          break;
+        }
       }
-    }
+      return { succeeded, failures };
+    });
+    const succeeded = outcomes.reduce((total, outcome) => total + outcome.succeeded, 0);
+    const failures = outcomes.flatMap((outcome) => outcome.failures).slice(0, 3);
     if (full && failures.length === 0) {
       state.fullCursor = fullCursor + selectedLaws.length;
       if (state.fullCursor >= laws.length) {
@@ -91,7 +108,7 @@ async function runCycle() {
         state.fullCursor = 0;
       }
     }
-    if (!full && selectedLaws.length === 0 && failures.length === 0 && !state.lastFullAt) {
+    if (!full && incompleteLaws.length === 0 && selectedLaws.length === 0 && failures.length === 0 && !state.lastFullAt) {
       state.lastFullAt = new Date().toISOString();
     }
     state.lastCycleAt = new Date().toISOString();
@@ -130,8 +147,10 @@ async function invoke(body, attempt = 0) {
 
 async function loadState() {
   const value = await readFile(`${stateDir}/state.json`, "utf8").then(JSON.parse).catch(() => null);
-  return value && value.schemaVersion === 1 && value.completed && typeof value.completed === "object"
-    ? value : { schemaVersion: 1, lastCycleAt: null, lastFullAt: null, fullCursor: 0, completed: {} };
+  if (value && value.schemaVersion === 1 && value.completed && typeof value.completed === "object") {
+    return { ...value, failures: value.failures && typeof value.failures === "object" ? value.failures : {} };
+  }
+  return { schemaVersion: 1, lastCycleAt: null, lastFullAt: null, fullCursor: 0, completed: {}, failures: {} };
 }
 
 async function saveState(state) {
@@ -145,6 +164,12 @@ function candidateKey(candidate) {
   const effectiveFrom = string(candidate.effectiveFrom, "effectiveFrom");
   return createHash("sha256").update(`${collectionId}\n${sourceUrl}\n${effectiveFrom}`).digest("hex");
 }
+function retryEligible(candidate, state, now) {
+  const failure = state.failures[candidateKey(candidate)];
+  if (!failure || typeof failure.at !== "string") return true;
+  const failedAt = Date.parse(failure.at);
+  return !Number.isFinite(failedAt) || now - failedAt >= failureBackoffSeconds * 1_000;
+}
 function groupByLaw(candidates) {
   const groups = new Map();
   for (const candidate of candidates) {
@@ -154,6 +179,28 @@ function groupByLaw(candidates) {
     else groups.set(canonicalUrl, { canonicalUrl, candidates: [candidate] });
   }
   return [...groups.values()];
+}
+function isCurrent(candidate) {
+  if (typeof candidate.temporalStatus === "string") {
+    return candidate.temporalStatus === "current";
+  }
+  const today = new Date().toISOString().slice(0, 10);
+  return string(candidate.effectiveFrom, "effectiveFrom") <= today
+    && (!candidate.effectiveTo || String(candidate.effectiveTo) >= today);
+}
+function newestFirst(candidates) {
+  return [...candidates].sort((left, right) => String(right.effectiveFrom).localeCompare(String(left.effectiveFrom)));
+}
+async function mapWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length);
+  let cursor = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor++;
+      results[index] = await worker(items[index]);
+    }
+  }));
+  return results;
 }
 function string(value, name) { if (typeof value !== "string" || !value.trim()) throw new Error(`${name} is invalid.`); return value; }
 function required(name) { return string(process.env[name], name); }

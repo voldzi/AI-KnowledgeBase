@@ -31,7 +31,7 @@ const PUBLIC_PROCUREMENT_RE = /(?:veřejn(?:á|é|ých|ou)\s+zakáz|verejn(?:a|e
 const CONTROLLED_RULE_QUESTION_RE = /(?:limit|částk|castk|hran(?:ice|ičn)|do\s+kolika|od\s+kolika|kolik|povinnost|požad|pozad|musí|musi|stanov|uprav|obsah|schvaluj|výjimk|vyjimk|nabídk|nabidk|doklad|lhůt|lhut|postup|pravidl|režim|rezim|zákon|zakon|legislativ|právn|pravn)/i;
 const LEGAL_SOURCE_RE = /(?:zákon|zakon|zákonn|zakonn|legislativ|právn|pravn)/i;
 const INTERNAL_SOURCE_RE = /(?:směrnic|smernic|intern\w*(?:\s+(?:pravidl|limit|postup|směrnic|smernic))?|vnitřn|vnitrn)/i;
-const EXPLICIT_NON_PROCUREMENT_LEGAL_TOPIC_RE = /(?:\bnis\s*2?\b|\bnis2\b|kybernetick\w*\s+bezpečnost|\bgdpr\b|ochran\w*\s+osobn\w*\s+údaj|\bai\s+act\b|akt\w*\s+o\s+uměl\w*\s+inteligenc)/i;
+const EXPLICIT_NON_PROCUREMENT_LEGAL_TOPIC_RE = /(?:\bnis\s*2?\b|\bnis2\b|kybernetick\w*\s+bezpečnost|\bgdpr\b|ochran\w*\s+osobn\w*\s+údaj|\bai\s+act\b|akt\w*\s+o\s+uměl\w*\s+inteligenc|registr\w*\s+smluv|zákoník\w*\s+práce|zakonik\w*\s+prace|prac\w*\s+přesčas|prac\w*\s+prescas|svobodn\w*\s+přístup\w*\s+k?\s*informac|svobodn\w*\s+pristup\w*\s+k?\s*informac|správn\w*\s+(?:řád|rozhodnut|orgán)|spravn\w*\s+(?:rad|rozhodnut|organ)|účetnictv\w*|ucetnictv\w*|státn\w*\s+rozpoč|statn\w*\s+rozpoc|rozpoč\w*\s+obc|rozpoc\w*\s+obc|územn\w*\s+rozpoč|uzemn\w*\s+rozpoc|občansk\w*\s+zákoník|obcansk\w*\s+zakonik)/i;
 const EXPLICIT_LEGAL_ACT_IDENTIFIER_RE = /(?:\b(?:zákon|zakon|vyhlášk|vyhlask|nařízení|narizeni)\w*(?:\s+č\.?|\s+c\.?)?\s*)?\b[0-9]{1,4}\s*\/\s*[0-9]{4}\s*(?:Sb\.?|sb\.?)/i;
 const CONTROLLED_RULE_DECISION_RE = /(?:\bvzmr\b|limit|částk|castk|hran(?:ice|ičn)|do\s+kolika|od\s+kolika|přím\w*\s+nákup|prim\w*\s+nakup|průzkum\s+trhu|pruzkum\s+trhu)/i;
 const INTERNAL_RULE_SOURCE_TYPES = new Set<ControlledRule["source_type"]>([
@@ -100,6 +100,9 @@ export function controlledRuleIntentFromMessage(
   context: Record<string, unknown> = {},
   now = new Date(),
 ): ControlledRuleIntent | null {
+  if (EXPLICIT_NON_PROCUREMENT_LEGAL_TOPIC_RE.test(message)) {
+    return null;
+  }
   if (hasExplicitLegalActIdentifier(message) && !CONTROLLED_RULE_DECISION_RE.test(message)) {
     return null;
   }

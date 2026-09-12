@@ -751,6 +751,18 @@ async def test_qdrant_indexer_creates_lookup_and_policy_payload_indexes(tmp_path
 
 
 @pytest.mark.asyncio
+async def test_qdrant_upsert_splits_large_documents_into_bounded_batches(tmp_path, monkeypatch) -> None:
+    settings = _settings(tmp_path, {"AKL_INGESTION_INDEXER_MODE": "qdrant"})
+    fake_client = _FakeAsyncClient(put_responses=[_FakeResponse(200) for _ in range(3)])
+    monkeypatch.setattr("indexers.qdrant.httpx.AsyncClient", lambda **_: fake_client)
+    points = [{"id": str(index)} for index in range(130)]
+
+    await QdrantIndexer(settings)._upsert_points(points)
+
+    assert [len(call["json"]["points"]) for call in fake_client.put_calls] == [64, 64, 2]
+
+
+@pytest.mark.asyncio
 async def test_qdrant_indexer_rejects_existing_collection_with_wrong_vector_size(tmp_path, monkeypatch) -> None:
     settings = _settings(tmp_path, {"AKL_INGESTION_INDEXER_MODE": "qdrant"})
     fake_client = _FakeAsyncClient(

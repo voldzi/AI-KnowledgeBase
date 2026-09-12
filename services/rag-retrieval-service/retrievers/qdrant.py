@@ -107,8 +107,13 @@ class QdrantHybridRetriever:
     ) -> list[RetrievedChunk]:
         # Exact resolution is intentionally lexical. Identifiers and titles are
         # authoritative metadata signals and must not be diluted by dense fusion.
+        # Resolve the source with the identifier alone. Sending the whole natural
+        # language question can rank similar chunks from other laws above the
+        # exact title before the document scope has been established.
+        identifiers = extract_query_identifiers(query)
+        resolver_query = " ".join(identifiers) if identifiers else query
         return await self._retrieve_lexical_candidates(
-            query=query,
+            query=resolver_query,
             filters=filters,
             limit=limit,
         )

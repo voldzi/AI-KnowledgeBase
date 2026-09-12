@@ -66,10 +66,10 @@ const RESOURCE_SIGNAL = /\b(formular\w*|sablon\w*|vzor\w*|zadost\w*|tiskopis\w*|
 const RESOURCE_ACTION_SIGNAL = /\b(kde|najd\w*|stahn\w*|otevr\w*|zisk\w*|vypln\w*)\b/;
 const OWNER_SIGNAL = /\b(?:komu|kam\s+se|na\s+koho|kontakt\w*|gestor\w*|vlastnik\w*|schvaluj\w*)\b|\bkdo\s+(?:je\s+)?(?:gestor\w*|vlastnik\w*|odpovedn\w*|odpovida\w*|schvaluj\w*|resi\w*|spravuj\w*)\b/;
 const RESPONSIBILITY_SIGNAL = /\b(odpovednost\w*|kompetenc\w*|pusobnost\w*|za\s+co\s+odpovid\w*|co\s+ma\s+na\s+starost)\b/;
-const DEADLINE_SIGNAL = /\b(?:do\s+kdy|od\s+kdy|jak\s+dlouho)\b|\bkdy\s+(?:musim|mame|ma|je|jsou|se)\b|\b(?:jaka|jaky|jake)\s+(?:je|jsou\s+)?(?:lhut\w*|termin\w*|periodicit\w*|platnost\w*|ucinnost\w*)\b/;
-const OBLIGATION_SIGNAL = /\b(co\s+musim|kdo\s+mus\w*|kdo\s+je\s+povinen|co\s+je\s+treba|co\s+potrebuj\w*|jake\s+doklad\w*|jake\s+nalezitost\w*|povinnost\w*|pozadavk\w*)\b/;
+const DEADLINE_SIGNAL = /\b(?:do\s+kdy|od\s+kdy|jak\s+dlouho)\b|\bkdy\s+(?:musim|mame|ma|je|jsou|se)\b|\b(?:jaka|jaky|jake)(?:\s+\w+){0,2}\s+(?:lhut\w*|termin\w*|periodicit\w*|platnost\w*|ucinnost\w*)\b/;
+const OBLIGATION_SIGNAL = /\b(co\s+mus\w*|kdo\s+mus\w*|kdo\s+je\s+povinen|co\s+je\s+treba|co\s+potrebuj\w*|jake\s+doklad\w*|jake\s+nalezitost\w*|povinnost\w*|pozadavk\w*)\b/;
 const PROCEDURE_SIGNAL = /\b(postup\w*|navod\w*|krok\w*|(?:jak|kde|kam)\s+(?:(?:se|si|mam)\s+)?(?:nastav\w*|vypln\w*|pozad\w*|zaloz\w*|zmen\w*|udel\w*|zarid\w*|odevzd\w*|nahlas\w*|vyuct\w*|objedn\w*|zisk\w*|prihlas\w*|odhlas\w*|evid\w*|zapis\w*|odesl\w*|posl\w*|pouz\w*|rezerv\w*))\b/;
-const POLICY_SIGNAL = /\b(co\s+plati|jake\s+pravidl\w*|podle\s+(?:smernic\w*|predpis\w*|metodik\w*|zakon\w*)|co\s+(?:stanovi|uklada)\s+(?:smernic\w*|predpis\w*|metodik\w*|zakon\w*))\b/;
+const POLICY_SIGNAL = /\b(co\s+plati|jake(?:\s+\w+){0,3}\s+(?:pravidl\w*|zasad\w*)|podle\s+(?:smernic\w*|predpis\w*|metodik\w*|zakon\w*)|co\s+(?:stanovi|uklada)\s+(?:smernic\w*|predpis\w*|metodik\w*|zakon\w*))\b/;
 const REFERENTIAL_FOLLOW_UP_SIGNAL = /^(?:a\s+(?:co|jak|kde|kdo|komu|kam|kdy|proc|ktery|ktera|ktere|kolik)|co\s+(?:s\s+tim|to|dale)|jak\s+(?:je\s+)?to)\b|\b(?:to|toho|tomu|tento|tato|teto|ten|jeho|jeji|jejich|nich)\b/;
 
 const GENERIC_FOLLOW_UP_TERMS = new Set([

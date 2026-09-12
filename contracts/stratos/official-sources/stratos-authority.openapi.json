@@ -2543,6 +2543,482 @@
                 "properties": {
                   "sourceUrl": {
                     "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/1969/2/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/1969/2"
+                  },
+                  "title": {
+                    "const": "2/1969 Sb. – Zákon České národní rady o zřízení ministerstev a jiných ústředních orgánů státní správy České socialistické republiky"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/1991/563/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/1991/563"
+                  },
+                  "title": {
+                    "const": "563/1991 Sb. – Zákon o účetnictví"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/1995/89/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/1995/89"
+                  },
+                  "title": {
+                    "const": "89/1995 Sb. – Zákon o státní statistické službě"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/1995/90/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/1995/90"
+                  },
+                  "title": {
+                    "const": "90/1995 Sb. – Zákon o jednacím řádu Poslanecké sněmovny"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/1998/123/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/1998/123"
+                  },
+                  "title": {
+                    "const": "123/1998 Sb. – Zákon o právu na informace o životním prostředí"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/1999/106/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/1999/106"
+                  },
+                  "title": {
+                    "const": "106/1999 Sb. – Zákon o svobodném přístupu k informacím"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2000/128/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2000/128"
+                  },
+                  "title": {
+                    "const": "128/2000 Sb. – Zákon o obcích (obecní zřízení)"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2000/129/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2000/129"
+                  },
+                  "title": {
+                    "const": "129/2000 Sb. – Zákon o krajích (krajské zřízení)"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2000/131/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2000/131"
+                  },
+                  "title": {
+                    "const": "131/2000 Sb. – Zákon o hlavním městě Praze"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2000/218/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2000/218"
+                  },
+                  "title": {
+                    "const": "218/2000 Sb. – Zákon o rozpočtových pravidlech a o změně některých souvisejících zákonů (rozpočtová pravidla)"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2000/219/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2000/219"
+                  },
+                  "title": {
+                    "const": "219/2000 Sb. – Zákon o majetku České republiky a jejím vystupování v právních vztazích"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2000/243/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2000/243"
+                  },
+                  "title": {
+                    "const": "243/2000 Sb. – Zákon o rozpočtovém určení výnosů některých daní územním samosprávným celkům a některým státním fondům (zákon o rozpočtovém určení daní)"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2000/248/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2000/248"
+                  },
+                  "title": {
+                    "const": "248/2000 Sb. – Zákon o podpoře regionálního rozvoje"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2000/250/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2000/250"
+                  },
+                  "title": {
+                    "const": "250/2000 Sb. – Zákon o rozpočtových pravidlech územních rozpočtů"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2000/365/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2000/365"
+                  },
+                  "title": {
+                    "const": "365/2000 Sb. – Zákon o informačních systémech veřejné správy a o změně některých dalších zákonů"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2001/320/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2001/320"
+                  },
+                  "title": {
+                    "const": "320/2001 Sb. – Zákon o finanční kontrole ve veřejné správě a o změně některých zákonů (zákon o finanční kontrole)"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2001/394/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2001/394"
+                  },
+                  "title": {
+                    "const": "394/2001 Sb. – Vyhláška Českého statistického úřadu, kterou se stanoví postup při přípravě Programu statistických zjišťování"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2002/130/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2002/130"
+                  },
+                  "title": {
+                    "const": "130/2002 Sb. – Zákon o podpoře výzkumu a vývoje z veřejných prostředků a o změně některých souvisejících zákonů (zákon o podpoře výzkumu a vývoje)"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2002/312/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2002/312"
+                  },
+                  "title": {
+                    "const": "312/2002 Sb. – Zákon o úřednících územních samosprávných celků a o změně některých zákonů"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2004/416/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2004/416"
+                  },
+                  "title": {
+                    "const": "416/2004 Sb. – Vyhláška, kterou se provádí zákon č. 320/2001 Sb., o finanční kontrole ve veřejné správě a o změně některých zákonů (zákon o finanční kontrole), ve znění zákona č. 309/2002 Sb., zákona č. 320/2002 Sb. a zákona č. 123/2003 Sb."
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2004/499/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2004/499"
+                  },
+                  "title": {
+                    "const": "499/2004 Sb. – Zákon o archivnictví a spisové službě a o změně některých zákonů"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2004/500/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2004/500"
+                  },
+                  "title": {
+                    "const": "500/2004 Sb. – Zákon správní řád"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2005/412/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2005/412"
+                  },
+                  "title": {
+                    "const": "412/2005 Sb. – Zákon o ochraně utajovaných informací a o bezpečnostní způsobilosti"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2006/262/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2006/262"
+                  },
+                  "title": {
+                    "const": "262/2006 Sb. – Zákoník práce"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2008/300/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2008/300"
+                  },
+                  "title": {
+                    "const": "300/2008 Sb. – Zákon o elektronických úkonech a autorizované konverzi dokumentů"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2008/301/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2008/301"
+                  },
+                  "title": {
+                    "const": "301/2008 Sb. – Zákon, kterým se mění některé zákony v souvislosti s přijetím zákona o elektronických úkonech a autorizované konverzi dokumentů"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2009/111/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2009/111"
+                  },
+                  "title": {
+                    "const": "111/2009 Sb. – Zákon o základních registrech"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2009/198/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2009/198"
+                  },
+                  "title": {
+                    "const": "198/2009 Sb. – Zákon o rovném zacházení a o právních prostředcích ochrany před diskriminací a o změně některých zákonů (antidiskriminační zákon)"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2009/227/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2009/227"
+                  },
+                  "title": {
+                    "const": "227/2009 Sb. – Zákon, kterým se mění některé zákony v souvislosti s přijetím zákona o základních registrech"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2009/383/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2009/383"
+                  },
+                  "title": {
+                    "const": "383/2009 Sb. – Vyhláška o účetních záznamech v technické formě vybraných účetních jednotek a jejich předávání do centrálního systému účetních informací státu a o požadavcích na technické a smíšené formy účetních záznamů (technická vyhláška o účetních záznamech)"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2009/410/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2009/410"
+                  },
+                  "title": {
+                    "const": "410/2009 Sb. – Vyhláška, kterou se provádějí některá ustanovení zákona č. 563/1991 Sb., o účetnictví, ve znění pozdějších předpisů, pro některé vybrané účetní jednotky"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2010/270/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2010/270"
+                  },
+                  "title": {
+                    "const": "270/2010 Sb. – Vyhláška o inventarizaci majetku a závazků"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2012/255/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2012/255"
+                  },
+                  "title": {
+                    "const": "255/2012 Sb. – Zákon o kontrole (kontrolní řád)"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2012/259/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2012/259"
+                  },
+                  "title": {
+                    "const": "259/2012 Sb. – Vyhláška o podrobnostech výkonu spisové služby"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
                     "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2012/89/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
                   },
                   "canonicalUrl": {
@@ -2571,13 +3047,13 @@
                 "properties": {
                   "sourceUrl": {
                     "type": "string",
-                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2006/262/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2013/133/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
                   },
                   "canonicalUrl": {
-                    "const": "https://e-sbirka.gov.cz/sb/2006/262"
+                    "const": "https://e-sbirka.gov.cz/sb/2013/133"
                   },
                   "title": {
-                    "const": "262/2006 Sb. – Zákoník práce"
+                    "const": "133/2013 Sb. – Vyhláška o stanovení rozsahu a struktury údajů pro vypracování návrhu zákona o státním rozpočtu a návrhu střednědobého výhledu státního rozpočtu a lhůtách pro jejich předkládání"
                   }
                 }
               },
@@ -2585,13 +3061,13 @@
                 "properties": {
                   "sourceUrl": {
                     "type": "string",
-                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2004/500/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2013/220/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
                   },
                   "canonicalUrl": {
-                    "const": "https://e-sbirka.gov.cz/sb/2004/500"
+                    "const": "https://e-sbirka.gov.cz/sb/2013/220"
                   },
                   "title": {
-                    "const": "500/2004 Sb. – Zákon správní řád"
+                    "const": "220/2013 Sb. – Vyhláška o požadavcích na schvalování účetních závěrek některých vybraných účetních jednotek"
                   }
                 }
               },
@@ -2599,13 +3075,41 @@
                 "properties": {
                   "sourceUrl": {
                     "type": "string",
-                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/1999/106/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2014/181/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
                   },
                   "canonicalUrl": {
-                    "const": "https://e-sbirka.gov.cz/sb/1999/106"
+                    "const": "https://e-sbirka.gov.cz/sb/2014/181"
                   },
                   "title": {
-                    "const": "106/1999 Sb. – Zákon o svobodném přístupu k informacím"
+                    "const": "181/2014 Sb. – Zákon o kybernetické bezpečnosti a o změně souvisejících zákonů (zákon o kybernetické bezpečnosti)"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2014/317/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2014/317"
+                  },
+                  "title": {
+                    "const": "317/2014 Sb. – Vyhláška o významných informačních systémech a jejich určujících kritériích"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2015/340/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2015/340"
+                  },
+                  "title": {
+                    "const": "340/2015 Sb. – Zákon o zvláštních podmínkách účinnosti některých smluv, uveřejňování těchto smluv a o registru smluv (zákon o registru smluv)"
                   }
                 }
               },
@@ -2627,13 +3131,13 @@
                 "properties": {
                   "sourceUrl": {
                     "type": "string",
-                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2000/218/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2016/168/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
                   },
                   "canonicalUrl": {
-                    "const": "https://e-sbirka.gov.cz/sb/2000/218"
+                    "const": "https://e-sbirka.gov.cz/sb/2016/168"
                   },
                   "title": {
-                    "const": "218/2000 Sb. – Zákon o rozpočtových pravidlech a o změně některých souvisejících zákonů (rozpočtová pravidla)"
+                    "const": "168/2016 Sb. – Vyhláška o uveřejňování formulářů pro účely zákona o zadávání veřejných zakázek a náležitostech profilu zadavatele"
                   }
                 }
               },
@@ -2641,13 +3145,13 @@
                 "properties": {
                   "sourceUrl": {
                     "type": "string",
-                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2000/250/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2016/169/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
                   },
                   "canonicalUrl": {
-                    "const": "https://e-sbirka.gov.cz/sb/2000/250"
+                    "const": "https://e-sbirka.gov.cz/sb/2016/169"
                   },
                   "title": {
-                    "const": "250/2000 Sb. – Zákon o rozpočtových pravidlech územních rozpočtů"
+                    "const": "169/2016 Sb. – Vyhláška o stanovení rozsahu dokumentace veřejné zakázky na stavební práce a soupisu stavebních prací, dodávek a služeb s výkazem výměr"
                   }
                 }
               },
@@ -2655,13 +3159,13 @@
                 "properties": {
                   "sourceUrl": {
                     "type": "string",
-                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/1991/563/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2016/170/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
                   },
                   "canonicalUrl": {
-                    "const": "https://e-sbirka.gov.cz/sb/1991/563"
+                    "const": "https://e-sbirka.gov.cz/sb/2016/170"
                   },
                   "title": {
-                    "const": "563/1991 Sb. – Zákon o účetnictví"
+                    "const": "170/2016 Sb. – Vyhláška o stanovení paušální částky nákladů řízení o přezkoumání úkonů zadavatele při zadávání veřejných zakázek"
                   }
                 }
               },
@@ -2669,20 +3173,776 @@
                 "properties": {
                   "sourceUrl": {
                     "type": "string",
-                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2015/340/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2016/172/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
                   },
                   "canonicalUrl": {
-                    "const": "https://e-sbirka.gov.cz/sb/2015/340"
+                    "const": "https://e-sbirka.gov.cz/sb/2016/172"
                   },
                   "title": {
-                    "const": "340/2015 Sb. – Zákon o zvláštních podmínkách účinnosti některých smluv, uveřejňování těchto smluv a o registru smluv (zákon o registru smluv)"
+                    "const": "172/2016 Sb. – Nařízení vlády o stanovení finančních limitů a částek pro účely zákona o zadávání veřejných zakázek"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2016/222/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2016/222"
+                  },
+                  "title": {
+                    "const": "222/2016 Sb. – Zákon o Sbírce zákonů a mezinárodních smluv a o tvorbě právních předpisů vyhlašovaných ve Sbírce zákonů a mezinárodních smluv (zákon o Sbírce zákonů a mezinárodních smluv)"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2016/248/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2016/248"
+                  },
+                  "title": {
+                    "const": "248/2016 Sb. – Vyhláška o náležitostech obsahu žádosti o předchozí stanovisko k uzavření smlouvy a ke změně závazku ze smlouvy podle zákona o zadávání veřejných zakázek"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2016/250/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2016/250"
+                  },
+                  "title": {
+                    "const": "250/2016 Sb. – Zákon o odpovědnosti za přestupky a řízení o nich"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2016/251/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2016/251"
+                  },
+                  "title": {
+                    "const": "251/2016 Sb. – Zákon o některých přestupcích"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2016/260/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2016/260"
+                  },
+                  "title": {
+                    "const": "260/2016 Sb. – Vyhláška o stanovení podrobnějších podmínek týkajících se elektronických nástrojů, elektronických úkonů při zadávání veřejných zakázek a certifikátu shody"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2016/297/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2016/297"
+                  },
+                  "title": {
+                    "const": "297/2016 Sb. – Zákon o službách vytvářejících důvěru pro elektronické transakce"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2016/298/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2016/298"
+                  },
+                  "title": {
+                    "const": "298/2016 Sb. – Zákon, kterým se mění některé zákony v souvislosti s přijetím zákona o službách vytvářejících důvěru pro elektronické transakce, zákon č. 106/1999 Sb., o svobodném přístupu k informacím, ve znění pozdějších předpisů, a zákon č. 121/2000 Sb., o právu autorském, o právech souvisejících s právem autorským a o změně některých zákonů (autorský zákon), ve znění pozdějších předpisů"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2017/23/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2017/23"
+                  },
+                  "title": {
+                    "const": "23/2017 Sb. – Zákon o pravidlech rozpočtové odpovědnosti"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2017/24/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2017/24"
+                  },
+                  "title": {
+                    "const": "24/2017 Sb. – Zákon, kterým se mění některé zákony v souvislosti s přijetím právní úpravy rozpočtové odpovědnosti"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2017/250/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2017/250"
+                  },
+                  "title": {
+                    "const": "250/2017 Sb. – Zákon o elektronické identifikaci"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2017/251/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2017/251"
+                  },
+                  "title": {
+                    "const": "251/2017 Sb. – Zákon, kterým se mění některé zákony v souvislosti s přijetím zákona o elektronické identifikaci"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2018/82/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2018/82"
+                  },
+                  "title": {
+                    "const": "82/2018 Sb. – Vyhláška o bezpečnostních opatřeních, kybernetických bezpečnostních incidentech, reaktivních opatřeních, náležitostech podání v oblasti kybernetické bezpečnosti a likvidaci dat (vyhláška o kybernetické bezpečnosti)"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2019/110/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2019/110"
+                  },
+                  "title": {
+                    "const": "110/2019 Sb. – Zákon o zpracování osobních údajů"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2019/293/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2019/293"
+                  },
+                  "title": {
+                    "const": "293/2019 Sb. – Vyhláška o Programu statistických zjišťování na rok 2020"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2019/99/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2019/99"
+                  },
+                  "title": {
+                    "const": "99/2019 Sb. – Zákon o přístupnosti internetových stránek a mobilních aplikací a o změně zákona č. 365/2000 Sb., o informačních systémech veřejné správy a o změně některých dalších zákonů, ve znění pozdějších předpisů"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2020/12/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2020/12"
+                  },
+                  "title": {
+                    "const": "12/2020 Sb. – Zákon o právu na digitální služby a o změně některých zákonů"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2020/332/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2020/332"
+                  },
+                  "title": {
+                    "const": "332/2020 Sb. – Zákon o sčítání lidu, domů a bytů v roce 2021 a o změně zákona č. 89/1995 Sb., o státní statistické službě, ve znění pozdějších předpisů"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2020/433/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2020/433"
+                  },
+                  "title": {
+                    "const": "433/2020 Sb. – Vyhláška o údajích vedených v katalogu cloud computingu"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2020/466/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2020/466"
+                  },
+                  "title": {
+                    "const": "466/2020 Sb. – Vyhláška o Programu statistických zjišťování na rok 2021"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2020/490/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2020/490"
+                  },
+                  "title": {
+                    "const": "490/2020 Sb. – Vyhláška, kterou se provádějí některá ustanovení zákona č. 332/2020 Sb., o sčítání lidu, domů a bytů v roce 2021 a o změně zákona č. 89/1995 Sb., o státní statistické službě, ve znění pozdějších předpisů"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2020/515/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2020/515"
+                  },
+                  "title": {
+                    "const": "515/2020 Sb. – Vyhláška o struktuře informací zveřejňovaných o povinném subjektu a osnově popisu úkonů vykonávaných v rámci agendy"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2021/261/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2021/261"
+                  },
+                  "title": {
+                    "const": "261/2021 Sb. – Zákon, kterým se mění některé zákony v souvislosti s další elektronizací postupů orgánů veřejné moci"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2021/315/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2021/315"
+                  },
+                  "title": {
+                    "const": "315/2021 Sb. – Vyhláška o bezpečnostních úrovních pro využívání cloud computingu orgány veřejné moci"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2021/316/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2021/316"
+                  },
+                  "title": {
+                    "const": "316/2021 Sb. – Vyhláška o některých požadavcích pro zápis do katalogu cloud computingu"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2021/404/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2021/404"
+                  },
+                  "title": {
+                    "const": "404/2021 Sb. – Vyhláška o Programu statistických zjišťování na rok 2022"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2021/412/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2021/412"
+                  },
+                  "title": {
+                    "const": "412/2021 Sb. – Vyhláška o rozpočtové skladbě"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2022/360/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2022/360"
+                  },
+                  "title": {
+                    "const": "360/2022 Sb. – Zákon o podpoře nízkoemisních vozidel prostřednictvím zadávání veřejných zakázek a veřejných služeb v přepravě cestujících"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2022/471/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2022/471"
+                  },
+                  "title": {
+                    "const": "471/2022 Sb. – Zákon, kterým se mění zákon č. 12/2020 Sb., o právu na digitální služby a o změně některých zákonů, ve znění pozdějších předpisů, a další související zákony"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2023/171/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2023/171"
+                  },
+                  "title": {
+                    "const": "171/2023 Sb. – Zákon o ochraně oznamovatelů"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2023/190/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2023/190"
+                  },
+                  "title": {
+                    "const": "190/2023 Sb. – Vyhláška o bezpečnostních pravidlech pro orgány veřejné moci využívající služby poskytovatelů cloud computingu"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2023/316/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2023/316"
+                  },
+                  "title": {
+                    "const": "316/2023 Sb. – Vyhláška o Programu statistických zjišťování na rok 2024"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2023/345/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2023/345"
+                  },
+                  "title": {
+                    "const": "345/2023 Sb. – Vyhláška o uveřejňování formulářů pro účely zákona o zadávání veřejných zakázek a náležitostech profilu zadavatele"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2023/360/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2023/360"
+                  },
+                  "title": {
+                    "const": "360/2023 Sb. – Vyhláška o dlouhodobém řízení informačních systémů veřejné správy"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2024/1/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2024/1"
+                  },
+                  "title": {
+                    "const": "1/2024 Sb. – Zákon, kterým se mění zákon č. 12/2020 Sb., o právu na digitální služby a o změně některých zákonů, ve znění pozdějších předpisů, a další související zákony"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2024/325/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2024/325"
+                  },
+                  "title": {
+                    "const": "325/2024 Sb. – Vyhláška o Programu statistických zjišťování na rok 2025"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2024/430/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2024/430"
+                  },
+                  "title": {
+                    "const": "430/2024 Sb. – Vyhláška o způsobilosti informačních a komunikačních systémů a samostatných elektronických zařízení, stínicích komor, zabezpečených oblastí a objektů k ochraně před únikem utajovaných informací kompromitujícím vyzařováním a o některých náležitostech žádosti o uzavření smlouvy o zajištění činnosti (vyhláška o kompromitujícím vyzařování)"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2024/431/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2024/431"
+                  },
+                  "title": {
+                    "const": "431/2024 Sb. – Vyhláška o provádění certifikace při zabezpečování kryptografické ochrany utajovaných informací a o některých náležitostech žádosti o uzavření smlouvy o zajištění činnosti"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2024/433/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2024/433"
+                  },
+                  "title": {
+                    "const": "433/2024 Sb. – Vyhláška o zásadách a lhůtách finančního vypořádání vztahů se státním rozpočtem, státními finančními aktivy a Národním fondem (vyhláška o finančním vypořádání)"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2024/440/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2024/440"
+                  },
+                  "title": {
+                    "const": "440/2024 Sb. – Nařízení vlády o katalogu oblastí utajovaných informací"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2024/447/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2024/447"
+                  },
+                  "title": {
+                    "const": "447/2024 Sb. – Vyhláška o zajištění kryptografické ochrany utajovaných informací a o některých náležitostech žádosti o uzavření smlouvy o zajištění činnosti"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2024/479/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2024/479"
+                  },
+                  "title": {
+                    "const": "479/2024 Sb. – Vyhláška o bezpečnosti informačních a komunikačních systémů a dalších elektronických zařízení nakládajících s utajovanými informacemi a o některých náležitostech žádosti o uzavření smlouvy o zajištění činnosti (vyhláška o informační bezpečnosti)"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2025/264/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2025/264"
+                  },
+                  "title": {
+                    "const": "264/2025 Sb. – Zákon o kybernetické bezpečnosti"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2025/265/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2025/265"
+                  },
+                  "title": {
+                    "const": "265/2025 Sb. – Zákon, kterým se mění některé zákony v souvislosti s přijetím zákona o kybernetické bezpečnosti"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2025/266/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2025/266"
+                  },
+                  "title": {
+                    "const": "266/2025 Sb. – Zákon o odolnosti subjektů kritické infrastruktury a o změně souvisejících zákonů (zákon o kritické infrastruktuře)"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2025/334/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2025/334"
+                  },
+                  "title": {
+                    "const": "334/2025 Sb. – Vyhláška o Portálu Národního úřadu pro kybernetickou a informační bezpečnost a požadavcích na některé úkony"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2025/408/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2025/408"
+                  },
+                  "title": {
+                    "const": "408/2025 Sb. – Vyhláška o regulovaných službách"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2025/409/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2025/409"
+                  },
+                  "title": {
+                    "const": "409/2025 Sb. – Vyhláška o bezpečnostních opatřeních poskytovatele regulované služby v režimu vyšších povinností"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2025/410/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2025/410"
+                  },
+                  "title": {
+                    "const": "410/2025 Sb. – Vyhláška o bezpečnostních opatřeních poskytovatele regulované služby v režimu nižších povinností"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2025/411/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2025/411"
+                  },
+                  "title": {
+                    "const": "411/2025 Sb. – Vyhláška o bezpečnostních úrovních informačních systémů veřejné správy"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2025/412/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2025/412"
+                  },
+                  "title": {
+                    "const": "412/2025 Sb. – Vyhláška o bezpečnostních pravidlech pro orgány veřejné správy využívající služby poskytovatelů cloud computingu"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2025/445/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2025/445"
+                  },
+                  "title": {
+                    "const": "445/2025 Sb. – Vyhláška o Programu statistických zjišťování na rok 2026"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2025/505/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2025/505"
+                  },
+                  "title": {
+                    "const": "505/2025 Sb. – Vyhláška o některých požadavcích pro zápis do katalogu cloud computingu"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2026/122/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2026/122"
+                  },
+                  "title": {
+                    "const": "122/2026 Sb. – Vyhláška o plánu odolnosti, posouzení rizik, opatřeních k zajištění odolnosti subjektů kritické infrastruktury a o hlášení incidentu"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2026/60/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2026/60"
+                  },
+                  "title": {
+                    "const": "60/2026 Sb. – Zákon o správě dat, o řízeném přístupu k datům a o změně některých souvisejících zákonů (zákon o správě dat a o řízeném přístupu k datům)"
                   }
                 }
               }
             ]
           }
         ],
-        "description": "Only a dated sourceUrl beneath one of the ten exact canonical act URLs is eligible. Its YYYY-MM-DD suffix and supplied effectiveFrom/effectiveTo must match a nonfuture version listed in freshly verified official má-znění JSON-LD metadata at https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/{year}/{number}, including version-level effective interval evidence; dates before the centrally reviewed manifest firstEffectiveFrom are denied. URL syntax alone is not authority. Title must equal the approved manifest title. The initial collection revision is 1. The caller cannot invent legal effectivity, approve a new act or choose a metadata host.",
+        "description": "Only a dated sourceUrl beneath one of the 100 exact canonical act URLs is eligible. Its YYYY-MM-DD suffix and supplied effectiveFrom/effectiveTo must match a nonfuture version listed in freshly verified official má-znění JSON-LD metadata at https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/{year}/{number}, including version-level effective interval evidence; dates before the centrally reviewed manifest firstEffectiveFrom are denied. URL syntax alone is not authority. Title must equal the approved manifest title. The initial collection revision is 1. The caller cannot invent legal effectivity, approve a new act or choose a metadata host.",
         "x-approved-pilot-manifest": "../official-sources/czech-law-pilot.v1.json"
       },
       "OfficialSourceRootProfile": {
@@ -2972,6 +4232,15 @@
               "documentType": {
                 "const": "regulation"
               },
+              "informationPolicy": {
+                "properties": {
+                  "contentCategories": {
+                    "const": [
+                      "PUBLIC_INFORMATION"
+                    ]
+                  }
+                }
+              },
               "documentVersionProfile": {
                 "properties": {
                   "lifecycle": {
@@ -3016,6 +4285,482 @@
                 "properties": {
                   "sourceUrl": {
                     "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/1969/2/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/1969/2"
+                  },
+                  "title": {
+                    "const": "2/1969 Sb. – Zákon České národní rady o zřízení ministerstev a jiných ústředních orgánů státní správy České socialistické republiky"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/1991/563/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/1991/563"
+                  },
+                  "title": {
+                    "const": "563/1991 Sb. – Zákon o účetnictví"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/1995/89/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/1995/89"
+                  },
+                  "title": {
+                    "const": "89/1995 Sb. – Zákon o státní statistické službě"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/1995/90/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/1995/90"
+                  },
+                  "title": {
+                    "const": "90/1995 Sb. – Zákon o jednacím řádu Poslanecké sněmovny"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/1998/123/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/1998/123"
+                  },
+                  "title": {
+                    "const": "123/1998 Sb. – Zákon o právu na informace o životním prostředí"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/1999/106/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/1999/106"
+                  },
+                  "title": {
+                    "const": "106/1999 Sb. – Zákon o svobodném přístupu k informacím"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2000/128/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2000/128"
+                  },
+                  "title": {
+                    "const": "128/2000 Sb. – Zákon o obcích (obecní zřízení)"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2000/129/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2000/129"
+                  },
+                  "title": {
+                    "const": "129/2000 Sb. – Zákon o krajích (krajské zřízení)"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2000/131/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2000/131"
+                  },
+                  "title": {
+                    "const": "131/2000 Sb. – Zákon o hlavním městě Praze"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2000/218/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2000/218"
+                  },
+                  "title": {
+                    "const": "218/2000 Sb. – Zákon o rozpočtových pravidlech a o změně některých souvisejících zákonů (rozpočtová pravidla)"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2000/219/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2000/219"
+                  },
+                  "title": {
+                    "const": "219/2000 Sb. – Zákon o majetku České republiky a jejím vystupování v právních vztazích"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2000/243/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2000/243"
+                  },
+                  "title": {
+                    "const": "243/2000 Sb. – Zákon o rozpočtovém určení výnosů některých daní územním samosprávným celkům a některým státním fondům (zákon o rozpočtovém určení daní)"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2000/248/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2000/248"
+                  },
+                  "title": {
+                    "const": "248/2000 Sb. – Zákon o podpoře regionálního rozvoje"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2000/250/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2000/250"
+                  },
+                  "title": {
+                    "const": "250/2000 Sb. – Zákon o rozpočtových pravidlech územních rozpočtů"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2000/365/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2000/365"
+                  },
+                  "title": {
+                    "const": "365/2000 Sb. – Zákon o informačních systémech veřejné správy a o změně některých dalších zákonů"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2001/320/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2001/320"
+                  },
+                  "title": {
+                    "const": "320/2001 Sb. – Zákon o finanční kontrole ve veřejné správě a o změně některých zákonů (zákon o finanční kontrole)"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2001/394/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2001/394"
+                  },
+                  "title": {
+                    "const": "394/2001 Sb. – Vyhláška Českého statistického úřadu, kterou se stanoví postup při přípravě Programu statistických zjišťování"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2002/130/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2002/130"
+                  },
+                  "title": {
+                    "const": "130/2002 Sb. – Zákon o podpoře výzkumu a vývoje z veřejných prostředků a o změně některých souvisejících zákonů (zákon o podpoře výzkumu a vývoje)"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2002/312/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2002/312"
+                  },
+                  "title": {
+                    "const": "312/2002 Sb. – Zákon o úřednících územních samosprávných celků a o změně některých zákonů"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2004/416/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2004/416"
+                  },
+                  "title": {
+                    "const": "416/2004 Sb. – Vyhláška, kterou se provádí zákon č. 320/2001 Sb., o finanční kontrole ve veřejné správě a o změně některých zákonů (zákon o finanční kontrole), ve znění zákona č. 309/2002 Sb., zákona č. 320/2002 Sb. a zákona č. 123/2003 Sb."
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2004/499/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2004/499"
+                  },
+                  "title": {
+                    "const": "499/2004 Sb. – Zákon o archivnictví a spisové službě a o změně některých zákonů"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2004/500/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2004/500"
+                  },
+                  "title": {
+                    "const": "500/2004 Sb. – Zákon správní řád"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2005/412/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2005/412"
+                  },
+                  "title": {
+                    "const": "412/2005 Sb. – Zákon o ochraně utajovaných informací a o bezpečnostní způsobilosti"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2006/262/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2006/262"
+                  },
+                  "title": {
+                    "const": "262/2006 Sb. – Zákoník práce"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2008/300/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2008/300"
+                  },
+                  "title": {
+                    "const": "300/2008 Sb. – Zákon o elektronických úkonech a autorizované konverzi dokumentů"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2008/301/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2008/301"
+                  },
+                  "title": {
+                    "const": "301/2008 Sb. – Zákon, kterým se mění některé zákony v souvislosti s přijetím zákona o elektronických úkonech a autorizované konverzi dokumentů"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2009/111/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2009/111"
+                  },
+                  "title": {
+                    "const": "111/2009 Sb. – Zákon o základních registrech"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2009/198/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2009/198"
+                  },
+                  "title": {
+                    "const": "198/2009 Sb. – Zákon o rovném zacházení a o právních prostředcích ochrany před diskriminací a o změně některých zákonů (antidiskriminační zákon)"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2009/227/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2009/227"
+                  },
+                  "title": {
+                    "const": "227/2009 Sb. – Zákon, kterým se mění některé zákony v souvislosti s přijetím zákona o základních registrech"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2009/383/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2009/383"
+                  },
+                  "title": {
+                    "const": "383/2009 Sb. – Vyhláška o účetních záznamech v technické formě vybraných účetních jednotek a jejich předávání do centrálního systému účetních informací státu a o požadavcích na technické a smíšené formy účetních záznamů (technická vyhláška o účetních záznamech)"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2009/410/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2009/410"
+                  },
+                  "title": {
+                    "const": "410/2009 Sb. – Vyhláška, kterou se provádějí některá ustanovení zákona č. 563/1991 Sb., o účetnictví, ve znění pozdějších předpisů, pro některé vybrané účetní jednotky"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2010/270/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2010/270"
+                  },
+                  "title": {
+                    "const": "270/2010 Sb. – Vyhláška o inventarizaci majetku a závazků"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2012/255/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2012/255"
+                  },
+                  "title": {
+                    "const": "255/2012 Sb. – Zákon o kontrole (kontrolní řád)"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2012/259/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2012/259"
+                  },
+                  "title": {
+                    "const": "259/2012 Sb. – Vyhláška o podrobnostech výkonu spisové služby"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
                     "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2012/89/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
                   },
                   "canonicalUrl": {
@@ -3044,13 +4789,13 @@
                 "properties": {
                   "sourceUrl": {
                     "type": "string",
-                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2006/262/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2013/133/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
                   },
                   "canonicalUrl": {
-                    "const": "https://e-sbirka.gov.cz/sb/2006/262"
+                    "const": "https://e-sbirka.gov.cz/sb/2013/133"
                   },
                   "title": {
-                    "const": "262/2006 Sb. – Zákoník práce"
+                    "const": "133/2013 Sb. – Vyhláška o stanovení rozsahu a struktury údajů pro vypracování návrhu zákona o státním rozpočtu a návrhu střednědobého výhledu státního rozpočtu a lhůtách pro jejich předkládání"
                   }
                 }
               },
@@ -3058,13 +4803,13 @@
                 "properties": {
                   "sourceUrl": {
                     "type": "string",
-                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2004/500/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2013/220/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
                   },
                   "canonicalUrl": {
-                    "const": "https://e-sbirka.gov.cz/sb/2004/500"
+                    "const": "https://e-sbirka.gov.cz/sb/2013/220"
                   },
                   "title": {
-                    "const": "500/2004 Sb. – Zákon správní řád"
+                    "const": "220/2013 Sb. – Vyhláška o požadavcích na schvalování účetních závěrek některých vybraných účetních jednotek"
                   }
                 }
               },
@@ -3072,13 +4817,41 @@
                 "properties": {
                   "sourceUrl": {
                     "type": "string",
-                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/1999/106/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2014/181/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
                   },
                   "canonicalUrl": {
-                    "const": "https://e-sbirka.gov.cz/sb/1999/106"
+                    "const": "https://e-sbirka.gov.cz/sb/2014/181"
                   },
                   "title": {
-                    "const": "106/1999 Sb. – Zákon o svobodném přístupu k informacím"
+                    "const": "181/2014 Sb. – Zákon o kybernetické bezpečnosti a o změně souvisejících zákonů (zákon o kybernetické bezpečnosti)"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2014/317/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2014/317"
+                  },
+                  "title": {
+                    "const": "317/2014 Sb. – Vyhláška o významných informačních systémech a jejich určujících kritériích"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2015/340/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2015/340"
+                  },
+                  "title": {
+                    "const": "340/2015 Sb. – Zákon o zvláštních podmínkách účinnosti některých smluv, uveřejňování těchto smluv a o registru smluv (zákon o registru smluv)"
                   }
                 }
               },
@@ -3100,13 +4873,13 @@
                 "properties": {
                   "sourceUrl": {
                     "type": "string",
-                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2000/218/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2016/168/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
                   },
                   "canonicalUrl": {
-                    "const": "https://e-sbirka.gov.cz/sb/2000/218"
+                    "const": "https://e-sbirka.gov.cz/sb/2016/168"
                   },
                   "title": {
-                    "const": "218/2000 Sb. – Zákon o rozpočtových pravidlech a o změně některých souvisejících zákonů (rozpočtová pravidla)"
+                    "const": "168/2016 Sb. – Vyhláška o uveřejňování formulářů pro účely zákona o zadávání veřejných zakázek a náležitostech profilu zadavatele"
                   }
                 }
               },
@@ -3114,13 +4887,13 @@
                 "properties": {
                   "sourceUrl": {
                     "type": "string",
-                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2000/250/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2016/169/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
                   },
                   "canonicalUrl": {
-                    "const": "https://e-sbirka.gov.cz/sb/2000/250"
+                    "const": "https://e-sbirka.gov.cz/sb/2016/169"
                   },
                   "title": {
-                    "const": "250/2000 Sb. – Zákon o rozpočtových pravidlech územních rozpočtů"
+                    "const": "169/2016 Sb. – Vyhláška o stanovení rozsahu dokumentace veřejné zakázky na stavební práce a soupisu stavebních prací, dodávek a služeb s výkazem výměr"
                   }
                 }
               },
@@ -3128,13 +4901,13 @@
                 "properties": {
                   "sourceUrl": {
                     "type": "string",
-                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/1991/563/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2016/170/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
                   },
                   "canonicalUrl": {
-                    "const": "https://e-sbirka.gov.cz/sb/1991/563"
+                    "const": "https://e-sbirka.gov.cz/sb/2016/170"
                   },
                   "title": {
-                    "const": "563/1991 Sb. – Zákon o účetnictví"
+                    "const": "170/2016 Sb. – Vyhláška o stanovení paušální částky nákladů řízení o přezkoumání úkonů zadavatele při zadávání veřejných zakázek"
                   }
                 }
               },
@@ -3142,13 +4915,769 @@
                 "properties": {
                   "sourceUrl": {
                     "type": "string",
-                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2015/340/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2016/172/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
                   },
                   "canonicalUrl": {
-                    "const": "https://e-sbirka.gov.cz/sb/2015/340"
+                    "const": "https://e-sbirka.gov.cz/sb/2016/172"
                   },
                   "title": {
-                    "const": "340/2015 Sb. – Zákon o zvláštních podmínkách účinnosti některých smluv, uveřejňování těchto smluv a o registru smluv (zákon o registru smluv)"
+                    "const": "172/2016 Sb. – Nařízení vlády o stanovení finančních limitů a částek pro účely zákona o zadávání veřejných zakázek"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2016/222/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2016/222"
+                  },
+                  "title": {
+                    "const": "222/2016 Sb. – Zákon o Sbírce zákonů a mezinárodních smluv a o tvorbě právních předpisů vyhlašovaných ve Sbírce zákonů a mezinárodních smluv (zákon o Sbírce zákonů a mezinárodních smluv)"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2016/248/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2016/248"
+                  },
+                  "title": {
+                    "const": "248/2016 Sb. – Vyhláška o náležitostech obsahu žádosti o předchozí stanovisko k uzavření smlouvy a ke změně závazku ze smlouvy podle zákona o zadávání veřejných zakázek"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2016/250/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2016/250"
+                  },
+                  "title": {
+                    "const": "250/2016 Sb. – Zákon o odpovědnosti za přestupky a řízení o nich"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2016/251/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2016/251"
+                  },
+                  "title": {
+                    "const": "251/2016 Sb. – Zákon o některých přestupcích"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2016/260/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2016/260"
+                  },
+                  "title": {
+                    "const": "260/2016 Sb. – Vyhláška o stanovení podrobnějších podmínek týkajících se elektronických nástrojů, elektronických úkonů při zadávání veřejných zakázek a certifikátu shody"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2016/297/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2016/297"
+                  },
+                  "title": {
+                    "const": "297/2016 Sb. – Zákon o službách vytvářejících důvěru pro elektronické transakce"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2016/298/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2016/298"
+                  },
+                  "title": {
+                    "const": "298/2016 Sb. – Zákon, kterým se mění některé zákony v souvislosti s přijetím zákona o službách vytvářejících důvěru pro elektronické transakce, zákon č. 106/1999 Sb., o svobodném přístupu k informacím, ve znění pozdějších předpisů, a zákon č. 121/2000 Sb., o právu autorském, o právech souvisejících s právem autorským a o změně některých zákonů (autorský zákon), ve znění pozdějších předpisů"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2017/23/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2017/23"
+                  },
+                  "title": {
+                    "const": "23/2017 Sb. – Zákon o pravidlech rozpočtové odpovědnosti"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2017/24/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2017/24"
+                  },
+                  "title": {
+                    "const": "24/2017 Sb. – Zákon, kterým se mění některé zákony v souvislosti s přijetím právní úpravy rozpočtové odpovědnosti"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2017/250/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2017/250"
+                  },
+                  "title": {
+                    "const": "250/2017 Sb. – Zákon o elektronické identifikaci"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2017/251/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2017/251"
+                  },
+                  "title": {
+                    "const": "251/2017 Sb. – Zákon, kterým se mění některé zákony v souvislosti s přijetím zákona o elektronické identifikaci"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2018/82/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2018/82"
+                  },
+                  "title": {
+                    "const": "82/2018 Sb. – Vyhláška o bezpečnostních opatřeních, kybernetických bezpečnostních incidentech, reaktivních opatřeních, náležitostech podání v oblasti kybernetické bezpečnosti a likvidaci dat (vyhláška o kybernetické bezpečnosti)"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2019/110/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2019/110"
+                  },
+                  "title": {
+                    "const": "110/2019 Sb. – Zákon o zpracování osobních údajů"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2019/293/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2019/293"
+                  },
+                  "title": {
+                    "const": "293/2019 Sb. – Vyhláška o Programu statistických zjišťování na rok 2020"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2019/99/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2019/99"
+                  },
+                  "title": {
+                    "const": "99/2019 Sb. – Zákon o přístupnosti internetových stránek a mobilních aplikací a o změně zákona č. 365/2000 Sb., o informačních systémech veřejné správy a o změně některých dalších zákonů, ve znění pozdějších předpisů"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2020/12/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2020/12"
+                  },
+                  "title": {
+                    "const": "12/2020 Sb. – Zákon o právu na digitální služby a o změně některých zákonů"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2020/332/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2020/332"
+                  },
+                  "title": {
+                    "const": "332/2020 Sb. – Zákon o sčítání lidu, domů a bytů v roce 2021 a o změně zákona č. 89/1995 Sb., o státní statistické službě, ve znění pozdějších předpisů"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2020/433/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2020/433"
+                  },
+                  "title": {
+                    "const": "433/2020 Sb. – Vyhláška o údajích vedených v katalogu cloud computingu"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2020/466/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2020/466"
+                  },
+                  "title": {
+                    "const": "466/2020 Sb. – Vyhláška o Programu statistických zjišťování na rok 2021"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2020/490/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2020/490"
+                  },
+                  "title": {
+                    "const": "490/2020 Sb. – Vyhláška, kterou se provádějí některá ustanovení zákona č. 332/2020 Sb., o sčítání lidu, domů a bytů v roce 2021 a o změně zákona č. 89/1995 Sb., o státní statistické službě, ve znění pozdějších předpisů"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2020/515/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2020/515"
+                  },
+                  "title": {
+                    "const": "515/2020 Sb. – Vyhláška o struktuře informací zveřejňovaných o povinném subjektu a osnově popisu úkonů vykonávaných v rámci agendy"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2021/261/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2021/261"
+                  },
+                  "title": {
+                    "const": "261/2021 Sb. – Zákon, kterým se mění některé zákony v souvislosti s další elektronizací postupů orgánů veřejné moci"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2021/315/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2021/315"
+                  },
+                  "title": {
+                    "const": "315/2021 Sb. – Vyhláška o bezpečnostních úrovních pro využívání cloud computingu orgány veřejné moci"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2021/316/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2021/316"
+                  },
+                  "title": {
+                    "const": "316/2021 Sb. – Vyhláška o některých požadavcích pro zápis do katalogu cloud computingu"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2021/404/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2021/404"
+                  },
+                  "title": {
+                    "const": "404/2021 Sb. – Vyhláška o Programu statistických zjišťování na rok 2022"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2021/412/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2021/412"
+                  },
+                  "title": {
+                    "const": "412/2021 Sb. – Vyhláška o rozpočtové skladbě"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2022/360/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2022/360"
+                  },
+                  "title": {
+                    "const": "360/2022 Sb. – Zákon o podpoře nízkoemisních vozidel prostřednictvím zadávání veřejných zakázek a veřejných služeb v přepravě cestujících"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2022/471/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2022/471"
+                  },
+                  "title": {
+                    "const": "471/2022 Sb. – Zákon, kterým se mění zákon č. 12/2020 Sb., o právu na digitální služby a o změně některých zákonů, ve znění pozdějších předpisů, a další související zákony"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2023/171/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2023/171"
+                  },
+                  "title": {
+                    "const": "171/2023 Sb. – Zákon o ochraně oznamovatelů"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2023/190/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2023/190"
+                  },
+                  "title": {
+                    "const": "190/2023 Sb. – Vyhláška o bezpečnostních pravidlech pro orgány veřejné moci využívající služby poskytovatelů cloud computingu"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2023/316/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2023/316"
+                  },
+                  "title": {
+                    "const": "316/2023 Sb. – Vyhláška o Programu statistických zjišťování na rok 2024"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2023/345/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2023/345"
+                  },
+                  "title": {
+                    "const": "345/2023 Sb. – Vyhláška o uveřejňování formulářů pro účely zákona o zadávání veřejných zakázek a náležitostech profilu zadavatele"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2023/360/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2023/360"
+                  },
+                  "title": {
+                    "const": "360/2023 Sb. – Vyhláška o dlouhodobém řízení informačních systémů veřejné správy"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2024/1/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2024/1"
+                  },
+                  "title": {
+                    "const": "1/2024 Sb. – Zákon, kterým se mění zákon č. 12/2020 Sb., o právu na digitální služby a o změně některých zákonů, ve znění pozdějších předpisů, a další související zákony"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2024/325/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2024/325"
+                  },
+                  "title": {
+                    "const": "325/2024 Sb. – Vyhláška o Programu statistických zjišťování na rok 2025"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2024/430/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2024/430"
+                  },
+                  "title": {
+                    "const": "430/2024 Sb. – Vyhláška o způsobilosti informačních a komunikačních systémů a samostatných elektronických zařízení, stínicích komor, zabezpečených oblastí a objektů k ochraně před únikem utajovaných informací kompromitujícím vyzařováním a o některých náležitostech žádosti o uzavření smlouvy o zajištění činnosti (vyhláška o kompromitujícím vyzařování)"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2024/431/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2024/431"
+                  },
+                  "title": {
+                    "const": "431/2024 Sb. – Vyhláška o provádění certifikace při zabezpečování kryptografické ochrany utajovaných informací a o některých náležitostech žádosti o uzavření smlouvy o zajištění činnosti"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2024/433/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2024/433"
+                  },
+                  "title": {
+                    "const": "433/2024 Sb. – Vyhláška o zásadách a lhůtách finančního vypořádání vztahů se státním rozpočtem, státními finančními aktivy a Národním fondem (vyhláška o finančním vypořádání)"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2024/440/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2024/440"
+                  },
+                  "title": {
+                    "const": "440/2024 Sb. – Nařízení vlády o katalogu oblastí utajovaných informací"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2024/447/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2024/447"
+                  },
+                  "title": {
+                    "const": "447/2024 Sb. – Vyhláška o zajištění kryptografické ochrany utajovaných informací a o některých náležitostech žádosti o uzavření smlouvy o zajištění činnosti"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2024/479/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2024/479"
+                  },
+                  "title": {
+                    "const": "479/2024 Sb. – Vyhláška o bezpečnosti informačních a komunikačních systémů a dalších elektronických zařízení nakládajících s utajovanými informacemi a o některých náležitostech žádosti o uzavření smlouvy o zajištění činnosti (vyhláška o informační bezpečnosti)"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2025/264/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2025/264"
+                  },
+                  "title": {
+                    "const": "264/2025 Sb. – Zákon o kybernetické bezpečnosti"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2025/265/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2025/265"
+                  },
+                  "title": {
+                    "const": "265/2025 Sb. – Zákon, kterým se mění některé zákony v souvislosti s přijetím zákona o kybernetické bezpečnosti"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2025/266/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2025/266"
+                  },
+                  "title": {
+                    "const": "266/2025 Sb. – Zákon o odolnosti subjektů kritické infrastruktury a o změně souvisejících zákonů (zákon o kritické infrastruktuře)"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2025/334/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2025/334"
+                  },
+                  "title": {
+                    "const": "334/2025 Sb. – Vyhláška o Portálu Národního úřadu pro kybernetickou a informační bezpečnost a požadavcích na některé úkony"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2025/408/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2025/408"
+                  },
+                  "title": {
+                    "const": "408/2025 Sb. – Vyhláška o regulovaných službách"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2025/409/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2025/409"
+                  },
+                  "title": {
+                    "const": "409/2025 Sb. – Vyhláška o bezpečnostních opatřeních poskytovatele regulované služby v režimu vyšších povinností"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2025/410/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2025/410"
+                  },
+                  "title": {
+                    "const": "410/2025 Sb. – Vyhláška o bezpečnostních opatřeních poskytovatele regulované služby v režimu nižších povinností"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2025/411/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2025/411"
+                  },
+                  "title": {
+                    "const": "411/2025 Sb. – Vyhláška o bezpečnostních úrovních informačních systémů veřejné správy"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2025/412/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2025/412"
+                  },
+                  "title": {
+                    "const": "412/2025 Sb. – Vyhláška o bezpečnostních pravidlech pro orgány veřejné správy využívající služby poskytovatelů cloud computingu"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2025/445/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2025/445"
+                  },
+                  "title": {
+                    "const": "445/2025 Sb. – Vyhláška o Programu statistických zjišťování na rok 2026"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2025/505/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2025/505"
+                  },
+                  "title": {
+                    "const": "505/2025 Sb. – Vyhláška o některých požadavcích pro zápis do katalogu cloud computingu"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2026/122/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2026/122"
+                  },
+                  "title": {
+                    "const": "122/2026 Sb. – Vyhláška o plánu odolnosti, posouzení rizik, opatřeních k zajištění odolnosti subjektů kritické infrastruktury a o hlášení incidentu"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "sourceUrl": {
+                    "type": "string",
+                    "pattern": "^https://e-sbirka\\.gov\\.cz/sb/2026/60/[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+                  },
+                  "canonicalUrl": {
+                    "const": "https://e-sbirka.gov.cz/sb/2026/60"
+                  },
+                  "title": {
+                    "const": "60/2026 Sb. – Zákon o správě dat, o řízeném přístupu k datům a o změně některých souvisejících zákonů (zákon o správě dat a o řízeném přístupu k datům)"
                   }
                 }
               }

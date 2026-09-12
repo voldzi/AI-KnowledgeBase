@@ -6,6 +6,7 @@ import { ApiClientError } from "@/lib/types";
 import { listApprovedPublicSourceCollections } from "@/lib/public-sources/approved-collections-client";
 import { discoverPublicSourceCollection } from "@/lib/public-sources/discovery";
 import { officialSourceInternalSecret, officialSourceServiceRequestContext } from "@/lib/public-sources/automation-service-identity";
+import { retryCurrentGovernedIngestionAttempt } from "@/lib/ingestion/governed-operations";
 import { synchronizePublicSource, type PublicSourceSyncRequest } from "@/lib/public-sources/sync";
 
 export const runtime = "nodejs";
@@ -39,8 +40,50 @@ export async function POST(request: NextRequest) {
       const collections = await listApprovedPublicSourceCollections(context);
       const approved = collections.find((collection) => collection.collectionId === COLLECTION_ID);
       if (!approved) throw new ApiClientError("The Czech legislation collection is not approved.", 403, "OFFICIAL_SOURCE_COLLECTION_NOT_APPROVED", correlationId);
-      const result = await discoverPublicSourceCollection(COLLECTION_ID, fetch, { openDataActLimit: 10 });
+      const result = await discoverPublicSourceCollection(COLLECTION_ID, fetch);
       return NextResponse.json({ collectionRevision: approved.revision, ...result }, { headers: HEADERS });
+    }
+    if (body.action === "reindex") {
+      exactKeys(body, ["action", "document_id"], correlationId);
+      if (typeof body.document_id !== "string" || !/^doc_[a-z0-9]{8,60}$/.test(body.document_id)) {
+        throw new ApiClientError("Document identifier is invalid.", 422, "OFFICIAL_SOURCE_AUTOMATION_REQUEST_INVALID", correlationId);
+      }
+      const document = await clients.registry.getDocument(body.document_id, context);
+      if (
+        document.status !== "valid"
+        || document.classification !== "public"
+        || document.metadata?.collection_id !== COLLECTION_ID
+      ) {
+        throw new ApiClientError("Only a published Czech-law source can be reindexed.", 409, "OFFICIAL_SOURCE_REINDEX_TARGET_INVALID", correlationId);
+      }
+      const versions = await clients.registry.listDocumentVersions(document.document_id, context);
+      const today = new Date().toISOString().slice(0, 10);
+      const version = versions
+        .filter((candidate) => (
+          candidate.status === "valid"
+          && (!candidate.valid_from || candidate.valid_from <= today)
+          && (!candidate.valid_to || candidate.valid_to >= today)
+        ))
+        .sort((left, right) => (right.valid_from ?? "").localeCompare(left.valid_from ?? ""))[0];
+      if (!version) {
+        throw new ApiClientError("The source has no published version to reindex.", 409, "OFFICIAL_SOURCE_REINDEX_VERSION_REQUIRED", correlationId);
+      }
+      const refreshed = await retryCurrentGovernedIngestionAttempt(
+        clients,
+        context,
+        document.document_id,
+        `official-reindex:${document.document_id}:${version.document_version_id}:${randomUUID()}`,
+        {
+          expectedDocumentVersionId: version.document_version_id,
+          requirePublishedVersion: true,
+        },
+      );
+      return NextResponse.json({
+        document_id: document.document_id,
+        document_version_id: version.document_version_id,
+        ingestion_job_id: refreshed.job.job_id,
+        ingestion_status: refreshed.job.status,
+      }, { status: 201, headers: HEADERS });
     }
     if (body.action === "sync") {
       exactKeys(body, ["action", "source"], correlationId);
