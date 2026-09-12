@@ -153,3 +153,18 @@ The local acceptance intentionally kept connector flags disabled. Production
 must keep `ARCHFLOW_FEDERATION_ENABLED`, `ARCHFLOW_DOCUMENT_EVIDENCE_ENABLED`,
 and `ARCHFLOW_CONNECTORS_ENABLED` false until the coordinated release evidence,
 migration, health checks, and authenticated production smoke all pass.
+
+## Production preflight observation
+
+The read-only production preflight on 2026-09-12 confirmed that the deployed
+AKB release remained `9d09971bab5344e7b1b817cd6e86e5ca312c5ae1` and STRATOS
+remained `fe44306a895cbbfd18902f211db4996599ce4729`. The public AKB health
+endpoint returned `200`, while readiness returned `503` because
+`document_intake_content_security` was `not_ready`. Production is configured
+fail-closed with `clamd` required at `tcp://scan.home.cz:3310`; DNS resolved the
+endpoint to `192.168.10.163`, but a TCP probe from `docker.home.cz` timed out
+and the AKB web container reported `EHOSTUNREACH`.
+
+This is an independent production blocker. Restore scanner reachability and
+obtain a `200` AKB readiness result before promoting C06. Do not disable the
+required content-security boundary to make readiness pass.
