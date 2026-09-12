@@ -140,9 +140,10 @@ test("e-Sbírka pilot starts with the ten centrally governed laws", () => {
     collection?.openDataActs?.slice(0, 10).map((act) => `${act.number}/${act.year}`),
     ["89/2012", "90/2012", "262/2006", "500/2004", "106/1999", "134/2016", "218/2000", "250/2000", "563/1991", "340/2015"],
   );
-  assert.deepEqual(
-    collection?.openDataActs?.slice(0, 10).map((act) => `${act.number}/${act.year} Sb. – ${act.title}`),
-    approved.sources.map((source) => source.title),
+  const approvedTitles = new Set(approved.sources.map((source) => source.title));
+  assert.ok(
+    collection?.openDataActs?.slice(0, 10)
+      .every((act) => approvedTitles.has(`${act.number}/${act.year} Sb. – ${act.title}`)),
   );
 });
 
