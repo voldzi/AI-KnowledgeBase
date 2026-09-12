@@ -1,7 +1,9 @@
 # C06 — STRATOS architecture document evidence
 
-Status: implemented in coordinated AKB + STRATOS release branches; local
-cross-application acceptance and production promotion remain pending.
+Status: implemented and accepted in the isolated local `akb-stratos-test`
+environment on 2026-09-12. Production promotion is blocked until STRATOS
+records fresh owner-reviewed Clean Pilot source evidence for its changed
+production compose and access catalog; no production mutation was performed.
 Scope authority is STRATOS document 69, data ownership authority is document
 21, and document/security authority is document 30.
 
@@ -125,3 +127,29 @@ separate from connector/import flags. Disabling it stops new C06 reads/writes
 without deleting links or changing AKB content. AKB rollback returns to the
 previous application revision; the additive contract creates no AKB database
 table and requires no destructive rollback.
+
+## Local acceptance evidence
+
+The isolated acceptance used real OIDC identities, central Access Center
+profiles, the AKB Registry, S3-compatible object storage, and the STRATOS C06
+store. It proved:
+
+- creation, review, independent approval, and publication of an AKB PDF;
+- an idempotent exact-version link and two distinct document versions linked
+  to the same architecture object;
+- authorized source-open returning the exact bytes of the historical version;
+- metadata-only export with no source URI, content, credential, or download
+  token;
+- denial for an identity without a grant and immediate denial after removing
+  the previously authorized person's AKB grant;
+- rejection of a stale target revision;
+- append-only link revocation and denial of the next open;
+- explicit AKB version invalidation propagating as `INVALIDATED` without
+  rewriting the stored STRATOS evidence revision;
+- a real temporary AKB outage returning unavailable while preserving the link,
+  followed by successful service recovery.
+
+The local acceptance intentionally kept connector flags disabled. Production
+must keep `ARCHFLOW_FEDERATION_ENABLED`, `ARCHFLOW_DOCUMENT_EVIDENCE_ENABLED`,
+and `ARCHFLOW_CONNECTORS_ENABLED` false until the coordinated release evidence,
+migration, health checks, and authenticated production smoke all pass.
