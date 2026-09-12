@@ -526,6 +526,7 @@ test("e-Sbírka sync downloads the official informative PDF through the public s
       return Response.json({ error: "unexpected request" }, { status: 404 });
     };
     const sourceUrl = new URL("https://e-sbirka.gov.cz/sb/2016/134/2025-04-03");
+    const longApprovedTitle = `134/2016 Sb. – ${"Rozšířený název právního předpisu ".repeat(10)}`.trim();
     const transport = async (correlationId: string) => ({
       ...context,
       requestId: correlationId,
@@ -538,13 +539,18 @@ test("e-Sbírka sync downloads the official informative PDF through the public s
         collectionId: "czech-law",
         sourceUrl: sourceUrl.toString(),
         canonicalUrl: "https://e-sbirka.gov.cz/sb/2016/134",
-        title: "134/2016 Sb. – Zákon o zadávání veřejných zakázek",
+        title: longApprovedTitle,
       },
       clients,
       context,
       fetcher,
       transport,
-      prepareApprovedSourceFixture,
+      async (proposal, proposalContext) => {
+        assert.equal(proposal.title, longApprovedTitle);
+        assert.ok(proposal.title.length > 300);
+        void proposalContext;
+        return prepareApprovedSourceFixture(proposal);
+      },
     );
     const versions = await clients.registry.listDocumentVersions(created.document.document_id, context);
     const versionDetails = created.version as typeof created.version & {

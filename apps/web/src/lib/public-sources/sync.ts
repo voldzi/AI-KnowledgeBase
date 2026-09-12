@@ -92,7 +92,7 @@ export async function synchronizePublicSource(
   }
   const proposal = {
     collectionId: collection.id, expectedCollectionRevision: input.collectionRevision,
-    sourceUrl: sourceUrl.toString(), canonicalUrl: canonicalUrl.toString(), title: normalizeDocumentTitle(input.title, canonicalUrl),
+    sourceUrl: sourceUrl.toString(), canonicalUrl: canonicalUrl.toString(), title: normalizeApprovalTitle(input.title, canonicalUrl),
     effectiveFrom: effectiveFrom ?? null, effectiveTo: effectiveTo ?? null,
   };
   // Central source preparation is distinct from the final Registry admission proof.
@@ -905,6 +905,11 @@ function normalizeDocumentTitle(value: string, url: URL): string {
     .replace(/\.(pdf|docx|pptx|xlsx|doc)$/i, "")
     .replace(/[-_]+/g, " ")
     .slice(0, 300);
+}
+
+function normalizeApprovalTitle(value: string, url: URL): string {
+  const title = value.replace(/\s+/g, " ").trim();
+  return title ? title.slice(0, 600) : normalizeDocumentTitle(value, url);
 }
 
 function officialSourceStableId(collectionId: string, canonicalUrl: string): string {
