@@ -8,6 +8,11 @@ backup evidence and isolated restore acceptance, use
 Use this runbook for first response. Detailed environment-specific procedures
 remain in `docs/deployment/` and `docs/OPERATIONS/`.
 
+The proposed shared AKB/STRATOS development deployment path, without mandatory
+remote CI before pilot, is tracked in
+[the direct development deployment plan](maintenance/stratos-akb-direct-development-deploy-plan.md).
+That document distinguishes the proposed tooling from the currently available release commands.
+
 ## Central SSO Or Managed Identity Change
 
 Use [the identity runbook](security/managed-identity.md). Keep the approved
