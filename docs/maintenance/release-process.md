@@ -170,8 +170,17 @@ This is an early feedback layer, not a release approval. The final candidate
 still runs on the repo-scoped VM125 runner, where the Linux/amd64 toolchain and
 persistent caches match the production build environment.
 
-During the pre-pilot development phase, a change confined to `apps/web/` can
-use the operator-invoked fast path after it has reached `origin/main`:
+During the pre-pilot development phase, `docker.home.cz` is the shared
+integration environment. Full remote CI is deferred until an immutable pilot
+candidate is selected. Every development deployment still requires focused
+local tests, the exact affected Linux/amd64 production image built on the
+MacBook, affected-service-only activation, health/readiness, a narrow smoke,
+and rollback on failure. The complete path has a hard operational budget of
+15 minutes. If any stage exceeds its budget, stop it, preserve the evidence,
+and diagnose that stage instead of waiting or restarting unchanged work.
+
+A change confined to `apps/web/` can use the operator-invoked fast path after
+it has reached `origin/main`:
 
 ```bash
 AKB_FAST_SSH_HOSTNAME=192.168.10.116 \
@@ -187,6 +196,18 @@ and readiness endpoints must pass. Any activation failure restores the exact
 previous image IDs. The immutable release pointer is deliberately unchanged;
 run the formal release before pilot acceptance to reconcile the complete stack
 and preserve the normal audit, migration, backup, and rollback gates.
+
+Apply the same pre-pilot contract to other application services: never build
+on `docker.home.cz`, never allow Compose to recreate dependencies, transfer
+only affected images, and use `--pull never --no-build --no-deps`. A service
+without an implemented bounded fast helper is a release-tooling defect; do not
+replace it with the full remote pipeline for an ordinary development change.
+
+Changes to databases, identity or authorization, TLP/information policy,
+public API contracts, secrets, storage, shared Compose, or release
+infrastructure run the broader affected local checks. Complete remote CI and
+the full security and AKB-STRATOS acceptance suite run once for the exact pilot
+candidate, before pilot promotion.
 
 Trusted CI also retains the version-pinned OpenAPI linter and content-addressed
 Python test environments. Each Python cache key binds the interpreter and the
