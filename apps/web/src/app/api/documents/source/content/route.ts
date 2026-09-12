@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getOptionalServerRequestContext, getServerApiClients } from "@/lib/api/server";
 import { withAppBasePath } from "@/lib/app-url";
+import { exactSourceAuthorizationFailure } from "@/lib/stratos/exact-source-authorization";
 import {
   readSourceObject,
   assertSourceContentSecurityAllowed,
@@ -70,6 +71,25 @@ export async function GET(request: NextRequest) {
     const version = versions.find((item) => item.document_version_id === payload.document_version_id);
     if (!version || document.document_id !== version.document_id) {
       return NextResponse.json({ error: { code: "STALE_SOURCE_TOKEN", message: "The source version is no longer available." } }, { status: 409 });
+    }
+    const authorization = await clients.registry.authorizeDocument(
+      document.document_id,
+      "document.read",
+      context,
+      version.document_version_id
+    );
+    const authorityFailure = exactSourceAuthorizationFailure(authorization, {
+      documentId: document.document_id,
+      documentVersionId: version.document_version_id,
+      policyBindingId: version.policy_binding_id ?? null,
+      policyVersion: version.policy_version ?? null,
+      policyHash: version.policy_hash ?? null
+    });
+    if (authorityFailure) {
+      return NextResponse.json(
+        { error: { code: authorityFailure.code, message: authorityFailure.message } },
+        { status: authorityFailure.status }
+      );
     }
     assertSourceContentSecurityAllowed(version.content_security_status);
     if (

@@ -849,6 +849,53 @@ export class MockRegistryClient implements RegistryApiClient {
     };
   }
 
+  async resolveStratosArchitectureEvidence(
+    request: import("@/lib/types/api").StratosArchitectureEvidenceResolveRequest,
+    context: ApiRequestContext,
+  ): Promise<import("@/lib/types/api").StratosArchitectureEvidenceResolveResponse> {
+    const decision = await this.authorizeDocument(
+      request.document_id,
+      request.operation === "export" ? "rag.export" : "document.read",
+      context,
+      request.document_version_id,
+    );
+    if (!decision.allowed) {
+      throw new Error("Current mock authority denied the exact evidence version.");
+    }
+    const document = this.documents.find((item) => item.document_id === request.document_id)!;
+    const version = this.versions.find((item) => item.document_version_id === request.document_version_id)!;
+    const constraints = decision.constraints as Record<string, unknown>;
+    const policySummary = document.policy_summary as Record<string, unknown> | null | undefined;
+    return {
+      schemaVersion: "akb-stratos-architecture-evidence-1",
+      document_id: document.document_id,
+      document_version_id: version.document_version_id,
+      title: document.title,
+      document_type: document.document_type,
+      version_label: version.version_label,
+      document_status: document.status,
+      document_version_status: version.status,
+      evidence_state: version.status === "cancelled" ? "INVALIDATED" : version.status === "archived" || version.status === "superseded" ? "HISTORICAL" : version.status === "valid" || version.status === "approved" ? "ACTIVE" : "PENDING",
+      classification: document.classification,
+      tlp: (policySummary?.tlp ?? "TLP:CLEAR") as import("@/lib/types/api").StratosArchitectureEvidenceResolveResponse["tlp"],
+      valid_from: version.valid_from ?? null,
+      valid_to: version.valid_to ?? null,
+      policy_lineage: {
+        governed_resource_id: String(constraints.governed_resource_id ?? `mock:${version.document_version_id}`),
+        governed_source_version: version.document_version_id,
+        governed_parent_resource_id: null,
+        policy_binding_id: String(version.policy_binding_id),
+        policy_version: String(version.policy_version),
+        policy_hash: String(version.policy_hash),
+        root_metadata_revision: String(version.root_metadata_revision ?? "mock-root"),
+        root_snapshot_hash: String(version.root_snapshot_hash ?? `sha256:${"a".repeat(64)}`),
+        version_snapshot_hash: String(version.version_snapshot_hash ?? `sha256:${"b".repeat(64)}`),
+      },
+      obligations: Array.isArray(constraints.obligations) ? constraints.obligations.map(String) : [],
+      resolved_at: new Date().toISOString(),
+    };
+  }
+
   async authorizeBudgetDocumentIntake(
     _documentId: string,
     _request: BudgetIntakeAuthorizationRequest,

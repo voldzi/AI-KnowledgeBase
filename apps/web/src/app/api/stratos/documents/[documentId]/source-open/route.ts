@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerApiClients, getServerRequestContextForRequest } from "@/lib/api/server";
 import { runRouteEffect } from "@/lib/effect/next-route";
 import { latestVersion } from "@/lib/stratos/document-ai";
+import { exactSourceAuthorizationFailure } from "@/lib/stratos/exact-source-authorization";
 import { createSourceOpenDecision, SourceDownloadError } from "@/lib/upload/source-download";
 import type { ApiRequestContext } from "@/lib/types";
 
@@ -37,11 +38,19 @@ class SourceOpenVersionNotFound extends Data.TaggedError("SourceOpenVersionNotFo
   readonly message: string;
 }> {}
 
+class SourceOpenAuthorityConflict extends Data.TaggedError("SourceOpenAuthorityConflict")<{
+  readonly message: string;
+}> {}
+
 class SourceOpenOperationalFailure extends Data.TaggedError("SourceOpenOperationalFailure")<{
   readonly error: unknown;
 }> {}
 
-type SourceOpenFailure = SourceOpenForbidden | SourceOpenVersionNotFound | SourceOpenOperationalFailure;
+type SourceOpenFailure =
+  | SourceOpenForbidden
+  | SourceOpenVersionNotFound
+  | SourceOpenAuthorityConflict
+  | SourceOpenOperationalFailure;
 
 function viewerModeForUri(uri: string): string {
   const value = uri.toLowerCase();
@@ -91,6 +100,17 @@ function sourceOpenFailureResponse(error: SourceOpenFailure) {
         },
         { status: 404 }
       );
+    case "SourceOpenAuthorityConflict":
+      return NextResponse.json(
+        {
+          error: {
+            code: "STRATOS_DOCUMENT_AUTHORITY_STALE",
+            message: error.message,
+            trace_id: "web-stratos-source-open"
+          }
+        },
+        { status: 409 }
+      );
     case "SourceOpenOperationalFailure":
       if (error.error instanceof SourceDownloadError) {
         return sourceDownloadErrorResponse(error.error);
@@ -114,19 +134,14 @@ const sourceOpenProgram = Effect.gen(function* () {
     catch: operationalFailure
   });
   const requestedVersionId = runtime.request.nextUrl.searchParams.get("version_id")?.trim() || null;
-  const [document, versions, authorization] = yield* Effect.tryPromise({
+  const [document, versions] = yield* Effect.tryPromise({
     try: () =>
       Promise.all([
         runtime.clients.registry.getDocument(documentId, requestContext),
-        runtime.clients.registry.listDocumentVersions(documentId, requestContext),
-        runtime.clients.registry.getAuthorizationHints(requestContext)
+        runtime.clients.registry.listDocumentVersions(documentId, requestContext)
       ]),
     catch: operationalFailure
   });
-
-  if (!authorization.can_read) {
-    return yield* Effect.fail(new SourceOpenForbidden({ message: "Document read is not allowed in this session." }));
-  }
 
   const version = requestedVersionId
     ? versions.find((candidate) => candidate.document_version_id === requestedVersionId) ?? null
@@ -135,6 +150,30 @@ const sourceOpenProgram = Effect.gen(function* () {
     return yield* Effect.fail(
       new SourceOpenVersionNotFound({ message: "Document version does not belong to this document." })
     );
+  }
+
+  const authorization = yield* Effect.tryPromise({
+    try: () =>
+      runtime.clients.registry.authorizeDocument(
+        document.document_id,
+        "document.read",
+        requestContext,
+        version.document_version_id
+      ),
+    catch: operationalFailure
+  });
+  const authorityFailure = exactSourceAuthorizationFailure(authorization, {
+    documentId: document.document_id,
+    documentVersionId: version.document_version_id,
+    policyBindingId: version.policy_binding_id ?? null,
+    policyVersion: version.policy_version ?? null,
+    policyHash: version.policy_hash ?? null
+  });
+  if (authorityFailure?.status === 403) {
+    return yield* Effect.fail(new SourceOpenForbidden({ message: authorityFailure.message }));
+  }
+  if (authorityFailure) {
+    return yield* Effect.fail(new SourceOpenAuthorityConflict({ message: authorityFailure.message }));
   }
 
   const sourceOpen = yield* Effect.tryPromise({

@@ -12,7 +12,7 @@ export const ACTIVE_PROJECTION_CONTRACT = {
   revision: "2.1.0",
   status: "active",
   digest: "sha256:16509ccbdc3e49e7a9918a29c833a8ae1aa7c78777b0a8693a2477acc2f0dafa",
-  catalogVersion: "capabilities-1.12.1",
+  catalogVersion: "capabilities-1.12.2",
   organizationId: "org_stratos",
   consumerCutover: true,
 } as const;

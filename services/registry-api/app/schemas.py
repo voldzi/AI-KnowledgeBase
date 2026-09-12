@@ -1727,6 +1727,86 @@ class AuthzCheckResponse(BaseModel):
     constraints: dict[str, Any] = Field(default_factory=dict)
 
 
+class StratosArchitectureEvidenceOperation(str, Enum):
+    link = "link"
+    open = "open"
+    status = "status"
+    export = "export"
+
+
+class StratosArchitectureEvidenceState(str, Enum):
+    active = "ACTIVE"
+    historical = "HISTORICAL"
+    pending = "PENDING"
+    invalidated = "INVALIDATED"
+
+
+class StratosArchitectureEvidenceResolveRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["akb-stratos-architecture-evidence-1"] = Field(
+        alias="schemaVersion"
+    )
+    document_id: str = Field(min_length=1, max_length=128)
+    document_version_id: str = Field(min_length=1, max_length=128)
+    operation: StratosArchitectureEvidenceOperation
+    correlation_id: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:@/-]*$",
+    )
+
+
+class StratosArchitectureEvidencePolicyLineage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    governed_resource_id: str
+    governed_source_version: str
+    governed_parent_resource_id: str | None
+    policy_binding_id: str
+    policy_version: str
+    policy_hash: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    root_metadata_revision: str
+    root_snapshot_hash: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    version_snapshot_hash: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+
+
+class StratosArchitectureEvidenceResolveResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["akb-stratos-architecture-evidence-1"] = Field(
+        alias="schemaVersion"
+    )
+    document_id: str
+    document_version_id: str
+    title: str
+    document_type: DocumentType
+    version_label: str
+    document_status: DocumentStatus
+    document_version_status: DocumentStatus
+    evidence_state: StratosArchitectureEvidenceState
+    classification: Classification
+    tlp: Literal[
+        "TLP:RED", "TLP:AMBER+STRICT", "TLP:AMBER", "TLP:GREEN", "TLP:CLEAR"
+    ]
+    valid_from: date | None
+    valid_to: date | None
+    policy_lineage: StratosArchitectureEvidencePolicyLineage
+    obligations: list[str] = Field(default_factory=list)
+    resolved_at: datetime
+
+
+class DocumentVersionEvidenceInvalidateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=8, max_length=500)
+    correlation_id: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:@/-]*$",
+    )
+
+
 class IngestionAuthorizationIssueRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

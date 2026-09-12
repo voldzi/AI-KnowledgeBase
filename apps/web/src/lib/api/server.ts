@@ -9,7 +9,7 @@ import type { ApiRequestContext } from "@/lib/types";
 
 import { createApiClients } from ".";
 import { getAklConfig } from "./config";
-import { createMockContext } from "./correlation";
+import { createMockContext, withRequestCorrelation } from "./correlation";
 import {
   buildPublicAppUrl,
   type OidcSession,
@@ -140,13 +140,15 @@ async function resolveOptionalServerRequestContext(request?: RequestLike): Promi
   const sessionProbe = request?.headers.get("X-STRATOS-Session-Probe") === "1";
   const bearerToken = bearerTokenFromRequest(request);
   if (bearerToken) {
-    return contextFromStratosAccessProjection(bearerToken, getAklConfig(), fetch, Date.now(), sessionProbe, sessionProbe);
+    const context = await contextFromStratosAccessProjection(bearerToken, getAklConfig(), fetch, Date.now(), sessionProbe, sessionProbe);
+    return request ? withRequestCorrelation(context, request.headers) : context;
   }
 
   const session = await getOptionalServerOidcSession(request);
   if (session) {
     if (!session.accessToken) return null;
-    return contextFromStratosAccessProjection(session.accessToken, getAklConfig(), fetch, Date.now(), sessionProbe, sessionProbe);
+    const context = await contextFromStratosAccessProjection(session.accessToken, getAklConfig(), fetch, Date.now(), sessionProbe, sessionProbe);
+    return request ? withRequestCorrelation(context, request.headers) : context;
   }
 
   const config = getAklConfig();
