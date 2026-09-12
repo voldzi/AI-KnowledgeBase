@@ -8566,6 +8566,145 @@
         }
       ]
     },
+    "/api/v1/integrations/stratos/architecture-evidence/resolve": {
+      "post": {
+        "summary": "Resolve Stratos Architecture Evidence",
+        "description": "Resolve one exact immutable AKB document version for a STRATOS architecture evidence operation. The current person is authorized against the document root and exact version. The response contains only link-safe metadata and policy lineage; it never returns source content, storage coordinates, chunks, prompts, answers, or a download credential.",
+        "operationId": "registry_api_resolve_stratos_architecture_evidence_api_v1_integrations_stratos_architecture_evidence_resolve_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistryApiStratosArchitectureEvidenceResolveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiStratosArchitectureEvidenceResolveResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Current person or exact-version authority is denied"
+          },
+          "409": {
+            "description": "Evidence is pending, invalidated, or has incomplete lineage"
+          },
+          "503": {
+            "description": "Required current STRATOS policy authority is unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiHTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Registry API"
+        ]
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8001",
+          "description": "Local direct Registry API"
+        },
+        {
+          "url": "http://localhost:8080/registry",
+          "description": "Local reverse proxy Registry API"
+        }
+      ]
+    },
+    "/api/v1/documents/{document_id}/versions/{version_id}/invalidate-evidence": {
+      "post": {
+        "summary": "Invalidate Document Version Evidence",
+        "description": "Invalidate one exact immutable document version as architecture evidence. The version and its audit history remain available; future STRATOS link, open, and export resolutions are denied.",
+        "operationId": "registry_api_invalidate_document_version_evidence_api_v1_documents__document_id__versions__version_id__invalidate_evidence_post",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Document Id"
+            }
+          },
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegistryApiDocumentVersionEvidenceInvalidateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiDocumentVersionResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Current person cannot archive the exact version"
+          },
+          "409": {
+            "description": "Correlation, publication lifecycle, or exact authority conflict"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryApiHTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Registry API"
+        ]
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8001",
+          "description": "Local direct Registry API"
+        },
+        {
+          "url": "http://localhost:8080/registry",
+          "description": "Local reverse proxy Registry API"
+        }
+      ]
+    },
     "/api/v1/integrations/web-ingestion/readiness": {
       "get": {
         "tags": [
@@ -16086,6 +16225,56 @@
                 "schema": {
                   "$ref": "#/components/schemas/AkbErrorResponse"
                 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stratos/architecture-evidence/resolve": {
+      "servers": [
+        {
+          "url": "http://localhost:3002",
+          "description": "Local AKB web API"
+        },
+        {
+          "url": "https://stratos.zeleznalady.cz/akb",
+          "description": "Production AKB web API"
+        }
+      ],
+      "post": {
+        "tags": [
+          "AKB Web API"
+        ],
+        "summary": "POST /api/stratos/architecture-evidence/resolve",
+        "operationId": "web_post_api_stratos_architecture_evidence_resolve",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericJson"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AkbErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenericJson"
               }
             }
           }
@@ -29567,6 +29756,265 @@
           "document_version_status"
         ],
         "title": "SourceStatusResponse"
+      },
+      "RegistryApiDocumentVersionEvidenceInvalidateRequest": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 8,
+            "title": "Reason"
+          },
+          "correlation_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]*$",
+            "title": "Correlation Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "reason",
+          "correlation_id"
+        ],
+        "title": "DocumentVersionEvidenceInvalidateRequest"
+      },
+      "RegistryApiStratosArchitectureEvidenceOperation": {
+        "type": "string",
+        "enum": [
+          "link",
+          "open",
+          "status",
+          "export"
+        ],
+        "title": "StratosArchitectureEvidenceOperation"
+      },
+      "RegistryApiStratosArchitectureEvidencePolicyLineage": {
+        "properties": {
+          "governed_resource_id": {
+            "type": "string",
+            "title": "Governed Resource Id"
+          },
+          "governed_source_version": {
+            "type": "string",
+            "title": "Governed Source Version"
+          },
+          "governed_parent_resource_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Governed Parent Resource Id"
+          },
+          "policy_binding_id": {
+            "type": "string",
+            "title": "Policy Binding Id"
+          },
+          "policy_version": {
+            "type": "string",
+            "title": "Policy Version"
+          },
+          "policy_hash": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$",
+            "title": "Policy Hash"
+          },
+          "root_metadata_revision": {
+            "type": "string",
+            "title": "Root Metadata Revision"
+          },
+          "root_snapshot_hash": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$",
+            "title": "Root Snapshot Hash"
+          },
+          "version_snapshot_hash": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$",
+            "title": "Version Snapshot Hash"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "governed_resource_id",
+          "governed_source_version",
+          "governed_parent_resource_id",
+          "policy_binding_id",
+          "policy_version",
+          "policy_hash",
+          "root_metadata_revision",
+          "root_snapshot_hash",
+          "version_snapshot_hash"
+        ],
+        "title": "StratosArchitectureEvidencePolicyLineage"
+      },
+      "RegistryApiStratosArchitectureEvidenceResolveRequest": {
+        "properties": {
+          "schemaVersion": {
+            "type": "string",
+            "const": "akb-stratos-architecture-evidence-1",
+            "title": "Schemaversion"
+          },
+          "document_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Document Id"
+          },
+          "document_version_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Document Version Id"
+          },
+          "operation": {
+            "$ref": "#/components/schemas/RegistryApiStratosArchitectureEvidenceOperation"
+          },
+          "correlation_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@/-]*$",
+            "title": "Correlation Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "schemaVersion",
+          "document_id",
+          "document_version_id",
+          "operation",
+          "correlation_id"
+        ],
+        "title": "StratosArchitectureEvidenceResolveRequest"
+      },
+      "RegistryApiStratosArchitectureEvidenceResolveResponse": {
+        "properties": {
+          "schemaVersion": {
+            "type": "string",
+            "const": "akb-stratos-architecture-evidence-1",
+            "title": "Schemaversion"
+          },
+          "document_id": {
+            "type": "string",
+            "title": "Document Id"
+          },
+          "document_version_id": {
+            "type": "string",
+            "title": "Document Version Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "document_type": {
+            "$ref": "#/components/schemas/RegistryApiDocumentType"
+          },
+          "version_label": {
+            "type": "string",
+            "title": "Version Label"
+          },
+          "document_status": {
+            "$ref": "#/components/schemas/RegistryApiDocumentStatus"
+          },
+          "document_version_status": {
+            "$ref": "#/components/schemas/RegistryApiDocumentStatus"
+          },
+          "evidence_state": {
+            "$ref": "#/components/schemas/RegistryApiStratosArchitectureEvidenceState"
+          },
+          "classification": {
+            "$ref": "#/components/schemas/RegistryApiClassification"
+          },
+          "tlp": {
+            "type": "string",
+            "enum": [
+              "TLP:RED",
+              "TLP:AMBER+STRICT",
+              "TLP:AMBER",
+              "TLP:GREEN",
+              "TLP:CLEAR"
+            ],
+            "title": "Tlp"
+          },
+          "valid_from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid From"
+          },
+          "valid_to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid To"
+          },
+          "policy_lineage": {
+            "$ref": "#/components/schemas/RegistryApiStratosArchitectureEvidencePolicyLineage"
+          },
+          "obligations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Obligations"
+          },
+          "resolved_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Resolved At"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "schemaVersion",
+          "document_id",
+          "document_version_id",
+          "title",
+          "document_type",
+          "version_label",
+          "document_status",
+          "document_version_status",
+          "evidence_state",
+          "classification",
+          "tlp",
+          "valid_from",
+          "valid_to",
+          "policy_lineage",
+          "resolved_at"
+        ],
+        "title": "StratosArchitectureEvidenceResolveResponse"
+      },
+      "RegistryApiStratosArchitectureEvidenceState": {
+        "type": "string",
+        "enum": [
+          "ACTIVE",
+          "HISTORICAL",
+          "PENDING",
+          "INVALIDATED"
+        ],
+        "title": "StratosArchitectureEvidenceState"
       },
       "IngestionServiceAnalystSearchRequest": {
         "properties": {

@@ -427,6 +427,18 @@ export class ProductionRegistryClient implements RegistryApiClient {
     );
   }
 
+  resolveStratosArchitectureEvidence(
+    request: import("@/lib/types/api").StratosArchitectureEvidenceResolveRequest,
+    context: ApiRequestContext
+  ): Promise<import("@/lib/types/api").StratosArchitectureEvidenceResolveResponse> {
+    return this.post(
+      "/integrations/stratos/architecture-evidence/resolve",
+      request,
+      `architecture-evidence:${request.operation}:${request.document_id}:${request.document_version_id}`,
+      context
+    );
+  }
+
   authorizeBudgetDocumentIntake(
     documentId: string,
     request: BudgetIntakeAuthorizationRequest,

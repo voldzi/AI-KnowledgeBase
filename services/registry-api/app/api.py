@@ -238,7 +238,13 @@ from app.schemas import (
     DocumentStatus,
     DocumentType,
     ExternalSourceSystem,
+    StratosArchitectureEvidenceOperation,
+    StratosArchitectureEvidencePolicyLineage,
+    StratosArchitectureEvidenceResolveRequest,
+    StratosArchitectureEvidenceResolveResponse,
+    StratosArchitectureEvidenceState,
     DocumentVersionCreate,
+    DocumentVersionEvidenceInvalidateRequest,
     DocumentVersionListResponse,
     DocumentVersionResponse,
     ExternalDocumentCurrentUpdateRequest,
@@ -978,6 +984,73 @@ def _document_version_response(version: DocumentVersion) -> DocumentVersionRespo
                 latest_file.content_security_scanned_at if latest_file else None
             ),
         }
+    )
+
+
+def _stratos_architecture_evidence_state(
+    document: Document,
+    version: DocumentVersion,
+) -> StratosArchitectureEvidenceState:
+    if (
+        document.status == DocumentStatus.cancelled.value
+        or version.status == DocumentStatus.cancelled.value
+    ):
+        return StratosArchitectureEvidenceState.invalidated
+    if version.status in {
+        DocumentStatus.superseded.value,
+        DocumentStatus.archived.value,
+    }:
+        return StratosArchitectureEvidenceState.historical
+    today = document_calendar_today()
+    if version.valid_to is not None and version.valid_to < today:
+        return StratosArchitectureEvidenceState.historical
+    if version.valid_from is not None and version.valid_from > today:
+        return StratosArchitectureEvidenceState.pending
+    if version.status in {
+        DocumentStatus.approved.value,
+        DocumentStatus.valid.value,
+    }:
+        return StratosArchitectureEvidenceState.active
+    return StratosArchitectureEvidenceState.pending
+
+
+def _stratos_architecture_evidence_classification(
+    authority: DocumentVersionAuthority,
+) -> Classification:
+    handling_class = str(authority.policy_binding.handling_class)
+    return {
+        "PUBLIC": Classification.public,
+        "INTERNAL": Classification.internal,
+        "PROJECT_MANAGEMENT": Classification.internal,
+        "RESTRICTED": Classification.restricted,
+    }[handling_class]
+
+
+def _stratos_architecture_evidence_lineage(
+    version: DocumentVersion,
+    authority: DocumentVersionAuthority,
+) -> StratosArchitectureEvidencePolicyLineage:
+    required = {
+        "root_metadata_revision": version.root_metadata_revision,
+        "root_snapshot_hash": version.root_snapshot_hash,
+        "version_snapshot_hash": version.version_snapshot_hash,
+    }
+    if any(not isinstance(value, str) or not value.strip() for value in required.values()):
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "architecture_evidence_lineage_incomplete",
+            "The exact document version does not have complete immutable profile lineage",
+        )
+    return StratosArchitectureEvidencePolicyLineage(
+        governed_resource_id=authority.governed_resource_id,
+        governed_source_version=authority.governed_source_version,
+        governed_parent_resource_id=authority.governed_parent_resource_id,
+        policy_binding_id=authority.policy_binding_id,
+        policy_version=authority.policy_version,
+        policy_hash=authority.policy_hash,
+        root_metadata_revision=required["root_metadata_revision"],
+        root_snapshot_hash=required["root_snapshot_hash"],
+        version_snapshot_hash=required["version_snapshot_hash"],
     )
 
 
@@ -8705,6 +8778,99 @@ def archive_document_version(
     return _document_version_response(version)
 
 
+@router.post(
+    "/documents/{document_id}/versions/{version_id}/invalidate-evidence",
+    response_model=DocumentVersionResponse,
+    description=(
+        "Invalidate one exact immutable document version as architecture evidence. "
+        "The version and its audit history remain available; future STRATOS link, "
+        "open, and export resolutions are denied."
+    ),
+    responses={
+        403: {"description": "Current person cannot archive the exact version"},
+        409: {"description": "Correlation, publication lifecycle, or exact authority conflict"},
+    },
+)
+def invalidate_document_version_evidence(
+    document_id: str,
+    version_id: str,
+    payload: DocumentVersionEvidenceInvalidateRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> DocumentVersionResponse:
+    if principal.service_identity:
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "architecture_evidence_person_required",
+            "A current person identity is required to invalidate architecture evidence",
+        )
+    if payload.correlation_id != get_correlation_id():
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "architecture_evidence_correlation_conflict",
+            "The evidence invalidation must use the current correlation id",
+        )
+
+    document = _get_document(db, document_id)
+    version = _get_version(db, document_id, version_id)
+    _lock_publication_source(
+        db,
+        document_id=document_id,
+        document_version_id=version_id,
+    )
+    db.refresh(document)
+    db.refresh(version)
+    require_document_action(
+        principal,
+        Action.document_version_archive,
+        document,
+        db,
+    )
+    require_document_version_action(
+        principal,
+        Action.document_version_archive,
+        document,
+        version,
+        db,
+    )
+    if version.status == DocumentStatus.cancelled.value:
+        return _document_version_response(version)
+
+    _require_publication_lifecycle_closed(
+        db,
+        document_id=document_id,
+        document_version_id=version_id,
+    )
+    version.status = DocumentStatus.cancelled.value
+    has_other_valid = db.execute(
+        select(DocumentVersion.document_version_id).where(
+            DocumentVersion.document_id == document.document_id,
+            DocumentVersion.status == DocumentStatus.valid.value,
+            DocumentVersion.document_version_id != version.document_version_id,
+        )
+    ).first()
+    if not has_other_valid and document.status == DocumentStatus.valid.value:
+        _transition_document_status(document, DocumentStatus.archived)
+
+    add_audit_event(
+        db,
+        actor_id=principal.subject_id,
+        event_type="document.version.evidence_invalidated",
+        resource_type="document_version",
+        resource_id=version.document_version_id,
+        severity="warning",
+        metadata={
+            "document_id": document.document_id,
+            "document_version_id": version.document_version_id,
+            "reason": payload.reason,
+            "correlation_id": payload.correlation_id,
+        },
+    )
+    _commit_or_conflict(db)
+    db.refresh(version)
+    return _document_version_response(version)
+
+
 @router.get(
     "/documents/{document_id}/versions/{version_id}/publication",
     response_model=DocumentPublicationResponse,
@@ -9321,6 +9487,132 @@ def check_authorization(
         reason=decision.reason,
         reason_codes=list(decision.reason_codes),
         constraints=decision.constraints,
+    )
+
+
+@router.post(
+    "/integrations/stratos/architecture-evidence/resolve",
+    response_model=StratosArchitectureEvidenceResolveResponse,
+    description=(
+        "Resolve one exact immutable AKB document version for a STRATOS "
+        "architecture evidence operation. The current person is authorized "
+        "against the document root and exact version. The response contains "
+        "only link-safe metadata and policy lineage; it never returns source "
+        "content, storage coordinates, chunks, prompts, answers, or a download credential."
+    ),
+    responses={
+        403: {"description": "Current person or exact-version authority is denied"},
+        409: {"description": "Evidence is pending, invalidated, or has incomplete lineage"},
+        503: {"description": "Required current STRATOS policy authority is unavailable"},
+    },
+)
+def resolve_stratos_architecture_evidence(
+    payload: StratosArchitectureEvidenceResolveRequest,
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> StratosArchitectureEvidenceResolveResponse:
+    if principal.service_identity:
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "architecture_evidence_person_required",
+            "A current person identity is required to resolve architecture evidence",
+        )
+    if payload.correlation_id != get_correlation_id():
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "architecture_evidence_correlation_conflict",
+            "The evidence request must use the current correlation id",
+        )
+
+    document = _get_document(db, payload.document_id)
+    version = _get_version(db, payload.document_id, payload.document_version_id)
+    action = (
+        Action.rag_export
+        if payload.operation == StratosArchitectureEvidenceOperation.export
+        else Action.document_read
+    )
+    require_document_action(principal, action, document, db)
+    authority = require_document_version_action(
+        principal,
+        action,
+        document,
+        version,
+        db,
+    )
+    evidence_state = _stratos_architecture_evidence_state(document, version)
+    if (
+        payload.operation != StratosArchitectureEvidenceOperation.status
+        and evidence_state == StratosArchitectureEvidenceState.pending
+    ):
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "architecture_evidence_not_verified",
+            "The exact document version is not yet approved evidence",
+        )
+    if (
+        payload.operation != StratosArchitectureEvidenceOperation.status
+        and evidence_state == StratosArchitectureEvidenceState.invalidated
+    ):
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "architecture_evidence_invalidated",
+            "The exact document version has been invalidated",
+        )
+
+    policy_payload = authority.policy_binding.model_dump(mode="json", by_alias=True)
+    obligations = sorted(policy_payload["obligations"])
+    if (
+        payload.operation == StratosArchitectureEvidenceOperation.export
+        and "NO_EXPORT" in obligations
+    ):
+        raise problem(
+            status.HTTP_403_FORBIDDEN,
+            "architecture_evidence_export_forbidden",
+            "The exact document version policy forbids export",
+        )
+    tlp = policy_payload.get("tlp")
+    if not isinstance(tlp, str) or not tlp:
+        raise problem(
+            status.HTTP_409_CONFLICT,
+            "architecture_evidence_tlp_required",
+            "The exact document version requires explicit TLP",
+        )
+
+    lineage = _stratos_architecture_evidence_lineage(version, authority)
+    add_audit_event(
+        db,
+        actor_id=principal.subject_id,
+        event_type=f"architecture.evidence.{payload.operation.value}.resolved",
+        resource_type="document_version",
+        resource_id=version.document_version_id,
+        metadata={
+            "document_id": document.document_id,
+            "document_version_id": version.document_version_id,
+            "evidence_state": evidence_state.value,
+            "policy_binding_id": authority.policy_binding_id,
+            "policy_version": authority.policy_version,
+            "policy_hash": authority.policy_hash,
+            "correlation_id": payload.correlation_id,
+        },
+    )
+    _commit_or_conflict(db)
+    return StratosArchitectureEvidenceResolveResponse(
+        schemaVersion="akb-stratos-architecture-evidence-1",
+        document_id=document.document_id,
+        document_version_id=version.document_version_id,
+        title=document.title,
+        document_type=DocumentType(document.document_type),
+        version_label=version.version_label,
+        document_status=DocumentStatus(document.status),
+        document_version_status=DocumentStatus(version.status),
+        evidence_state=evidence_state,
+        classification=_stratos_architecture_evidence_classification(authority),
+        tlp=tlp,
+        valid_from=version.valid_from,
+        valid_to=version.valid_to,
+        policy_lineage=lineage,
+        obligations=obligations,
+        resolved_at=utcnow(),
     )
 
 

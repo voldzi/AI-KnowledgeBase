@@ -480,6 +480,136 @@ def test_version_create_publish_archive(client, admin_headers):
     assert versions.json()["items"][0]["document_version_id"] == version["document_version_id"]
 
 
+def test_stratos_architecture_evidence_exact_version_and_invalidation(client, admin_headers):
+    document = _create_document(client, admin_headers)
+    created = client.post(
+        f"/api/v1/documents/{document['document_id']}/versions",
+        headers=admin_headers,
+        json=profiled_version_request(document, {
+            "version_label": "architecture-evidence-1",
+            "valid_from": "2026-07-01",
+            "valid_to": None,
+            "source_file_uri": "s3://akl-documents/architecture/evidence-1.pdf",
+            "file_hash": "sha256:" + "6" * 64,
+            "change_summary": "Immutable architecture evidence fixture.",
+            "file": {
+                "filename": "architecture-evidence.pdf",
+                "mime_type": "application/pdf",
+                "size_bytes": 321,
+                "sha256": "sha256:" + "6" * 64,
+            },
+        }),
+    )
+    assert created.status_code == 201, created.text
+    version = created.json()
+    client.patch(
+        f"/api/v1/documents/{document['document_id']}",
+        headers=admin_headers,
+        json=_root_update(document, status="review"),
+    )
+    _approve_version(client, admin_headers, document, version)
+    published = client.post(
+        f"/api/v1/documents/{document['document_id']}/versions/{version['document_version_id']}/publish",
+        headers=admin_headers,
+    )
+    assert published.status_code == 200, published.text
+
+    resolve_payload = {
+        "schemaVersion": "akb-stratos-architecture-evidence-1",
+        "document_id": document["document_id"],
+        "document_version_id": version["document_version_id"],
+        "operation": "link",
+        "correlation_id": "corr-test",
+    }
+    resolved = client.post(
+        "/api/v1/integrations/stratos/architecture-evidence/resolve",
+        headers=admin_headers,
+        json=resolve_payload,
+    )
+    assert resolved.status_code == 200, resolved.text
+    evidence = resolved.json()
+    assert evidence["document_id"] == document["document_id"]
+    assert evidence["document_version_id"] == version["document_version_id"]
+    assert evidence["evidence_state"] == "ACTIVE"
+    assert evidence["tlp"] == "TLP:CLEAR"
+    assert evidence["classification"] == "internal"
+    assert evidence["policy_lineage"]["root_snapshot_hash"].startswith("sha256:")
+    assert "source_file_uri" not in evidence
+    assert "content" not in evidence
+
+    invalidated = client.post(
+        f"/api/v1/documents/{document['document_id']}/versions/{version['document_version_id']}/invalidate-evidence",
+        headers=admin_headers,
+        json={
+            "reason": "Evidence was withdrawn by the accountable owner.",
+            "correlation_id": "corr-test",
+        },
+    )
+    assert invalidated.status_code == 200, invalidated.text
+    assert invalidated.json()["status"] == "cancelled"
+
+    status_response = client.post(
+        "/api/v1/integrations/stratos/architecture-evidence/resolve",
+        headers=admin_headers,
+        json={**resolve_payload, "operation": "status"},
+    )
+    assert status_response.status_code == 200, status_response.text
+    assert status_response.json()["evidence_state"] == "INVALIDATED"
+
+    denied_open = client.post(
+        "/api/v1/integrations/stratos/architecture-evidence/resolve",
+        headers=admin_headers,
+        json={**resolve_payload, "operation": "open"},
+    )
+    assert denied_open.status_code == 409, denied_open.text
+    assert denied_open.json()["error"]["code"] == "architecture_evidence_invalidated"
+
+
+def test_stratos_architecture_evidence_requires_exact_permission_and_correlation(client, admin_headers):
+    document = _create_document(client, admin_headers, classification="restricted")
+    created = client.post(
+        f"/api/v1/documents/{document['document_id']}/versions",
+        headers=admin_headers,
+        json=profiled_version_request(document, {
+            "version_label": "restricted-evidence-1",
+            "source_file_uri": "s3://akl-documents/architecture/restricted.pdf",
+            "file_hash": "sha256:" + "7" * 64,
+            "file": {
+                "filename": "restricted.pdf",
+                "mime_type": "application/pdf",
+                "size_bytes": 123,
+                "sha256": "sha256:" + "7" * 64,
+            },
+        }),
+    )
+    assert created.status_code == 201, created.text
+    payload = {
+        "schemaVersion": "akb-stratos-architecture-evidence-1",
+        "document_id": document["document_id"],
+        "document_version_id": created.json()["document_version_id"],
+        "operation": "status",
+        "correlation_id": "corr-test",
+    }
+    denied = client.post(
+        "/api/v1/integrations/stratos/architecture-evidence/resolve",
+        headers={
+            "X-AKL-Subject": "user_reader",
+            "X-AKL-Roles": "no_access",
+            "X-Correlation-ID": "corr-test",
+        },
+        json=payload,
+    )
+    assert denied.status_code == 403, denied.text
+
+    correlation_conflict = client.post(
+        "/api/v1/integrations/stratos/architecture-evidence/resolve",
+        headers=admin_headers,
+        json={**payload, "correlation_id": "different-correlation"},
+    )
+    assert correlation_conflict.status_code == 409, correlation_conflict.text
+    assert correlation_conflict.json()["error"]["code"] == "architecture_evidence_correlation_conflict"
+
+
 def test_document_status_transition_rejects_invalid_jump(client, admin_headers):
     document = _create_document(client, admin_headers)
 

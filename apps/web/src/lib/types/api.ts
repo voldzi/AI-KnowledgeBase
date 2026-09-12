@@ -174,6 +174,45 @@ export interface DocumentAuthorizationDecision {
   constraints: Record<string, unknown>;
 }
 
+export type StratosArchitectureEvidenceOperation = "link" | "open" | "status" | "export";
+
+export interface StratosArchitectureEvidenceResolveRequest {
+  schemaVersion: "akb-stratos-architecture-evidence-1";
+  document_id: string;
+  document_version_id: string;
+  operation: StratosArchitectureEvidenceOperation;
+  correlation_id: string;
+}
+
+export interface StratosArchitectureEvidenceResolveResponse {
+  schemaVersion: "akb-stratos-architecture-evidence-1";
+  document_id: string;
+  document_version_id: string;
+  title: string;
+  document_type: string;
+  version_label: string;
+  document_status: string;
+  document_version_status: string;
+  evidence_state: "ACTIVE" | "HISTORICAL" | "PENDING" | "INVALIDATED";
+  classification: "public" | "internal" | "restricted" | "confidential";
+  tlp: "TLP:RED" | "TLP:AMBER+STRICT" | "TLP:AMBER" | "TLP:GREEN" | "TLP:CLEAR";
+  valid_from: string | null;
+  valid_to: string | null;
+  policy_lineage: {
+    governed_resource_id: string;
+    governed_source_version: string;
+    governed_parent_resource_id: string | null;
+    policy_binding_id: string;
+    policy_version: string;
+    policy_hash: string;
+    root_metadata_revision: string;
+    root_snapshot_hash: string;
+    version_snapshot_hash: string;
+  };
+  obligations: string[];
+  resolved_at: string;
+}
+
 export interface BudgetIntakeAuthorizationRequest {
   document_profile: DocumentVersionProfileInput;
   upload_session_id: string;
@@ -299,6 +338,10 @@ export interface RegistryApiClient {
     context: ApiRequestContext,
     documentVersionId?: string,
   ): Promise<DocumentAuthorizationDecision>;
+  resolveStratosArchitectureEvidence(
+    request: StratosArchitectureEvidenceResolveRequest,
+    context: ApiRequestContext
+  ): Promise<StratosArchitectureEvidenceResolveResponse>;
   authorizeBudgetDocumentIntake(
     documentId: string,
     request: BudgetIntakeAuthorizationRequest,
