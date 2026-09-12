@@ -14,6 +14,10 @@ export interface ExactSourceAuthorizationFailure {
   message: string;
 }
 
+function optionalAuthorityCoordinate(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
 export function exactSourceAuthorizationFailure(
   decision: DocumentAuthorizationDecision,
   expected: ExactSourceAuthorityCoordinates
@@ -29,9 +33,9 @@ export function exactSourceAuthorizationFailure(
   if (
     constraints.document_id !== expected.documentId ||
     constraints.document_version_id !== expected.documentVersionId ||
-    constraints.policy_binding_id !== expected.policyBindingId ||
-    constraints.policy_version !== expected.policyVersion ||
-    constraints.policy_hash !== expected.policyHash
+    optionalAuthorityCoordinate(constraints.policy_binding_id) !== expected.policyBindingId ||
+    optionalAuthorityCoordinate(constraints.policy_version) !== expected.policyVersion ||
+    optionalAuthorityCoordinate(constraints.policy_hash) !== expected.policyHash
   ) {
     return {
       code: "EXACT_SOURCE_AUTHORITY_STALE",

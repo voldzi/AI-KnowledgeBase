@@ -46,6 +46,30 @@ test("exact source authorization preserves permission revocation", () => {
   );
 });
 
+test("exact source authorization treats omitted optional policy coordinates as null", () => {
+  assert.equal(
+    exactSourceAuthorizationFailure(
+      {
+        allowed: true,
+        reason: "legacy source allowed",
+        reason_codes: ["VERSION_AUTHORITY_ALLOW"],
+        constraints: {
+          document_id: "doc_legacy",
+          document_version_id: "ver_legacy"
+        }
+      },
+      {
+        documentId: "doc_legacy",
+        documentVersionId: "ver_legacy",
+        policyBindingId: null,
+        policyVersion: null,
+        policyHash: null
+      }
+    ),
+    null
+  );
+});
+
 for (const field of [
   "document_id",
   "document_version_id",
