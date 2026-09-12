@@ -78,6 +78,34 @@ class InterruptedClient:
         raise RetrievalError("LLM_ANSWER_INCOMPLETE", "Incomplete")
 
 
+class CompletesOnRetryClient:
+    def __init__(self):
+        self.calls = 0
+
+    async def chat_completion(self, **kwargs):
+        self.calls += 1
+        if self.calls == 1:
+            raise RetrievalError("LLM_ANSWER_INCOMPLETE", "Incomplete")
+        assert kwargs["metadata"]["incomplete_answer_retry"] is True
+        return "A concise and complete answer."
+
+
+def test_composer_retries_one_incomplete_generation_and_keeps_citations():
+    chunk = RetrievedChunk(
+        chunk_id="chunk-retry", score=0.95, retrieval_method="hybrid", text="Authorized source.",
+        citation=ChunkCitation(document_id="doc-retry", document_version_id="version-retry",
+                               document_title="Source", version_label="1", page_number=1, section_path=[]),
+    )
+    llm = CompletesOnRetryClient()
+    answer = asyncio.run(AnswerComposer(settings(), llm).compose(
+        query_id="query-retry", query="Summarize", chunks=[chunk], confidence="high",
+        warnings=[], max_chunks=1, response_language="en",
+    ))
+    assert llm.calls == 2
+    assert answer.answer == "A concise and complete answer."
+    assert [citation.chunk_id for citation in answer.citations] == ["chunk-retry"]
+    assert "LLM_ANSWER_RETRIED" in answer.warnings
+
 def test_composer_replaces_partial_prose_and_never_certifies_it():
     chunk = RetrievedChunk(
         chunk_id="chunk-test", score=0.95, retrieval_method="hybrid", text="Authorized source.",
