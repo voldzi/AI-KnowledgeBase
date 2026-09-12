@@ -44,6 +44,15 @@ describe("assistant tool router", () => {
     assert.equal(route.tool, "controlled_rule_answer");
   });
 
+  it("routes general public procurement principles to cited statute retrieval", () => {
+    const route = routeAssistantMessage(
+      "Jaké zásady musí zadavatel dodržovat při zadávání veřejné zakázky?",
+      "cs",
+    );
+    assert.equal(route.tool, "rag_document_answer");
+    assert.equal(route.controlledRuleIntent, null);
+  });
+
   it("routes public procurement rules to the governed rule catalog", () => {
     const route = routeAssistantMessage(
       "Jaký je limit pro veřejnou zakázku malého rozsahu podle směrnice č. 2/2023?",

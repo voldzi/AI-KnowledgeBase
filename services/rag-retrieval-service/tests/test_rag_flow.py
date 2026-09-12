@@ -24,6 +24,7 @@ from app.service import (
     _latest_available_assistant_context,
     _normalize_for_assistant,
     _requested_answer_facets,
+    _assistant_required_legal_evidence,
     _parse_follow_up_questions,
     _promote_legal_evidence,
     _complete_chunk_policy_metadata,
@@ -880,6 +881,23 @@ def test_human_legal_question_adds_canonical_statute_identifier(
     identifier: str,
 ) -> None:
     assert identifier in _assistant_query(question, {})
+
+
+@pytest.mark.parametrize(
+    ("question", "phrase"),
+    [
+        ("Jaké zásady musí zadavatel dodržovat při zadávání veřejné zakázky?", "zásady transparentnosti"),
+        ("Do kdy musí úřad odpovědět na žádost podle zákona o svobodném přístupu k informacím?", "nejpozději do 15 dnů"),
+        ("Kdy podle občanského zákoníku vzniká smlouva a co musí obsahovat?", "smlouvou projevují strany vůli"),
+    ],
+)
+def test_common_legal_questions_require_direct_controlling_evidence(
+    question: str,
+    phrase: str,
+) -> None:
+    evidence = _assistant_required_legal_evidence(question)
+    assert evidence is not None
+    assert phrase in evidence[0]
 
 
 def test_referential_follow_up_keeps_conversation_questions() -> None:

@@ -3523,7 +3523,7 @@ _ASSISTANT_LEGAL_RETRIEVAL_HINTS = (
         "134/2016 Sb.; § 6 zásady transparentnosti, přiměřenosti, rovného zacházení a zákazu diskriminace",
     ),
     (
-        r"\b(svobodn\w*\s+pristup\w*\s+k?\s*informac|zadost\w*\s+o\s+informac|pozad\w*(?:\s+\w+){0,5}\s+o\s+informac\w*|povinn\w*\s+subjekt)\b",
+        r"\b(svobodn\w*\s+pristup\w*\s+k?\s*informac\w*|zadost\w*\s+o\s+informac\w*|pozad\w*(?:\s+\w+){0,5}\s+o\s+informac\w*|povinn\w*\s+subjekt)\b",
         "106/1999 Sb.; § 14 odst. 5 písm. d); poskytnutí informace do 15 dnů od přijetí žádosti",
     ),
     (
@@ -3547,7 +3547,7 @@ _ASSISTANT_LEGAL_RETRIEVAL_HINTS = (
         "250/2000 Sb.; § 2 rozpočty územních samosprávných celků",
     ),
     (
-        r"\b(nalezitost\w*(?:\s+\w+){0,4}\s+smlouv|smlouv\w*\s+mezi\s+(?:dvema|stran))\b",
+        r"\b(nalezitost\w*(?:\s+\w+){0,4}\s+smlouv\w*|vznik\w*(?:\s+\w+){0,3}\s+smlouv\w*|smlouv\w*(?:\s+\w+){0,4}\s+obsah\w*|smlouv\w*\s+mezi\s+(?:dvema|stran))\b",
         "89/2012 Sb.; § 1724 smlouva; projev vůle stran zřídit závazek; určení stran, předmětu a obsahu závazku",
     ),
     (r"\bnis\s*2\b", "Směrnice NIS2; Směrnice (EU) 2022/2555"),
@@ -3583,6 +3583,27 @@ def _assistant_required_legal_evidence(message: str) -> tuple[str, str] | None:
             "563/1991 Sb. § 5: pověření vedením účetnictví nezbavuje účetní jednotku odpovědnosti",
             "nezbavuje účetní jednotku odpovědnosti",
         )
+    if re.search(
+        r"\b(svobodn\w*\s+pristup\w*\s+k?\s*informac\w*|zadost\w*\s+o\s+informac\w*|pozad\w*(?:\s+\w+){0,5}\s+o\s+informac\w*)\b",
+        normalized,
+    ):
+        return (
+            "106/1999 Sb. § 14 odst. 5 písm. d): poskytne informaci v souladu se žádostí ve lhůtě nejpozději do 15 dnů",
+            "ve lhůtě nejpozději do 15 dnů",
+        )
+    if re.search(
+        r"\b(nalezitost\w*(?:\s+\w+){0,4}\s+smlouv\w*|vznik\w*(?:\s+\w+){0,3}\s+smlouv\w*|smlouv\w*(?:\s+\w+){0,4}\s+obsah\w*|smlouv\w*\s+mezi\s+(?:dvema|stran))\b",
+        normalized,
+    ):
+        return (
+            "89/2012 Sb. § 1724: smlouvou projevují strany vůli zřídit mezi sebou závazek a řídit se obsahem smlouvy",
+            "smlouvou projevují strany vůli zřídit mezi sebou závazek",
+        )
+    if re.search(r"\b(verejn\w*\s+zakaz\w*|zadavan\w*\s+verejn\w*\s+zakaz\w*)\b", normalized):
+        return (
+            "134/2016 Sb. § 6: zásady transparentnosti, přiměřenosti, rovného zacházení a zákazu diskriminace",
+            "zásady transparentnosti",
+        )
     return None
 
 
@@ -3592,13 +3613,15 @@ def _promote_legal_evidence(message: str, chunks: list[RetrievedChunk]) -> list[
     needles: tuple[str, ...] = ()
     if re.search(r"\b(prescas\w*|zakonik\w*\s+prac)\b", normalized):
         needles = ("nařízená práce přesčas nesmí", "celkový rozsah práce přesčas")
-    elif re.search(r"\b(svobodn\w*\s+pristup\w*\s+k?\s*informac|pozad\w*(?:\s+\w+){0,5}\s+o\s+informac\w*)\b", normalized):
-        needles = ("poskytne informaci v souladu se žádostí",)
+    elif re.search(r"\b(svobodn\w*\s+pristup\w*\s+k?\s*informac\w*|pozad\w*(?:\s+\w+){0,5}\s+o\s+informac\w*)\b", normalized):
+        needles = ("ve lhůtě nejpozději do 15 dnů", "poskytne informaci v souladu se žádostí")
+    elif re.search(r"\b(verejn\w*\s+zakaz\w*|zadavan\w*\s+verejn\w*\s+zakaz\w*)\b", normalized):
+        needles = ("zásady transparentnosti",)
     elif re.search(r"\b(spravn\w*\s+(?:organ|rizeni|rozhodnut|rad)\w*|odvolan\w*\s+proti\s+rozhodnut\w*)\b", normalized):
         needles = ("odvolací lhůta činí 15 dnů",)
     elif re.search(r"\b(ucetnictv\w*|ucetn\w*\s+jednotk|veden\w*\s+uct)\b", normalized):
         needles = ("nezbavuje účetní jednotku odpovědnosti",)
-    elif re.search(r"\b(nalezitost\w*(?:\s+\w+){0,4}\s+smlouv|smlouv\w*\s+mezi\s+(?:dvema|stran))\b", normalized):
+    elif re.search(r"\b(nalezitost\w*(?:\s+\w+){0,4}\s+smlouv\w*|vznik\w*(?:\s+\w+){0,3}\s+smlouv\w*|smlouv\w*(?:\s+\w+){0,4}\s+obsah\w*|smlouv\w*\s+mezi\s+(?:dvema|stran))\b", normalized):
         needles = ("smlouvou projevují strany vůli zřídit mezi sebou závazek",)
     if not needles:
         return chunks
