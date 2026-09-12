@@ -14,7 +14,7 @@ citací a odebráním přístupu ve stejné relaci. Přesný confirm replay pou�
 existující autoritativní Registry ingestion attempt. Aktivace verze se auditně
 váže na potvrzeného lidského aktéra; profile-preserving změna assignmentů
 nemění přijatou provenance a její změna selže uzavřeně. Aktivní access
-projection 2.1.0 vyžaduje katalog `capabilities-1.12.1`; shadow 2.0.0 zůstává
+projection 2.1.0 vyžaduje katalog `capabilities-1.12.2`; shadow 2.0.0 zůstává
 na `capabilities-1.12.0`.
 
 Aktualizace 6. 9. 2026: AKB implementovalo source preflight, společný binární příjem, confirm a status pro ProjectFlow/ArchFlow. Aktuální pokyn a kontrakty: [STRATOS source intake](../integration/STRATOS_SOURCE_DOCUMENT_INTAKE_V1.md). Následuje implementace autority/adaptérů na STRATOS a společná akceptace; příjem zůstává uzavřený. Starší položka „AKB musí dodat source OpenAPI“ je tímto nahrazena.
@@ -33,7 +33,7 @@ preserving the financial source scope, exact policy hash, fresh actor/PDP,
 central source registration and current profile validation. The joint local
 acceptance now includes a real uploaded and indexed synthetic Budget document,
 an exact citation and same-session revocation. The related contract is pinned
-to capability catalog `capabilities-1.12.1`.
+to capability catalog `capabilities-1.12.2`.
 
 AKB has implemented the PF/ArchFlow source contract and runtime. STRATOS must
 now implement the source authority and adapters from the linked source handoff.

@@ -13,7 +13,7 @@ FILES = (
     "c2-consumer-conformance.json", "c3-akb-test-manifest.json",
 )
 REPOSITORY = "AKB/ai-knowledgebase"
-BOUNDARY_BUNDLE_CANONICAL_SHA256 = "f837d317b1c60e4477318f9ae6d81f6cb04901686020be188bb11ffc072a576b"
+BOUNDARY_BUNDLE_CANONICAL_SHA256 = "26f76338605e76e3e8e6e1ef43a8c71ec9cfed4e26ab8b8ddf037af708f50cec"
 C0_KEYS = {
     "schemaVersion", "repository", "epoch", "phase",
     "boundaryBundleCanonicalSha256", "acknowledgement", "runtimeBoundary",
@@ -107,7 +107,7 @@ def main() -> None:
     contracts = c2.get("contracts")
     expected_contracts = [
         ("2.0.0", "shadow", False, "capabilities-1.12.0", "sha256:3b11860c9b79bfb82f7792b93815f49d786667a7dd4b74f5a8ad0cb5dd6620b7"),
-        ("2.1.0", "active", True, "capabilities-1.12.1", "sha256:16509ccbdc3e49e7a9918a29c833a8ae1aa7c78777b0a8693a2477acc2f0dafa"),
+        ("2.1.0", "active", True, "capabilities-1.12.2", "sha256:16509ccbdc3e49e7a9918a29c833a8ae1aa7c78777b0a8693a2477acc2f0dafa"),
     ]
     if not isinstance(contracts, list) or len(contracts) != 2:
         fail("C2 must contain exactly shadow and active contracts")
