@@ -100,19 +100,21 @@ docker compose -p akb-gte-reranker \
   up -d --pull never --no-build --no-deps --force-recreate gte-reranker
 
 wait_for_ready() {
-  local container="$1"
+  local endpoint="$1"
   local deadline=$((SECONDS + 300))
   while (( SECONDS < deadline )); do
-    if docker logs "${container}" 2>&1 | tail -n 80 | grep -q 'Ready'; then
+    if docker exec akb-rag-retrieval-service-1 python -c \
+      "import urllib.request; urllib.request.urlopen('http://${endpoint}/health', timeout=2).read()" \
+      >/dev/null 2>&1; then
       return 0
     fi
     sleep 2
   done
-  fail "model did not become ready: ${container}"
+  fail "model endpoint did not become ready: ${endpoint}"
 }
 
-wait_for_ready akb-bge-reranker-bge-reranker-1
-wait_for_ready akb-gte-reranker-gte-reranker-1
+wait_for_ready bge-reranker:3000
+wait_for_ready gte-reranker:3000
 
 docker exec -i akb-rag-retrieval-service-1 python - \
   --provider tei --base-url http://bge-reranker:3000 \
