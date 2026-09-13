@@ -36,7 +36,9 @@ const DOWNLOAD_TIMEOUT_MS = 45_000;
 const DOWNLOAD_ATTEMPTS = 2;
 const PUBLIC_SOURCE_TAG = "official-public-reference";
 const E_SBIRKA_PUBLIC_ORIGIN = "https://e-sbirka.gov.cz";
-const E_SBIRKA_ASYNC_POLL_ATTEMPTS = 24;
+// e-Sbírka can need more than a minute to render an uncached historical PDF.
+// Keep polling bounded below the route's three-minute execution limit.
+const E_SBIRKA_ASYNC_POLL_ATTEMPTS = 240;
 const E_SBIRKA_ASYNC_POLL_INTERVAL_MS = 500;
 
 export interface PublicSourceSyncRequest {

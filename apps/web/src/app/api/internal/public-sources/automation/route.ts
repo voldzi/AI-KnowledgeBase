@@ -94,6 +94,14 @@ export async function POST(request: NextRequest) {
     throw new ApiClientError("Automation action is unsupported.", 422, "OFFICIAL_SOURCE_AUTOMATION_ACTION_INVALID", correlationId);
   } catch (error) {
     const known = error instanceof ApiClientError;
+    if (!known) {
+      console.error(JSON.stringify({
+        event: "official_source_automation_failed",
+        correlation_id: correlationId,
+        error_name: error instanceof Error ? error.name : "UnknownError",
+        error_message: error instanceof Error ? error.message : "Unknown official-source automation error.",
+      }));
+    }
     return NextResponse.json({ error: {
       code: known ? error.code : "OFFICIAL_SOURCE_AUTOMATION_FAILED",
       message: known ? error.message : "Official-source automation failed.",
