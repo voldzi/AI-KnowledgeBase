@@ -1,0 +1,11 @@
+services:
+  gte-reranker:
+    volumes:
+      - type: volume
+        source: gte_reranker_cache
+        target: /data
+
+volumes:
+  gte_reranker_cache:
+    external: true
+    name: akb-gte-reranker_gte_reranker_cache

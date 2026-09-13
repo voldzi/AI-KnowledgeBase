@@ -1,0 +1,11 @@
+services:
+  bge-reranker:
+    volumes:
+      - type: volume
+        source: bge_reranker_cache
+        target: /data
+
+volumes:
+  bge_reranker_cache:
+    external: true
+    name: akb-bge-reranker_bge_reranker_cache

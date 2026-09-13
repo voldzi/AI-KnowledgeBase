@@ -220,6 +220,45 @@ The BGE runtime remains available through
 `docker-compose.bge-docker-home.yml`. Do not run GTE and BGE under the same
 service alias.
 
+## docker.home.cz X5 cache placement
+
+The CPU fallback rerankers keep only reproducible model caches on the
+non-backed-up X5 work filesystem. Their authoritative Compose files bind:
+
+- BGE `/data` to `/srv/x5-production/cache/akb/bge-reranker`;
+- GTE `/data` to `/srv/x5-production/cache/akb/gte-reranker`.
+
+Both binds use `create_host_path: false`. Provision and migrate them only with:
+
+```bash
+scripts/migrate_docker_home_reranker_cache_x5.sh /srv/akb/current
+```
+
+The script requires `/srv/x5-production` to be a dedicated mounted filesystem
+with UUID `2f93f595-b61b-4eea-9054-7afa9b275b5b`. A missing or different mount
+fails before either reranker is stopped. It copies cache contents with metadata
+preserved, installs both reviewed runtime Compose files under the stable
+`/srv/akb/rerankers` path, recreates only the two reranker services, waits for
+both models to report ready, runs a real ranking smoke against each model, and
+verifies the active bind sources. The original named volumes remain unchanged
+for at least seven days and require separate approval before deletion.
+
+The operator needs Docker access and write access to `/srv/akb`; unrestricted
+sudo is not required. Cache creation and copying run in a networkless,
+read-only helper container using the already active pinned reranker image. The
+source volumes are mounted read-only.
+
+Rollback combines the stable runtime Compose file with the matching
+`docker-compose.*-docker-home-volume-rollback.yml` overlay. The overlay restores
+`/data` from the preserved external Docker volume without copying cache data
+back to the system disk. Verify both model smokes again after rollback and do
+not remove either original volume during the seven-day rollback window.
+
+Docling keeps transient conversion files in its bounded container `tmpfs` and
+uses the private `docling-runtime` volume only for its Unix socket. Do not move
+Registry data, source objects, secrets, configuration, audit data, or Docling
+model artifacts to X5.
+
 ## Security and operations
 
 - Neither runtime logs query or document bodies in AKB. Runtime access logs are
