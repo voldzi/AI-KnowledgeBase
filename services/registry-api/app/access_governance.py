@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from hashlib import sha256
 import json
+import logging
 import threading
 import time
 from typing import Any, Literal
@@ -32,6 +33,7 @@ from app.information_policy import (
 
 
 _request_decisions: ContextVar[dict[str, dict[str, Any]] | None] = ContextVar("akb_request_decisions", default=None)
+logger = logging.getLogger("akl.registry.governance")
 
 
 @contextmanager
@@ -744,6 +746,21 @@ class StratosGovernanceClient:
         except httpx.HTTPError as exc:
             raise GovernanceUnavailable("STRATOS access governance is unavailable") from exc
         if response.status_code in {401, 403}:
+            upstream_code = "unknown"
+            try:
+                response_body = response.json()
+                if isinstance(response_body, dict):
+                    candidate = response_body.get("code") or response_body.get("message")
+                    if isinstance(candidate, str) and candidate.replace("_", "").isalnum():
+                        upstream_code = candidate[:120]
+            except ValueError:
+                pass
+            logger.warning(
+                "stratos_governance_denied status=%s code=%s correlation_id=%s",
+                response.status_code,
+                upstream_code,
+                (extra_headers or {}).get("X-Correlation-ID", "missing"),
+            )
             raise GovernanceDenied("STRATOS access governance rejected the runtime credential")
         if response.status_code >= 400:
             raise GovernanceUnavailable(
