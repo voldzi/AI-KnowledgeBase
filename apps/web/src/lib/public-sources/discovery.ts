@@ -219,7 +219,14 @@ async function discoverCzechLawOpenData(
             versionLabel: `účinné-od-${version.effectiveFrom}`,
             effectiveFrom: version.effectiveFrom,
             effectiveTo: version.effectiveTo,
-            temporalStatus: version.effectiveTo ? "historical" : "current",
+            // e-Sbírka closes an effective interval when it already knows a
+            // later, future amendment.  A non-null end date therefore does
+            // not by itself make the version historical: it remains the
+            // current governed source until that end date has passed.
+            temporalStatus: version.effectiveFrom <= today
+              && (version.effectiveTo === null || version.effectiveTo >= today)
+              ? "current"
+              : "historical",
           });
         }
       } catch (error) {

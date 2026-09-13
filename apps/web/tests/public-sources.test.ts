@@ -74,7 +74,8 @@ test("e-Sbírka discovery uses credential-free open data and preserves versions 
       const effectiveTo: Record<string, string | null> = {
         "2022-09-01": "2023-07-15",
         "2023-07-16": "2024-12-31",
-        "2025-01-01": null,
+        "2025-01-01": "2025-12-31",
+        "2026-01-01": "2026-12-31",
       };
       return new Response(JSON.stringify({
         "@id": path.slice(1),
@@ -89,6 +90,7 @@ test("e-Sbírka discovery uses credential-free open data and preserves versions 
         `${path.slice(1)}/2022-09-01`,
         `${path.slice(1)}/2023-07-16`,
         `${path.slice(1)}/2025-01-01`,
+        `${path.slice(1)}/2026-01-01`,
         `${path.slice(1)}/2999-01-01`,
       ],
     }), {
@@ -102,11 +104,11 @@ test("e-Sbírka discovery uses credential-free open data and preserves versions 
   const procurementAct = result.candidates.filter((item) => item.title.startsWith("134/2016 Sb."));
 
   assert.equal(collection?.syncMode, "open_data");
-  assert.equal(result.candidates.length, (collection?.openDataActs?.length ?? 0) * 3);
-  assert.equal(result.pagesVisited, (collection?.openDataActs?.length ?? 0) * 4);
-  assert.equal(requests, (collection?.openDataActs?.length ?? 0) * 4);
+  assert.equal(result.candidates.length, (collection?.openDataActs?.length ?? 0) * 4);
+  assert.equal(result.pagesVisited, (collection?.openDataActs?.length ?? 0) * 5);
+  assert.equal(requests, (collection?.openDataActs?.length ?? 0) * 5);
   assert.equal(result.warnings.length, 0);
-  assert.equal(procurementAct.length, 3);
+  assert.equal(procurementAct.length, 4);
   assert.equal(procurementAct[0]?.canonicalUrl, "https://e-sbirka.gov.cz/sb/2016/134");
   assert.deepEqual(
     procurementAct.map((candidate) => ({
@@ -117,7 +119,8 @@ test("e-Sbírka discovery uses credential-free open data and preserves versions 
     [
       { from: "2022-09-01", to: "2023-07-15", status: "historical" },
       { from: "2023-07-16", to: "2024-12-31", status: "historical" },
-      { from: "2025-01-01", to: null, status: "current" },
+      { from: "2025-01-01", to: "2025-12-31", status: "historical" },
+      { from: "2026-01-01", to: "2026-12-31", status: "current" },
     ],
   );
   assert.equal(
@@ -125,8 +128,8 @@ test("e-Sbírka discovery uses credential-free open data and preserves versions 
     "https://e-sbirka.gov.cz/sb/2016/134/2022-09-01",
   );
   assert.equal(
-    procurementAct[2]?.sourceUrl,
-    "https://e-sbirka.gov.cz/sb/2016/134/2025-01-01",
+    procurementAct[3]?.sourceUrl,
+    "https://e-sbirka.gov.cz/sb/2016/134/2026-01-01",
   );
 });
 
