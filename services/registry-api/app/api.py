@@ -62,7 +62,7 @@ from app.content_security import (
     ContentSecurityAttestationError,
     verify_content_security_attestation,
 )
-from app.database import get_db
+from app.database import engine, get_db
 from app.document_profile import DocumentAdmissionExpectation
 from app.document_profile_inputs import build_root_snapshot as _build_root_snapshot, build_version_snapshot
 from app.document_profile_catalog import validate_profile_version
@@ -2755,8 +2755,12 @@ def health() -> HealthResponse:
 
 
 @health_router.get("/ready")
-def ready(db: Session = Depends(get_db)) -> dict[str, str]:
-    db.execute(text("SELECT 1"))
+def ready() -> dict[str, str]:
+    # Readiness must release its database transaction before the HTTP response
+    # is sent.  A request-scoped ORM Session can remain open while a caller
+    # times out, which turns frequent readiness probes into idle transactions.
+    with engine.connect() as connection:
+        connection.execute(text("SELECT 1"))
     return {"status": "ready", "service": "registry-api"}
 
 

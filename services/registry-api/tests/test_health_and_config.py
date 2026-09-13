@@ -2,6 +2,8 @@ from tests.document_policy_fixtures import admitted_policy
 from document_profile_fixtures import profiled_document_request
 
 import pytest
+
+from app import api
 from pydantic import ValidationError
 
 from app.config import Settings
@@ -17,6 +19,35 @@ def test_health_and_ready(client):
     ready = client.get("/ready")
     assert ready.status_code == 200
     assert ready.json() == {"status": "ready", "service": "registry-api"}
+
+
+def test_ready_closes_its_connection_before_returning(client, monkeypatch):
+    class Connection:
+        closed = False
+
+        def __enter__(self):
+            return self
+
+        def execute(self, statement):
+            assert str(statement) == "SELECT 1"
+
+        def __exit__(self, exc_type, exc, traceback):
+            self.closed = True
+
+    class ReadinessEngine:
+        def __init__(self):
+            self.connection = Connection()
+
+        def connect(self):
+            return self.connection
+
+    readiness_engine = ReadinessEngine()
+    monkeypatch.setattr(api, "engine", readiness_engine)
+
+    response = client.get("/ready")
+
+    assert response.status_code == 200
+    assert readiness_engine.connection.closed is True
 
 
 def test_production_rejects_mock_auth():
