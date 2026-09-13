@@ -78,7 +78,11 @@ from retrievers.query_analysis import RetrievalPlan, analyze_query, extract_iden
 
 logger = logging.getLogger(__name__)
 
-READINESS_CHECK_TIMEOUT_SECONDS = 2.0
+# A readiness probe reaches Qdrant, OpenSearch and the LLM gateway.  Two
+# seconds can expire during ordinary remote TLS latency even though every
+# dependency is usable; keep the probe bounded while allowing that path to
+# complete.
+READINESS_CHECK_TIMEOUT_SECONDS = 5.0
 CONTROLLED_RULE_SOURCE_SCAN_LIMIT = 2000
 
 
