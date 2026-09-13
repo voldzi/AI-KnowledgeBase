@@ -7535,6 +7535,19 @@ def _authorized_document_metadata_rows(
         item: tuple[str, tuple[Document, Decision]],
     ) -> tuple[str, bool]:
         runtime_key, (document, local_decision) = item
+        official_repair_lookup = (
+            authorization_action == Action.document_read
+            and isinstance(tag, str)
+            and re.fullmatch(r"official-source-id:[0-9a-f]{24}", tag) is not None
+            and local_decision.constraints.get("official_source_service") is True
+        )
+        if official_repair_lookup:
+            # The dedicated synchronizer needs the stale root coordinates in
+            # order to replace them with a newly approved immutable root. This
+            # path returns Registry metadata only for one exact stable source
+            # id; file access, Chat, export and ordinary document reads still
+            # require a fresh central decision.
+            return runtime_key, True
         return (
             runtime_key,
             evaluate_runtime_document_access(
