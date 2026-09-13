@@ -130,20 +130,28 @@ test("e-Sbírka discovery uses credential-free open data and preserves versions 
   );
 });
 
-test("e-Sbírka pilot starts with the ten centrally governed laws", () => {
+test("e-Sbírka catalog preserves revision 1 and exactly matches governed revision 2", () => {
   const collection = publicSourceCollection("czech-law");
-  const approved = JSON.parse(readFileSync(
+  const revision1 = JSON.parse(readFileSync(
     new URL("../../../contracts/stratos/official-sources/czech-law-pilot.v1.json", import.meta.url),
     "utf8",
-  )) as { sources: Array<{ number: string; year: number; title: string }> };
+  )) as { revision: string; sources: Array<{ number: string; year: number; title: string }> };
+  const revision2 = JSON.parse(readFileSync(
+    new URL("../../../contracts/stratos/official-sources/czech-law-pilot.v2.json", import.meta.url),
+    "utf8",
+  )) as { revision: string; sources: Array<{ number: string; year: number; title: string }> };
+
+  assert.equal(revision1.revision, "1");
+  assert.equal(revision1.sources.length, 10);
+  assert.equal(revision2.revision, "2");
+  assert.equal(revision2.sources.length, 100);
   assert.deepEqual(
     collection?.openDataActs?.slice(0, 10).map((act) => `${act.number}/${act.year}`),
     ["89/2012", "90/2012", "262/2006", "500/2004", "106/1999", "134/2016", "218/2000", "250/2000", "563/1991", "340/2015"],
   );
-  const approvedTitles = new Set(approved.sources.map((source) => source.title));
-  assert.ok(
-    collection?.openDataActs?.slice(0, 10)
-      .every((act) => approvedTitles.has(`${act.number}/${act.year} Sb. – ${act.title}`)),
+  assert.deepEqual(
+    new Set(collection?.openDataActs?.map((act) => `${act.number}/${act.year} Sb. – ${act.title}`)),
+    new Set(revision2.sources.map((source) => source.title)),
   );
 });
 

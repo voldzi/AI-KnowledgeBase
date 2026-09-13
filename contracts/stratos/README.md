@@ -25,16 +25,30 @@ python3 scripts/verify_stratos_contract_snapshot.py \
   --source-root "/Users/voldzi/Documents/Development/18 2026/STRATOS/contracts"
 ```
 
+For the independently versioned official-source contract, verify only its
+manifests and authority OpenAPI against the current sibling checkout with:
+
+```bash
+python3 scripts/verify_stratos_contract_snapshot.py \
+  --official-source-only \
+  --source-root "/Users/voldzi/Developer/18 2026/STRATOS/contracts"
+```
+
 The expected SHA-256 values are held in the verifier. The snapshot contains no
 credentials, tenant data, prompts, answers, or document content.
 
-The governed official-source integration accepted on 2026-09-09 is stored
+The governed official-source integration synchronized on 2026-09-13 is stored
 separately under `official-sources/`:
 
-- `stratos-authority.openapi.json` — STRATOS authority contract 1.1.0, SHA-256
-  `50735d8a7cf6b02f924137625e979b0be2eb1c34b48a5dc40d8c90d820f4a84e`;
+- `stratos-authority.openapi.json` — STRATOS authority contract for Czech-law
+  revision 2 (the supplied OpenAPI retains `info.version` 1.1.0), SHA-256
+  `905782427a95f3186e0cfe1e28d0c8bb4a654534741639863f84efb897ac0634`;
 - `czech-law-pilot.v1.json` — exact ten-law pilot manifest, SHA-256
-  `e354849214aa05cbbca3b4464a47a5c8a46dfac4f9b9556c8d0ba257b2eddcf2`.
+  `c37e92765053744fa35025eede613672e1ab556cebb9c5d72d0c2c1cd552cae6`;
+- `czech-law-pilot.v2.json` — exact 100-root rollout manifest, SHA-256
+  `3cc9926fe59b3aa67d8bdbe9b64dea75cc4df68cc54e6353dae4a2f7ecc22503`.
 
 These files are byte-identical to STRATOS commit
-`36fd4ac3411619c9687a54796654f53577484d69`.
+`96da8fc8bb7a2a01b605c7e74ecfb0f674114e34`. Revision 1 remains immutable;
+revision 2 is the current jointly verified contract and requires explicit
+STRATOS activation before AKB synchronization is enabled.

@@ -21,13 +21,58 @@ EXPECTED = {
     "conformance/v1/decision-fixtures.json": "d8c2e2b21695b58cd47fdadad825d7969e7d4cd41c5d330f169cd36b9a945f8a",
 }
 
+OFFICIAL_SOURCE_EXPECTED = {
+    "official-sources/czech-law-pilot.v1.json": (
+        "c37e92765053744fa35025eede613672e1ab556cebb9c5d72d0c2c1cd552cae6",
+        "akb/official-sources/czech-law-pilot.v1.json",
+    ),
+    "official-sources/czech-law-pilot.v2.json": (
+        "3cc9926fe59b3aa67d8bdbe9b64dea75cc4df68cc54e6353dae4a2f7ecc22503",
+        "akb/official-sources/czech-law-pilot.v2.json",
+    ),
+    "official-sources/stratos-authority.openapi.json": (
+        "905782427a95f3186e0cfe1e28d0c8bb4a654534741639863f84efb897ac0634",
+        "akb/source-document-intake/stratos-authority.openapi.json",
+    ),
+    "source-document-intake/stratos-authority.openapi.json": (
+        "905782427a95f3186e0cfe1e28d0c8bb4a654534741639863f84efb897ac0634",
+        "akb/source-document-intake/stratos-authority.openapi.json",
+    ),
+}
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Verify the accepted STRATOS contract snapshot.")
     parser.add_argument("--source-root", type=Path)
+    parser.add_argument(
+        "--official-source-only",
+        action="store_true",
+        help="Verify only the governed official-source manifests and authority contract.",
+    )
     options = parser.parse_args()
     failures: list[str] = []
-    for relative, expected in EXPECTED.items():
+    if not options.official_source_only:
+        for relative, expected in EXPECTED.items():
+            snapshot = SNAPSHOT_ROOT / relative
+            if not snapshot.is_file():
+                failures.append(f"missing snapshot: {relative}")
+                continue
+            try:
+                json.loads(snapshot.read_text(encoding="utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                failures.append(f"invalid JSON {relative}: {exc}")
+                continue
+            actual = digest(snapshot)
+            if actual != expected:
+                failures.append(f"digest mismatch {relative}: {actual}")
+            if options.source_root:
+                source = options.source_root / relative
+                if not source.is_file():
+                    failures.append(f"missing source: {relative}")
+                elif source.read_bytes() != snapshot.read_bytes():
+                    failures.append(f"source differs: {relative}")
+
+    for relative, (expected, source_relative) in OFFICIAL_SOURCE_EXPECTED.items():
         snapshot = SNAPSHOT_ROOT / relative
         if not snapshot.is_file():
             failures.append(f"missing snapshot: {relative}")
@@ -41,9 +86,9 @@ def main() -> int:
         if actual != expected:
             failures.append(f"digest mismatch {relative}: {actual}")
         if options.source_root:
-            source = options.source_root / relative
+            source = options.source_root / source_relative
             if not source.is_file():
-                failures.append(f"missing source: {relative}")
+                failures.append(f"missing source: {source_relative}")
             elif source.read_bytes() != snapshot.read_bytes():
                 failures.append(f"source differs: {relative}")
 
@@ -51,7 +96,10 @@ def main() -> int:
         for failure in failures:
             print(f"ERROR {failure}", file=sys.stderr)
         return 1
-    print(f"Verified {len(EXPECTED)} STRATOS contract files.")
+    verified = len(OFFICIAL_SOURCE_EXPECTED)
+    if not options.official_source_only:
+        verified += len(EXPECTED)
+    print(f"Verified {verified} STRATOS contract files.")
     return 0
 
 

@@ -2451,6 +2451,9 @@
                   "properties": {
                     "collectionId": {
                       "const": "czech-law"
+                    },
+                    "revision": {
+                      "const": "2"
                     }
                   }
                 }
@@ -2534,6 +2537,9 @@
               "effectiveFrom": {
                 "type": "string",
                 "format": "date"
+              },
+              "expectedCollectionRevision": {
+                "const": "2"
               }
             }
           },
@@ -3942,8 +3948,8 @@
             ]
           }
         ],
-        "description": "Only a dated sourceUrl beneath one of the 100 exact canonical act URLs is eligible. Its YYYY-MM-DD suffix and supplied effectiveFrom/effectiveTo must match a nonfuture version listed in freshly verified official má-znění JSON-LD metadata at https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/{year}/{number}, including version-level effective interval evidence; dates before the centrally reviewed manifest firstEffectiveFrom are denied. URL syntax alone is not authority. Title must equal the approved manifest title. The initial collection revision is 1. The caller cannot invent legal effectivity, approve a new act or choose a metadata host.",
-        "x-approved-pilot-manifest": "../official-sources/czech-law-pilot.v1.json"
+        "description": "Only a dated sourceUrl beneath one of the 100 exact canonical act URLs is eligible. Its YYYY-MM-DD suffix and supplied effectiveFrom/effectiveTo must match a nonfuture version listed in freshly verified official má-znění JSON-LD metadata at https://opendata.eselpoint.gov.cz/esel-esb/eli/cz/sb/{year}/{number}, including version-level effective interval evidence; dates before the centrally reviewed manifest firstEffectiveFrom are denied. URL syntax alone is not authority. Title must equal the approved manifest title. The required collection revision is 2. The caller cannot invent legal effectivity, approve a new act or choose a metadata host.",
+        "x-approved-pilot-manifest": "../official-sources/czech-law-pilot.v2.json"
       },
       "OfficialSourceRootProfile": {
         "allOf": [
@@ -4276,6 +4282,9 @@
                     }
                   }
                 }
+              },
+              "collectionRevision": {
+                "const": "2"
               }
             }
           },

@@ -9,7 +9,7 @@ import { createApiClients } from "../src/lib/api";
 import { getAklConfig } from "../src/lib/api/config";
 import { createMockContext } from "../src/lib/api/correlation";
 import { canonicalDocumentSnapshot } from "../src/lib/documents/document-profile";
-import { listApprovedPublicSourceCollections, preparePublicSource, validatePreparedPublicSource } from "../src/lib/public-sources/approved-collections-client";
+import { CZECH_LAW_COLLECTION_REVISION, listApprovedPublicSourceCollections, preparePublicSource, validatePreparedPublicSource } from "../src/lib/public-sources/approved-collections-client";
 import { officialSourceServiceRequestContext, resetOfficialSourceServiceTokenCacheForTests } from "../src/lib/public-sources/automation-service-identity";
 import type { PreparePublicSourceRequest, PreparedPublicSource } from "../src/lib/public-sources/approved-collections";
 import { synchronizePublicSource } from "../src/lib/public-sources/sync";
@@ -25,6 +25,7 @@ const syncInput = { collectionId: request.collectionId, collectionRevision: "r1"
 const listItem = { collectionId: "cz-statistics", revision: "r1", displayName: "Statistiky", authorityDisplayName: "ČSÚ",
   ownerDisplayName: "Vlastník zdrojů", gestorDisplayName: "Správa znalostí", reviewRuleLabel: "Roční kontrola",
   profile: { id: "akb.official-public-reference", revision: "1" }, tlp: "TLP:CLEAR" };
+const automationListItem = { ...listItem, collectionId: "czech-law", revision: CZECH_LAW_COLLECTION_REVISION };
 const clients = () => createApiClients({ env: { AKL_ENV: "test", AKL_API_CLIENT_MODE: "mock", AKL_AUTH_MODE: "mock" } });
 const noBytes: typeof fetch = async () => { assert.fail("Document bytes must not be fetched before admission"); };
 
@@ -43,9 +44,13 @@ test("approved collection client accepts only the dedicated automation service i
   const automationContext = { ...context, serviceClientId: "svc-akb-official-source-sync" };
   const result = await listApprovedPublicSourceCollections(automationContext, async (_url, init) => {
     assert.equal(new Headers(init?.headers).get("authorization"), "Bearer fixture-actor-access");
-    return Response.json({ schemaVersion: "stratos-official-source-collections-1", collections: [listItem] });
+    return Response.json({ schemaVersion: "stratos-official-source-collections-1", collections: [automationListItem] });
   }, endpoint);
   assert.equal(result.length, 1);
+  await assert.rejects(listApprovedPublicSourceCollections(automationContext, async () => Response.json({
+    schemaVersion: "stratos-official-source-collections-1",
+    collections: [{ ...automationListItem, revision: "1" }],
+  }), endpoint), { code: "PUBLIC_SOURCE_APPROVAL_UNAVAILABLE" });
   await assert.rejects(listApprovedPublicSourceCollections({ ...context, serviceClientId: "shared-service" }, noBytes, endpoint), {
     code: "PUBLIC_SOURCE_APPROVAL_UNAVAILABLE",
   });
@@ -118,6 +123,10 @@ test("source preparation binds exact source and complete metadata before intake"
 });
 test("revoked or stale collection prevents source preparation", async () => {
   for (const status of [403, 409]) await assert.rejects(preparePublicSource(request, context, async () => new Response(null, { status }), endpoint), { status });
+  const staleCzechLaw = { ...request, collectionId: "czech-law", expectedCollectionRevision: "1" };
+  await assert.rejects(preparePublicSource(staleCzechLaw, context, noBytes, endpoint), {
+    code: "PUBLIC_SOURCE_APPROVAL_UNAVAILABLE",
+  });
 });
 
 const mutations: Array<[string, (prepared: PreparedPublicSource) => void]> = [

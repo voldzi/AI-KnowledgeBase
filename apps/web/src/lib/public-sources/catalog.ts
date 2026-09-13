@@ -109,7 +109,6 @@ const czechLawActs: PublicSourceOpenDataAct[] = [
   { title: "Zákon o archivnictví a spisové službě a o změně některých zákonů", year: 2004, number: "499" },
   { title: "Vyhláška o podrobnostech výkonu spisové služby", year: 2012, number: "259" },
   { title: "Zákon o kontrole (kontrolní řád)", year: 2012, number: "255" },
-  { title: "Zákon o státní službě", year: 2014, number: "234" },
   { title: "Zákon o úřednících územních samosprávných celků a o změně některých zákonů", year: 2002, number: "312" },
   { title: "Zákon o obcích (obecní zřízení)", year: 2000, number: "128" },
   { title: "Zákon o krajích (krajské zřízení)", year: 2000, number: "129" },

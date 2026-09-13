@@ -10,6 +10,7 @@ import { OFFICIAL_SOURCE_SERVICE_CLIENT_ID } from "./automation-service-identity
 
 const MAX_RESPONSE_BYTES = 256 * 1024;
 const SCHEMA = "stratos-official-source-collections-1";
+export const CZECH_LAW_COLLECTION_REVISION = "2";
 
 function unavailable(context: ApiRequestContext): never {
   throw new ApiClientError("Schválené kolekce nejsou nyní dostupné. Obnovte jejich seznam nebo kontaktujte správce STRATOS.", 503, "PUBLIC_SOURCE_APPROVAL_UNAVAILABLE", context.correlationId ?? "public-source-approval");
@@ -75,7 +76,7 @@ export async function listApprovedPublicSourceCollections(context: ApiRequestCon
   const result = record(await centralRequest("/collections", context, undefined, fetcher, endpoint), ["schemaVersion", "collections"], context);
   if (result.schemaVersion !== SCHEMA || !Array.isArray(result.collections) || result.collections.length > 100) unavailable(context);
   const seen = new Set<string>();
-  return result.collections.map((value): ApprovedPublicSourceCollection => {
+  const collections = result.collections.map((value): ApprovedPublicSourceCollection => {
     const item = record(value, ["collectionId", "revision", "displayName", "authorityDisplayName", "ownerDisplayName", "gestorDisplayName", "reviewRuleLabel", "profile", "tlp"], context);
     const profile = record(item.profile, ["id", "revision"], context);
     const collectionId = text(item.collectionId, context, 160);
@@ -86,6 +87,10 @@ export async function listApprovedPublicSourceCollections(context: ApiRequestCon
       gestorDisplayName: text(item.gestorDisplayName, context), reviewRuleLabel: text(item.reviewRuleLabel, context),
       profile: { id: "akb.official-public-reference", revision: "1" }, tlp: "TLP:CLEAR" };
   });
+  if (context.serviceClientId === OFFICIAL_SOURCE_SERVICE_CLIENT_ID
+      && (collections.length !== 1 || collections[0]?.collectionId !== "czech-law"
+        || collections[0]?.revision !== CZECH_LAW_COLLECTION_REVISION)) unavailable(context);
+  return collections;
 }
 
 export function validatePreparedPublicSource(value: unknown, request: PreparePublicSourceRequest, context: ApiRequestContext): PreparedPublicSource {
@@ -115,6 +120,7 @@ export function validatePreparedPublicSource(value: unknown, request: PreparePub
 export async function preparePublicSource(request: PreparePublicSourceRequest, context: ApiRequestContext, fetcher: typeof fetch = fetch,
   endpoint = process.env.AKL_STRATOS_OFFICIAL_SOURCES_URL): Promise<PreparedPublicSource> {
   text(request.expectedCollectionRevision, context, 160);
+  if (request.collectionId === "czech-law" && request.expectedCollectionRevision !== CZECH_LAW_COLLECTION_REVISION) unavailable(context);
   const result = await centralRequest("/sources/prepare", context, { schemaVersion: "stratos-official-source-prepare-1", ...request }, fetcher, endpoint);
   return validatePreparedPublicSource(result, request, context);
 }

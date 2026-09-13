@@ -140,8 +140,10 @@ fail closed before downloading.
 
 The binding STRATOS contract snapshot and exact pilot manifest are
 `contracts/stratos/official-sources/stratos-authority.openapi.json` and
-`contracts/stratos/official-sources/czech-law-pilot.v1.json`. They are pinned to
-STRATOS commit `36fd4ac3411619c9687a54796654f53577484d69`.
+`contracts/stratos/official-sources/czech-law-pilot.v2.json`. Revision 2 contains
+exactly 100 centrally approved roots and is pinned to STRATOS commit
+`96da8fc8bb7a2a01b605c7e74ecfb0f674114e34`. The original ten-root revision 1
+remains byte-identical and is retained only as immutable historical evidence.
 
 The independent `official-source-sync-worker` checks e-Sbírka every six hours.
 An initial cycle selects at most ten unseen laws, while importing all effective
@@ -151,18 +153,19 @@ laws; after the catalog is complete, the worker revalidates it weekly in the
 same bounded batches. Changes become new immutable AKB versions and unchanged
 hashes remain idempotent.
 
-The pilot is accepted only when ten distinct canonical e-Sbírka laws reach
+The rollout is accepted only when all selected canonical e-Sbírka versions reach
 `INDEXED`, each retains its official PDF, TLP:CLEAR, organization audience,
 active owner and gestor, and a representative Chat answer cites and opens the
 exact stored source. The negative acceptance also verifies that another
 service identity, a URL outside the approved proposal, missing TLP, revoked
 collection access and anonymous source access all fail closed.
 
-The initial manifest contains 89/2012, 90/2012, 262/2006, 500/2004,
+The immutable revision 1 manifest contains 89/2012, 90/2012, 262/2006, 500/2004,
 106/1999, 134/2016, 218/2000, 250/2000, 563/1991 and 340/2015 Sb. AKB keeps
-these ten entries first in its reviewed catalog and the internal worker limits
-initial discovery to that set. Expanding the centrally approved manifest and
-the worker boundary is a separate reviewed rollout after pilot acceptance.
+these ten entries first in its reviewed catalog. Revision 2 expands the exact
+governed set to the complete 100-root AKB Czech-law catalog. AKB sends
+`expectedCollectionRevision: "2"`; STRATOS must return the same revision in the
+active collection projection and every successful prepare response.
 
 Licensed or copyrighted internal references, including organization-owned ITIL
 copies, are not added to this public-source catalog. They are imported as
