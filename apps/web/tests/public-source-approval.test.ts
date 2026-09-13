@@ -178,6 +178,34 @@ test("existing root is refreshed; changed current authority is not hidden by a s
   await assert.rejects(synchronizePublicSource(syncInput, api, context, noBytes, undefined, prepareApprovedSourceFixture), { status: 409, code: "PUBLIC_SOURCE_ROOT_METADATA_CONFLICT" });
 });
 
+test("a newly approved collection revision creates a new immutable root before stale-root authorization", async () => {
+  const api = clients();
+  const oldPrepared = await prepareApprovedSourceFixture(request);
+  oldPrepared.documentProfile.provenance.sourceGovernedResourceId = "source_revision_1";
+  const document = await api.registry.createDocument({ title: request.title, document_type: "methodology", classification: "public",
+    owner_id: oldPrepared.documentProfile.accountability.ownerSubjectId, gestor_unit: "unit_source_stewards", tags: [],
+    document_profile: oldPrepared.documentProfile, information_policy: oldPrepared.informationPolicy,
+    metadata: { canonical_url: request.canonicalUrl, collection_id: request.collectionId, collection_revision: "r1" } }, context);
+  api.registry.listDocuments = async () => [document];
+  const nextInput = { ...syncInput, collectionRevision: "r2" };
+  const originalUpdate = api.registry.updateDocument.bind(api.registry);
+  let refreshed = false;
+  api.registry.updateDocument = async (documentId, update, _requestContext) => {
+    assert.equal(documentId, document.document_id);
+    assert.equal(update.expected_root_metadata_revision, document.current_root_metadata_revision);
+    assert.equal(update.metadata?.collection_revision, "r2");
+    assert.notEqual(update.document_profile?.provenance.sourceGovernedResourceId, oldPrepared.documentProfile.provenance.sourceGovernedResourceId);
+    refreshed = true;
+    throw new Error("root-refresh-observed");
+  };
+  try {
+    await assert.rejects(synchronizePublicSource(nextInput, api, context, noBytes, undefined, prepareApprovedSourceFixture), /root-refresh-observed/);
+    assert.equal(refreshed, true);
+  } finally {
+    api.registry.updateDocument = originalUpdate;
+  }
+});
+
 test("actual BFF rejects client-supplied authority and reports missing upstream approval without downloading", async () => {
   const keys = ["AKL_ENV", "AKL_API_CLIENT_MODE", "AKL_AUTH_MODE", "AKL_STRATOS_OFFICIAL_SOURCES_URL"];
   const before = keys.map((key) => [key, process.env[key]] as const);

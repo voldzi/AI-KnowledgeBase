@@ -7878,7 +7878,7 @@ def patch_document(
             ),
             reason="Register a new immutable AKB document policy version",
             delegated_actor_subject_id=(
-                principal.subject_id if official_public_source else None
+                document.owner_id if official_public_source else None
             ),
             use_fixed_akb_identity=official_public_source,
             document_admission=DocumentAdmissionExpectation(root_snapshot=profile_root,

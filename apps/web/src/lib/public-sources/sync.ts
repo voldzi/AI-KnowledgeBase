@@ -104,7 +104,7 @@ export async function synchronizePublicSource(
     throw new Error("The official source identity resolves to multiple AKB documents.");
   }
 
-  const candidateDocument = existing[0] ?? await createOfficialDocument(
+  let candidateDocument = existing[0] ?? await createOfficialDocument(
     input,
     collection,
     canonicalUrl,
@@ -113,6 +113,27 @@ export async function synchronizePublicSource(
     context,
     prepared,
   );
+  if (existing[0] && existing[0].metadata?.collection_revision !== prepared.collectionRevision) {
+    const currentRevision = existing[0].current_root_metadata_revision;
+    if (!currentRevision
+        || existing[0].metadata?.collection_id !== collection.id
+        || existing[0].metadata?.canonical_url !== canonicalUrl.toString()) {
+      throw new ApiClientError("Existující dokument nelze bezpečně převést na novou revizi schváleného zdroje.", 409, "PUBLIC_SOURCE_ROOT_METADATA_CONFLICT", context.correlationId ?? "public-source-sync");
+    }
+    candidateDocument = await clients.registry.updateDocument(
+      existing[0].document_id,
+      {
+        document_profile: prepared.documentProfile,
+        expected_root_metadata_revision: currentRevision,
+        information_policy: prepared.informationPolicy,
+        metadata: {
+          ...(existing[0].metadata ?? {}),
+          collection_revision: prepared.collectionRevision,
+        },
+      },
+      context,
+    );
+  }
   const { document, informationPolicy } = await authorizeControlledDocumentUpload({ registry: clients.registry, context, documentId: candidateDocument.document_id });
   const root = document.document_profile;
   const rootInput = root ? { profile: root.profile, authorship: root.authorship, provenance: root.provenance, accountability: root.accountability } : null;
