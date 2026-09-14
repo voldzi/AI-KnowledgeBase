@@ -86,6 +86,12 @@ const OPERATION_TEMPLATES: Array<{
 ];
 
 describe("continuous Czech assistant acceptance", () => {
+  it("keeps Czech Statistical Office legal questions in the cited document path", () => {
+    const message = "Jaké jsou hlavní úkoly Českého statistického úřadu podle zákona o státní statistické službě?";
+    assert.equal(classifyDirectorCopilotV2Intent(message), null);
+    assert.equal(routeAssistantMessage(message, "cs").tool, "rag_document_answer");
+  });
+
   it("decomposes a management question into independently planned source operations", () => {
     const message = "Pro poradu: jaký má IT rozpočet na rok 2025, kolik akcí je v plánu a v jakém stavu je aktuální projektové portfolio?";
     const resolved = resolveConversationQuery({ message, now: NOW });
