@@ -7,6 +7,7 @@ export function authCookieNames(profile: WebProfile = "platform") {
     session: `${prefix}_session`,
     sync: `${prefix}_sso_sync`,
     attempt: `${prefix}_sso_attempt`,
+    recovery: `${prefix}_sso_recovery`,
     signedOut: `${prefix}_sso_signed_out`,
     state: `${prefix}_oidc_state`,
     pkce: `${prefix}_oidc_pkce`,

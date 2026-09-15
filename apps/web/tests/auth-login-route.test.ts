@@ -26,8 +26,15 @@ describe("OIDC login page", () => {
       AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.example/api/v1/auth/me",
     });
 
-    const response = await GET(
+    const first = await GET(
       new NextRequest("https://stratos.example/api/auth/login?return_to=%2Fchat&retry=required"),
+    );
+    assert.equal(first.status, 303);
+    assert.ok(first.cookies.get("akb_platform_sso_recovery")?.value);
+    const response = await GET(
+      new NextRequest("https://stratos.example/api/auth/login?return_to=%2Fchat&retry=required", {
+        headers: { cookie: "akb_platform_sso_recovery=1" },
+      }),
     );
     const html = await response.text();
 

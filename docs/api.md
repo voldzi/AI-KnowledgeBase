@@ -101,8 +101,10 @@ the opaque session cookie value. The backing Registry routes are internal,
 HMAC-authenticated service routes and are not a public integration contract.
 
 `GET /api/auth/login` starts one normal code + PKCE transaction when no
-attempt/logout guard is present; `POST /api/auth/login` explicitly retries
-after an error or logout. Both ignore a browser-supplied remember-device
+attempt/logout guard is present. If an interrupted browser navigation leaves a
+stale attempt marker, AKB performs one bounded automatic recovery through the
+central SSO. A repeated failure or explicit logout stops at the recovery page;
+`POST /api/auth/login` explicitly retries after an error or logout. Both ignore a browser-supplied remember-device
 choice. The callback independently validates the access token and ID token
 including nonce, then derives cookie lifetime from the verified central
 access-token policy. Auth/session responses are `no-store`.

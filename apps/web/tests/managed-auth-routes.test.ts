@@ -14,7 +14,7 @@ afterEach(() => { process.env = { ...originalEnv }; globalThis.fetch = originalF
 describe("managed browser auth routes", () => {
   it("delegates remember-device selection to STRATOS and rejects a foreign Origin", async () => {
     process.env = { ...managedEnv() };
-    const page = await loginPage(new NextRequest("https://akb.example/akb/api/auth/login?retry=required"));
+    const page = await loginPage(new NextRequest("https://akb.example/akb/api/auth/login?retry=required", { headers: { cookie: "akb_platform_sso_recovery=1" } }));
     assert.equal(page.status, 200);
     assert.doesNotMatch(await page.text(), /name="remember"/);
     const response = await login(new NextRequest("https://akb.example/akb/api/auth/login", { method: "POST", headers: { origin: "https://foreign.example" } }));

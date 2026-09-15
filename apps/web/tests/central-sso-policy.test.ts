@@ -1,5 +1,5 @@
 import { authCookieNames } from "../src/lib/auth/cookies";
-const { session: SERVER_SESSION_COOKIE, attempt: SSO_ATTEMPT_COOKIE, signedOut: SSO_SIGNED_OUT_COOKIE } = authCookieNames();
+const { session: SERVER_SESSION_COOKIE, attempt: SSO_ATTEMPT_COOKIE, recovery: SSO_RECOVERY_COOKIE, signedOut: SSO_SIGNED_OUT_COOKIE } = authCookieNames();
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { NextRequest } from "next/server";
@@ -229,13 +229,16 @@ describe("central SSO redirect guard", () => {
     assert.equal(auth.searchParams.get("prompt"), null);
     assert.equal(auth.searchParams.get("max_age"), null);
     assert.equal(auth.searchParams.get("code_challenge_method"), "S256");
-    for (const cookie of [SSO_ATTEMPT_COOKIE, SSO_SIGNED_OUT_COOKIE]) {
-      const page = await login(new NextRequest("https://akb.example/akb/api/auth/login", { headers: { cookie: `${cookie}=1` } }));
-      assert.equal(page.status, 200);
-      assert.doesNotMatch(await page.text(), /name="remember"|http-equiv="refresh"/);
-      const blocked = await sso(new NextRequest("https://akb.example/akb/api/auth/sso", { headers: { cookie: `${cookie}=1` } }));
-      assert.match(blocked.headers.get("location")!, /retry=required/);
-    }
+    const recovered = await login(new NextRequest("https://akb.example/akb/api/auth/login", { headers: { cookie: `${SSO_ATTEMPT_COOKIE}=1` } }));
+    assert.equal(recovered.status, 303);
+    assert.ok(recovered.cookies.get(SSO_RECOVERY_COOKIE)?.value);
+    const retry = await login(new NextRequest("https://akb.example/akb/api/auth/login", { headers: { cookie: `${SSO_ATTEMPT_COOKIE}=1; ${SSO_RECOVERY_COOKIE}=1` } }));
+    assert.equal(retry.status, 200);
+    assert.doesNotMatch(await retry.text(), /name="remember"|http-equiv="refresh"/);
+    const signedOut = await login(new NextRequest("https://akb.example/akb/api/auth/login", { headers: { cookie: `${SSO_SIGNED_OUT_COOKIE}=1` } }));
+    assert.equal(signedOut.status, 200);
+    const blocked = await sso(new NextRequest("https://akb.example/akb/api/auth/sso", { headers: { cookie: `${SSO_ATTEMPT_COOKIE}=1` } }));
+    assert.match(blocked.headers.get("location")!, /retry=required/);
   });
 
   it("stops at a manual retry when discovery is unavailable without exposing the exception", async () => {
@@ -244,7 +247,8 @@ describe("central SSO redirect guard", () => {
     const first = await login(new NextRequest("https://akb.example/akb/api/auth/login"));
     const location = first.headers.get("location")!;
     assert.match(location, /retry=required/);
-    const page = await login(new NextRequest(location));
+    const retryLocation = new URL(location);
+    const page = await login(new NextRequest(retryLocation, { headers: { cookie: `${SSO_RECOVERY_COOKIE}=1` } }));
     assert.equal(page.status, 200);
     assert.doesNotMatch(await page.text(), /synthetic-private/);
   });

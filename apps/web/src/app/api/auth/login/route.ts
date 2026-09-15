@@ -23,6 +23,15 @@ export async function GET(request: NextRequest) {
     request.nextUrl.searchParams.get("return_to"),
   );
   if (!automaticSsoBlocked(config, request)) return beginOidcNavigation(config, returnTo);
+  // A stale in-progress marker is common after a tab is suspended or an
+  // upstream response is interrupted. Recover it once without asking the
+  // user to click through; a real logout remains explicitly user-controlled.
+  const cookies = authCookieNames(config.webProfile);
+  if (!request.cookies.has(cookies.signedOut) && !request.cookies.has(cookies.recovery)) {
+    const response = await beginOidcNavigation(config, returnTo);
+    response.cookies.set(cookies.recovery, "1", { ...serverSessionCookieOptions(config, false), maxAge: 600 });
+    return response;
+  }
   return new NextResponse(
     loginPage(buildPublicAppUrl(config, "/api/auth/login"), returnTo),
     {
@@ -44,14 +53,14 @@ export async function POST(request: NextRequest) {
   const form = await request.formData();
   const returnTo = normalizeReturnToForPublicBase(config, String(form.get("return_to") ?? "/"));
   const response = await beginOidcNavigation(config, returnTo);
-  response.cookies.set(authCookieNames(config.webProfile).signedOut, "", { ...serverSessionCookieOptions(config, false), maxAge: 0 });
+  for (const name of [authCookieNames(config.webProfile).signedOut, authCookieNames(config.webProfile).recovery]) response.cookies.set(name, "", { ...serverSessionCookieOptions(config, false), maxAge: 0 });
   return response;
 }
 
 function loginPage(action: string, returnTo: string): string {
   const safeAction = escapeHtml(action);
   const safeReturnTo = escapeHtml(returnTo);
-  return `<!doctype html><html lang="cs"><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Přihlášení do AKB</title><style>body{margin:0;background:#f4f8f8;color:#14242a;font:16px system-ui,sans-serif;display:grid;min-height:100vh;place-items:center}.panel{width:min(420px,calc(100% - 32px));background:#fff;border:1px solid #cbdadc;padding:28px;box-sizing:border-box}.brand{font-size:14px;font-weight:700;color:#087f8c}.panel h1{font-size:28px;margin:8px 0}.hint{color:#53666c;line-height:1.5}button{width:100%;border:0;background:#087f8c;color:#fff;padding:13px 18px;font-weight:700;font-size:16px;cursor:pointer}button:hover{background:#066a75}</style></head><body><main class="panel"><div class="brand">AI KnowledgeBase</div><h1>Přihlášení do AKB</h1><p class="hint">Relace není aktivní. Přihlášení můžete znovu zahájit přes centrální SSO.</p><form method="post" action="${safeAction}"><input type="hidden" name="return_to" value="${safeReturnTo}"><button type="submit">Pokračovat k přihlášení</button></form></main></body></html>`;
+  return `<!doctype html><html lang="cs"><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Přihlášení do AKB</title><style>body{margin:0;background:#f4f8f8;color:#14242a;font:16px system-ui,sans-serif;display:grid;min-height:100vh;place-items:center}.panel{width:min(420px,calc(100% - 32px));background:#fff;border:1px solid #cbdadc;padding:28px;box-sizing:border-box}.brand{font-size:14px;font-weight:700;color:#087f8c}.panel h1{font-size:28px;margin:8px 0}.hint{color:#53666c;line-height:1.5}button{width:100%;border:0;background:#087f8c;color:#fff;padding:13px 18px;font-weight:700;font-size:16px;cursor:pointer}button:hover{background:#066a75}</style></head><body><main class="panel"><div class="brand">AI KnowledgeBase</div><h1>Přihlášení do AKB</h1><p class="hint">Relaci se nepodařilo automaticky obnovit. Pokračováním ji obnovíte přes centrální SSO.</p><form method="post" action="${safeAction}"><input type="hidden" name="return_to" value="${safeReturnTo}"><button type="submit">Obnovit přístup</button></form></main></body></html>`;
 }
 
 function escapeHtml(value: string): string {

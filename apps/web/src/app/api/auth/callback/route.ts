@@ -115,7 +115,7 @@ export async function GET(request: NextRequest) {
   response.cookies.set(authCookieNames(config.webProfile).state, "", { ...serverSessionCookieOptions(config, false), maxAge: 0 });
   response.cookies.set(authCookieNames(config.webProfile).pkce, "", { ...serverSessionCookieOptions(config, false), maxAge: 0 });
   response.cookies.set(authCookieNames(config.webProfile).session, selector, serverSessionCookieOptions(config, persistent, absoluteExpiresAt, nowMs));
-  for (const name of [authCookieNames(config.webProfile).attempt, authCookieNames(config.webProfile).signedOut]) response.cookies.set(name, "", { ...serverSessionCookieOptions(config, false), maxAge: 0 });
+  for (const name of [authCookieNames(config.webProfile).attempt, authCookieNames(config.webProfile).recovery, authCookieNames(config.webProfile).signedOut]) response.cookies.set(name, "", { ...serverSessionCookieOptions(config, false), maxAge: 0 });
   response.cookies.set(
     authCookieNames(config.webProfile).sync,
     await createCentralSsoSyncMarker(config, selector),
@@ -133,6 +133,8 @@ function redirectToLogin(config: ReturnType<typeof getAklConfig>, returnTo: stri
   response.cookies.set(authCookieNames(config.webProfile).session, "", expired);
   response.cookies.set(authCookieNames(config.webProfile).sync, "", expired);
   response.cookies.set(authCookieNames(config.webProfile).attempt, "1", serverSessionCookieOptions(config, false));
+  // Preserve the short recovery marker: a second failure must stop at the
+  // explicit recovery screen instead of creating a redirect loop.
   return response;
 }
 
