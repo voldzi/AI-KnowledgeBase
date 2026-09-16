@@ -14,7 +14,7 @@ from starlette.requests import Request
 import app.auth as auth_module
 import app.api as api_module
 import app.permissions as permissions_module
-from app.access_governance import AccessProjection, GovernanceUnavailable, StratosGovernanceClient, policy_decision_scope
+from app.access_governance import AccessEntitlement, AccessProjection, GovernanceUnavailable, StratosGovernanceClient, policy_decision_scope
 from app.api import (
     _audit_service_decision_coordinates,
     _is_official_public_source_create,
@@ -1566,6 +1566,7 @@ def test_public_chat_scope_keeps_exact_valid_official_reference_version(
         "rag.query",
         version,
         authority,
+        document_classification=document.classification,
         official_public_reference=True,
     )
     without_official_source = evaluate_document_version_access(
@@ -1573,12 +1574,14 @@ def test_public_chat_scope_keeps_exact_valid_official_reference_version(
         "rag.query",
         version,
         authority,
+        document_classification=document.classification,
     )
     direct_read = evaluate_document_version_access(
         context,
         "document.read",
         version,
         authority,
+        document_classification=document.classification,
         official_public_reference=True,
     )
 
@@ -1607,6 +1610,82 @@ def test_public_chat_scope_keeps_exact_valid_official_reference_version(
     assert without_official_source.reason_codes == ("VERSION_SCOPE_MISMATCH",)
     assert direct_read.allowed is False
     assert direct_read.reason_codes == ("VERSION_SCOPE_MISMATCH",)
+
+
+def test_employee_baseline_exact_version_uses_root_document_classification() -> None:
+    document = _official_public_document()
+    binding = _public_policy()
+    version = DocumentVersion(
+        document_version_id="ver_employee_baseline_public",
+        document_id=document.document_id,
+        version_label="1.0",
+        status="valid",
+        organization_id="org_stratos",
+        policy_binding_id=binding.policy_binding_id,
+        policy_version=binding.policy_version,
+        policy_hash=canonical_policy_hash(binding),
+        policy_summary=binding.model_dump(mode="json", by_alias=True, exclude_none=False),
+        governance_scope_type="organization",
+        governance_scope_id="org_stratos",
+    )
+    authority = DocumentVersionAuthority(
+        organization_id="org_stratos",
+        governed_resource_id="gir_employee_baseline_public_version",
+        governed_source_version=version.document_version_id,
+        governed_parent_resource_id="gir_employee_baseline_public_document",
+        policy_binding_id=binding.policy_binding_id,
+        policy_version=binding.policy_version,
+        policy_hash=canonical_policy_hash(binding),
+        governance_scope={"type": "organization", "id": "org_stratos"},
+        governance_scope_hash="sha256:" + "c" * 64,
+        policy_binding=binding,
+    )
+    baseline = AccessEntitlement(
+        entitlement_id="system:akb:employee-baseline",
+        definition_version="capabilities-1.12.2",
+        profile_id="stratos-user",
+        source="SYSTEM",
+        source_ref="employee-baseline",
+        virtual=True,
+        capabilities=frozenset({"akb:access", "akb:chat", "akb:read_document"}),
+        scopes=frozenset({"public", "organization:org_stratos"}),
+        effective_scopes=frozenset({"public", "organization:org_stratos"}),
+        valid_from=None,
+        valid_until=None,
+    )
+    context = SubjectContext(
+        subject_id="user-employee",
+        roles={"stratos_user"},
+        groups=set(),
+        capabilities=set(baseline.capabilities),
+        scopes=set(baseline.effective_scopes),
+        organization_id="org_stratos",
+        identity_active=True,
+        membership_active=True,
+        application_access_active=True,
+        access_v2=True,
+        access_entitlements=(baseline,),
+    )
+
+    allowed = evaluate_document_version_access(
+        context,
+        "rag.query",
+        version,
+        authority,
+        document_classification=document.classification,
+    )
+    denied = evaluate_document_version_access(
+        context,
+        "rag.query",
+        version,
+        authority,
+        document_classification="restricted",
+    )
+
+    assert allowed.allowed is True
+    assert allowed.reason_codes == ("VERSION_POLICY_ALLOW",)
+    assert denied.allowed is False
+    assert denied.reason_codes == ("VERSION_SCOPE_MISMATCH",)
 
 
 def test_governed_resource_registration_uses_verified_obo_contract(monkeypatch) -> None:

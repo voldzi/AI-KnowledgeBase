@@ -9498,6 +9498,7 @@ def check_authorization(
                         principal, payload.action.value, document, version, authority,
                         evaluate_document_version_access(
                             context_for_principal(principal, db), payload.action.value, version, authority,
+                            document_classification=document.classification,
                         ),
                     )
                 except ValueError:

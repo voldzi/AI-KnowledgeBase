@@ -504,11 +504,16 @@ def _baseline_policy_allows(
     entitlement: AccessEntitlement,
     resource: Document | DocumentVersion,
     binding: InformationPolicyBinding,
+    *,
+    document_classification: str | None = None,
 ) -> bool:
     if entitlement.entitlement_id != "system:akb:employee-baseline":
         return True
+    classification = document_classification or getattr(
+        resource, "classification", None
+    )
     return bool(
-        resource.classification in {
+        classification in {
             Classification.public.value,
             Classification.internal.value,
         }
@@ -572,6 +577,8 @@ def _scope_allows(
     action: str,
     resource: Document | DocumentVersion,
     binding: InformationPolicyBinding,
+    *,
+    document_classification: str | None = None,
 ) -> bool:
     if context.access_entitlements:
         for entitlement in context.access_entitlements:
@@ -584,7 +591,12 @@ def _scope_allows(
                 access_entitlements=(),
             )
             if (
-                _baseline_policy_allows(entitlement, resource, binding)
+                _baseline_policy_allows(
+                    entitlement,
+                    resource,
+                    binding,
+                    document_classification=document_classification,
+                )
                 and _governance_scope_allows(entitlement_context, resource)
                 and _policy_audience_allows(entitlement_context, binding)
             ):
@@ -998,6 +1010,7 @@ def evaluate_document_version_access(
     version: DocumentVersion,
     authority: DocumentVersionAuthority,
     *,
+    document_classification: str,
     official_public_reference: bool = False,
 ) -> Decision:
     constraints = {
@@ -1022,7 +1035,13 @@ def evaluate_document_version_access(
     base = _v2_base_decision(context, action)
     if base is not None:
         return base
-    scoped_access = _scope_allows(context, action, version, authority.policy_binding)
+    scoped_access = _scope_allows(
+        context,
+        action,
+        version,
+        authority.policy_binding,
+        document_classification=document_classification,
+    )
     if not scoped_access:
         if (
             action == Action.rag_query.value
@@ -1416,6 +1435,7 @@ def require_document_version_action(
             action.value,
             version,
             authority,
+            document_classification=document.classification,
             official_public_reference=(
                 document.status == "valid"
                 and is_official_public_source_document(document)
