@@ -23,6 +23,7 @@ import {
 
 import type { AklFetch } from "../http-client";
 import { requestJson } from "../http-client";
+import { LONG_RUNNING_INGESTION_TIMEOUT_MS, longRunningIngestionFetch } from "../long-running-ingestion-fetch";
 
 export class ProductionIngestionClient implements IngestionApiClient {
   constructor(
@@ -68,8 +69,9 @@ export class ProductionIngestionClient implements IngestionApiClient {
       method: "POST",
       body: request,
       context,
-      fetcher: this.fetcher,
+      fetcher: this.fetcher ?? (process.env.AKL_WEB_LONG_INGESTION_HTTP_TRANSPORT === "true" ? longRunningIngestionFetch : undefined),
       extraHeaders: exactIngestionAuthorizationHeaders(context, options),
+      timeoutMs: LONG_RUNNING_INGESTION_TIMEOUT_MS,
     });
   }
 
