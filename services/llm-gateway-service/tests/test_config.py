@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from app.config import ConfigError, load_settings
@@ -17,6 +19,36 @@ def test_model_provider_map_is_parsed() -> None:
     )
 
     assert settings.model_provider_map == {"bge-m3": "ollama"}
+
+
+def test_openai_key_file_takes_precedence_over_legacy_environment_value(tmp_path: Path) -> None:
+    key_file = tmp_path / "openai-api-key"
+    key_file.write_text("file-secret\n", encoding="utf-8")
+
+    settings = load_settings(
+        {
+            "AKL_ENV": "test",
+            "AKL_AUTH_MODE": "disabled",
+            "AKL_OPENAI_COMPAT_API_KEY": "legacy-secret",
+            "AKL_OPENAI_COMPAT_API_KEY_FILE": str(key_file),
+        }
+    )
+
+    assert settings.openai_api_key == "file-secret"
+
+
+def test_openai_key_file_must_be_readable_and_non_empty(tmp_path: Path) -> None:
+    empty_file = tmp_path / "empty-openai-api-key"
+    empty_file.write_text("\n", encoding="utf-8")
+
+    with pytest.raises(ConfigError, match="AKL_OPENAI_COMPAT_API_KEY_FILE"):
+        load_settings(
+            {
+                "AKL_ENV": "test",
+                "AKL_AUTH_MODE": "disabled",
+                "AKL_OPENAI_COMPAT_API_KEY_FILE": str(empty_file),
+            }
+        )
 
 
 def test_chat_model_fallbacks_are_parsed() -> None:

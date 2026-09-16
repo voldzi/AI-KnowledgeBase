@@ -163,6 +163,33 @@ POST /v1/chat/completions
 POST /v1/embeddings
 ```
 
+## OpenAI API pilot
+
+The existing `openai` provider can connect directly to OpenAI by setting
+`AKL_OPENAI_COMPAT_BASE_URL=https://api.openai.com`. Keep embeddings, document
+parsing, Qdrant and reranking local; route only approved chat models to the
+external provider. A production key is an operator-managed mode-0600 file,
+mounted at `/run/secrets/akb-openai-api-key`:
+
+```text
+AKL_LLM_DEFAULT_PROVIDER=openai
+AKL_LLM_ENABLED_PROVIDERS=ollama,openai
+AKL_LLM_MODEL_PROVIDER_MAP={"gpt-5.6-luna":"openai","gpt-5.4-mini":"openai","bge-m3":"ollama"}
+AKL_LLM_DEFAULT_CHAT_MODEL=gpt-5.6-luna
+AKL_OPENAI_COMPAT_BASE_URL=https://api.openai.com
+AKL_OPENAI_COMPAT_API_KEY_FILE=/run/secrets/akb-openai-api-key
+AKL_OPENAI_COMPAT_API_KEY_SOURCE_FILE=/srv/akb/env/openai-akb-api-key
+```
+
+Do not activate this profile until the OpenAI project has a spend limit and a
+dedicated service-account key. The RAG composer sends the question plus the
+authorized selected excerpts and citation metadata, never a whole source PDF.
+External processing remains fail-closed for a missing policy binding,
+`RESTRICTED`, `NO_EXTERNAL_AI`, `LOCAL_PROCESSING_ONLY`, or classified content.
+The source being publicly accessible is not by itself an external-AI approval:
+STRATOS must attach an explicit policy binding that reflects the sanitized
+published version.
+
 ## Smíšené routování
 
 ```text

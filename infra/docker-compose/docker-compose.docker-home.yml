@@ -854,6 +854,9 @@ services:
       AKL_OLLAMA_THINK: ${AKL_OLLAMA_THINK:-false}
       AKL_OPENAI_COMPAT_BASE_URL: ${AKL_OPENAI_COMPAT_BASE_URL:-http://vllm:8000}
       AKL_OPENAI_COMPAT_API_KEY: ${AKL_OPENAI_COMPAT_API_KEY:-}
+      AKL_OPENAI_COMPAT_API_KEY_FILE: ${AKL_OPENAI_COMPAT_API_KEY_FILE:-}
+    volumes:
+      - ${AKL_OPENAI_COMPAT_API_KEY_SOURCE_FILE:-/dev/null}:/run/secrets/akb-openai-api-key:ro
     networks:
       - app_zone
       - ai_compute_zone
