@@ -256,6 +256,32 @@ def test_model_abstention_drops_unrelated_citations_and_confidence() -> None:
     assert "dostatečně důvěryhodný zdroj" in answer.answer
 
 
+def test_sourced_partial_answer_is_not_misclassified_as_total_abstention() -> None:
+    llm = CaptureLLMClient(
+        "Zaměstnanec musí zachovávat mlčenlivost [chunk_1]. "
+        "V poskytnutém kontextu není uvedena samostatná lhůta."
+    )
+    composer = AnswerComposer(_settings(), llm)
+
+    answer = asyncio.run(
+        composer.compose(
+            query_id="query-supported-partial",
+            query="Jaká je povinnost a její lhůta?",
+            chunks=[_chunk("chunk_1")],
+            confidence="high",
+            warnings=[],
+            max_chunks=4,
+            answer_mode="extract_obligations",
+            response_language="cs",
+        )
+    )
+
+    assert answer.confidence == "high"
+    assert answer.used_chunks == ["chunk_1"]
+    assert [citation.chunk_id for citation in answer.citations] == ["chunk_1"]
+    assert "LLM_DECLINED_INSUFFICIENT_CONTEXT" not in answer.warnings
+
+
 def test_context_budget_skips_oversized_hits_without_losing_later_sources() -> None:
     llm = CaptureLLMClient()
     composer = AnswerComposer(replace(_settings(), max_context_chars=140), llm)

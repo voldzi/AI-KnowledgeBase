@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from hashlib import sha256
 import json
+import re
 from typing import AsyncIterator
 import unicodedata
 
@@ -691,6 +692,14 @@ def _model_abstained(answer: str, response_language: ResponseLanguage) -> bool:
     )
     if normalized.rstrip(".") == exact.rstrip("."):
         return True
+    # A supported answer may explicitly call out one missing facet while still
+    # answering the rest of the question from cited evidence.  Treating any
+    # occurrence of an abstention phrase as a total refusal discarded those
+    # useful, auditable answers (for example an obligation with no stated
+    # deadline).  Citation markers are verified by the evidence gate later;
+    # their presence means this is a partial sourced answer, not an abstention.
+    if re.search(r"\[chunk_[a-z0-9_-]+\]", answer, flags=re.I):
+        return False
     phrases = (
         "v poskytnutem kontextu neni uveden",
         "v poskytnutem kontextu nejsou uveden",
@@ -701,7 +710,10 @@ def _model_abstained(answer: str, response_language: ResponseLanguage) -> bool:
         "source support is insufficient",
         "insufficient information in the supplied context",
     )
-    return any(phrase in normalized for phrase in phrases)
+    # Free-form refusal wording is accepted only when it leads the response.
+    # This preserves conservative no-answer behavior without erasing a sourced
+    # answer merely because its final sentence identifies a genuine gap.
+    return any(normalized.startswith(phrase) for phrase in phrases)
 
 
 def _citations(chunks: list[RetrievedChunk]) -> list[Citation]:
