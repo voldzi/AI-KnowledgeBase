@@ -1416,6 +1416,12 @@ class RagRetrievalService:
                 ),
             ]
         assistant_chunks = _promote_legal_evidence(payload.message, assistant_chunks)
+        logger.info(
+            "assistant_context_selected query_id=%s chunk_ids=%s version_ids=%s content_logged=false",
+            query_id,
+            [chunk.chunk_id for chunk in assistant_chunks],
+            sorted({chunk.citation.document_version_id for chunk in assistant_chunks}),
+        )
         decision = self._no_answer_policy.evaluate(
             chunks=assistant_chunks,
             had_candidates=run.had_candidates,
