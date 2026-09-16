@@ -971,6 +971,18 @@ def test_human_legal_question_adds_canonical_statute_identifier(
     assert identifier in _assistant_query(question, {})
 
 
+def test_explicit_statute_identifier_is_not_overridden_by_broad_employee_wording() -> None:
+    query = _assistant_query(
+        "Jaké povinnosti ukládá § 16 zákona č. 89/1995 Sb. zaměstnancům "
+        "orgánů státní statistické služby?",
+        {},
+    )
+
+    assert "89/1995 Sb." in query
+    assert "262/2006 Sb." not in query
+    assert "Kanonický právní zdroj pro vyhledání" not in query
+
+
 @pytest.mark.parametrize(
     ("question", "phrase"),
     [

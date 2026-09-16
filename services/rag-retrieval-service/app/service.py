@@ -4043,7 +4043,7 @@ _ASSISTANT_LEGAL_RETRIEVAL_HINTS = (
         "340/2015 Sb.; § 5 uveřejnění smlouvy; § 6 nabytí účinnosti nejdříve dnem uveřejnění",
     ),
     (
-        r"\b(prescas\w*|zakonik\w*\s+prac|pracovn\w*\s+dob|zamestnan\w*)\b",
+        r"\b(prescas\w*|zakonik\w*\s+prac|pracovn\w*\s+dob)\b",
         "262/2006 Sb.; § 93 práce přesčas; § 114 mzda nebo náhradní volno za práci přesčas",
     ),
     (
@@ -4088,6 +4088,11 @@ _ASSISTANT_LEGAL_RETRIEVAL_HINTS = (
 
 
 def _assistant_legal_retrieval_hint(message: str) -> str | None:
+    # An explicit statute/document identifier is authoritative. A topical
+    # heuristic must never append a different law merely because the question
+    # also contains a broad word such as "zaměstnanec".
+    if extract_identifiers(message):
+        return None
     normalized = _normalize_for_assistant(message)
     for pattern, hint in _ASSISTANT_LEGAL_RETRIEVAL_HINTS:
         if re.search(pattern, normalized):
