@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Mapping
 
 KNOWN_PROVIDERS = {"mock", "ollama", "openai"}
@@ -42,6 +43,20 @@ def _dedupe(values: tuple[str, ...]) -> tuple[str, ...]:
             deduped.append(value)
             seen.add(value)
     return tuple(deduped)
+
+
+def _read_optional_secret_file(env: Mapping[str, str], key: str) -> str | None:
+    """Read an operator-managed secret without placing it in Compose environment."""
+    path_value = env.get(key, "").strip()
+    if not path_value:
+        return None
+    try:
+        value = Path(path_value).read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        raise ConfigError(f"{key} could not be read") from exc
+    if not value:
+        raise ConfigError(f"{key} must reference a non-empty file")
+    return value
 
 
 def _parse_model_map(value: str) -> dict[str, str]:
@@ -277,5 +292,12 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         ollama_endpoint_timeout_seconds=ollama_endpoint_timeout_seconds,
         ollama_think=_parse_bool(_get(source, "AKL_OLLAMA_THINK", "false")),
         openai_base_url=_get(source, "AKL_OPENAI_COMPAT_BASE_URL", "http://localhost:8000").rstrip("/"),
-        openai_api_key=source.get("AKL_OPENAI_COMPAT_API_KEY") or None,
+        # A file takes precedence so a production service key does not appear
+        # in the container environment or a Compose inspection.  The direct
+        # value remains only as a backwards-compatible development fallback.
+        openai_api_key=(
+            _read_optional_secret_file(source, "AKL_OPENAI_COMPAT_API_KEY_FILE")
+            or source.get("AKL_OPENAI_COMPAT_API_KEY")
+            or None
+        ),
     )
