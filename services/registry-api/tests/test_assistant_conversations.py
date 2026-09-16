@@ -79,6 +79,31 @@ def _append_payload(role: str = "user", content: str = "Jak požádám o příst
     }
 
 
+def test_rag_service_can_append_for_user_but_cannot_read_conversation(
+    client: TestClient,
+) -> None:
+    service_headers = {
+        "X-AKL-Subject": "service-account-akb-rag-service",
+        "X-AKL-Roles": "service_rag",
+        "X-AKL-Service-Client-ID": "akb-rag-service",
+    }
+
+    appended = client.post(
+        "/api/v1/assistant/conversations/conv_service_append/messages",
+        headers=service_headers,
+        json=_append_payload(),
+    )
+    denied_read = client.get(
+        "/api/v1/assistant/conversation-history/conv_service_append",
+        headers=service_headers,
+    )
+
+    assert appended.status_code == 201, appended.json()
+    assert appended.json()["user_id"] == "employee_1"
+    assert denied_read.status_code == 403
+    assert denied_read.json()["error"]["code"] == "service_route_forbidden"
+
+
 def test_create_empty_conversation_assigns_server_id_and_current_user(
     client: TestClient,
 ) -> None:

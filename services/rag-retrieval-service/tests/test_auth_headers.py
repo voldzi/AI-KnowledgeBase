@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from unittest.mock import AsyncMock
 
 import jwt
 
@@ -209,3 +210,51 @@ def test_registry_client_fetches_reauthorized_conversation_history(monkeypatch) 
             "prefer_upstream_token": True,
         }
     ]
+
+
+def test_registry_client_persists_turn_with_narrow_service_identity(monkeypatch) -> None:
+    settings = load_settings(
+        {
+            "AKL_ENV": "test",
+            "AKL_AUTH_MODE": "oidc",
+            "AKL_RAG_DEPENDENCY_MODE": "mock",
+            "AKL_REGISTRY_BASE_URL": "http://registry-api:8000/api/v1",
+        }
+    )
+    calls: list[dict[str, object]] = []
+
+    async def fake_request_json_with_retry(**kwargs):
+        calls.append(kwargs)
+        return {"conversation_id": "conv-1"}
+
+    monkeypatch.setattr(
+        registry_client_module,
+        "request_json_with_retry",
+        fake_request_json_with_retry,
+    )
+    client = HttpRegistryClient(settings)
+    client._service_token = AsyncMock(return_value="rag-service-token")  # type: ignore[method-assign]
+    auth_context = AuthContext(
+        subject_id="user-1",
+        roles=("reader",),
+        groups=(),
+        bearer_token="expiring-user-token",
+    )
+
+    asyncio.run(
+        client.append_conversation_messages(
+            conversation_id="conv-1",
+            user_id="user-1",
+            messages=[{"role": "user", "content": "Dotaz"}],
+            auth_context=auth_context,
+        )
+    )
+
+    assert len(calls) == 1
+    assert calls[0]["bearer_token_override"] == "rag-service-token"
+    assert calls[0]["service_identity"] is True
+    assert calls[0]["prefer_upstream_token"] is False
+    assert calls[0]["json_body"] == {
+        "user_id": "user-1",
+        "messages": [{"role": "user", "content": "Dotaz"}],
+    }

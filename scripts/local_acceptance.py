@@ -115,7 +115,7 @@ def prepare(stratos: Path) -> None:
         AKL_DATABASE_URL=f"postgresql+psycopg://akl_platform:{c['postgres']}@postgres:5432/akl_registry",
         AKL_AUTO_CREATE_SCHEMA="false",
         AKL_TRUSTED_SERVICE_CLIENT_IDS="akb-rag-service,stratos-akb-service,stratos-projectflow-akb-service,stratos-archflow-akb-service,svc-budget-controlled-rules,svc-ingestion",
-        AKL_SERVICE_CLIENT_ROUTE_GRANTS="akb-rag-service=authz|audit|idempotency,stratos-akb-service=stratos-budget-upload,stratos-projectflow-akb-service=stratos-source-intake,stratos-archflow-akb-service=stratos-source-intake,svc-budget-controlled-rules=controlled-rules-read,svc-ingestion=authz|audit|documents-read|ingestion-status",
+        AKL_SERVICE_CLIENT_ROUTE_GRANTS="akb-rag-service=authz|audit|idempotency|assistant-write,stratos-akb-service=stratos-budget-upload,stratos-projectflow-akb-service=stratos-source-intake,stratos-archflow-akb-service=stratos-source-intake,svc-budget-controlled-rules=controlled-rules-read,svc-ingestion=authz|audit|documents-read|ingestion-status",
         AKL_STRATOS_SOURCE_INTAKE_AUTHORITY_URL="http://stratos-api:4000/api/v1/information-governance/source-document-intake/authorize",
         AKL_STRATOS_SERVICE_POLICY_BINDING_ID="pb_akb_local_service_audit_20260906",
         AKB_POLICY_SERVICE_TOKEN=c["policy"],

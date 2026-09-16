@@ -917,9 +917,9 @@ def _document_to_result(
         label_counts[label] = label_counts.get(label, 0) + 1
         metadata = _item_metadata(item, label=label, level=level)
 
+        block_section_path: list[str] | None = None
         if label in HEADING_LABELS:
-            headings = [(depth, heading) for depth, heading in headings if depth < level]
-            headings.append((level, text))
+            headings = _updated_docling_headings(headings, level=level, text=text)
             article_number, paragraph_number = None, None
             for _, heading in headings:
                 structured = _detect_structured_heading(heading)
@@ -945,19 +945,29 @@ def _document_to_result(
             detected_heading = _detect_heading(text)
             if detected_heading is not None and label in {"text", "paragraph"}:
                 block_type = "heading"
-                headings = [(1, text)]
+                headings = _updated_docling_headings(headings, level=1, text=text)
                 article_number = detected_heading.get("article_number")
                 paragraph_number = detected_heading.get("paragraph_number")
             else:
                 block_type = "paragraph"
-                paragraph_number = _detect_paragraph_number(text) or paragraph_number
+                detected_paragraph = _detect_paragraph_number(text)
+                paragraph_number = detected_paragraph or paragraph_number
+                if detected_paragraph and _heading_article_number(headings):
+                    block_section_path = [
+                        *(heading for _, heading in headings),
+                        f"Odst. {detected_paragraph}",
+                    ]
 
         page_number = _page_number(item)
         blocks.append(
             ParsedBlock(
                 text=text,
                 page_number=page_number,
-                section_path=[heading for _, heading in headings],
+                section_path=(
+                    block_section_path
+                    if block_section_path is not None
+                    else [heading for _, heading in headings]
+                ),
                 section_title=headings[-1][1] if headings else None,
                 article_number=article_number,
                 paragraph_number=paragraph_number,
@@ -1031,6 +1041,68 @@ def _document_to_result(
             "requires_review": bool(warnings),
         },
     )
+
+
+def _updated_docling_headings(
+    headings: list[tuple[int, str]],
+    *,
+    level: int,
+    text: str,
+) -> list[tuple[int, str]]:
+    """Preserve an enclosing legal article when Docling emits its title separately.
+
+    Czech legal PDFs commonly produce two sibling headings: ``§ 16`` and the
+    descriptive title that follows it. Treating both as level-one headings
+    detached every paragraph from its section and made references to another
+    section rank above the requested provision. Structured article markers are
+    authoritative boundaries; descriptive headings and numbered paragraphs are
+    nested beneath the latest marker until the next article starts.
+    """
+    structured = _detect_structured_heading(text)
+    if structured and structured["level"] == "article":
+        return [(1, structured["label"])]
+
+    article_index = next(
+        (
+            index
+            for index in range(len(headings) - 1, -1, -1)
+            if (_detect_structured_heading(headings[index][1]) or {}).get("level")
+            == "article"
+        ),
+        None,
+    )
+    if structured and structured["level"] == "paragraph" and article_index is not None:
+        article_depth = headings[article_index][0]
+        return [
+            *headings[: article_index + 1],
+            (article_depth + 1, structured["label"]),
+        ]
+
+    effective_level = max(1, level)
+    if article_index is not None:
+        article_depth = headings[article_index][0]
+        effective_level = max(article_depth + 1, effective_level)
+        retained = headings[: article_index + 1]
+        retained.extend(
+            (depth, heading)
+            for depth, heading in headings[article_index + 1 :]
+            if depth < effective_level
+        )
+    else:
+        retained = [
+            (depth, heading)
+            for depth, heading in headings
+            if depth < effective_level
+        ]
+    return [*retained, (effective_level, text)]
+
+
+def _heading_article_number(headings: list[tuple[int, str]]) -> str | None:
+    for _, heading in reversed(headings):
+        structured = _detect_structured_heading(heading)
+        if structured and structured["level"] == "article":
+            return structured.get("article_number")
+    return None
 
 
 def _item_text(item: Any, *, document: Any, label: str) -> str:

@@ -465,7 +465,7 @@ services:
       AKL_MOCK_SUBJECT: ${AKL_MOCK_SUBJECT:-user_dev}
       AKL_MOCK_ROLES: ${AKL_MOCK_ROLES:-["admin"]}
       AKL_TRUSTED_SERVICE_CLIENT_IDS: ${AKL_REGISTRY_TRUSTED_SERVICE_CLIENT_IDS:-akb-rag-service,stratos-akb-service,svc-budget-controlled-rules,svc-ingestion}
-      AKL_SERVICE_CLIENT_ROUTE_GRANTS: ${AKL_REGISTRY_SERVICE_CLIENT_ROUTE_GRANTS:-akb-rag-service=authz|audit|idempotency,stratos-akb-service=stratos-budget-upload,svc-budget-controlled-rules=controlled-rules-read,svc-ingestion=authz|audit|documents-read|ingestion-status,svc-akb-official-source-sync=authz|documents-read|documents-write|ingestion-status}
+      AKL_SERVICE_CLIENT_ROUTE_GRANTS: ${AKL_REGISTRY_SERVICE_CLIENT_ROUTE_GRANTS:-akb-rag-service=authz|audit|idempotency|assistant-write,stratos-akb-service=stratos-budget-upload,svc-budget-controlled-rules=controlled-rules-read,svc-ingestion=authz|audit|documents-read|ingestion-status,svc-akb-official-source-sync=authz|documents-read|documents-write|ingestion-status}
       AKB_OFFICIAL_SOURCE_AUTOMATION_ENABLED: ${AKB_OFFICIAL_SOURCE_AUTOMATION_ENABLED:-false}
       AKL_SERVICE_CLIENT_DELEGATIONS: ${AKL_REGISTRY_SERVICE_CLIENT_DELEGATIONS:-}
       AKL_STRATOS_AUTH_ME_URL: ${AKL_STRATOS_AUTH_ME_URL:-http://host.docker.internal:4000/api/v2/auth/me}

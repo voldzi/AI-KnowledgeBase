@@ -11776,7 +11776,19 @@ def append_assistant_messages(
     db: Session = Depends(get_db),
     principal: Principal = Depends(get_current_principal),
 ) -> AssistantConversationDetailResponse:
-    subject_context = require_global_action(principal, Action.rag_query, db)
+    if (
+        principal.service_identity
+        and principal.service_client_id == "akb-rag-service"
+        and "service_rag" in principal.roles
+    ):
+        # The request has already passed the exact, default-deny
+        # ``assistant-write`` service-route grant.  The RAG service appends an
+        # answer after the interactive token may have expired, so this narrow
+        # write path must not depend on a user Access Projection.  It still
+        # cannot read conversations because it has no assistant-read grant.
+        subject_context = context_for_principal(principal, db)
+    else:
+        subject_context = require_global_action(principal, Action.rag_query, db)
     _validate_conversation_retention_until(payload.retention_until)
     conversation = db.get(AssistantConversation, conversation_id)
     if conversation is None:

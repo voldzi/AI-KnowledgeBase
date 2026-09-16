@@ -23,7 +23,7 @@ os.environ.setdefault(
 )
 os.environ.setdefault(
     "AKL_SERVICE_CLIENT_ROUTE_GRANTS",
-    "akb-rag-service=authz|audit|idempotency,"
+    "akb-rag-service=authz|audit|idempotency|assistant-write,"
     "stratos-akb-service=stratos-budget-upload,"
     "svc-budget-controlled-rules=controlled-rules-read,"
     "svc-ingestion=authz|audit|documents-read|ingestion-status,"

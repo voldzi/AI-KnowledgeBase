@@ -129,10 +129,34 @@ class _FakeDocument:
         return {"schema_name": "DoclingDocument", "version": "1.0.0", "item_count": 3}
 
 
+class _FakeLegalDocument(_FakeDocument):
+    def __init__(self) -> None:
+        self.pages = {1: object(), 2: object()}
+        self.items = [
+            (_FakeItem("section_header", "§ 16", page=1), 1),
+            (_FakeItem("section_header", "Povinnost mlčenlivosti", page=1), 1),
+            (_FakeItem("text", "(1) Zaměstnanci zachovávají mlčenlivost.", page=1), 2),
+            (_FakeItem("text", "(2) Před zahájením práce skládají slib.", page=2), 2),
+            (_FakeItem("section_header", "§ 17", page=2), 1),
+            (_FakeItem("section_header", "Poskytování údajů", page=2), 1),
+            (_FakeItem("text", "(1) Údaje se poskytují za podmínek zákona.", page=2), 2),
+        ]
+
+    def export_to_dict(self) -> dict:
+        return {"schema_name": "DoclingDocument", "version": "1.0.0", "item_count": 7}
+
+
 class _FakeConverter:
-    def __init__(self, *, status: str = "success", error: Exception | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        status: str = "success",
+        error: Exception | None = None,
+        document: _FakeDocument | None = None,
+    ) -> None:
         self.status = status
         self.error = error
+        self.document = document or _FakeDocument()
         self.calls: list[dict] = []
 
     def convert(self, path: Path, **kwargs):  # type: ignore[no-untyped-def]
@@ -141,7 +165,7 @@ class _FakeConverter:
             raise self.error
         return SimpleNamespace(
             status=SimpleNamespace(value=self.status),
-            document=_FakeDocument(),
+            document=self.document,
             pages=[],
         )
 
@@ -318,6 +342,31 @@ def test_docling_preserves_structure_tables_and_page_provenance(tmp_path: Path) 
     assert table.metadata["table_header_line_count"] == 2
     assert converter.calls[0]["raises_on_error"] is False
     assert converter.calls[0]["max_file_size"] == parser.settings.max_file_bytes
+
+
+def test_docling_preserves_czech_legal_section_across_sibling_title(tmp_path: Path) -> None:
+    parser = DoclingParser(
+        _settings(tmp_path),
+        converter_factory=_Factory(_FakeConverter(document=_FakeLegalDocument())),
+    )
+
+    result = parser.parse(
+        _source("law.pdf", "application/pdf"),
+        parser_profile="controlled_document",
+    )
+
+    assert result.blocks[0].section_path == ["§ 16"]
+    assert result.blocks[1].section_path == ["§ 16", "Povinnost mlčenlivosti"]
+    assert result.blocks[2].section_path == [
+        "§ 16",
+        "Povinnost mlčenlivosti",
+        "Odst. 1",
+    ]
+    assert result.blocks[2].article_number == "16"
+    assert result.blocks[2].paragraph_number == "1"
+    assert result.blocks[3].section_path[-1] == "Odst. 2"
+    assert result.blocks[4].section_path == ["§ 17"]
+    assert result.blocks[5].section_path == ["§ 17", "Poskytování údajů"]
 
 
 def test_granite_is_used_for_pdf_and_standard_docling_for_office(tmp_path: Path) -> None:

@@ -611,6 +611,12 @@ class HttpRegistryClient:
         messages: list[dict[str, object]],
         auth_context: AuthContext | None = None,
     ) -> None:
+        # A generated answer may complete after the caller's short-lived user
+        # access token expires.  Persist the already-authorized turn with the
+        # narrowly granted RAG service identity so conversation lineage is not
+        # lost at that boundary.  Registry still records and validates the
+        # explicit user_id and the service route cannot read document content.
+        service_token = await self._service_token()
         await request_json_with_retry(
             dependency="registry-api",
             settings=self._settings,
@@ -618,7 +624,9 @@ class HttpRegistryClient:
             url=f"{self._settings.registry_base_url}/assistant/conversations/{conversation_id}/messages",
             json_body={"user_id": user_id, "messages": messages},
             auth_context=auth_context,
-            prefer_upstream_token=True,
+            prefer_upstream_token=service_token is None,
+            bearer_token_override=service_token,
+            service_identity=service_token is not None,
         )
 
     async def fetch_conversation(

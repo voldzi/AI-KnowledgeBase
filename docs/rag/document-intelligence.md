@@ -384,6 +384,12 @@ After every chat turn the RAG service appends the user message and the
 assistant response (including response type, citations, confidence, warnings,
 and bounded report artifacts when present) via
 `POST /api/v1/assistant/conversations/{conversation_id}/messages`.
+The append uses the RAG service identity with the single `assistant-write`
+route grant. This prevents a valid answer from losing its conversation lineage
+when the initiating user's short-lived access token expires during generation.
+The service identity may append only for the explicit `user_id`; document
+retrieval, citation opening, conversation reading and all source authorization
+continue to use a freshly verified user identity.
 
 The Registry API publishes history management under a separate path so it does
 not collide with the RAG assistant conversation endpoint:
