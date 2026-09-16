@@ -118,6 +118,19 @@ describe("recipient documentation and operational source boundaries", () => {
     assert.equal(route.tool, "controlled_rule_answer");
   });
 
+  it("answers a general human procurement-law question from cited documents", () => {
+    for (const message of [
+      "Jaký vyplývají podmínky ze zákona o veřejných zakázkách?",
+      "Jaké podmínky vyplývají ze zákona o veřejných zakázkách?",
+      "Co stanoví zákon o veřejných zakázkách?",
+      "Vysvětli mi zákon o zadávání veřejných zakázek.",
+    ]) {
+      const route = routeAssistantMessage(message, "cs");
+      assert.equal(route.tool, "rag_document_answer");
+      assert.equal(route.controlledRuleIntent, null);
+    }
+  });
+
   it("does not classify an exact statute lookup as live STRATOS data", () => {
     for (const message of [
       "Co stanoví zákon č. 218/2000 Sb. o rozpočtových pravidlech?",
