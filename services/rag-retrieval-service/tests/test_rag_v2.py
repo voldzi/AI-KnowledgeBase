@@ -287,7 +287,11 @@ async def test_exact_resolver_scopes_before_retrieval_and_uses_full_query_embedd
     assert retrieval_filters[0].document_ids == ["doc_law"]
     assert embedded_queries == [["365/2000 Sb."]]
     assert run.response.retrieval_diagnostics["exact_document_scope_applied"] is True
-    assert run.response.retrieval_diagnostics["stage_timings_ms"]["embedding"] == 0.0
+    # Exact resolution narrows the document first, then the full user query is
+    # embedded to rank the relevant passage inside that immutable document.
+    # The elapsed value is clock-dependent; the recorded call above proves the
+    # stage ran with the complete query.
+    assert run.response.retrieval_diagnostics["stage_timings_ms"]["embedding"] >= 0.0
     assert run.response.retrieval_diagnostics["stage_timings_ms"]["parent_expansion"] == 0.0
 
 
