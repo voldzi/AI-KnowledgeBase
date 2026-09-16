@@ -9,6 +9,7 @@ from datetime import date, datetime, timedelta, timezone
 from hashlib import sha256
 from itertools import islice
 import json
+import logging
 from threading import Lock
 from typing import Annotated, Literal
 from zoneinfo import ZoneInfo
@@ -21,6 +22,9 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 from starlette import status
+
+
+logger = logging.getLogger(__name__)
 
 from app.audit import add_audit_event
 from app.assistant_retention import (
@@ -3504,7 +3508,21 @@ def authorize_stratos_budget_document_intake(
         raise problem(409, "stratos_budget_intake_workflow_conflict", "The signed workflow no longer matches the registered document")
     if payload.workflow_mode == "interactive":
         actor = _budget_intake_actor_principal(request, payload)
-        require_document_action(actor, Action.document_version_create, document, db)
+        try:
+            require_document_action(actor, Action.document_version_create, document, db)
+        except HTTPException as exc:
+            detail = exc.detail if isinstance(exc.detail, dict) else {}
+            error = detail.get("error") if isinstance(detail.get("error"), dict) else {}
+            nested_details = error.get("details") if isinstance(error.get("details"), dict) else {}
+            reason_codes = nested_details.get("reason_codes")
+            safe_reasons = sorted(str(item) for item in reason_codes) if isinstance(reason_codes, list) else []
+            logger.warning(
+                "stratos_budget_intake_actor_denied status=%s code=%s reason_codes=%s",
+                exc.status_code,
+                error.get("code", "unknown"),
+                ",".join(safe_reasons) or "none",
+            )
+            raise
     envelope = IntegrationEnvelope.model_validate({
         "schemaVersion": "stratos-integration-envelope-1", "organizationId": "org_stratos",
         "sourceSystem": "STRATOS_BUDGET", "externalRef": external.external_ref,
