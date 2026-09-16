@@ -39,6 +39,7 @@ export async function contextFromStratosAccessProjection(
   const cached = projectionCache.get(key);
   if (!managed && !bypassCache && cached && cached.expiresAt > nowMs) return cached.context;
 
+  const projectionRequestStartedAtMs = Date.now();
   let response: Response;
   try {
     response = await fetcher(oidc.stratosAuthMeUrl, {
@@ -64,9 +65,16 @@ export async function contextFromStratosAccessProjection(
   if (!response.ok) throw projectionUnavailable(`STRATOS access projection returned ${response.status}.`);
 
   const body = await response.json().catch(() => null);
+  // `nowMs` is captured by the caller before the authority request. STRATOS
+  // generates the projection while serving that request, so comparing its
+  // generatedAt with the pre-request instant falsely classifies every fresh
+  // projection as future-dated. Advance the caller's clock only by the time
+  // actually spent fetching the projection; this preserves deterministic
+  // tests and still rejects genuine clock drift or forged future timestamps.
+  const projectionNowMs = nowMs + Math.max(0, Date.now() - projectionRequestStartedAtMs);
   let projection: ReturnType<typeof parseActiveProjectionV2>;
   try {
-    projection = parseActiveProjectionV2(body, nowMs);
+    projection = parseActiveProjectionV2(body, projectionNowMs);
   } catch {
     throw projectionUnavailable("STRATOS access projection is malformed, stale, or incompatible.");
   }
@@ -78,8 +86,8 @@ export async function contextFromStratosAccessProjection(
   }
 
   const currentEntitlement = (validFrom: string | null, validUntil: string | null) =>
-    (validFrom === null || Date.parse(validFrom) <= nowMs)
-    && (validUntil === null || Date.parse(validUntil) > nowMs);
+    (validFrom === null || Date.parse(validFrom) <= projectionNowMs)
+    && (validUntil === null || Date.parse(validUntil) > projectionNowMs);
   const applicationAccess = projection.applicationAccess.flatMap((item) =>
     item.entitlements
       .filter((entitlement) => currentEntitlement(entitlement.validFrom, entitlement.validUntil))
