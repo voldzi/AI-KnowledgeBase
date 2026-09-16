@@ -268,7 +268,9 @@ class GovernanceInvalidResponse(GovernanceUnavailable):
 
 
 class GovernanceDenied(RuntimeError):
-    pass
+    def __init__(self, message: str, *, upstream_code: str | None = None) -> None:
+        super().__init__(message)
+        self.upstream_code = upstream_code
 
 
 def validate_public_decision_response(value: Any) -> dict[str, Any]:
@@ -902,7 +904,10 @@ class StratosGovernanceClient:
                 upstream_code,
                 (extra_headers or {}).get("X-Correlation-ID", "missing"),
             )
-            raise GovernanceDenied("STRATOS access governance rejected the runtime credential")
+            raise GovernanceDenied(
+                "STRATOS access governance rejected the runtime credential",
+                upstream_code=upstream_code,
+            )
         if response.status_code >= 400:
             raise GovernanceUnavailable(
                 f"STRATOS access governance returned {response.status_code}"

@@ -1125,6 +1125,16 @@ def evaluate_runtime_document_version_access(
             ),
         )
     except GovernanceDenied as exc:
+        if exc.upstream_code == "OFFICIAL_DOCUMENT_SOURCE_REQUIRED":
+            return Decision(
+                False,
+                "STRATOS rejected a document without the required official source authority",
+                {
+                    **decision.constraints,
+                    "scope": document_governance_scope(document),
+                },
+                (exc.upstream_code,),
+            )
         raise problem(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             "policy_decision_credential_rejected",
@@ -1230,6 +1240,16 @@ def evaluate_runtime_document_access(
             credential_token=credential_token,
         )
     except GovernanceDenied as exc:
+        if exc.upstream_code == "OFFICIAL_DOCUMENT_SOURCE_REQUIRED":
+            return Decision(
+                False,
+                "STRATOS rejected a document without the required official source authority",
+                {
+                    **decision.constraints,
+                    "scope": document_governance_scope(document),
+                },
+                (exc.upstream_code,),
+            )
         raise problem(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             "policy_decision_credential_rejected",

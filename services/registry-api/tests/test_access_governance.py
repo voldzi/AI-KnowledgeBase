@@ -14,7 +14,7 @@ from starlette.requests import Request
 import app.auth as auth_module
 import app.api as api_module
 import app.permissions as permissions_module
-from app.access_governance import AccessEntitlement, AccessProjection, GovernanceUnavailable, StratosGovernanceClient, policy_decision_scope
+from app.access_governance import AccessEntitlement, AccessProjection, GovernanceDenied, GovernanceUnavailable, StratosGovernanceClient, policy_decision_scope
 from app.api import (
     _audit_service_decision_coordinates,
     _is_official_public_source_create,
@@ -1354,6 +1354,55 @@ def test_official_public_source_runtime_decision_uses_fixed_service_identity(
     assert decision.allowed is True
     assert calls[0]["credential_token"] is None
     assert calls[0]["capability_id"] == "akb:manage_document"
+
+
+def test_runtime_decision_treats_missing_official_source_authority_as_document_deny(
+    monkeypatch,
+) -> None:
+    document = _official_public_document()
+    principal = Principal(
+        subject_id="user-manager",
+        roles={"stratos_user"},
+        groups=set(),
+        capabilities={"akb:manage_document"},
+        scopes={"organization:org_stratos"},
+        dynamic_access_loaded=True,
+        bearer_token="interactive-user-token",
+    )
+    context = SubjectContext(
+        subject_id="user-manager",
+        roles={"stratos_user"},
+        groups=set(),
+        capabilities={"akb:manage_document"},
+        scopes={"organization:org_stratos"},
+        organization_id="org_stratos",
+        identity_active=True,
+        membership_active=True,
+        application_access_active=True,
+        access_v2=True,
+    )
+
+    class Client:
+        def decide(self, **_kwargs):
+            raise GovernanceDenied(
+                "STRATOS rejected the governed document",
+                upstream_code="OFFICIAL_DOCUMENT_SOURCE_REQUIRED",
+            )
+
+    monkeypatch.setattr(permissions_module, "get_settings", lambda: _settings())
+    monkeypatch.setattr(permissions_module, "governance_client", lambda _settings: Client())
+
+    local = evaluate_document_access(context, "document.update", document)
+    decision = evaluate_runtime_document_access(
+        principal,
+        "document.update",
+        document,
+        local,
+    )
+
+    assert local.allowed is True
+    assert decision.allowed is False
+    assert decision.reason_codes == ("OFFICIAL_DOCUMENT_SOURCE_REQUIRED",)
 
 
 def test_public_chat_scope_can_query_but_not_read_valid_official_reference(
