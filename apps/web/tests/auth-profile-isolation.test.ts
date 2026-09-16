@@ -40,7 +40,7 @@ for (const profile of ["platform", "chat"] as const) {
       headers: { cookie: `${own.signedOut}=1` },
     }));
     assert.equal(response.status, 200);
-    assert.match(await response.text(), /Pokračovat k přihlášení/);
+    assert.match(await response.text(), /Obnovit přístup/);
   });
 
   it(`${profile}: foreign callback state never exchanges a code or clears the other profile`, async () => {

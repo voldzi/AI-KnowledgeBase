@@ -7217,6 +7217,18 @@ button {
   max-width: 320px;
 }
 
+.document-guide__header .document-guide__complete {
+  background: #e5f6ec;
+  border: 1px solid #acdabb;
+  border-radius: var(--radius);
+  color: #176438;
+  flex: 0 0 auto;
+  font-weight: 700;
+  line-height: 1.4;
+  max-width: 360px;
+  padding: 11px 14px;
+}
+
 .document-guide__steps {
   border-top: 1px solid var(--border);
   display: grid;
@@ -7563,6 +7575,11 @@ button {
   }
 
   .document-guide__next {
+    max-width: none;
+    width: 100%;
+  }
+
+  .document-guide__header .document-guide__complete {
     max-width: none;
     width: 100%;
   }

@@ -43,6 +43,15 @@ describe("document knowledge intent", () => {
     assert.ok(result.retrievalHints.includes("hlášení problému"));
   });
 
+  it("treats an SIS support overview as document knowledge, not a helpdesk request", () => {
+    const result = resolveDocumentKnowledgeIntent("Jaké máš informace k podpoře SIS?");
+
+    assert.equal(result.intent, "general");
+    assert.equal(result.answerMode, "it_support_answer");
+    assert.ok(result.retrievalHints.includes("Statistický informační systém"));
+    assert.ok(result.retrievalHints.includes("SLA"));
+  });
+
   it("selects specialized owner, deadline, and obligation answer modes", () => {
     assert.equal(
       resolveDocumentKnowledgeIntent("Kdo schvaluje pracovní cestu?").answerMode,

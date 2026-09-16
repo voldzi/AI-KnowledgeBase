@@ -17,6 +17,12 @@ describe("guided document detail", () => {
     assert.doesNotMatch(detail, /<StratosViewTabs/);
   });
 
+  it("shows a terminal completion state instead of recommending an already completed step", () => {
+    assert.doesNotMatch(detail, /guidedSteps\[guidedSteps\.length - 1\]/);
+    assert.match(detail, /className="document-guide__complete" role="status"/);
+    assert.match(detail, /copy\.guidedComplete/);
+  });
+
   it("renders controlled packages, attachments and verified rules", () => {
     assert.match(detail, /<ControlledPackageRelations/);
     assert.match(detail, /<ControlledRuleCard/);

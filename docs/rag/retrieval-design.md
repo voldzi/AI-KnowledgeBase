@@ -34,6 +34,13 @@ Sluzba nezodpovida za ingestion, parsing dokumentu, registry metadata ani zmenu 
 9. Answer composer použije pouze povolené chunky nad prahem relevance.
 10. Evidence gate ověří tvrzení proti použitým chunkům.
 
+V produkčním Registry režimu používá zaměstnanecký Chat pro krok 4 kandidátní
+klasifikační strop `confidential`. Strop pouze umožní, aby se omezený dokument
+dostal k přesnému rozhodnutí Registry; sám žádný přístup neuděluje. Bez kladného
+rozhodnutí pro aktuálního uživatele, verzi, policy hash, scope a TLP je chunk
+odstraněn před rerankingem a před LLM. V režimech bez Registry zůstává strop
+`internal`.
+
 Detail RAG V2 je v `docs/rag/rag-v2.md`.
 
 ## Hybrid score

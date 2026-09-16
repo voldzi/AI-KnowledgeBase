@@ -215,6 +215,7 @@ const detailCopy = {
     guidedAttention: "Vyžaduje pozornost",
     guidedPending: "Čeká",
     guidedNext: "Doporučený další krok",
+    guidedComplete: "Dokument je dokončený a připravený k používání v oprávněném rozsahu.",
     guidedProgress: "Dokončeno",
     moreInformation: "Další informace",
     moreInformationDetail: "Historie verzí, technický stav zpracování a auditní stopa.",
@@ -487,6 +488,7 @@ const detailCopy = {
     guidedAttention: "Needs attention",
     guidedPending: "Waiting",
     guidedNext: "Recommended next step",
+    guidedComplete: "The document is complete and ready for use within the authorized scope.",
     guidedProgress: "Completed",
     moreInformation: "More information",
     moreInformationDetail: "Version history, technical processing state and audit trail.",
@@ -1002,7 +1004,7 @@ export function DocumentDetail({
   const nextGuidedStep =
     guidedSteps.find((step) => step.state === "attention") ??
     guidedSteps.find((step) => step.state === "pending") ??
-    guidedSteps[guidedSteps.length - 1];
+    null;
 
   useEffect(() => {
     const requestedTab = tabFromSearchParams(searchParams.get("tab"));
@@ -1435,7 +1437,11 @@ export function DocumentDetail({
             >
               {copy.guidedNext}: {nextGuidedStep.label}
             </button>
-          ) : null}
+          ) : (
+            <p className="document-guide__complete" role="status">
+              {copy.guidedComplete}
+            </p>
+          )}
         </header>
         <nav aria-label={language === "cs" ? "Hlavní kroky dokumentu" : "Main document steps"}>
           <ol className="document-guide__steps">

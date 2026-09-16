@@ -305,6 +305,21 @@ describe("assistant tool router", () => {
     assert.match(support.answerFormatInstruction ?? "", /Nepředpokládej, že existuje Service Desk/);
   });
 
+  it("routes an SIS support overview to grounded retrieval with contract hints", () => {
+    const route = routeAssistantMessage("Jaké máš informace k podpoře SIS?", "cs");
+    const context = ragContextForAssistantRoute({}, route);
+
+    assert.equal(route.tool, "rag_document_answer");
+    assert.equal(route.reason, "rag_grounded_answer");
+    assert.equal(route.answerMode, "it_support_answer");
+    assert.deepEqual(context.document_retrieval_hints, [
+      "Statistický informační systém",
+      "podpora a rozvoj SIS",
+      "servisní služby",
+      "SLA",
+    ]);
+  });
+
   it("forces clarify-style continuation back to the RAG path", () => {
     const route = routeAssistantMessageForRag("Seznam smluv vytvoř do tabulky.", "cs");
 

@@ -54,6 +54,7 @@ from app.schemas import (
     ContractExtractionProfilesResponse,
     ContractExtractionProposeRequest,
     ContractExtractionResponse,
+    Classification,
     ControlledRuleExtractionProposeRequest,
     ControlledRuleExtractionResponse,
     RagAnswer,
@@ -1258,7 +1259,11 @@ class RagRetrievalService:
             query_context,
             history_max_length=self._settings.assistant_history_max_chars,
         )
-        retrieval_filters = _assistant_filters(query_context, payload.message)
+        retrieval_filters = _assistant_filters(
+            query_context,
+            payload.message,
+            classification_max=_assistant_candidate_classification_max(self._settings),
+        )
         if _assistant_uses_authorized_follow_up_source(
             payload.message,
             query_context.get("earlier_user_questions"),
@@ -1512,13 +1517,26 @@ class RagRetrievalService:
                 response.warnings.append("CONVERSATION_HISTORY_NOT_PERSISTED")
             return response
 
+        authorization_limited = {
+            "NO_AUTHORIZED_SOURCE",
+            "AUTHZ_FILTERED_SOURCES",
+        }.issubset(rag_answer.warnings)
+        if "LLM_ANSWER_INCOMPLETE" in rag_answer.warnings:
+            no_source_answer = rag_answer.answer
+        elif authorization_limited:
+            no_source_answer = _localized(
+                payload.response_language,
+                "no_authorized_document_source",
+            )
+        else:
+            no_source_answer = _assistant_no_source_message(
+                payload.mode,
+                payload.response_language,
+            )
         response = AssistantChatResponse(
-            response_type="no_answer",
+            response_type="restricted" if authorization_limited else "no_answer",
             conversation_id=conversation_id,
-            answer=(
-                rag_answer.answer if "LLM_ANSWER_INCOMPLETE" in rag_answer.warnings
-                else _assistant_no_source_message(payload.mode, payload.response_language)
-            ),
+            answer=no_source_answer,
             current_context=_assistant_current_context(query_context),
             citations=[],
             confidence=rag_answer.confidence,
@@ -3012,6 +3030,8 @@ def _int_or_none(value: object) -> int | None:
 def _assistant_filters(
     context: dict[str, object],
     query: str = "",
+    *,
+    classification_max: Classification = "internal",
 ) -> RagQueryFilters:
     tags: list[str] = []
     context_tags = context.get("tags")
@@ -3047,12 +3067,24 @@ def _assistant_filters(
             "other",
         ],
         only_valid=not bool(document_version_ids),
-        classification_max="internal",
+        classification_max=classification_max,
         tags=tags,
         document_ids=document_ids,
         document_version_ids=document_version_ids,
         valid_on=_assistant_valid_on(context, query),
     )
+
+
+def _assistant_candidate_classification_max(settings: Settings) -> Classification:
+    """Choose a candidate ceiling while Registry remains the access authority.
+
+    Registry evaluates the exact user, immutable version, policy hash,
+    governance scope and TLP before a chunk can reach reranking or answer
+    composition. Keeping candidate discovery at ``internal`` in that mode
+    incorrectly hides specifically authorized STRATOS contracts classified as
+    ``restricted``. Modes without Registry keep the conservative ceiling.
+    """
+    return "confidential" if settings.authz_mode == "registry" else "internal"
 
 
 def _assistant_valid_on(
@@ -3955,6 +3987,7 @@ LOCALIZED_TEXT: dict[ResponseLanguage, dict[str, str]] = {
         "ask_followup": "Položit doplňující dotaz",
         "no_precise_source": "Nepodařilo se najít dostatečně přesný a citovatelný postup.",
         "no_precise_document_source": "Nepodařilo se najít dostatečně přesný a citovatelný zdroj v dokumentech.",
+        "no_authorized_document_source": "V aktuálně oprávněném rozsahu není pro tento dotaz dostupný citovatelný zdroj.",
         "followup_owner": "Chcete zjistit, kdo je vlastník systému?",
         "followup_request_text": "Chcete připravit text žádosti?",
         "followup_incident_category": "Chcete doporučit kategorii incidentu?",
@@ -3990,6 +4023,7 @@ LOCALIZED_TEXT: dict[ResponseLanguage, dict[str, str]] = {
         "ask_followup": "Ask follow-up",
         "no_precise_source": "I could not find a sufficiently precise and citable procedure.",
         "no_precise_document_source": "I could not find a sufficiently precise and citable document source.",
+        "no_authorized_document_source": "No citable source is available for this question within your current authorized scope.",
         "followup_owner": "Do you want to identify the system owner?",
         "followup_request_text": "Do you want to draft the request text?",
         "followup_incident_category": "Do you want a recommended incident category?",

@@ -93,7 +93,13 @@ Documents use:
 - `restricted`,
 - `confidential`.
 
-Employee Chat Portal defaults to `classification_max=internal` until enterprise policy maps roles and groups to higher classifications.
+When Registry authorization is active, Employee Chat candidate discovery uses
+`classification_max=confidential` so specifically authorized restricted
+STRATOS documents can reach the authorization decision. This is not a grant:
+Registry still evaluates the exact current subject, immutable document version,
+policy hash, governance scope and TLP before a chunk can be reranked, composed
+into an answer or opened as a citation. Profiles without Registry authorization
+retain `classification_max=internal`.
 
 ## Assistant Audit Events
 

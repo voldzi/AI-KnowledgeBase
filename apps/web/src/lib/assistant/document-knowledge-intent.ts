@@ -61,7 +61,7 @@ const INTENT_RETRIEVAL_HINTS: Record<Exclude<DocumentKnowledgeIntent, "general">
 };
 
 const SUPPORT_SIGNAL = /\b(problem\w*|nefung\w*|poruch\w*|chyb\w*|incident\w*|podpor\w*|helpdesk|service\s*desk)\b/;
-const SUPPORT_CHANNEL_SIGNAL = /\b(kde|kam|komu|naps\w*|nahlas\w*|hlasi\w*|obrat\w*|kontakt\w*|podpor\w*|helpdesk|service\s*desk)\b/;
+const SUPPORT_CHANNEL_SIGNAL = /\b(kde|kam|komu|naps\w*|nahlas\w*|hlasi\w*|obrat\w*|kontakt\w*|helpdesk|service\s*desk)\b/;
 const RESOURCE_SIGNAL = /\b(formular\w*|sablon\w*|vzor\w*|zadost\w*|tiskopis\w*|manual\w*|priruck\w*|napoved\w*|odkaz\w*|soubor\w*|dokument\w*)\b/;
 const RESOURCE_ACTION_SIGNAL = /\b(kde|najd\w*|stahn\w*|otevr\w*|zisk\w*|vypln\w*)\b/;
 const OWNER_SIGNAL = /\b(?:komu|kam\s+se|na\s+koho|kontakt\w*|gestor\w*|vlastnik\w*|schvaluj\w*)\b|\bkdo\s+(?:je\s+)?(?:gestor\w*|vlastnik\w*|odpovedn\w*|odpovida\w*|schvaluj\w*|resi\w*|spravuj\w*)\b/;
@@ -78,6 +78,15 @@ const GENERIC_FOLLOW_UP_TERMS = new Set([
 const GENERIC_FOLLOW_UP_TERM_RE = /^(?:doklad|formular|gestor|kontakt|krok|lhut|manual|navod|odpovednost|povinnost|pravidl|priruck|schvalovatel|termin|vlastnik|evid|nastav|nahlas|objedn|odevzd|odesl|odhlas|pouz|pozad|prihlas|rezerv|vypln|vyuct|zaloz|zisk|zmen)\w*$/;
 
 const DOMAIN_RETRIEVAL_HINTS: Array<{ signal: RegExp; hints: string[] }> = [
+  {
+    signal: /\b(?:sis|statistick\w*\s+informacn\w*\s+system\w*)\b/,
+    hints: [
+      "Statistický informační systém",
+      "podpora a rozvoj SIS",
+      "servisní služby",
+      "SLA",
+    ],
+  },
   {
     signal: /\b(dovolen\w*|voln\w*|nepritomnost\w*)\b/,
     hints: ["dovolená", "čerpání dovolené", "žádost o dovolenou", "nepřítomnost"],

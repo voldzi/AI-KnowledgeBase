@@ -8,6 +8,7 @@ import pytest
 from app.registry_client import AuthzFilterResult
 from app.service import (
     RagRetrievalService,
+    _assistant_candidate_classification_max,
     _assistant_answer_query,
     _clarification_questions,
     _assistant_current_context,
@@ -476,6 +477,89 @@ def test_assistant_chat_returns_cited_answer_when_context_is_specific() -> None:
     assert body["response_type"] == "answer"
     assert body["citations"][0]["chunk_id"] == "chunk_789"
     assert body["report_artifacts"] == []
+
+
+def test_registry_assistant_can_retrieve_an_authorized_restricted_contract() -> None:
+    with make_client(
+        {
+            "AKL_RAG_AUTHZ_MODE": "registry",
+            "AKL_RAG_REGISTRY_CLIENT_MODE": "mock",
+            "AKL_RAG_NO_ANSWER_MIN_SCORE": "0",
+        }
+    ) as client:
+        service = client.app.state.rag_service
+        service._retriever._chunks.append(
+            {
+                "chunk_id": "chunk_sis_contract",
+                "text": (
+                    "Rámcová smlouva upravuje podporu a rozvoj Statistického "
+                    "informačního systému SIS včetně servisních služeb a SLA."
+                ),
+                "payload": {
+                    "document_id": "doc_sis_contract",
+                    "document_version_id": "ver_sis_current",
+                    "document_title": "Podpora a rozvoj SIS",
+                    "version_label": "2022-2026",
+                    "document_type": "contract",
+                    "classification": "restricted",
+                    "status": "valid",
+                    "tags": ["sis", "contract"],
+                    "page_number": 4,
+                    "section_path": ["Předmět smlouvy"],
+                    "article_number": None,
+                    "paragraph_number": None,
+                },
+            }
+        )
+        response = client.post(
+            "/api/v1/assistant/chat",
+            json={
+                "user_id": "employee_1",
+                "message": "Jaké máš informace k podpoře SIS?",
+                "persist_conversation": False,
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["response_type"] == "answer"
+    assert body["citations"][0]["document_id"] == "doc_sis_contract"
+    assert "SIS" in body["answer"]
+
+
+def test_registry_assistant_reports_authorized_scope_without_leaking_denied_contract() -> None:
+    with make_client(
+        {
+            "AKL_RAG_AUTHZ_MODE": "registry",
+            "AKL_RAG_REGISTRY_CLIENT_MODE": "mock",
+        }
+    ) as client:
+        response = client.post(
+            "/api/v1/assistant/chat",
+            json={
+                "user_id": "employee_1",
+                "message": "Jaké je tajné pravidlo pro krizové výjimky?",
+                "context": {"document_id": "doc_denied"},
+                "persist_conversation": False,
+            },
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["response_type"] == "restricted"
+    assert body["citations"] == []
+    assert "aktuálně oprávněném rozsahu" in body["answer"]
+    assert "tajné pravidlo" not in body["answer"].lower()
+    assert {"NO_AUTHORIZED_SOURCE", "AUTHZ_FILTERED_SOURCES"}.issubset(body["warnings"])
+
+
+def test_assistant_candidate_ceiling_is_broad_only_with_registry_authorization() -> None:
+    assert _assistant_candidate_classification_max(
+        SimpleNamespace(authz_mode="registry")
+    ) == "confidential"
+    assert _assistant_candidate_classification_max(
+        SimpleNamespace(authz_mode="disabled")
+    ) == "internal"
 
 
 def test_assistant_chat_returns_report_artifact_for_table_request() -> None:
