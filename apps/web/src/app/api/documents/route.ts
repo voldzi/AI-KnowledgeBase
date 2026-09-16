@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getServerApiClients, getServerRequestContext } from "@/lib/api/server";
+import {
+  getOptionalServerRequestContext,
+  getServerApiClients,
+} from "@/lib/api/server";
 import { requireApiAccess } from "@/lib/auth/server-route-guard";
 import type { Classification, DocumentStatus, DocumentType } from "@/lib/types";
 
@@ -44,7 +47,22 @@ const DOCUMENT_TYPES = new Set<DocumentType>([
 
 export async function GET(request: NextRequest) {
   try {
-    const context = await getServerRequestContext();
+    const context = await getOptionalServerRequestContext(request);
+    if (!context) {
+      return NextResponse.json(
+        {
+          error: {
+            code: "OIDC_SESSION_REQUIRED",
+            message: "Přihlášení je vyžadováno.",
+            trace_id: "web-document-workflow",
+          },
+        },
+        {
+          status: 401,
+          headers: { "Cache-Control": "private, no-store" },
+        },
+      );
+    }
     const forbidden = requireApiAccess(context, "knowledge_workspace");
     if (forbidden) return forbidden;
 
