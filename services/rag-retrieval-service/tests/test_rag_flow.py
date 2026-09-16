@@ -14,6 +14,7 @@ from app.service import (
     _assistant_current_context,
     _assistant_filters,
     _assistant_query,
+    _assistant_query_has_referential_source,
     _assistant_uses_authorized_follow_up_source,
     _apply_common_legal_core,
     _apply_answer_facet_completeness,
@@ -22,6 +23,8 @@ from app.service import (
     _fallback_follow_up_questions,
     _is_incident_query,
     _latest_available_citation_scope,
+    _available_citation_scope,
+    _available_general_parent_answer,
     _latest_available_assistant_context,
     _normalize_for_assistant,
     _requested_answer_facets,
@@ -29,8 +32,9 @@ from app.service import (
     _parse_follow_up_questions,
     _promote_legal_evidence,
     _complete_chunk_policy_metadata,
+    _citations_within_scope,
 )
-from app.schemas import ChunkCitation, RagAnswer, RetrievedChunk
+from app.schemas import ChunkCitation, Citation, RagAnswer, RetrievedChunk
 from answer_composer.composer import _citations, _policy_metadata, _system_prompt
 from hashlib import sha256
 import json
@@ -1080,6 +1084,211 @@ def test_legal_follow_up_uses_reauthorized_previous_source_scope() -> None:
         "A jaké jsou lhůty pro oznámení významného incidentu?",
         ["Co znamená NIS2 a jaké povinnosti ukládá?"],
     )
+
+
+def test_demonstrative_legal_follow_up_is_always_referential() -> None:
+    question = "Jaké jsou konkrétní povinnosti dodavatelů vyplývající z tohoto zákona?"
+
+    assert _assistant_query_has_referential_source(question)
+    assert _assistant_uses_authorized_follow_up_source(
+        question,
+        ["Jaké podmínky vyplývají ze zákona o veřejných zakázkách?"],
+    )
+
+
+def test_exact_parent_scope_cannot_fall_back_to_older_law() -> None:
+    messages = [
+        {
+            "message_id": "msg_law_89",
+            "role": "assistant",
+            "availability": "available",
+            "citations": [{
+                "document_id": "doc_law_89",
+                "document_version_id": "ver_law_89",
+            }],
+        },
+        {
+            "message_id": "msg_law_134",
+            "role": "assistant",
+            "availability": "available",
+            "citations": [{
+                "document_id": "doc_law_134",
+                "document_version_id": "ver_law_134",
+            }],
+        },
+    ]
+
+    document_ids, version_ids, scope_pairs, scope_hash, available = _available_citation_scope(
+        messages,
+        parent_message_id="msg_law_134",
+    )
+
+    assert available
+    assert document_ids == ["doc_law_134"]
+    assert version_ids == ["ver_law_134"]
+    assert scope_pairs == [("doc_law_134", "ver_law_134")]
+    assert scope_hash and scope_hash.startswith("sha256:")
+
+
+def test_source_scope_enforces_exact_document_version_pairs() -> None:
+    citation = Citation(
+        document_id="doc_a",
+        document_version_id="ver_b",
+        document_title="Document A",
+        version_label="2",
+        chunk_id="chunk_swapped",
+    )
+
+    assert not _citations_within_scope(
+        [citation],
+        allowed_pairs=[("doc_a", "ver_a"), ("doc_b", "ver_b")],
+    )
+
+
+def test_general_parent_context_accepts_only_source_free_general_answer() -> None:
+    messages = [
+        {
+            "message_id": "msg_grounded",
+            "role": "assistant",
+            "availability": "available",
+            "content": "Grounded answer",
+            "citations": [{"document_id": "doc_a", "document_version_id": "ver_a"}],
+            "metadata": {"current_context": {"knowledge_scope": "general_knowledge"}},
+        },
+        {
+            "message_id": "msg_general",
+            "role": "assistant",
+            "availability": "available",
+            "content": "Previous public answer",
+            "citations": [],
+            "metadata": {"current_context": {
+                "answer_source": "general_knowledge_llm",
+                "knowledge_scope": "general_knowledge",
+            }},
+        },
+    ]
+
+    assert _available_general_parent_answer(
+        messages,
+        parent_message_id="msg_general",
+    ) == "Previous public answer"
+    assert _available_general_parent_answer(
+        messages,
+        parent_message_id="msg_grounded",
+    ) is None
+
+
+def test_source_bound_follow_up_preserves_parent_document_and_version() -> None:
+    with make_client() as client:
+        first = client.post(
+            "/api/v1/assistant/chat",
+            json={
+                "user_id": "employee_1",
+                "message": "Kdo schvaluje výjimku ze směrnice?",
+                "context": {"approval_subject": "výjimka ze směrnice"},
+            },
+        )
+        assert first.status_code == 200, first.text
+        first_body = first.json()
+        frame = first_body["current_context"]["evidence_frame"]
+        conversation_id = first_body["conversation_id"]
+        stored = client.get(f"/api/v1/assistant/conversations/{conversation_id}").json()
+        parent = stored["messages"][-1]
+
+        follow_up = client.post(
+            "/api/v1/assistant/chat",
+            json={
+                "user_id": "employee_1",
+                "conversation_id": conversation_id,
+                "parent_message_id": parent["message_id"],
+                "turn_origin": "suggested_follow_up",
+                "source_bound": True,
+                "source_scope_hash": frame["source_scope_hash"],
+                "message": "Jaké další povinnosti vyplývají z tohoto dokumentu?",
+            },
+        )
+
+    assert follow_up.status_code == 200, follow_up.text
+    follow_up_body = follow_up.json()
+    assert follow_up_body["response_type"] == "answer"
+    assert {
+        citation["document_id"] for citation in follow_up_body["citations"]
+    }.issubset(set(frame["document_ids"]))
+    assert {
+        citation["document_version_id"] for citation in follow_up_body["citations"]
+    }.issubset(set(frame["document_version_ids"]))
+
+
+def test_source_bound_follow_up_fails_closed_on_scope_hash_mismatch() -> None:
+    with make_client() as client:
+        first = client.post(
+            "/api/v1/assistant/chat",
+            json={
+                "user_id": "employee_1",
+                "message": "Kdo schvaluje výjimku ze směrnice?",
+                "context": {"approval_subject": "výjimka ze směrnice"},
+            },
+        ).json()
+        conversation_id = first["conversation_id"]
+        stored = client.get(f"/api/v1/assistant/conversations/{conversation_id}").json()
+
+        follow_up = client.post(
+            "/api/v1/assistant/chat",
+            json={
+                "user_id": "employee_1",
+                "conversation_id": conversation_id,
+                "parent_message_id": stored["messages"][-1]["message_id"],
+                "turn_origin": "suggested_follow_up",
+                "source_bound": True,
+                "source_scope_hash": f"sha256:{'0' * 64}",
+                "message": "Co z tohoto dokumentu vyplývá?",
+            },
+        )
+
+    assert follow_up.status_code == 200
+    assert follow_up.json()["response_type"] == "clarification_needed"
+    assert "SOURCE_LINEAGE_UNAVAILABLE" in follow_up.json()["warnings"]
+
+
+def test_general_knowledge_scope_returns_a_clearly_unbound_model_answer() -> None:
+    with make_client() as client:
+        response = client.post(
+            "/api/v1/assistant/chat",
+            json={
+                "user_id": "employee_1",
+                "message": "Proč je obloha modrá?",
+                "context": {
+                    "assistant_query_plan": {
+                        "tool": "rag_document_answer",
+                        "retrieval": {"knowledge_scope": "general_knowledge"},
+                    }
+                },
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["response_type"] == "answer"
+    assert body["citations"] == []
+    assert body["current_context"]["answer_source"] == "general_knowledge_llm"
+    assert "GENERAL_KNOWLEDGE_NO_INTERNAL_SOURCE" in body["warnings"]
+    assert body["llm_usage"]["total_tokens"] > 0
+
+
+def test_general_knowledge_is_fail_closed_without_explicit_planner_scope() -> None:
+    with make_client() as client:
+        response = client.post(
+            "/api/v1/assistant/chat",
+            json={
+                "user_id": "employee_1",
+                "message": "Proč je obloha modrá?",
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert "GENERAL_KNOWLEDGE_NO_INTERNAL_SOURCE" not in body["warnings"]
+    assert body["current_context"]["answer_source"] == "rag_retrieval"
 
 
 def test_explicit_procurement_topic_does_not_use_previous_legal_source_scope() -> None:

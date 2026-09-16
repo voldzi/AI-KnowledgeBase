@@ -191,6 +191,23 @@ documents through Registry authorization before answer composition. If sources
 are unauthorized or insufficient, the assistant returns a no-answer or handoff
 state instead of inventing unsupported information.
 
+A cited follow-up is bound to the exact persisted parent message and the hash
+of its authorized document/version pairs. Registry reauthorizes the parent for
+every turn; revoked or hidden citations cannot be inherited. RAG rejects a
+hash mismatch and verifies that every returned citation preserves an allowed
+pair. Document and version identifiers are never combined cartesianly across
+different citations.
+
+The separate general-knowledge branch is available only when the deterministic
+web query plan marks a question as non-organizational and non-legal. It sends
+the current public question to the LLM Gateway with the system
+`PUBLIC`/`NONE` policy binding and sends no AKB chunks, STRATOS facts, or
+governed evidence. A general follow-up may include only the exact parent
+source-free general answer as bounded, explicitly untrusted conversation
+context; cited or revoked assistant text is never admitted to this branch. Its
+UI state states that the answer has no internal source. Direct RAG callers
+without that explicit plan remain on the governed retrieval path.
+
 The default active employee projection is deliberately narrower than general
 organization access. STRATOS grants `akb:access`, `akb:chat`, and
 `akb:read_document` in scopes `public` and

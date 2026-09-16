@@ -13,6 +13,7 @@ import {
 
 import {
   buildAssistantQueryPlan,
+  type AssistantKnowledgeScope,
   type AssistantQueryPlan
 } from "./assistant-query-planner";
 import {
@@ -48,6 +49,7 @@ export interface AssistantToolRoute {
   personalWorkflow: PersonalWorkflowIntent | null;
   documentKnowledge: DocumentKnowledgeIntentResolution;
   answerMode: AnswerMode;
+  knowledgeScope: AssistantKnowledgeScope;
 }
 
 const ANSWER_MODES = new Set<AnswerMode>([
@@ -79,6 +81,8 @@ const ANSWER_MODES = new Set<AnswerMode>([
 
 const STRUCTURED_OUTPUT_RE = /(sestav|report|tabulk|excel|xlsx|export|přehled|prehled|pdf|graf|diagram|vizualiz|chart|plot)/i;
 const OBLIGATION_OUTPUT_RE = /(povinnost|obligation)/i;
+const GOVERNED_KNOWLEDGE_SIGNAL = /\b(?:akb|stratos|budget|projectflow|archflow|sis|csu|cesk\w*\s+statistick\w*\s+urad\w*|urad\w*|organizac\w*|zamestnan\w*|intern\w*|zakon\w*|vyhlask\w*|narizen\w*|smernic\w*|predpis\w*|metodik\w*|politik\w*|smlouv\w*|dokument\w*|manual\w*|priruck\w*|tlp|pap|bezpecnost\w*|opravnen\w*|rozpoct\w*|financ\w*|projekt\w*|portfoli\w*|dodavatel\w*|zakazk\w*|faktur\w*|objednav\w*|audit\w*|dovolen\w*|sluzebn\w*\s+cest\w*|law\w*|regulation\w*|directive\w*|policy|policies|contract\w*|document\w*|manual\w*|organization\w*|employee\w*|internal\w*|finance\w*|project\w*|portfolio\w*|supplier\w*|procurement\w*|invoice\w*|security|authorization)\b/;
+const SOURCE_REFERENCE_SIGNAL = /\b(?:tento|tato|toto|tohoto|uveden\w*|predchoz\w*|this|that|above|previous)\s+(?:zakon\w*|predpis\w*|smlouv\w*|dokument\w*|zdroj\w*|law|regulation|contract|document|source)\b/;
 
 export function routeAssistantMessage(
   message: string,
@@ -87,6 +91,7 @@ export function routeAssistantMessage(
 ): AssistantToolRoute {
   const reportRequest = assistantReportRequestFromContext(context);
   const documentKnowledge = resolveDocumentKnowledgeIntent(message, context);
+  const knowledgeScope = assistantKnowledgeScope(message, context, documentKnowledge);
   const structuredOutput = Boolean(reportRequest)
     || (documentKnowledge.intent !== "resource" && STRUCTURED_OUTPUT_RE.test(message));
   const obligationOutput = reportRequest?.template === "obligation_table" || OBLIGATION_OUTPUT_RE.test(message);
@@ -97,6 +102,7 @@ export function routeAssistantMessage(
       structuredOutput: false, obligationOutput: false, registryReportKind: null,
       registryTopics: [], answerFormatInstruction: null, reportRequest: null,
       controlledRuleIntent: null, personalWorkflow, documentKnowledge, answerMode: "ask",
+      knowledgeScope: "governed_sources",
     });
   }
   const controlledRuleIntent = controlledRuleIntentFromMessage(message, context);
@@ -114,6 +120,7 @@ export function routeAssistantMessage(
       personalWorkflow: null,
       documentKnowledge,
       answerMode: "normative_with_citations",
+      knowledgeScope: "governed_sources",
     });
   }
   if (isRegistryDocumentReportQuestion(message, context)) {
@@ -130,6 +137,7 @@ export function routeAssistantMessage(
       personalWorkflow: null,
       documentKnowledge,
       answerMode: "it_support_answer",
+      knowledgeScope: "governed_sources",
     });
   }
   return withQueryPlan(message, language, {
@@ -155,6 +163,7 @@ export function routeAssistantMessage(
     personalWorkflow: null,
     documentKnowledge,
     answerMode: documentKnowledge.answerMode,
+    knowledgeScope,
   });
 }
 
@@ -198,6 +207,7 @@ export function routeAssistantMessageForRag(
       registryReportKind: null,
       registryTopics: [],
       documentKnowledgeIntent: route.documentKnowledge.intent,
+      knowledgeScope: route.knowledgeScope,
       reportRequest: route.reportRequest
     }),
     reportRequest: route.reportRequest,
@@ -265,9 +275,39 @@ function withQueryPlan(
       registryReportKind: route.registryReportKind,
       registryTopics: route.registryTopics,
       documentKnowledgeIntent: route.documentKnowledge.intent,
+      knowledgeScope: route.knowledgeScope,
       reportRequest: route.reportRequest
     })
   };
+}
+
+function assistantKnowledgeScope(
+  message: string,
+  context: Record<string, unknown>,
+  documentKnowledge: DocumentKnowledgeIntentResolution,
+): AssistantKnowledgeScope {
+  const continuesGeneralConversation = documentKnowledge.inherited
+    && context.answer_source === "general_knowledge_llm"
+    && context.knowledge_scope === "general_knowledge";
+  if (documentKnowledge.intent !== "general" || (documentKnowledge.inherited && !continuesGeneralConversation)) {
+    return "governed_sources";
+  }
+  if (
+    context.evidence_frame
+    || context.stratos_query_state
+    || context.director_copilot_evidence
+    || context.document_context
+  ) {
+    return "governed_sources";
+  }
+  const normalized = message
+    .normalize("NFKD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase();
+  return GOVERNED_KNOWLEDGE_SIGNAL.test(normalized)
+    || SOURCE_REFERENCE_SIGNAL.test(normalized)
+    ? "governed_sources"
+    : "general_knowledge";
 }
 
 function structuredAnswerFormatInstruction(

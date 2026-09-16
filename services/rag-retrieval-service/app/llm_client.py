@@ -115,6 +115,20 @@ class MockLLMGatewayClient:
                 completion_tokens=max(1, len(content) // 4),
                 total_tokens=max(2, (sum(len(message.get("content", "")) for message in messages) + len(content)) // 4),
             )
+        if metadata.get("purpose") == "assistant_general_knowledge":
+            content = (
+                "This is a general answer without an internal AKB source."
+                if metadata.get("response_language") == "en"
+                else "Toto je obecná odpověď bez interního zdroje AKB."
+            )
+            return ChatCompletionResult(
+                content=content,
+                model=model or self._settings.chat_model,
+                provider="mock",
+                prompt_tokens=max(1, sum(len(message.get("content", "")) for message in messages) // 4),
+                completion_tokens=max(1, len(content) // 4),
+                total_tokens=max(2, (sum(len(message.get("content", "")) for message in messages) + len(content)) // 4),
+            )
         context = _extract_context(messages)
         source_text = _first_source_text_line(context)
         first_sentence = source_text.split(".")[0].strip()

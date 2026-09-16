@@ -157,6 +157,10 @@ export type ClarificationQuestionType = "free_text" | "single_choice";
 export interface AssistantChatRequest {
   user_id: string;
   conversation_id?: string | null;
+  parent_message_id?: string | null;
+  turn_origin?: "typed" | "suggested_follow_up" | "clarification" | "document_action";
+  source_bound?: boolean;
+  source_scope_hash?: string | null;
   message: string;
   context?: Record<string, unknown>;
   mode?: AnswerMode;
@@ -299,6 +303,7 @@ export interface AssistantConversationResponse {
 
 export interface AssistantConversationMessage {
   message_id: string;
+  parent_message_id?: string | null;
   role: "user" | "assistant";
   author_subject_id: string;
   author_subject_type: "user" | "service";
@@ -416,6 +421,7 @@ export interface AssistantConversationMessageAppendRequest {
   messages: Array<{
     role: "user" | "assistant";
     content: string;
+    parent_message_id?: string | null;
     response_type?: AssistantResponseType | null;
     citations?: Citation[];
     metadata?: Record<string, unknown>;

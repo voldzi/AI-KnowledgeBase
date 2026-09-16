@@ -26,11 +26,18 @@ export async function POST(request: NextRequest) {
     const responseLanguage = isAklLanguage(body.response_language) ? body.response_language : "cs";
     const requestContext = _objectContext(body.context);
     const assistantRoute = routeAssistantMessageForRag(message, responseLanguage, requestContext);
+    const parentMessageId = typeof body.parent_message_id === "string" ? body.parent_message_id : null;
+    const sourceBound = body.source_bound === true;
+    const sourceScopeHash = typeof body.source_scope_hash === "string" ? body.source_scope_hash : null;
 
     const response = await clients.rag.assistantClarify(
       {
         user_id: context.subjectId,
         conversation_id: typeof body.conversation_id === "string" ? body.conversation_id : null,
+        parent_message_id: parentMessageId,
+        turn_origin: "clarification",
+        source_bound: sourceBound,
+        source_scope_hash: sourceScopeHash,
         message,
         context: ragContextForAssistantRoute(requestContext, assistantRoute),
         mode: body.mode ?? "it_support_answer",

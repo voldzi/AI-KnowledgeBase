@@ -1355,6 +1355,32 @@ components:
           - type: string
           - type: 'null'
           title: Conversation Id
+        parent_message_id:
+          anyOf:
+          - type: string
+            maxLength: 64
+            minLength: 1
+          - type: 'null'
+          title: Parent Message Id
+        turn_origin:
+          type: string
+          enum:
+          - typed
+          - suggested_follow_up
+          - clarification
+          - document_action
+          title: Turn Origin
+          default: typed
+        source_bound:
+          type: boolean
+          title: Source Bound
+          default: false
+        source_scope_hash:
+          anyOf:
+          - type: string
+            pattern: ^sha256:[a-f0-9]{64}$
+          - type: 'null'
+          title: Source Scope Hash
         message:
           type: string
           maxLength: 4000

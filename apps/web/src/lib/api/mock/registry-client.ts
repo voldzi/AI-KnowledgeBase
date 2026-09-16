@@ -59,6 +59,7 @@ import type {
   AssistantConversationDetail,
   AssistantConversationCreateRequest,
   AssistantConversationListResponse,
+  AssistantConversationMessage,
   AssistantConversationMessageAppendRequest,
   AssistantMessageFeedback,
   AssistantMessageFeedbackPutRequest,
@@ -1804,9 +1805,15 @@ export class MockRegistryClient implements RegistryApiClient {
       shared_with: [],
       messages: [],
     };
-    conversation.messages.push(
-      ...request.messages.map((message, index) => ({
-        message_id: `mock_msg_${Date.now()}_${index}`,
+    const appended: AssistantConversationMessage[] = [];
+    let latestUserMessageId: string | null = null;
+    request.messages.forEach((message, index) => {
+      const messageId = `mock_msg_${Date.now()}_${index}`;
+      const parentMessageId = message.parent_message_id
+        ?? (message.role === "assistant" ? latestUserMessageId : null);
+      appended.push({
+        message_id: messageId,
+        parent_message_id: parentMessageId,
         role: message.role,
         author_subject_id:
           message.role === "assistant" ? "akb-assistant" : context.subjectId,
@@ -1819,8 +1826,10 @@ export class MockRegistryClient implements RegistryApiClient {
         citations: message.citations ?? [],
         metadata: message.metadata ?? {},
         created_at: now,
-      })),
-    );
+      });
+      if (message.role === "user") latestUserMessageId = messageId;
+    });
+    conversation.messages.push(...appended);
     conversation.title = request.title ?? conversation.title;
     conversation.visibility = request.visibility ?? conversation.visibility;
     conversation.retention_until =

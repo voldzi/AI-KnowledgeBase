@@ -2314,8 +2314,11 @@ class RoleMappingStatusPatch(BaseModel):
 
 
 class AssistantMessageCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     role: str = Field(pattern="^(user|assistant)$")
     content: str = Field(min_length=1)
+    parent_message_id: str | None = Field(default=None, min_length=1, max_length=64)
     response_type: str | None = Field(default=None, max_length=64)
     citations: list[dict[str, Any]] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -2367,6 +2370,7 @@ class AssistantMessageFeedbackResponse(BaseModel):
 
 class AssistantMessageResponse(BaseModel):
     message_id: str
+    parent_message_id: str | None = None
     role: str
     author_subject_id: str
     author_subject_type: str = Field(pattern="^(user|service)$")

@@ -6206,6 +6206,13 @@ components:
           type: string
           minLength: 1
           title: Content
+        parent_message_id:
+          anyOf:
+          - type: string
+            maxLength: 64
+            minLength: 1
+          - type: 'null'
+          title: Parent Message Id
         response_type:
           anyOf:
           - type: string
@@ -6223,6 +6230,7 @@ components:
           type: object
           title: Metadata
       type: object
+      additionalProperties: false
       required:
       - role
       - content
@@ -6288,6 +6296,11 @@ components:
         message_id:
           type: string
           title: Message Id
+        parent_message_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Parent Message Id
         role:
           type: string
           title: Role

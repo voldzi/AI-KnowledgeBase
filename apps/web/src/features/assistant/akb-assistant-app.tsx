@@ -142,6 +142,13 @@ interface ChatMessage {
   feedbackSaving?: boolean;
 }
 
+interface SubmitQuestionLineage {
+  parentMessageId?: string | null;
+  turnOrigin?: "typed" | "suggested_follow_up" | "clarification" | "document_action";
+  sourceBound?: boolean;
+  sourceScopeHash?: string | null;
+}
+
 interface AssistantThread {
   id: string;
   conversationId: string | null;
@@ -1192,7 +1199,12 @@ export function AkbAssistantApp({
     }
   }
 
-  async function submitQuestion(nextQuestion = composer, endpoint: "/api/assistant/chat" | "/api/assistant/clarify" = "/api/assistant/chat", nextContext = activeThread.context) {
+  async function submitQuestion(
+    nextQuestion = composer,
+    endpoint: "/api/assistant/chat" | "/api/assistant/clarify" = "/api/assistant/chat",
+    nextContext = activeThread.context,
+    lineage: SubmitQuestionLineage = {},
+  ) {
     if (creatingThread) {
       return;
     }
@@ -1216,6 +1228,14 @@ export function AkbAssistantApp({
         .filter((message) => message.role === "assistant" && message.persisted)
         .map((message) => message.id),
     );
+    const implicitParentMessageId = activeThread.conversationId
+      ? [...activeThread.messages]
+          .reverse()
+          .find((message) => message.role === "assistant" && message.persisted)
+          ?.id ?? null
+      : null;
+    const effectiveParentMessageId = lineage.parentMessageId
+      ?? implicitParentMessageId;
     const effectiveContext = contextWithReportRequest(nextContext, reportModeEnabled ? {
       enabled: true,
       output_kind: "table",
@@ -1317,6 +1337,10 @@ export function AkbAssistantApp({
         body: JSON.stringify({
           message: trimmed,
           conversation_id: activeThread.conversationId,
+          parent_message_id: effectiveParentMessageId,
+          turn_origin: lineage.turnOrigin ?? "typed",
+          source_bound: lineage.sourceBound ?? false,
+          source_scope_hash: lineage.sourceScopeHash ?? null,
           context: effectiveContext,
           mode: "ask",
           response_language: language
@@ -1591,11 +1615,17 @@ export function AkbAssistantApp({
     if (response.current_context.clarification_kind === "director_plan_meaning") {
       const selectedPlan = answers.director_plan_meaning;
       if (selectedPlan) {
-        void submitQuestion(selectedPlan, "/api/assistant/chat", nextContext);
+        void submitQuestion(selectedPlan, "/api/assistant/chat", nextContext, {
+          parentMessageId: responseMessageId,
+          turnOrigin: "clarification",
+        });
       }
       return;
     }
-    void submitQuestion(previousQuestion, "/api/assistant/clarify", nextContext);
+    void submitQuestion(previousQuestion, "/api/assistant/clarify", nextContext, {
+      parentMessageId: responseMessageId,
+      turnOrigin: "clarification",
+    });
   }
 
   function changeReportTemplate(value: AssistantReportTemplate) {
@@ -2354,7 +2384,30 @@ export function AkbAssistantApp({
                     ...current, [message.id]: updater(current[message.id] ?? {}),
                   }))}
                   onSubmitClarification={(response) => submitClarification(response, message.id)}
-                  onAskFollowUp={(question) => void submitQuestion(question)}
+                  onAskFollowUp={(question) => {
+                    const evidenceFrame = objectValue(
+                      message.response?.current_context.evidence_frame,
+                    );
+                    const sourceScopeHash = nullableStringValue(
+                      evidenceFrame.source_scope_hash,
+                    );
+                    const hasCitations = Boolean(message.response?.citations.length);
+                    if (hasCitations && (!message.persisted || !sourceScopeHash)) {
+                      setStatusMessage(copy.historyUnavailable);
+                      return;
+                    }
+                    void submitQuestion(
+                      question,
+                      "/api/assistant/chat",
+                      activeThread.context,
+                      {
+                        parentMessageId: message.persisted ? message.id : null,
+                        turnOrigin: "suggested_follow_up",
+                        sourceBound: hasCitations,
+                        sourceScopeHash,
+                      },
+                    );
+                  }}
                   onShowSources={() => showResponseSources(message.id)}
                   sourcesSelected={Boolean(message.response && message.response === sourceResponse)}
                   onFeedback={(rating, reasonCode) => void submitMessageFeedback(
@@ -4101,6 +4154,7 @@ function messageFromConversationMessage(
     authorSubjectId: message.author_subject_id,
     authorSubjectType: message.author_subject_type,
     authorDisplayName: message.author_display_name,
+    inReplyToMessageId: message.parent_message_id ?? undefined,
     persisted: true,
     persistenceStatus: "persisted",
     feedback: message.viewer_feedback ?? null,

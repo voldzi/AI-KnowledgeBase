@@ -26,6 +26,9 @@ export function assistantResponseStatus(response: AssistantChatResponse, languag
   if (response.response_type === "answer" && (incompleteSources || incompleteComposition || warnings.has("BUDGET_APPROVED_PLAN_MISSING"))) {
     return badge("medium", ["Částečná odpověď", "Partial answer"]);
   }
+  if (warnings.has("GENERAL_KNOWLEDGE_NO_INTERNAL_SOURCE")) {
+    return badge("info", ["Obecná odpověď", "General answer"]);
+  }
   if (workflow?.status === "unavailable" || sources.some((source) => source.status === "unavailable")
     || warnings.has("DIRECTOR_COPILOT_V2_SOURCE_UNAVAILABLE") || warnings.has("DOCUMENT_EVIDENCE_UNAVAILABLE")) {
     return badge("insufficient_source", ["Dočasně nedostupné", "Temporarily unavailable"]);
@@ -76,6 +79,10 @@ const WARNING_LABELS: Record<string, Translation> = {
   CONVERSATION_HISTORY_NOT_PERSISTED: ["Odpověď se nepodařilo uložit do historie konverzace.", "The answer could not be saved in conversation history."],
   REPORT_LIMITED_TO_CITED_SOURCES: ["Přehled obsahuje pouze doložené řádky s ověřenými citacemi.", "The report contains only supported rows with verified citations."],
   LLM_ANSWER_INCOMPLETE: ["Generování odpovědi nebylo dokončeno. Neúplná odpověď nebyla použita; zkuste dotaz zúžit nebo zopakovat.", "Answer generation did not finish. The incomplete answer was not used; narrow or repeat the question."],
+  GENERAL_KNOWLEDGE_NO_INTERNAL_SOURCE: ["Obecná odpověď využívá znalosti modelu a není doložena interním dokumentem AKB.", "This general answer uses model knowledge and is not supported by an internal AKB document."],
+  GENERAL_KNOWLEDGE_UNAVAILABLE: ["Obecný model je dočasně nedostupný. Zkuste dotaz zopakovat.", "The general model is temporarily unavailable. Try the question again."],
+  SOURCE_LINEAGE_UNAVAILABLE: ["Nelze bezpečně navázat na přesný zdroj předchozí odpovědi. Otevřete zdroj znovu nebo položte samostatný dotaz.", "The exact source of the previous answer can no longer be verified. Reopen the source or ask a self-contained question."],
+  SOURCE_LINEAGE_VIOLATION: ["Navazující odpověď odkazovala na jiný dokument nebo verzi, a proto nebyla použita.", "The follow-up answer referenced a different document or version and was therefore rejected."],
 };
 
 export function assistantVisibleWarnings(warnings: readonly string[], language: ResponseLanguage): string[] {

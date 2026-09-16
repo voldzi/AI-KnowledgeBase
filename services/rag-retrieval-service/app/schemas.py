@@ -67,6 +67,7 @@ ViewerMode = Literal["pdf", "markdown", "text", "html", "table", "presentation",
 ResponseLanguage = Literal["cs", "en"]
 AssistantResponseType = Literal["answer", "clarification_needed", "no_answer", "restricted", "handoff_recommended"]
 ClarificationQuestionType = Literal["free_text", "single_choice"]
+AssistantTurnOrigin = Literal["typed", "suggested_follow_up", "clarification", "document_action"]
 AssistantReportColumnType = Literal["text", "number", "date", "url", "currency", "percent"]
 AssistantReportEvidenceStatus = Literal["cited", "metadata", "not_stated", "uncited"]
 AssistantReportArtifactKind = Literal["content_table", "registry_metadata_table"]
@@ -310,11 +311,31 @@ class AssistantChatRequest(BaseModel):
 
     user_id: str = Field(min_length=1)
     conversation_id: str | None = None
+    parent_message_id: str | None = Field(default=None, min_length=1, max_length=64)
+    turn_origin: AssistantTurnOrigin = "typed"
+    source_bound: bool = False
+    source_scope_hash: str | None = Field(
+        default=None,
+        pattern=r"^sha256:[a-f0-9]{64}$",
+    )
     message: str = Field(min_length=1, max_length=4000)
     context: dict[str, Any] = Field(default_factory=dict)
     mode: AnswerMode = "it_support_answer"
     response_language: ResponseLanguage = "cs"
     persist_conversation: bool = True
+
+    @model_validator(mode="after")
+    def validate_source_lineage(self) -> "AssistantChatRequest":
+        if self.source_bound:
+            if self.turn_origin not in {"suggested_follow_up", "clarification", "document_action"}:
+                raise ValueError("Source-bound turns require an explicit non-typed origin")
+            if not self.conversation_id or not self.parent_message_id or not self.source_scope_hash:
+                raise ValueError(
+                    "Source-bound turns require conversation_id, parent_message_id and source_scope_hash"
+                )
+        if self.parent_message_id and not self.conversation_id:
+            raise ValueError("parent_message_id requires conversation_id")
+        return self
 
 
 class ClarificationQuestion(BaseModel):

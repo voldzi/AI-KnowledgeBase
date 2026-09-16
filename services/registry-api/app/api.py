@@ -11349,6 +11349,7 @@ def _assistant_message_response(
     )
     return AssistantMessageResponse(
         message_id=message.message_id,
+        parent_message_id=message.parent_message_id,
         role=message.role,
         author_subject_id=message.author_subject_id,
         author_subject_type=message.author_subject_type,
@@ -11854,31 +11855,60 @@ def append_assistant_messages(
         ),
         None,
     )
+    created_messages: dict[str, AssistantMessage] = {}
+    latest_user_message_id: str | None = None
     for message in payload.messages:
         is_assistant_message = message.role == "assistant"
-        db.add(
-            AssistantMessage(
-                conversation_id=conversation_id,
-                role=message.role,
-                author_subject_id=(
-                    "akb-assistant"
-                    if is_assistant_message
-                    else user_author_subject_id
-                ),
-                author_subject_type=(
-                    "service" if is_assistant_message else "user"
-                ),
-                author_display_name=(
-                    "AKB Assistant"
-                    if is_assistant_message
-                    else user_author_display_name
-                ),
-                content=message.content,
-                response_type=message.response_type,
-                citations=message.citations,
-                message_metadata=message.metadata,
+        message_id = make_id("msg")
+        parent_message_id = message.parent_message_id
+        if is_assistant_message and parent_message_id is None:
+            parent_message_id = latest_user_message_id
+        parent_message: AssistantMessage | None = None
+        if parent_message_id is not None:
+            parent_message = created_messages.get(parent_message_id) or db.get(
+                AssistantMessage,
+                parent_message_id,
             )
+            if parent_message is None or parent_message.conversation_id != conversation_id:
+                raise problem(
+                    status.HTTP_409_CONFLICT,
+                    "assistant_parent_message_invalid",
+                    "Parent message must exist in the same assistant conversation",
+                )
+            expected_parent_role = "user" if is_assistant_message else "assistant"
+            if parent_message.role != expected_parent_role:
+                raise problem(
+                    status.HTTP_409_CONFLICT,
+                    "assistant_parent_message_role_invalid",
+                    f"{message.role.capitalize()} messages must reply to a {expected_parent_role} message",
+                )
+        created = AssistantMessage(
+            message_id=message_id,
+            conversation_id=conversation_id,
+            parent_message_id=parent_message_id,
+            role=message.role,
+            author_subject_id=(
+                "akb-assistant"
+                if is_assistant_message
+                else user_author_subject_id
+            ),
+            author_subject_type=(
+                "service" if is_assistant_message else "user"
+            ),
+            author_display_name=(
+                "AKB Assistant"
+                if is_assistant_message
+                else user_author_display_name
+            ),
+            content=message.content,
+            response_type=message.response_type,
+            citations=message.citations,
+            message_metadata=message.metadata,
         )
+        db.add(created)
+        created_messages[message_id] = created
+        if not is_assistant_message:
+            latest_user_message_id = message_id
     conversation.updated_at = utcnow()
     db.commit()
     db.refresh(conversation)

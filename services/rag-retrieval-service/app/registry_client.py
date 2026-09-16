@@ -228,11 +228,29 @@ class MockRegistryClient:
         messages: list[dict[str, object]],
         auth_context: AuthContext | None = None,
     ) -> None:
+        from uuid import uuid4
+
         conversation = self._conversations.setdefault(
             conversation_id,
             {"conversation_id": conversation_id, "user_id": user_id, "status": "active", "messages": []},
         )
-        conversation["messages"] = [*conversation["messages"], *messages]  # type: ignore[misc]
+        stored_messages = list(conversation["messages"])  # type: ignore[arg-type]
+        latest_user_message_id: str | None = None
+        for value in messages:
+            message = dict(value)
+            message_id = f"msg_{uuid4().hex}"
+            parent_message_id = message.get("parent_message_id")
+            if message.get("role") == "assistant" and not parent_message_id:
+                parent_message_id = latest_user_message_id
+            message.update(
+                message_id=message_id,
+                parent_message_id=parent_message_id,
+                availability="available",
+            )
+            stored_messages.append(message)
+            if message.get("role") == "user":
+                latest_user_message_id = message_id
+        conversation["messages"] = stored_messages
 
     async def fetch_conversation(
         self,

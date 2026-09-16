@@ -62,6 +62,11 @@ describe("assistant status presentation", () => {
   it("localizes status labels for English", () => {
     assert.equal(assistantResponseStatus(response({ current_context: live("partial") }), "en")?.label, "Partial answer");
   });
+  it("labels source-free model knowledge without presenting it as verified evidence", () => {
+    const badge = assistantResponseStatus(response({ warnings: ["GENERAL_KNOWLEDGE_NO_INTERNAL_SOURCE"] }), "cs");
+    assert.equal(badge?.label, "Obecná odpověď");
+    assert.equal(badge?.value, "info");
+  });
 });
 
 describe("assistant warning presentation", () => {
@@ -89,5 +94,17 @@ describe("assistant warning presentation", () => {
   });
   it("treats an incomplete generated answer as rejected, not complete", () => {
     assert.match(assistantVisibleWarnings(["LLM_ANSWER_INCOMPLETE"], "cs")[0]!, /nebyla použita/);
+  });
+  it("explains that a general answer has no internal citation", () => {
+    assert.match(
+      assistantVisibleWarnings(["GENERAL_KNOWLEDGE_NO_INTERNAL_SOURCE"], "cs")[0]!,
+      /není doložena interním dokumentem/,
+    );
+  });
+  it("explains source-lineage failures as a rejected wrong-document follow-up", () => {
+    const labels = assistantVisibleWarnings(["SOURCE_LINEAGE_UNAVAILABLE", "SOURCE_LINEAGE_VIOLATION"], "cs");
+    assert.match(labels[0]!, /přesný zdroj předchozí odpovědi/);
+    assert.match(labels[1]!, /jiný dokument nebo verzi/);
+    assert.doesNotMatch(labels.join(" "), /SOURCE_LINEAGE/);
   });
 });

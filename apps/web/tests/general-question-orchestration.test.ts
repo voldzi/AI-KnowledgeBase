@@ -14,6 +14,38 @@ it("keeps a legal budget comparison on governed document retrieval", () => {
 });
 
 describe("general question orchestration", () => {
+  it("allows a genuinely general question without weakening governed-source queries", () => {
+    const general = routeAssistantMessage("Vysvětli mi jednoduše, proč je obloha modrá.", "cs");
+    const legal = routeAssistantMessage("Jaké povinnosti ukládá zákon o veřejných zakázkách?", "cs");
+
+    assert.equal(general.queryPlan.retrieval.knowledge_scope, "general_knowledge");
+    assert.equal(general.queryPlan.quality_gates.citations_required, false);
+    assert.equal(legal.queryPlan.retrieval.knowledge_scope, "governed_sources");
+    assert.equal(legal.queryPlan.quality_gates.citations_required, true);
+  });
+
+  it("keeps a referential document follow-up inside governed sources", () => {
+    const route = routeAssistantMessage(
+      "Jaké konkrétní povinnosti vyplývají z tohoto zákona?",
+      "cs",
+    );
+
+    assert.equal(route.queryPlan.retrieval.knowledge_scope, "governed_sources");
+    assert.equal(route.queryPlan.quality_gates.citations_required, true);
+  });
+
+  it("keeps English legal and organizational questions governed", () => {
+    for (const question of [
+      "What duties does procurement law impose on suppliers?",
+      "Which internal policy governs employee travel?",
+    ]) {
+      assert.equal(
+        routeAssistantMessage(question, "en").queryPlan.retrieval.knowledge_scope,
+        "governed_sources",
+      );
+    }
+  });
+
   it("plans the reported financial-improvement question as governed mixed evidence", () => {
     const message = "Jak je možno vylepšit finanční plán?";
     const route = routeAssistantMessage(message, "cs");

@@ -883,6 +883,12 @@ class AssistantMessage(Base):
         ForeignKey("assistant_conversations.conversation_id", ondelete="CASCADE"),
         nullable=False,
     )
+    parent_message_id: Mapped[str | None] = mapped_column(
+        String(64),
+        ForeignKey("assistant_messages.message_id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     role: Mapped[str] = mapped_column(String(32), nullable=False)
     author_subject_id: Mapped[str] = mapped_column(String(128), nullable=False)
     author_subject_type: Mapped[str] = mapped_column(String(32), nullable=False)

@@ -203,6 +203,92 @@ def test_append_accumulates_message_history(client: TestClient) -> None:
     assert messages[1]["author_display_name"] == "AKB Assistant"
 
 
+def test_append_persists_exact_parent_lineage_for_follow_up_turns(client: TestClient) -> None:
+    first = client.post(
+        "/api/v1/assistant/conversations/conv_lineage/messages",
+        json={
+            "user_id": "employee_1",
+            "messages": [
+                {"role": "user", "content": "Co stanoví zákon?"},
+                {
+                    "role": "assistant",
+                    "content": "Zákon stanoví povinnosti.",
+                    "citations": [{"document_id": "doc_134", "document_version_id": "ver_134"}],
+                },
+            ],
+        },
+    )
+    assert first.status_code == 201, first.text
+    first_messages = first.json()["messages"]
+    first_user = first_messages[0]
+    first_answer = first_messages[1]
+    assert first_answer["parent_message_id"] == first_user["message_id"]
+
+    second = client.post(
+        "/api/v1/assistant/conversations/conv_lineage/messages",
+        json={
+            "user_id": "employee_1",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "Jaké povinnosti vyplývají z tohoto zákona?",
+                    "parent_message_id": first_answer["message_id"],
+                },
+                {"role": "assistant", "content": "Navazující odpověď."},
+            ],
+        },
+    )
+    assert second.status_code == 201, second.text
+    messages = second.json()["messages"]
+    follow_up = messages[-2]
+    follow_up_answer = messages[-1]
+    assert follow_up["parent_message_id"] == first_answer["message_id"]
+    assert follow_up_answer["parent_message_id"] == follow_up["message_id"]
+
+
+def test_append_rejects_parent_from_another_conversation_or_wrong_role(
+    client: TestClient,
+) -> None:
+    first = client.post(
+        "/api/v1/assistant/conversations/conv_parent_a/messages",
+        json={
+            "user_id": "employee_1",
+            "messages": [
+                {"role": "user", "content": "Kořenový dotaz"},
+                {"role": "assistant", "content": "Odpověď"},
+            ],
+        },
+    ).json()["messages"]
+
+    cross_conversation = client.post(
+        "/api/v1/assistant/conversations/conv_parent_b/messages",
+        json={
+            "user_id": "employee_1",
+            "messages": [{
+                "role": "user",
+                "content": "Navazující dotaz",
+                "parent_message_id": first[1]["message_id"],
+            }],
+        },
+    )
+    assert cross_conversation.status_code == 409
+    assert cross_conversation.json()["error"]["code"] == "assistant_parent_message_invalid"
+
+    wrong_role = client.post(
+        "/api/v1/assistant/conversations/conv_parent_a/messages",
+        json={
+            "user_id": "employee_1",
+            "messages": [{
+                "role": "user",
+                "content": "Chybná vazba",
+                "parent_message_id": first[0]["message_id"],
+            }],
+        },
+    )
+    assert wrong_role.status_code == 409
+    assert wrong_role.json()["error"]["code"] == "assistant_parent_message_role_invalid"
+
+
 def test_conversation_list_exposes_only_bounded_derived_suggestion_signals(
     client: TestClient,
 ) -> None:

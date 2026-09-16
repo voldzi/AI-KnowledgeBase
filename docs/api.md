@@ -408,9 +408,30 @@ Returned assistant responses include an internal enterprise envelope in
 report/request flags). `assistant_query_plan` records the selected intent,
 backend tool, expected output kind, registry topics, and quality gates such as
 row-level citation requirements. Its retrieval section also records the
-bounded `document_knowledge_intent`. STRATOS UI clients should treat these fields as
-machine-readable state for continuation, diagnostics, and audit context, not as
-text to render to end users.
+bounded `document_knowledge_intent` and `knowledge_scope`. A
+`governed_sources` scope requires authorized evidence. A
+`general_knowledge` scope permits a clearly labelled, source-free model answer
+only when the router found no organizational, legal, document, STRATOS, or
+referential-source signal. General mode receives the current user question but
+no document chunks or STRATOS records. STRATOS UI clients should treat these
+fields as machine-readable state for continuation, diagnostics, and audit
+context, not as text to render to end users.
+
+Suggested follow-ups over a cited answer use explicit message and evidence
+lineage. `POST /api/v1/assistant/chat` accepts `parent_message_id`,
+`turn_origin`, `source_bound`, and `source_scope_hash`. A source-bound request
+must identify the persisted parent assistant message and the SHA-256 hash of
+its exact `(document_id, document_version_id)` citation pairs. Registry
+reauthorizes that parent on every turn. RAG restricts retrieval to its document
+and version coordinates and rejects any answer whose citations leave the exact
+pair set. A missing parent, changed authorization, hash mismatch, or revoked
+source returns `SOURCE_LINEAGE_UNAVAILABLE`; it never falls back to an older or
+semantically similar document.
+
+Registry assistant history returns `parent_message_id` for every explicitly
+linked message. Existing messages remain valid lineage roots after migration;
+new assistant responses automatically reference the user message appended in
+the same atomic turn.
 
 Employee chat `report_artifacts` are governed by the Assistant Structured
 Artifact Protocol. The web/API bridge filters invalid artifacts before they

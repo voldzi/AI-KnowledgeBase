@@ -116,3 +116,28 @@ nepouziji.
 - Audit obsahuje agregovane metriky a identifikatory behu.
 - Report obsahuje pouze answer excerpt s konfigurovatelnou maximalni delkou.
 - Produkce musi pouzivat bearer auth a realny RAG klient.
+
+## Vicekolove testy kontinuity zdroje
+
+Jednodotazove metriky doplnuje
+`scripts/evaluate_assistant_source_continuity.py`. Nastroj nacte nemenny
+manifest `czech-law` revize 2 a nad vsemi 100 koreny provede dva lidsky
+formulovane dotazy, tedy celkem 200 API volani Chatu. Prvni dotaz musi najit
+ocekavany zakon. Druhy dotaz pouzije presny `parent_message_id` a
+`source_scope_hash`; vsechny jeho citace musi zustat podmnozinou puvodnich
+paru dokument/verze.
+
+Report neobsahuje text dotazu, odpovedi, token ani cookie. Uchovava pouze
+identifikator pripadu, typ odpovedi, pocty citaci, varovne kody, latenci a
+agregovane miry shody a kontinuity. Gate projde jen tehdy, kdyz vsech 100
+scenaru najde ocekavany zakon a zachova presny zdroj ve druhem tahu.
+
+Priklad lokalniho behu proti RAG API:
+
+```bash
+AKB_EVAL_BEARER_TOKEN='<ephemeral-token>' \
+python3 scripts/evaluate_assistant_source_continuity.py \
+  --base-url http://127.0.0.1:8082/api/v1 \
+  --subject-id '<token-subject>' \
+  --output /tmp/assistant-source-continuity.json
+```

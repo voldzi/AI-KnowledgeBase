@@ -66,6 +66,18 @@ total and transport latency and identifies the pinned device and endpoint.
 These diagnostics contain no query, document text, prompt, answer, token or
 credential and are retained by the evaluation service with each case result.
 
+Conversation-continuity spans also record only bounded decision metadata:
+`akb.assistant.turn_origin`, `akb.assistant.source_bound`,
+`akb.assistant.parent_message_present`,
+`akb.assistant.conversation_continuation`,
+`akb.assistant.lineage_available`, `akb.assistant.lineage_hash_match`,
+`akb.assistant.lineage_result`, `akb.assistant.source_scope_preserved`,
+`akb.assistant.citation_count`, `akb.assistant.evidence_status`, and
+`akb.assistant.knowledge_scope`. General-knowledge turns additionally record
+only whether a response was returned. These attributes support diagnosis of a
+wrong-document follow-up without recording document ids, version ids, query
+text, prompt, answer, source text, or credentials.
+
 Registry exports the assistant-retention counters through OpenTelemetry using
 the `akb.assistant.*` metric namespace. Every purge cycle also writes one
 content-free structured summary log containing only aggregate counts. It never

@@ -106,11 +106,18 @@ Content:
 - answer panel in the active thread
 - confidence badge
 - warning/no-answer state
+- explicit general-answer state for public model knowledge without an AKB citation
 - right-side citation/source panel
 - report artifact preview for table/report/Excel/PDF requests
 - metadata inventory reports for document counts and lists by topic
 - Excel and PDF export from bounded report artifacts
 - citation viewer and direct source document opening
+
+Suggested follow-up chips on a cited answer retain the exact persisted parent
+message and citation-scope hash. If history or the source frame is unavailable,
+the UI does not send an unbound follow-up. A typed self-contained question
+starts a new evidence selection unless its wording explicitly refers to the
+previous source.
 
 ## Audit Viewer
 

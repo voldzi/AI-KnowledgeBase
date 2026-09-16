@@ -92,6 +92,15 @@ async function handlePost(request: NextRequest) {
       return badAssistantRequest("message is required.");
     }
     const conversationId = typeof body.conversation_id === "string" ? body.conversation_id : null;
+    const parentMessageId = typeof body.parent_message_id === "string" ? body.parent_message_id : null;
+    const turnOrigin = assistantTurnOrigin(body.turn_origin);
+    const sourceBound = body.source_bound === true;
+    const sourceScopeHash = typeof body.source_scope_hash === "string" ? body.source_scope_hash : null;
+    if (sourceBound && (!conversationId || !parentMessageId || !sourceScopeHash)) {
+      return badAssistantRequest(
+        "source-bound turns require conversation_id, parent_message_id and source_scope_hash.",
+      );
+    }
     let requestContext = safeAssistantConversationContext(_objectContext(body.context));
     if (conversationId && !hasAssistantContinuityContext(requestContext)) {
       const persistedConversation = await clients.registry
@@ -107,8 +116,10 @@ async function handlePost(request: NextRequest) {
     const responseLanguage = isAklLanguage(body.response_language) ? body.response_language : "cs";
     const config = getAklConfig();
     const directorConfig = getDirectorCopilotConfig(config);
-    const assistantRoute = routeAssistantMessage(message, responseLanguage, requestContext);
-    if (assistantRoute.personalWorkflow) {
+    const assistantRoute = sourceBound
+      ? routeAssistantMessageForRag(message, responseLanguage, requestContext)
+      : routeAssistantMessage(message, responseLanguage, requestContext);
+    if (assistantRoute.personalWorkflow && !sourceBound) {
       const intent = assistantRoute.personalWorkflow;
       const params = new URLSearchParams({ view: intent.view });
       if (intent.view === "documents") params.set("assignment", "managed");
@@ -156,7 +167,7 @@ async function handlePost(request: NextRequest) {
               current_context: clarificationResponse.current_context,
               questions: clarificationResponse.questions,
               why_needed: clarificationResponse.why_needed,
-            }),
+            }, { parentMessageId, turnOrigin, sourceBound, sourceScopeHash }),
           },
           context,
         )
@@ -280,6 +291,7 @@ async function handlePost(request: NextRequest) {
                   ? "live_and_document_evidence"
                   : "live_data",
               },
+              { parentMessageId, turnOrigin, sourceBound, sourceScopeHash },
             ),
           },
           context,
@@ -324,7 +336,7 @@ async function handlePost(request: NextRequest) {
               confidence: controlledResponse.confidence,
               current_context: controlledResponse.current_context,
               warnings: controlledResponse.warnings,
-            }),
+            }, { parentMessageId, turnOrigin, sourceBound, sourceScopeHash }),
           },
           context,
         )
@@ -475,6 +487,10 @@ async function handlePost(request: NextRequest) {
       {
         user_id: context.subjectId,
         conversation_id: conversationId,
+        parent_message_id: parentMessageId,
+        turn_origin: turnOrigin,
+        source_bound: sourceBound,
+        source_scope_hash: sourceScopeHash,
         message,
         context: ragContextForAssistantRoute(requestContext, assistantRoute),
         mode: answerModeForAssistantRequest(assistantRoute, body.mode),
@@ -564,13 +580,24 @@ function assistantTurnMessages(
   message: string,
   response: AssistantChatResponse,
   metadata: Record<string, unknown>,
+  lineage: {
+    parentMessageId: string | null;
+    turnOrigin: "typed" | "suggested_follow_up" | "clarification" | "document_action";
+    sourceBound: boolean;
+    sourceScopeHash: string | null;
+  },
 ) {
   return [
     {
       role: "user" as const,
       content: message,
+      parent_message_id: lineage.parentMessageId,
       citations: [],
-      metadata: {},
+      metadata: {
+        turn_origin: lineage.turnOrigin,
+        source_bound: lineage.sourceBound,
+        expected_source_scope_hash: lineage.sourceScopeHash,
+      },
     },
     {
       role: "assistant" as const,
@@ -612,6 +639,16 @@ function latestAssistantMessageId(
 
 function _objectContext(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function assistantTurnOrigin(
+  value: unknown,
+): "typed" | "suggested_follow_up" | "clarification" | "document_action" {
+  return value === "suggested_follow_up"
+    || value === "clarification"
+    || value === "document_action"
+    ? value
+    : "typed";
 }
 
 const DOCUMENT_TYPES: readonly DocumentType[] = [

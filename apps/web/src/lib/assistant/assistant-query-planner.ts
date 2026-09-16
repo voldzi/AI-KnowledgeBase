@@ -13,8 +13,10 @@ import type { DocumentKnowledgeIntent } from "./document-knowledge-intent";
 
 import type { AssistantToolName, AssistantToolRouteReason } from "./assistant-tool-router";
 
-export const ASSISTANT_QUERY_PLAN_VERSION = "2026-08-28";
+export const ASSISTANT_QUERY_PLAN_VERSION = "2026-09-16";
 export const ASSISTANT_REPORT_ARTIFACT_CONTRACT_VERSION = "report.v2";
+
+export type AssistantKnowledgeScope = "governed_sources" | "general_knowledge";
 
 export type AssistantQueryIntent =
   | "personal_workflow"
@@ -69,6 +71,7 @@ export interface AssistantQueryPlan {
     registry_report_kind: RegistryReportKind | null;
     topics: string[];
     document_knowledge_intent: DocumentKnowledgeIntent;
+    knowledge_scope: AssistantKnowledgeScope;
   };
 }
 
@@ -82,6 +85,7 @@ export function buildAssistantQueryPlan(input: {
   registryReportKind: RegistryReportKind | null;
   registryTopics: string[];
   documentKnowledgeIntent?: DocumentKnowledgeIntent;
+  knowledgeScope?: AssistantKnowledgeScope;
   reportRequest?: AssistantReportRequest | null;
 }): AssistantQueryPlan {
   const goal = resolveAssistantUserGoal(input.message).goal;
@@ -96,6 +100,7 @@ export function buildAssistantQueryPlan(input: {
       input.reason,
       goal,
       intent,
+      input.knowledgeScope ?? "governed_sources",
       input.registryReportKind ?? "",
       input.registryTopics.join(","),
       normalizePlanMessage(input.message)
@@ -117,7 +122,9 @@ export function buildAssistantQueryPlan(input: {
       preferred_export_formats: assistantReportExportFormats(input.reportRequest ?? null)
     },
     quality_gates: {
-      citations_required: input.tool !== "registry_document_report" && input.tool !== "workflow_workspace",
+      citations_required: input.knowledgeScope !== "general_knowledge"
+        && input.tool !== "registry_document_report"
+        && input.tool !== "workflow_workspace",
       row_citations_required: input.tool === "rag_document_answer" && input.structuredOutput,
       min_columns: input.structuredOutput || input.tool === "registry_document_report" ? Math.min(Math.max(requiredColumns.length, 2), 8) : null,
       min_informative_cells_per_row: input.structuredOutput ? 2 : null,
@@ -127,6 +134,7 @@ export function buildAssistantQueryPlan(input: {
       registry_report_kind: input.registryReportKind,
       topics: input.registryTopics,
       document_knowledge_intent: input.documentKnowledgeIntent ?? "general",
+      knowledge_scope: input.knowledgeScope ?? "governed_sources",
     }
   };
 }
