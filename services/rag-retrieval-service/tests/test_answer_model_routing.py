@@ -256,6 +256,41 @@ def test_model_abstention_drops_unrelated_citations_and_confidence() -> None:
     assert "dostatečně důvěryhodný zdroj" in answer.answer
 
 
+def test_premature_abstention_is_retried_once_with_the_same_authorized_context() -> None:
+    class RecoveringLLMClient(CaptureLLMClient):
+        async def chat_completion(self, **kwargs: Any) -> str:
+            self.models.append(kwargs.get("model"))
+            self.metadata.append(kwargs["metadata"])
+            self.messages.append(kwargs["messages"])
+            if len(self.messages) == 1:
+                return "V poskytnutém kontextu nejsou uvedeny povinnosti zaměstnanců."
+            return "Zaměstnanec musí zachovávat mlčenlivost."
+
+    llm = RecoveringLLMClient()
+    composer = AnswerComposer(_settings(), llm)
+
+    answer = asyncio.run(
+        composer.compose(
+            query_id="query-recovered",
+            query="Jaké povinnosti má zaměstnanec?",
+            chunks=[_chunk("chunk_1")],
+            confidence="high",
+            warnings=[],
+            max_chunks=4,
+            answer_mode="it_support_answer",
+            response_language="cs",
+        )
+    )
+
+    assert answer.answer == "Zaměstnanec musí zachovávat mlčenlivost."
+    assert answer.confidence == "high"
+    assert answer.used_chunks == ["chunk_1"]
+    assert answer.warnings == ["LLM_ABSTENTION_RECOVERED"]
+    assert len(llm.messages) == 2
+    assert llm.metadata[1]["abstention_recovery"] is True
+    assert llm.messages[0][1] == llm.messages[1][1]
+
+
 def test_sourced_partial_answer_is_not_misclassified_as_total_abstention() -> None:
     llm = CaptureLLMClient(
         "Zaměstnanec musí zachovávat mlčenlivost [chunk_1]. "

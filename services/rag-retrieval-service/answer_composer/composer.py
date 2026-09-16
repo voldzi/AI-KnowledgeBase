@@ -148,6 +148,36 @@ class AnswerComposer:
             )
 
         if _model_abstained(answer, response_language):
+            recovery_messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        messages[0]["content"]
+                        + "\nBefore declining, inspect every supplied excerpt again. If any excerpt "
+                        + "directly supports all or part of the question, answer that supported part "
+                        + "and identify only the genuinely missing facet. Do not infer beyond the excerpts."
+                    ),
+                },
+                messages[1],
+            ]
+            try:
+                recovered_completion = await self._completion_result(
+                    messages=recovery_messages,
+                    metadata={**completion_metadata, "abstention_recovery": True},
+                    model=selected_chat_model,
+                    auth_context=auth_context,
+                )
+                recovered_answer = recovered_completion.content
+                if recovered_answer and not _model_abstained(recovered_answer, response_language):
+                    answer = recovered_answer
+                    completion = recovered_completion
+                    warnings = _merge_warnings(warnings, ["LLM_ABSTENTION_RECOVERED"])
+            except RetrievalError:
+                # The original conservative no-answer remains authoritative when
+                # the bounded recovery attempt is unavailable or incomplete.
+                pass
+
+        if _model_abstained(answer, response_language):
             return RagAnswer(
                 query_id=query_id,
                 answer=_localized_no_answer(response_language),
