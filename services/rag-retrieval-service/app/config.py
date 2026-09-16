@@ -224,6 +224,7 @@ class Settings:
     embedding_dimensions: int | None
     chat_model: str
     high_quality_chat_model: str | None
+    external_chat_model: str | None
     high_quality_min_context_chunks: int
     mock_chat_response: str | None
     mock_registry_denied_document_ids: tuple[str, ...]
@@ -620,6 +621,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         embedding_dimensions=embedding_dimensions,
         chat_model=_get(source, "AKL_RAG_CHAT_MODEL", "mock-chat"),
         high_quality_chat_model=_parse_optional_str(_get(source, "AKL_RAG_HIGH_QUALITY_CHAT_MODEL", "")),
+        external_chat_model=_parse_optional_str(_get(source, "AKL_RAG_EXTERNAL_CHAT_MODEL", "")),
         high_quality_min_context_chunks=high_quality_min_context_chunks,
         mock_chat_response=source.get("AKL_RAG_MOCK_CHAT_RESPONSE") or None,
         mock_registry_denied_document_ids=denied,

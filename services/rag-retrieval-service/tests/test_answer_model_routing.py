@@ -86,6 +86,49 @@ def test_complex_answer_mode_uses_high_quality_chat_model() -> None:
     assert llm.metadata[0]["chat_model_tier"] == "high_quality"
 
 
+def test_governed_public_context_uses_configured_external_model() -> None:
+    llm = CaptureLLMClient()
+    settings = replace(_settings(), external_chat_model="gpt-5.6-luna")
+    composer = AnswerComposer(settings, llm)
+    chunk = _chunk("public").model_copy(update={"metadata": {
+        "policy_binding_id": "pb_public",
+        "policy_hash": "sha256:public",
+        "policy_summary": {"handlingClass": "PUBLIC", "obligations": []},
+    }})
+
+    asyncio.run(composer.compose(
+        query_id="query-public", query="Shrň veřejný předpis.", chunks=[chunk],
+        confidence="high", warnings=[], max_chunks=4,
+    ))
+
+    assert llm.models == ["gpt-5.6-luna"]
+
+
+def test_restricted_context_stays_on_local_model() -> None:
+    llm = CaptureLLMClient()
+    settings = replace(
+        _settings(),
+        external_chat_model="gpt-5.6-luna",
+        high_quality_chat_model=None,
+    )
+    composer = AnswerComposer(settings, llm)
+    chunk = _chunk("restricted").model_copy(update={"metadata": {
+        "policy_binding_id": "pb_restricted",
+        "policy_hash": "sha256:restricted",
+        "policy_summary": {
+            "handlingClass": "RESTRICTED",
+            "obligations": ["NO_EXTERNAL_AI"],
+        },
+    }})
+
+    asyncio.run(composer.compose(
+        query_id="query-restricted", query="Shrň omezený dokument.", chunks=[chunk],
+        confidence="high", warnings=[], max_chunks=4,
+    ))
+
+    assert llm.models == [None]
+
+
 def test_bounded_manager_brief_uses_standard_chat_model() -> None:
     llm = CaptureLLMClient()
     settings = _settings()

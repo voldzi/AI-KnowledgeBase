@@ -405,6 +405,10 @@ class AnswerComposer:
         selected_chunks: list[RetrievedChunk],
         truncated: bool,
     ) -> str | None:
+        policy = _policy_metadata(selected_chunks)
+        external_model = self._settings.external_chat_model
+        if external_model and _external_processing_allowed(policy):
+            return external_model
         high_quality_model = self._settings.high_quality_chat_model
         if not high_quality_model:
             return None
@@ -421,6 +425,19 @@ class AnswerComposer:
         if len(selected_chunks) >= self._settings.high_quality_min_context_chunks:
             return high_quality_model
         return None
+
+
+def _external_processing_allowed(policy: dict[str, object]) -> bool:
+    if policy.get("policy_version") != "information-policy-2.0.0":
+        return False
+    if policy.get("legal_classification") != "NONE":
+        return False
+    if policy.get("handling_class") not in {"PUBLIC", "INTERNAL"}:
+        return False
+    obligations = policy.get("obligations")
+    if not isinstance(obligations, list):
+        return False
+    return not {"NO_EXTERNAL_AI", "LOCAL_PROCESSING_ONLY"}.intersection(obligations)
 
 
 def _incomplete_answer(query_id: str, warnings: list[str], language: ResponseLanguage) -> RagAnswer:
