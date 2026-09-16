@@ -59,10 +59,20 @@ async def request_json_with_retry(
                 continue
 
             if response.status_code >= 400:
+                safe_details: dict[str, Any] = {"status_code": response.status_code}
+                try:
+                    error_body = response.json().get("error", {})
+                    if isinstance(error_body, dict):
+                        for key in ("type", "code", "param"):
+                            value = error_body.get(key)
+                            if isinstance(value, (str, int, float, bool)) or value is None:
+                                safe_details[f"provider_{key}"] = value
+                except (ValueError, AttributeError):
+                    pass
                 raise provider_error(
                     provider,
                     "LLM provider returned an error",
-                    {"status_code": response.status_code},
+                    safe_details,
                 )
 
             return response.json()
