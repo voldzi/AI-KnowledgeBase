@@ -2,7 +2,8 @@
 
 This directory is the immutable AKB-owned snapshot accepted for G2/G3:
 
-- access: `stratos-access-1`
+- legacy access catalog: `stratos-access-1`
+- active interactive projection: `stratos-access-projection-2`, revision `2.1.0`
 - information policy: `information-policy-2.0.0`
 - integration envelope: `stratos-integration-envelope-1`
 - conformance fixtures: `conformance-1.0.0`
@@ -10,6 +11,13 @@ This directory is the immutable AKB-owned snapshot accepted for G2/G3:
 The source is the sibling STRATOS repository `contracts/` tree as accepted on
 2026-07-12. AKB does not edit the copied schemas or fixture expectations.
 Changes require a new version, an impact review, and a synchronized snapshot.
+
+The V2 projection schema and metadata synchronized on 2026-09-16 are stored
+under `access-governance/v2/`. They are byte-identical to the active STRATOS
+contract. AKB pins schema, revision, status, schema digest, capability catalog,
+organization and the maximum 15-minute validity window. Authorization must be
+satisfied by one entitlement; AKB never unions a capability from one
+entitlement with a scope from another.
 
 Verify JSON validity and the accepted byte-level digests with:
 

@@ -6,7 +6,7 @@ from jwt import PyJWKClient
 from starlette import status
 
 from app.config import Settings, get_settings
-from app.access_governance import GovernanceDenied, GovernanceUnavailable, governance_client
+from app.access_governance import AccessEntitlement, GovernanceDenied, GovernanceUnavailable, governance_client
 from app.errors import problem
 from app.managed_identity import ManagedIdentityInvalid, ManagedIdentityUnavailable, managed_verifier, validate_rules_service, validate_user
 
@@ -26,6 +26,7 @@ class Principal:
     service_identity: bool = False
     service_client_id: str | None = None
     bearer_token: str | None = None
+    access_entitlements: tuple[AccessEntitlement, ...] = ()
 
     @property
     def access_v2(self) -> bool:
@@ -147,6 +148,12 @@ def _oidc_principal(request: Request, settings: Settings) -> Principal:
         projection = governance_client(settings).user_projection(
             token,
             token_expires_at=float(claims["exp"]) if isinstance(claims.get("exp"), int | float) else None,
+            expected_subject=subject_id,
+            identity_audience=(
+                claims.get("identity_audience")
+                if isinstance(claims.get("identity_audience"), str)
+                else None
+            ),
         )
     except GovernanceDenied as exc:
         raise problem(status.HTTP_403_FORBIDDEN, "access_projection_denied", str(exc)) from exc
@@ -170,6 +177,7 @@ def _oidc_principal(request: Request, settings: Settings) -> Principal:
         service_identity=False,
         service_client_id=None,
         bearer_token=token,
+        access_entitlements=projection.entitlements,
     )
 
 
@@ -193,7 +201,7 @@ def _managed_principal(token: str, settings: Settings) -> Principal:
         raise problem(403, "access_projection_denied", "STRATOS rejected the identity or access projection") from exc
     except GovernanceUnavailable as exc:
         raise problem(503, "access_projection_unavailable", "STRATOS access projection is unavailable") from exc
-    return Principal(subject_id=claims["sub"], roles=set(), groups=set(), capabilities=set(projection.capabilities), scopes=set(projection.scopes), organization_id=projection.organization_id, identity_active=projection.identity_active, membership_active=projection.membership_active, application_access_active=projection.application_access_active, dynamic_access_loaded=True, bearer_token=token)
+    return Principal(subject_id=claims["sub"], roles=set(), groups=set(), capabilities=set(projection.capabilities), scopes=set(projection.scopes), organization_id=projection.organization_id, identity_active=projection.identity_active, membership_active=projection.membership_active, application_access_active=projection.application_access_active, dynamic_access_loaded=True, bearer_token=token, access_entitlements=projection.entitlements)
 
 
 def _header_bool(request: Request, name: str, default: bool) -> bool:

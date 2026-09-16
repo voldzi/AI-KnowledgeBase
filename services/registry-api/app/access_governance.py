@@ -10,11 +10,11 @@ import json
 import logging
 import threading
 import time
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from urllib.parse import quote
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from app.config import Settings
 from app.document_admission import has_explicit_document_tlp
@@ -47,6 +47,21 @@ def policy_decision_scope():
 
 
 @dataclass(frozen=True)
+class AccessEntitlement:
+    entitlement_id: str
+    definition_version: str
+    profile_id: str | None
+    source: str
+    source_ref: str | None
+    virtual: bool
+    capabilities: frozenset[str]
+    scopes: frozenset[str]
+    effective_scopes: frozenset[str]
+    valid_from: datetime | None
+    valid_until: datetime | None
+
+
+@dataclass(frozen=True)
 class AccessProjection:
     capabilities: frozenset[str]
     scopes: frozenset[str]
@@ -54,6 +69,123 @@ class AccessProjection:
     identity_active: bool
     membership_active: bool
     application_access_active: bool
+    entitlements: tuple[AccessEntitlement, ...] = ()
+    subject_id: str | None = None
+    identity_kind: str = "person"
+    employee_eligible: bool = False
+    expires_at: datetime | None = None
+
+
+ACCESS_PROJECTION_V2_SCHEMA = "stratos-access-projection-2"
+ACCESS_PROJECTION_V2_REVISION = "2.1.0"
+ACCESS_PROJECTION_V2_STATUS = "active"
+ACCESS_PROJECTION_V2_DIGEST = "sha256:16509ccbdc3e49e7a9918a29c833a8ae1aa7c78777b0a8693a2477acc2f0dafa"
+ACCESS_PROJECTION_V2_CATALOG = "capabilities-1.12.2"
+ACCESS_PROJECTION_V2_MAX_TTL_SECONDS = 15 * 60
+_CAPABILITY_PATTERN = r"^[a-z][a-z0-9-]*:[a-z][a-z0-9_.-]*$"
+
+
+class ProjectionSimpleScope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["own", "public"]
+
+
+class ProjectionIdentifiedScope(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal[
+        "organization", "organization_unit", "budget_scope", "portfolio",
+        "project", "document", "recipient_set",
+    ]
+    id: str = Field(min_length=1, max_length=200)
+
+
+ProjectionScope = Annotated[
+    ProjectionSimpleScope | ProjectionIdentifiedScope,
+    Field(discriminator="type"),
+]
+ProjectionCapability = Annotated[str, Field(pattern=_CAPABILITY_PATTERN)]
+
+
+class ProjectionEntitlement(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    entitlement_id: str = Field(alias="entitlementId", min_length=1, max_length=240)
+    definition_version: str = Field(alias="definitionVersion", min_length=1, max_length=100)
+    profile_id: str | None = Field(alias="profileId", max_length=100)
+    source: Literal["MANUAL", "KEYCLOAK_GROUP", "OIDC", "SYSTEM"]
+    source_ref: str | None = Field(alias="sourceRef", max_length=240)
+    virtual: bool
+    capabilities: list[ProjectionCapability] = Field(min_length=1)
+    scopes: list[ProjectionScope] = Field(min_length=1)
+    effective_scopes: list[ProjectionScope] = Field(alias="effectiveScopes", min_length=1)
+    valid_from: datetime | None = Field(alias="validFrom")
+    valid_until: datetime | None = Field(alias="validUntil")
+
+    @field_validator("capabilities")
+    @classmethod
+    def capabilities_are_unique(cls, value: list[str]) -> list[str]:
+        if len(value) != len(set(value)):
+            raise ValueError("capabilities must be unique")
+        return value
+
+    @field_validator("scopes", "effective_scopes")
+    @classmethod
+    def scopes_are_unique(cls, value: list[ProjectionScope]) -> list[ProjectionScope]:
+        keys = [_projection_scope_key(item) for item in value]
+        if len(keys) != len(set(keys)):
+            raise ValueError("scopes must be unique")
+        return value
+
+
+class ProjectionApplicationAccess(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    application_id: Literal["executive-center", "budget", "projectflow", "archflow", "akb"] = Field(alias="applicationId")
+    entitlements: list[ProjectionEntitlement] = Field(min_length=1, max_length=32)
+
+
+class ProjectionIdentity(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    subject_id: str = Field(alias="subjectId", min_length=1, max_length=200)
+    kind: Literal["person", "service"]
+    active: bool
+    employee_eligible: bool = Field(alias="employeeEligible")
+
+
+class ProjectionMembership(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    active: bool
+    valid_until: datetime | None = Field(alias="validUntil")
+
+
+class ActiveAccessProjectionV2(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    schema_version: Literal[ACCESS_PROJECTION_V2_SCHEMA] = Field(alias="schemaVersion")
+    contract_revision: Literal[ACCESS_PROJECTION_V2_REVISION] = Field(alias="contractRevision")
+    contract_status: Literal[ACCESS_PROJECTION_V2_STATUS] = Field(alias="contractStatus")
+    contract_digest: Literal[ACCESS_PROJECTION_V2_DIGEST] = Field(alias="contractDigest")
+    catalog_version: Literal[ACCESS_PROJECTION_V2_CATALOG] = Field(alias="catalogVersion")
+    generated_at: datetime = Field(alias="generatedAt")
+    expires_at: datetime = Field(alias="expiresAt")
+    organization_id: Literal["org_stratos"] = Field(alias="organizationId")
+    identity: ProjectionIdentity
+    membership: ProjectionMembership
+    application_access: list[ProjectionApplicationAccess] = Field(alias="applicationAccess", max_length=5)
+
+    @field_validator("application_access")
+    @classmethod
+    def applications_are_unique(
+        cls, value: list[ProjectionApplicationAccess]
+    ) -> list[ProjectionApplicationAccess]:
+        ids = [item.application_id for item in value]
+        if len(ids) != len(set(ids)):
+            raise ValueError("applications must be unique")
+        return value
 
 
 @dataclass(frozen=True)
@@ -199,19 +331,28 @@ class StratosGovernanceClient:
             body = response.json()
             if not isinstance(body, dict):
                 raise ValueError("Invalid projection object")
-            if expected_subject and (body.get("id") != expected_subject or body.get("identitySubject", expected_subject) != expected_subject or any(body.get(key) is False for key in ("isActive", "active", "identityActive"))):
+            projection = self._parse_projection(body, now=datetime.now(timezone.utc))
+            if expected_subject and projection.subject_id != expected_subject:
                 raise GovernanceDenied("Projection identity does not match the bearer")
-            projection = self._parse_projection(body)
-            if identity_audience == "external" and "recipient_set:employee-directives" in projection.scopes:
+            if not projection.identity_active or not projection.membership_active:
+                raise GovernanceDenied("Projection identity or membership is inactive")
+            if identity_audience == "external" and (
+                projection.employee_eligible
+                or any(item.entitlement_id == "system:akb:employee-baseline" for item in projection.entitlements)
+            ):
                 raise GovernanceDenied("Employee scope is not valid for this identity")
         except (ValueError, TypeError) as exc:
             raise GovernanceUnavailable("STRATOS access projection is malformed") from exc
 
         ttl = self.settings.stratos_access_cache_ttl_seconds
-        expires_at = min(now + ttl, token_expires_at or now + ttl)
-        if self.settings.identity_mode != "managed" and ttl > 0 and expires_at > now:
+        cache_expires_at = min(
+            now + ttl,
+            token_expires_at or now + ttl,
+            projection.expires_at.timestamp() if projection.expires_at else now,
+        )
+        if self.settings.identity_mode != "managed" and ttl > 0 and cache_expires_at > now:
             with self._lock:
-                self._cache[cache_key] = (expires_at, projection)
+                self._cache[cache_key] = (cache_expires_at, projection)
         return projection
 
     def ensure_binding_registered(self, binding: InformationPolicyBinding) -> str:
@@ -819,33 +960,104 @@ class StratosGovernanceClient:
         return value
 
     @staticmethod
-    def _parse_projection(body: Any) -> AccessProjection:
-        if not isinstance(body, dict) or body.get("tenantId") != "org_stratos":
-            raise ValueError("organization mismatch")
-        accesses = body.get("applicationAccess")
-        if not isinstance(accesses, list):
-            raise ValueError("applicationAccess missing")
-        access = next(
+    def _parse_projection(
+        body: Any, *, now: datetime | None = None,
+    ) -> AccessProjection:
+        projection = ActiveAccessProjectionV2.model_validate(body)
+        evaluated_at = now or datetime.now(timezone.utc)
+        if evaluated_at.tzinfo is None:
+            evaluated_at = evaluated_at.replace(tzinfo=timezone.utc)
+        generated_at = _aware_utc(projection.generated_at)
+        expires_at = _aware_utc(projection.expires_at)
+        if (
+            generated_at > evaluated_at
+            or expires_at <= evaluated_at
+            or expires_at <= generated_at
+            or (expires_at - generated_at).total_seconds()
+            > ACCESS_PROJECTION_V2_MAX_TTL_SECONDS
+        ):
+            raise ValueError("projection validity window is invalid")
+        membership_valid_until = (
+            _aware_utc(projection.membership.valid_until)
+            if projection.membership.valid_until is not None
+            else None
+        )
+        membership_active = projection.membership.active and (
+            membership_valid_until is None or membership_valid_until > evaluated_at
+        )
+        akb_access = next(
             (
-                item
-                for item in accesses
-                if isinstance(item, dict)
-                and str(item.get("application") or "").lower().replace("_", "-") == "akb"
+                item for item in projection.application_access
+                if item.application_id == "akb"
             ),
             None,
         )
-        active = access is not None and _not_expired(access.get("validUntil"))
-        capabilities = _strings(access.get("capabilities")) if active else frozenset()
-        # The explicit grants are an administrative input.  Runtime access is
-        # based only on the active/connected closure calculated by STRATOS.
-        scopes = _scopes(access.get("effectiveScopes")) if active else frozenset()
+        if akb_access is not None:
+            entitlement_ids = [item.entitlement_id for item in akb_access.entitlements]
+            if len(entitlement_ids) != len(set(entitlement_ids)):
+                raise ValueError("entitlement ids must be unique")
+        entitlements: list[AccessEntitlement] = []
+        for item in akb_access.entitlements if akb_access is not None else []:
+            valid_from = _aware_utc(item.valid_from) if item.valid_from else None
+            valid_until = _aware_utc(item.valid_until) if item.valid_until else None
+            if item.definition_version != ACCESS_PROJECTION_V2_CATALOG:
+                raise ValueError("entitlement catalog version is invalid")
+            if item.valid_from is not None and valid_from is None:
+                raise ValueError("entitlement validity boundary is invalid")
+            if not item.virtual and valid_from is None:
+                raise ValueError("persisted entitlement requires validFrom")
+            if valid_from and valid_until and valid_until <= valid_from:
+                raise ValueError("entitlement validity window is invalid")
+            if (valid_from and valid_from > evaluated_at) or (
+                valid_until and valid_until <= evaluated_at
+            ):
+                continue
+            entitlement = AccessEntitlement(
+                entitlement_id=item.entitlement_id,
+                definition_version=item.definition_version,
+                profile_id=item.profile_id,
+                source=item.source,
+                source_ref=item.source_ref,
+                virtual=item.virtual,
+                capabilities=frozenset(item.capabilities),
+                scopes=frozenset(_projection_scope_key(scope) for scope in item.scopes),
+                effective_scopes=frozenset(
+                    _projection_scope_key(scope) for scope in item.effective_scopes
+                ),
+                valid_from=valid_from,
+                valid_until=valid_until,
+            )
+            if entitlement.virtual and not _valid_employee_baseline(
+                entitlement, projection
+            ):
+                raise ValueError("virtual entitlement is invalid")
+            entitlements.append(entitlement)
+        active = bool(
+            projection.identity.active
+            and membership_active
+            and entitlements
+        )
+        effective_entitlements = tuple(entitlements) if active else ()
         return AccessProjection(
-            capabilities=capabilities,
-            scopes=scopes,
-            organization_id="org_stratos",
-            identity_active=True,
-            membership_active=True,
+            capabilities=frozenset(
+                capability
+                for entitlement in effective_entitlements
+                for capability in entitlement.capabilities
+            ),
+            scopes=frozenset(
+                scope
+                for entitlement in effective_entitlements
+                for scope in entitlement.effective_scopes
+            ),
+            organization_id=projection.organization_id,
+            identity_active=projection.identity.active,
+            membership_active=membership_active,
             application_access_active=active,
+            entitlements=effective_entitlements,
+            subject_id=projection.identity.subject_id,
+            identity_kind=projection.identity.kind,
+            employee_eligible=projection.identity.employee_eligible,
+            expires_at=expires_at,
         )
 
 
@@ -876,6 +1088,49 @@ def reset_governance_clients_for_tests() -> None:
         for client in _CLIENTS.values():
             client.close()
         _CLIENTS.clear()
+
+
+def _aware_utc(value: datetime) -> datetime:
+    return (
+        value.replace(tzinfo=timezone.utc)
+        if value.tzinfo is None
+        else value.astimezone(timezone.utc)
+    )
+
+
+def _projection_scope_key(value: ProjectionScope) -> str:
+    scope_id = getattr(value, "id", None)
+    return f"{value.type}:{scope_id}" if scope_id else value.type
+
+
+def _valid_employee_baseline(
+    entitlement: AccessEntitlement,
+    projection: ActiveAccessProjectionV2,
+) -> bool:
+    expected_scopes = frozenset(
+        {
+            "public",
+            "organization:org_stratos",
+            "recipient_set:employee-directives",
+        }
+    )
+    return bool(
+        entitlement.entitlement_id == "system:akb:employee-baseline"
+        and entitlement.definition_version == ACCESS_PROJECTION_V2_CATALOG
+        and entitlement.profile_id == "stratos-user"
+        and entitlement.source == "SYSTEM"
+        and entitlement.source_ref == "employee-baseline"
+        and entitlement.capabilities
+        == frozenset({"akb:access", "akb:chat", "akb:read_document"})
+        and entitlement.scopes == expected_scopes
+        and expected_scopes.issubset(entitlement.effective_scopes)
+        and entitlement.valid_from is None
+        and entitlement.valid_until is None
+        and projection.identity.kind == "person"
+        and projection.identity.active
+        and projection.identity.employee_eligible
+        and projection.membership.active
+    )
 
 
 def _strings(value: Any) -> frozenset[str]:

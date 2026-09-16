@@ -69,7 +69,9 @@ ověření audience, trusted-client allowlistu, přesného route grantu a role;
 samotný tvar tokenu žádný přístup neuděluje.
 
 Interaktivní AKB session načítá capabilities a scopes výhradně z centrálního
-`GET /api/v1/auth/me`. Keycloak token proto musí obsahovat dedikovanou
+capability-bound `GET /api/v2/auth/me`. Registry zachovává hranice jednotlivých
+entitlementů; capability a scope z různých entitlementů se nesmí spojit.
+Keycloak token proto musí obsahovat dedikovanou
 `stratos-access-api` audience vedle AKB resource audience `akl-api`. Odmítnutá
 nebo nedostupná projekce zůstává fail-closed; chat zobrazí řízenou access chybu
 a nikdy nepřejde na statické role nebo klientské hlavičky.

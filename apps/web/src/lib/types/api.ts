@@ -144,6 +144,10 @@ export interface ApiRequestContext {
   applicationAccessActive?: boolean;
   applicationAccess?: Array<{
     application: string;
+    entitlementId?: string;
+    profileId?: string | null;
+    source?: "MANUAL" | "KEYCLOAK_GROUP" | "OIDC" | "SYSTEM";
+    virtual?: boolean;
     capabilities: string[];
     /** Explicit active grants returned by STRATOS. Preserve their original breadth. */
     scopes?: string[];

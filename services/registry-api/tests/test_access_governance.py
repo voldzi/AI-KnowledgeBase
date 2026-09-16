@@ -5,8 +5,9 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
+from pydantic import ValidationError
 from document_profile_fixtures import admit_orm_profile, profiled_document_request, verified_profile_authority
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from fastapi import HTTPException
 from starlette.requests import Request
 
@@ -65,7 +66,7 @@ def _settings(**overrides) -> Settings:
         "AKL_OIDC_ISSUER": "https://login.example/realms/stratos",
         "AKL_OIDC_AUDIENCE": "akb-api",
         "AKL_OIDC_JWKS_URL": "https://login.example/realms/stratos/certs",
-        "AKL_STRATOS_AUTH_ME_URL": "https://stratos.example/api/v1/auth/me",
+        "AKL_STRATOS_AUTH_ME_URL": "https://stratos.example/api/v2/auth/me",
         "AKL_STRATOS_ACCESS_CACHE_TTL_SECONDS": 0,
         "AKL_TRUSTED_SERVICE_CLIENT_IDS": "akb-rag-service,svc-ingestion",
         "AKL_SERVICE_CLIENT_ROUTE_GRANTS": (
@@ -78,15 +79,168 @@ def _settings(**overrides) -> Settings:
     return Settings(**values)
 
 
+def _projection(entitlements=None, *, subject_id="user-subject", identity_active=True,
+                membership_active=True, employee_eligible=False):
+    now = datetime.now(timezone.utc)
+    return {
+        "schemaVersion": "stratos-access-projection-2",
+        "contractRevision": "2.1.0",
+        "contractStatus": "active",
+        "contractDigest": "sha256:16509ccbdc3e49e7a9918a29c833a8ae1aa7c78777b0a8693a2477acc2f0dafa",
+        "catalogVersion": "capabilities-1.12.2",
+        "generatedAt": (now - timedelta(seconds=1)).isoformat().replace("+00:00", "Z"),
+        "expiresAt": (now + timedelta(minutes=10)).isoformat().replace("+00:00", "Z"),
+        "organizationId": "org_stratos",
+        "identity": {
+            "subjectId": subject_id,
+            "kind": "person",
+            "active": identity_active,
+            "employeeEligible": employee_eligible,
+        },
+        "membership": {"active": membership_active, "validUntil": None},
+        "applicationAccess": ([{"applicationId": "akb", "entitlements": entitlements}]
+                              if entitlements else []),
+    }
+
+
+def _entitlement(entitlement_id="grant-akb-read", *, capabilities=None, scopes=None,
+                 effective_scopes=None):
+    now = datetime.now(timezone.utc)
+    return {
+        "entitlementId": entitlement_id,
+        "definitionVersion": "capabilities-1.12.2",
+        "profileId": None,
+        "source": "MANUAL",
+        "sourceRef": None,
+        "virtual": False,
+        "capabilities": capabilities or ["akb:access", "akb:read_document"],
+        "scopes": scopes or [{"type": "organization", "id": "org_stratos"}],
+        "effectiveScopes": effective_scopes or [{"type": "organization", "id": "org_stratos"}],
+        "validFrom": (now - timedelta(minutes=1)).isoformat().replace("+00:00", "Z"),
+        "validUntil": None,
+    }
+
+
+def _employee_baseline():
+    return {
+        "entitlementId": "system:akb:employee-baseline",
+        "definitionVersion": "capabilities-1.12.2",
+        "profileId": "stratos-user",
+        "source": "SYSTEM",
+        "sourceRef": "employee-baseline",
+        "virtual": True,
+        "capabilities": ["akb:access", "akb:chat", "akb:read_document"],
+        "scopes": [
+            {"type": "public"},
+            {"type": "organization", "id": "org_stratos"},
+            {"type": "recipient_set", "id": "employee-directives"},
+        ],
+        "effectiveScopes": [
+            {"type": "public"},
+            {"type": "organization", "id": "org_stratos"},
+            {"type": "recipient_set", "id": "employee-directives"},
+        ],
+        "validFrom": None,
+        "validUntil": None,
+    }
+
+
+def test_active_v2_projection_preserves_entitlement_boundaries() -> None:
+    parsed = StratosGovernanceClient._parse_projection(
+        _projection(
+            [
+                _employee_baseline(),
+                _entitlement(
+                    "grant-budget-upload",
+                    capabilities=["akb:access", "akb:upload"],
+                    scopes=[{"type": "budget_scope", "id": "budget:it"}],
+                    effective_scopes=[{"type": "budget_scope", "id": "budget:it"}],
+                ),
+            ],
+            subject_id="employee-1",
+            employee_eligible=True,
+        )
+    )
+    context = SubjectContext(
+        subject_id="employee-1",
+        roles=set(),
+        groups=set(),
+        capabilities=set(parsed.capabilities),
+        scopes=set(parsed.scopes),
+        organization_id=parsed.organization_id,
+        identity_active=parsed.identity_active,
+        membership_active=parsed.membership_active,
+        application_access_active=parsed.application_access_active,
+        access_v2=True,
+        access_entitlements=parsed.entitlements,
+    )
+    public_document = _official_public_document()
+    assert permissions_module._v2_document_decision(
+        context, Action.document_read.value, public_document
+    ).allowed is True
+    denied = permissions_module._v2_document_decision(
+        context, Action.document_version_create.value, public_document
+    )
+    assert denied.allowed is False
+    assert "SCOPE_MISMATCH" in denied.reason_codes
+
+
+@pytest.mark.parametrize("mutation", [
+    lambda value: value.update({"unexpected": True}),
+    lambda value: value.update({"contractRevision": "2.0.0"}),
+    lambda value: value.update({"catalogVersion": "capabilities-1.12.0"}),
+    lambda value: value.update({"generatedAt": (datetime.now(timezone.utc) + timedelta(minutes=1)).isoformat()}),
+    lambda value: value.update({"expiresAt": (datetime.now(timezone.utc) + timedelta(minutes=16)).isoformat()}),
+])
+def test_active_v2_projection_rejects_contract_or_window_drift(mutation) -> None:
+    value = _projection([_employee_baseline()], employee_eligible=True)
+    mutation(value)
+    with pytest.raises((ValidationError, ValueError)):
+        StratosGovernanceClient._parse_projection(value)
+
+
+def test_active_v2_projection_rejects_reversed_entitlement_window() -> None:
+    value = _projection([_entitlement()])
+    entitlement = value["applicationAccess"][0]["entitlements"][0]
+    entitlement["validFrom"] = datetime.now(timezone.utc).isoformat()
+    entitlement["validUntil"] = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
+    with pytest.raises(ValueError, match="validity window"):
+        StratosGovernanceClient._parse_projection(value)
+
+
+def test_projection_cache_never_outlives_authoritative_projection(monkeypatch) -> None:
+    body = _projection([_entitlement()])
+    authoritative_expiry = datetime.now(timezone.utc) + timedelta(minutes=2)
+    body["expiresAt"] = authoritative_expiry.isoformat()
+    client = StratosGovernanceClient(_settings(
+        AKL_IDENTITY_MODE="external_oidc",
+        AKL_STRATOS_ACCESS_CACHE_TTL_SECONDS=600,
+    ))
+    monkeypatch.setattr(
+        client._http_client,
+        "get",
+        lambda *_args, **_kwargs: httpx.Response(200, json=body),
+    )
+
+    client.user_projection(
+        "cache-token",
+        token_expires_at=time.time() + 3600,
+        expected_subject="user-subject",
+    )
+
+    cache_expiry, _projection_value = next(iter(client._cache.values()))
+    assert cache_expiry <= authoritative_expiry.timestamp()
+    client.close()
+
+
 def test_user_projection_reflects_immediate_application_suspension(monkeypatch) -> None:
     responses = [
-        {"tenantId": "org_stratos", "applicationAccess": [{
-            "application": "AKB",
-            "capabilities": ["akb:chat"],
-            "scopes": [{"type": "project", "id": "inactive-or-orphaned"}],
-            "effectiveScopes": [{"type": "organization", "id": "org_stratos"}],
-        }]},
-        {"tenantId": "org_stratos", "applicationAccess": []},
+        _projection([_entitlement(
+            "grant-chat", capabilities=["akb:access", "akb:chat"],
+            scopes=[{"type": "project", "id": "inactive-or-orphaned"}],
+            effective_scopes=[{"type": "organization", "id": "org_stratos"}],
+        )]),
+        _projection(),
     ]
 
     class Client:
@@ -109,7 +263,7 @@ def test_user_projection_reflects_immediate_application_suspension(monkeypatch) 
     suspended = client.user_projection("token", token_expires_at=None)
 
     assert active.application_access_active is True
-    assert active.capabilities == frozenset({"akb:chat"})
+    assert active.capabilities == frozenset({"akb:access", "akb:chat"})
     assert active.scopes == frozenset({"organization:org_stratos"})
     assert suspended.application_access_active is False
     assert suspended.capabilities == frozenset()
@@ -149,14 +303,7 @@ def test_governance_client_reuses_one_http_connection_pool(monkeypatch) -> None:
         def get(self, _url, **_kwargs):
             return SimpleNamespace(
                 status_code=200,
-                json=lambda: {
-                    "tenantId": "org_stratos",
-                    "applicationAccess": [{
-                        "application": "AKB",
-                        "capabilities": ["akb:read_document"],
-                        "effectiveScopes": [{"type": "organization", "id": "org_stratos"}],
-                    }],
-                },
+                json=lambda: _projection([_entitlement()]),
             )
 
         def request(self, _method, _url, **_kwargs):
@@ -298,14 +445,9 @@ def test_user_projection_never_falls_back_to_raw_scope_grants(monkeypatch) -> No
         def get(self, _url, **_kwargs):
             return SimpleNamespace(
                 status_code=200,
-                json=lambda: {
-                    "tenantId": "org_stratos",
-                    "applicationAccess": [{
-                        "application": "AKB",
-                        "capabilities": ["akb:read_document"],
-                        "scopes": [{"type": "organization", "id": "org_stratos"}],
-                    }],
-                },
+                json=lambda: _projection([_entitlement(
+                    effective_scopes=[{"type": "public"}],
+                )]),
             )
 
     monkeypatch.setattr("app.access_governance.httpx.Client", Client)
@@ -315,8 +457,8 @@ def test_user_projection_never_falls_back_to_raw_scope_grants(monkeypatch) -> No
     )
 
     assert projection.application_access_active is True
-    assert projection.capabilities == frozenset({"akb:read_document"})
-    assert projection.scopes == frozenset()
+    assert projection.capabilities == frozenset({"akb:access", "akb:read_document"})
+    assert projection.scopes == frozenset({"public"})
 
 
 def test_policy_registry_response_must_match_every_immutable_dimension(monkeypatch) -> None:
@@ -441,10 +583,16 @@ def test_oidc_principal_ignores_static_access_claims_and_forged_headers(monkeypa
     )
     monkeypatch.setattr(auth_module, "PyJWKClient", JwkClient)
     monkeypatch.setattr(auth_module.jwt, "decode", lambda *_args, **_kwargs: claims)
+    projection_request: dict[str, object] = {}
+
+    def user_projection(*_args, **kwargs):
+        projection_request.update(kwargs)
+        return projection
+
     monkeypatch.setattr(
         auth_module,
         "governance_client",
-        lambda _settings: SimpleNamespace(user_projection=lambda *_args, **_kwargs: projection),
+        lambda _settings: SimpleNamespace(user_projection=user_projection),
     )
     request = Request({
         "type": "http",
@@ -461,6 +609,7 @@ def test_oidc_principal_ignores_static_access_claims_and_forged_headers(monkeypa
     assert principal.capabilities == {"akb:chat"}
     assert principal.scopes == {"organization:org_stratos"}
     assert "akb:manage_access" not in principal.capabilities
+    assert projection_request["expected_subject"] == "user-123"
 
 
 def test_oidc_rejects_service_looking_token_from_untrusted_azp(monkeypatch) -> None:

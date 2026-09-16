@@ -15,7 +15,7 @@ export function managedEnv(): NodeJS.ProcessEnv {
     AKL_WEB_SESSION_SECRET: "test-only-state-secret",
     AKL_WEB_SESSION_ENCRYPTION_KEY: "test-only-encryption-key-with-32-bytes-minimum",
     AKL_WEB_SESSION_STORE_SECRET: "test-only-session-store-key-with-32-bytes-minimum",
-    AKL_WEB_STRATOS_AUTH_ME_URL: "https://identity.example/api/v1/auth/me",
+    AKL_WEB_STRATOS_AUTH_ME_URL: "https://identity.example/api/v2/auth/me",
     AKL_WEB_STRATOS_ACCESS_CACHE_TTL_MS: "0", AKL_DIRECTOR_COPILOT_ENABLED: "false",
     AKL_REGISTRY_API_BASE_URL: "https://registry.example/api/v1",
     AKL_INGESTION_API_BASE_URL: "https://ingestion.example/api/v1",
@@ -39,7 +39,7 @@ export function managedConfig(): AklConfig {
       scopes: "openid profile email", sessionSecret: "test-only-state-secret",
       sessionEncryptionKey: "test-only-encryption-key-with-32-bytes-minimum",
       sessionStoreSecret: "test-only-session-store-key-with-32-bytes-minimum",
-      stratosAuthMeUrl: "https://identity.example/api/v1/auth/me", accessProjectionTimeoutMs: 3000,
+      stratosAuthMeUrl: "https://identity.example/api/v2/auth/me", accessProjectionTimeoutMs: 3000,
       accessProjectionCacheTtlMs: 0, identityValidationIntervalMs: 900_000,
       sessionAbsoluteTtlMs: 90 * 86_400_000, sessionIdleTtlMs: 30 * 86_400_000,
     },
@@ -85,11 +85,46 @@ export async function identityFixture(nowMs = Date.now(), options: { issuer?: st
     if (url === discovery.token_endpoint) return Response.json(await tokens());
     if (url === discovery.userinfo_endpoint) return Response.json({ sub: SUBJECT });
     if (url === discovery.revocation_endpoint) return new Response(null, { status: 200 });
-    if (url.endsWith("/auth/me")) return Response.json({ id: SUBJECT, identitySubject: SUBJECT, tenantId: "org_stratos",
-      applicationAccess: [{ application: "akb", profileId: "knowledge-reader", capabilities: ["akb:access", "akb:chat", "akb:read_document"],
-        scopes: [], effectiveScopes: [{ type: "recipient_set", id: "employee-directives" }] }],
-    });
+    if (url.endsWith("/auth/me")) return Response.json(accessProjectionV2(SUBJECT, nowMs));
     throw new Error("Unexpected fixture route");
   };
   return { keys, jwk, claims, discovery, sign, tokens, requests, state, fetcher, nowMs };
+}
+
+export function accessProjectionV2(
+  subjectId = SUBJECT,
+  nowMs = Date.now(),
+  options: { active?: boolean; employeeEligible?: boolean; includeBaseline?: boolean } = {},
+) {
+  const active = options.active ?? true;
+  const employeeEligible = options.employeeEligible ?? true;
+  const includeBaseline = options.includeBaseline ?? (active && employeeEligible);
+  return {
+    schemaVersion: "stratos-access-projection-2",
+    contractRevision: "2.1.0",
+    contractStatus: "active",
+    contractDigest: "sha256:16509ccbdc3e49e7a9918a29c833a8ae1aa7c78777b0a8693a2477acc2f0dafa",
+    catalogVersion: "capabilities-1.12.2",
+    generatedAt: new Date(nowMs - 1_000).toISOString(),
+    expiresAt: new Date(nowMs + 10 * 60_000).toISOString(),
+    organizationId: "org_stratos",
+    identity: { subjectId, kind: "person", active, employeeEligible },
+    membership: { active, validUntil: null },
+    applicationAccess: includeBaseline ? [{
+      applicationId: "akb",
+      entitlements: [{
+        entitlementId: "system:akb:employee-baseline",
+        definitionVersion: "capabilities-1.12.2",
+        profileId: "stratos-user",
+        source: "SYSTEM",
+        sourceRef: "employee-baseline",
+        virtual: true,
+        capabilities: ["akb:access", "akb:chat", "akb:read_document"],
+        scopes: [{ type: "public" }, { type: "organization", id: "org_stratos" }, { type: "recipient_set", id: "employee-directives" }],
+        effectiveScopes: [{ type: "public" }, { type: "organization", id: "org_stratos" }, { type: "recipient_set", id: "employee-directives" }],
+        validFrom: null,
+        validUntil: null,
+      }],
+    }] : [],
+  };
 }

@@ -7,7 +7,7 @@ import { contextFromStratosAccessProjection } from "../src/lib/auth/access-proje
 import { createState, exchangeAuthorizationCode, parseState, refreshOidcSession, resolveAuthorizationUrl, resolveLogoutUrl, revokeOidcRefreshToken, verifiedSessionFromTokens } from "../src/lib/auth/oidc";
 import { directorCopilotServiceToken, resetDirectorCopilotServiceTokenCacheForTests } from "../src/lib/director-copilot/service-identity";
 import { getDirectorCopilotConfig } from "../src/lib/api/config";
-import { identityFixture, ISSUER, managedConfig, OTHER_SUBJECT, SUBJECT } from "./helpers/managed-identity";
+import { accessProjectionV2, identityFixture, ISSUER, managedConfig, OTHER_SUBJECT, SUBJECT } from "./helpers/managed-identity";
 
 describe("managed identity trust boundary", () => {
   it("discovers public PKCE endpoints and never transmits an old client secret", async () => {
@@ -102,7 +102,7 @@ describe("managed identity authorization and lifecycle", () => {
     const first = await contextFromStratosAccessProjection(token, config, f.fetcher, f.nowMs);
     assert.equal(first.applicationAccessActive, true);
     assert.ok(first.scopes?.includes("recipient_set:employee-directives"));
-    f.state.handle = (url) => url.endsWith("/auth/me") ? Response.json({ id: SUBJECT, tenantId: "org_stratos", applicationAccess: [] }) : undefined;
+    f.state.handle = (url) => url.endsWith("/auth/me") ? Response.json(accessProjectionV2(SUBJECT, f.nowMs + 1, { includeBaseline: false })) : undefined;
     const revoked = await contextFromStratosAccessProjection(token, config, f.fetcher, f.nowMs + 1);
     assert.equal(revoked.applicationAccessActive, false);
     assert.deepEqual(revoked.capabilities, []);
@@ -114,12 +114,12 @@ describe("managed identity authorization and lifecycle", () => {
     const external = (await f.tokens({ identity_audience: "external" })).access_token;
     await assert.rejects(contextFromStratosAccessProjection(external, managedConfig(), f.fetcher, f.nowMs));
     const token = (await f.tokens()).access_token;
-    for (const response of [Response.json({ id: OTHER_SUBJECT, applicationAccess: [] }), Response.json({ id: SUBJECT, isActive: false, applicationAccess: [] }), Response.json({ error: "synthetic-private-error" }, { status: 503 })]) {
+    for (const response of [Response.json(accessProjectionV2(OTHER_SUBJECT, f.nowMs)), Response.json(accessProjectionV2(SUBJECT, f.nowMs, { active: false })), Response.json({ error: "synthetic-private-error" }, { status: 503 })]) {
       f.state.handle = (url) => url.endsWith("/auth/me") ? response : undefined;
       await assert.rejects(contextFromStratosAccessProjection(token, managedConfig(), f.fetcher, f.nowMs));
     }
-    f.state.handle = (url) => url.endsWith("/auth/me") ? Response.json({ id: SUBJECT, tenantId: "org_stratos", applicationAccess: [{ application: "akb", capabilities: ["akb:chat"], effectiveScopes: [{ type: "public", id: "public" }] }] }) : undefined;
-    assert.equal((await contextFromStratosAccessProjection(external, managedConfig(), f.fetcher, f.nowMs)).applicationAccessActive, true);
+    f.state.handle = (url) => url.endsWith("/auth/me") ? Response.json(accessProjectionV2(SUBJECT, f.nowMs, { employeeEligible: false, includeBaseline: false })) : undefined;
+    assert.equal((await contextFromStratosAccessProjection(external, managedConfig(), f.fetcher, f.nowMs)).applicationAccessActive, false);
   });
 
   it("refreshes public clients, verifies userinfo and rejects identity changes or a directory outage", async () => {

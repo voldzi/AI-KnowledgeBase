@@ -60,7 +60,7 @@ ORM metadata. The migration is forward-only in production.
 | `AKL_TRUSTED_SERVICE_CLIENT_IDS` | Allowlist přesných OIDC service client ids; service-looking token mimo allowlist je odmítnut. |
 | `AKL_SERVICE_CLIENT_ROUTE_GRANTS` | Default-deny mapa `client=route1\|route2`; povoluje jen vyjmenované Registry route families. |
 | `AKL_SERVICE_CLIENT_DELEGATIONS` | Volitelná mapa idempotency namespaces, které smí caller spravovat vedle vlastního namespace. |
-| `AKL_STRATOS_AUTH_ME_URL` | Autoritativní STRATOS access projection (`GET /api/v1/auth/me`). |
+| `AKL_STRATOS_AUTH_ME_URL` | Autoritativní capability-bound STRATOS Access Projection V2 (`GET /api/v2/auth/me`). |
 | `AKL_STRATOS_POLICY_BINDINGS_URL` | Centrální registr Information Policy bindingů. |
 | `AKL_STRATOS_POLICY_DECISIONS_URL` | Centrální decision endpoint pro service-to-service operace. |
 | `AKL_STRATOS_INFORMATION_RESOURCES_URL` | Základní URL pro immutable `AKB/document` a `AKB/document_version` GovernedInformationResource. |

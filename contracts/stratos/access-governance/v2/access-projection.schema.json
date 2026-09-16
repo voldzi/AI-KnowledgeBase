@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stratos.zeleznalady.cz/contracts/access-governance/v2/access-projection.schema.json",
+  "title": "STRATOS capability-bound access projection V2",
+  "description": "Active capability-bound projection. Every authorization decision must be satisfied by one entitlement; capabilities and scopes MUST NOT be unioned across entitlements.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "contractRevision",
+    "contractStatus",
+    "contractDigest",
+    "catalogVersion",
+    "generatedAt",
+    "expiresAt",
+    "organizationId",
+    "identity",
+    "membership",
+    "applicationAccess"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "stratos-access-projection-2" },
+    "contractRevision": { "const": "2.1.0" },
+    "contractStatus": { "const": "active" },
+    "contractDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "catalogVersion": { "type": "string", "pattern": "^capabilities-[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "expiresAt": { "type": "string", "format": "date-time" },
+    "organizationId": { "const": "org_stratos" },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subjectId", "kind", "active", "employeeEligible"],
+      "properties": {
+        "subjectId": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "kind": { "enum": ["person", "service"] },
+        "active": { "type": "boolean" },
+        "employeeEligible": { "type": "boolean" }
+      }
+    },
+    "membership": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["active", "validUntil"],
+      "properties": {
+        "active": { "type": "boolean" },
+        "validUntil": { "type": ["string", "null"], "format": "date-time" }
+      }
+    },
+    "applicationAccess": {
+      "type": "array",
+      "maxItems": 5,
+      "items": { "$ref": "#/$defs/applicationEntitlements" }
+    }
+  },
+  "$defs": {
+    "applicationId": {
+      "enum": ["executive-center", "budget", "projectflow", "archflow", "akb"]
+    },
+    "scope": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type"],
+          "properties": { "type": { "const": "own" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type"],
+          "properties": { "type": { "const": "public" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "id"],
+          "properties": {
+            "type": {
+              "enum": [
+                "organization",
+                "organization_unit",
+                "budget_scope",
+                "portfolio",
+                "project",
+                "document",
+                "recipient_set"
+              ]
+            },
+            "id": { "type": "string", "minLength": 1, "maxLength": 200 }
+          }
+        }
+      ]
+    },
+    "entitlement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entitlementId",
+        "definitionVersion",
+        "profileId",
+        "source",
+        "sourceRef",
+        "virtual",
+        "capabilities",
+        "scopes",
+        "effectiveScopes",
+        "validFrom",
+        "validUntil"
+      ],
+      "properties": {
+        "entitlementId": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "definitionVersion": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "profileId": { "type": ["string", "null"], "maxLength": 100 },
+        "source": { "enum": ["MANUAL", "KEYCLOAK_GROUP", "OIDC", "SYSTEM"] },
+        "sourceRef": { "type": ["string", "null"], "maxLength": 240 },
+        "virtual": { "type": "boolean" },
+        "capabilities": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*:[a-z][a-z0-9_.-]*$"
+          }
+        },
+        "scopes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/scope" }
+        },
+        "effectiveScopes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/scope" }
+        },
+        "validFrom": { "type": ["string", "null"], "format": "date-time" },
+        "validUntil": { "type": ["string", "null"], "format": "date-time" }
+      }
+    },
+    "applicationEntitlements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["applicationId", "entitlements"],
+      "properties": {
+        "applicationId": { "$ref": "#/$defs/applicationId" },
+        "entitlements": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": { "$ref": "#/$defs/entitlement" }
+        }
+      }
+    }
+  }
+}

@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from hashlib import sha256
 import json
@@ -11,6 +11,7 @@ from starlette import status
 
 from app.auth import Principal
 from app.access_governance import (
+    AccessEntitlement,
     GovernanceDenied,
     GovernanceInvalidResponse,
     GovernanceUnavailable,
@@ -187,6 +188,7 @@ class SubjectContext:
     membership_active: bool
     application_access_active: bool
     access_v2: bool
+    access_entitlements: tuple[AccessEntitlement, ...] = ()
 
     @property
     def refs(self) -> set[str]:
@@ -310,6 +312,7 @@ def context_for_principal(principal: Principal, db: Session | None = None) -> Su
             membership_active=principal.membership_active,
             application_access_active=principal.application_access_active,
             access_v2=True,
+            access_entitlements=principal.access_entitlements,
         )
     if db is not None:
         return context_for_subject(
@@ -439,9 +442,80 @@ def _v2_base_decision(context: SubjectContext, action: str) -> Decision | None:
     if context.organization_id != "org_stratos":
         return Decision(False, "Organization does not match AKB", constraints, ("ORGANIZATION_MISMATCH",))
     required = ACTION_CAPABILITIES.get(action, set())
-    if required and not required.intersection(context.capabilities):
+    if required and context.access_entitlements and not any(
+        "akb:access" in entitlement.capabilities
+        and bool(required.intersection(entitlement.capabilities))
+        for entitlement in context.access_entitlements
+    ):
+        return Decision(False, f"Capability missing for {action}", constraints, ("CAPABILITY_MISSING",))
+    if required and not context.access_entitlements and not required.intersection(context.capabilities):
         return Decision(False, f"Capability missing for {action}", constraints, ("CAPABILITY_MISSING",))
     return None
+
+
+def _entitlement_has_action(
+    entitlement: AccessEntitlement,
+    action: str,
+) -> bool:
+    required = ACTION_CAPABILITIES.get(action, set())
+    return bool(
+        "akb:access" in entitlement.capabilities
+        and (not required or required.intersection(entitlement.capabilities))
+    )
+
+
+def _entitlement_has_scope(
+    entitlement: AccessEntitlement,
+    scope: dict[str, str],
+    *,
+    subject_id: str,
+) -> bool:
+    scope_type = scope.get("type") or "organization"
+    if scope_type == "own":
+        return bool(
+            scope.get("ownerSubjectId") == subject_id
+            and "own" in entitlement.effective_scopes
+        )
+    scope_id = scope.get("id")
+    key = f"{scope_type}:{scope_id}" if scope_id else scope_type
+    return key in entitlement.effective_scopes
+
+
+def _has_entitled_scope(
+    context: SubjectContext,
+    action: str,
+    scope: dict[str, str],
+) -> bool:
+    if context.access_entitlements:
+        return any(
+            _entitlement_has_action(entitlement, action)
+            and _entitlement_has_scope(
+                entitlement, scope, subject_id=context.subject_id
+            )
+            for entitlement in context.access_entitlements
+        )
+    scope_type = scope.get("type") or "organization"
+    scope_id = scope.get("id")
+    key = f"{scope_type}:{scope_id}" if scope_id else scope_type
+    return key in context.scopes
+
+
+def _baseline_policy_allows(
+    entitlement: AccessEntitlement,
+    resource: Document | DocumentVersion,
+    binding: InformationPolicyBinding,
+) -> bool:
+    if entitlement.entitlement_id != "system:akb:employee-baseline":
+        return True
+    return bool(
+        resource.classification in {
+            Classification.public.value,
+            Classification.internal.value,
+        }
+        and binding.handling_class in {"PUBLIC", "INTERNAL"}
+        and binding.tlp in {"TLP:CLEAR", "TLP:GREEN"}
+        and binding.pap in {None, "PAP:CLEAR", "PAP:GREEN"}
+    )
 
 
 def _governance_scope_allows(
@@ -495,9 +569,27 @@ def _policy_audience_allows(
 
 def _scope_allows(
     context: SubjectContext,
+    action: str,
     resource: Document | DocumentVersion,
     binding: InformationPolicyBinding,
 ) -> bool:
+    if context.access_entitlements:
+        for entitlement in context.access_entitlements:
+            if not _entitlement_has_action(entitlement, action):
+                continue
+            entitlement_context = replace(
+                context,
+                capabilities=set(entitlement.capabilities),
+                scopes=set(entitlement.effective_scopes),
+                access_entitlements=(),
+            )
+            if (
+                _baseline_policy_allows(entitlement, resource, binding)
+                and _governance_scope_allows(entitlement_context, resource)
+                and _policy_audience_allows(entitlement_context, binding)
+            ):
+                return True
+        return False
     return _governance_scope_allows(context, resource) and _policy_audience_allows(
         context,
         binding,
@@ -512,8 +604,12 @@ def _employee_directive_source_allows(
 ) -> bool:
     if (
         not context.access_v2
-        or EMPLOYEE_DIRECTIVES_SCOPE not in context.scopes
         or action not in _EMPLOYEE_DIRECTIVE_ACTIONS
+        or not _has_entitled_scope(
+            context,
+            action,
+            {"type": "recipient_set", "id": "employee-directives"},
+        )
         or document.organization_id != context.organization_id
         or version.organization_id != context.organization_id
         or version.policy_binding_id != document.policy_binding_id
@@ -558,7 +654,11 @@ def evaluate_employee_directive_projection(
     version: DocumentVersion | None = None,
     packages: list[ControlledDocumentPackage] | None = None,
 ) -> Decision | None:
-    if db is None or EMPLOYEE_DIRECTIVES_SCOPE not in context.scopes:
+    if db is None or not _has_entitled_scope(
+        context,
+        action,
+        {"type": "recipient_set", "id": "employee-directives"},
+    ):
         return None
     base = _v2_base_decision(context, action)
     if base is not None or action not in _EMPLOYEE_DIRECTIVE_ACTIONS:
@@ -611,7 +711,11 @@ def evaluate_employee_directive_projection(
 def employee_directive_packages(
     db: Session, context: SubjectContext, document_id: str | None = None,
 ) -> list[ControlledDocumentPackage]:
-    if not context.access_v2 or EMPLOYEE_DIRECTIVES_SCOPE not in context.scopes:
+    if not context.access_v2 or not _has_entitled_scope(
+        context,
+        Action.document_read.value,
+        {"type": "recipient_set", "id": "employee-directives"},
+    ):
         return []
     package_query = (
         select(ControlledDocumentPackage)
@@ -659,8 +763,10 @@ def _v2_document_decision(context: SubjectContext, action: str, document: Docume
         binding = InformationPolicyBinding.model_validate(document.policy_summary)
     except ValueError:
         return Decision(False, "Document policy binding is invalid", constraints, ("POLICY_BINDING_INVALID",))
-    scoped_access = _scope_allows(context, document, binding)
-    if not scoped_access and "public" in context.scopes:
+    scoped_access = _scope_allows(context, action, document, binding)
+    if not scoped_access and _has_entitled_scope(
+        context, action, {"type": "public"}
+    ):
         if action != Action.rag_query.value:
             return Decision(
                 False,
@@ -916,13 +1022,13 @@ def evaluate_document_version_access(
     base = _v2_base_decision(context, action)
     if base is not None:
         return base
-    scoped_access = _scope_allows(context, version, authority.policy_binding)
+    scoped_access = _scope_allows(context, action, version, authority.policy_binding)
     if not scoped_access:
         if (
             action == Action.rag_query.value
             and official_public_reference
             and version.status == "valid"
-            and "public" in context.scopes
+            and _has_entitled_scope(context, action, {"type": "public"})
         ):
             # Keep the exact immutable citation available to an authenticated
             # employee who originally queried a curated official public
@@ -978,7 +1084,7 @@ def evaluate_runtime_document_version_access(
     context = context_for_principal(principal)
     if (
         action == Action.rag_query.value
-        and "public" in context.scopes
+        and _has_entitled_scope(context, action, {"type": "public"})
         and local_decision.constraints.get("official_public_reference") is True
     ):
         return local_decision
@@ -1078,7 +1184,7 @@ def evaluate_runtime_document_access(
     context = context_for_principal(principal)
     if (
         action == Action.rag_query.value
-        and "public" in context.scopes
+        and _has_entitled_scope(context, action, {"type": "public"})
         and (
             bool(decision.constraints.get("public_version_ids"))
             or decision.constraints.get("official_public_reference") is True

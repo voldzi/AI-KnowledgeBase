@@ -1,5 +1,6 @@
 import json
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -23,7 +24,7 @@ def settings(**updates):
     values = {
         "AKL_ENV": "test", "AKL_AUTH_MODE": "oidc", "AKL_IDENTITY_MODE": "managed",
         "AKL_OIDC_ISSUER": ISSUER, "AKL_MANAGED_IDENTITY_ISSUER": ISSUER,
-        "AKL_OIDC_AUDIENCE": "akl-api", "AKL_STRATOS_AUTH_ME_URL": "https://identity.example/api/v1/auth/me",
+        "AKL_OIDC_AUDIENCE": "akl-api", "AKL_STRATOS_AUTH_ME_URL": "https://identity.example/api/v2/auth/me",
         "AKL_TRUSTED_SERVICE_CLIENT_IDS": "svc-budget-controlled-rules",
         "AKL_SERVICE_CLIENT_ROUTE_GRANTS": "svc-budget-controlled-rules=controlled-rules-read",
         "AKL_SERVICE_CLIENT_DELEGATIONS": "",
@@ -43,6 +44,27 @@ def service(**updates):
     return {"iss": ISSUER, "sub": "service:svc-budget-controlled-rules", "aud": "akl-api", "iat": now, "exp": now + 300,
             "client_id": "svc-budget-controlled-rules", "stratos_service": True, "scope": "controlled-rules-read",
             "stratos_service_roles": ["service_budget_rules_read"]} | updates
+
+
+def access_projection(subject_id=SUBJECT, *, active=True):
+    now = time.time()
+    baseline = {
+        "entitlementId": "system:akb:employee-baseline", "definitionVersion": "capabilities-1.12.2",
+        "profileId": "stratos-user", "source": "SYSTEM", "sourceRef": "employee-baseline", "virtual": True,
+        "capabilities": ["akb:access", "akb:chat", "akb:read_document"],
+        "scopes": [{"type": "public"}, {"type": "organization", "id": "org_stratos"}, {"type": "recipient_set", "id": "employee-directives"}],
+        "effectiveScopes": [{"type": "public"}, {"type": "organization", "id": "org_stratos"}, {"type": "recipient_set", "id": "employee-directives"}],
+        "validFrom": None, "validUntil": None,
+    }
+    return {
+        "schemaVersion": "stratos-access-projection-2", "contractRevision": "2.1.0", "contractStatus": "active",
+        "contractDigest": "sha256:16509ccbdc3e49e7a9918a29c833a8ae1aa7c78777b0a8693a2477acc2f0dafa",
+        "catalogVersion": "capabilities-1.12.2", "generatedAt": datetime.fromtimestamp(now - 1, timezone.utc).isoformat(),
+        "expiresAt": datetime.fromtimestamp(now + 600, timezone.utc).isoformat(), "organizationId": "org_stratos",
+        "identity": {"subjectId": subject_id, "kind": "person", "active": active, "employeeEligible": active},
+        "membership": {"active": active, "validUntil": None},
+        "applicationAccess": ([{"applicationId": "akb", "entitlements": [baseline]}] if active else []),
+    }
 
 
 @pytest.fixture
@@ -126,20 +148,21 @@ def test_controlled_rules_has_only_the_dedicated_route(client, monkeypatch, sign
 
 def test_projection_is_current_subject_bound_and_external_safe(monkeypatch):
     governance = StratosGovernanceClient(settings())
-    body = {"id": SUBJECT, "tenantId": "org_stratos", "applicationAccess": [{"application": "akb", "capabilities": ["akb:chat", "akb:read_document"], "effectiveScopes": [{"type": "recipient_set", "id": "employee-directives"}]}]}
+    body = access_projection()
     calls = []
     monkeypatch.setattr(governance._http_client, "get", lambda *args, **kwargs: calls.append(1) or httpx.Response(200, json=body))
     first = governance.user_projection("synthetic-token", token_expires_at=time.time() + 300, expected_subject=SUBJECT, identity_audience="employees")
     assert first.application_access_active and "recipient_set:employee-directives" in first.scopes
     with pytest.raises(GovernanceDenied):
         governance.user_projection("synthetic-token", token_expires_at=time.time() + 300, expected_subject=SUBJECT, identity_audience="external")
-    body["applicationAccess"] = []
-    assert not governance.user_projection("synthetic-token", token_expires_at=time.time() + 300, expected_subject=SUBJECT).application_access_active
-    assert len(calls) == 3
-    body["id"] = OTHER
+    body.update(access_projection(active=False))
     with pytest.raises(GovernanceDenied):
         governance.user_projection("synthetic-token", token_expires_at=time.time() + 300, expected_subject=SUBJECT)
-    body["id"], body["isActive"] = SUBJECT, False
+    assert len(calls) == 3
+    body.update(access_projection(OTHER))
+    with pytest.raises(GovernanceDenied):
+        governance.user_projection("synthetic-token", token_expires_at=time.time() + 300, expected_subject=SUBJECT)
+    body.update(access_projection(active=False))
     with pytest.raises(GovernanceDenied):
         governance.user_projection("synthetic-token", token_expires_at=time.time() + 300, expected_subject=SUBJECT)
     monkeypatch.setattr(governance._http_client, "get", lambda *args, **kwargs: httpx.Response(503, json={"private": "must-not-be-returned"}))
@@ -153,7 +176,7 @@ def test_subjects_are_never_merged_by_email_or_login(monkeypatch, signed):
     subjects = []
     def projection(_token, **kwargs):
         subjects.append(kwargs["expected_subject"])
-        return SimpleNamespace(capabilities={"akb:chat"}, scopes={"public"}, organization_id="org_stratos", identity_active=True, membership_active=True, application_access_active=True)
+        return SimpleNamespace(capabilities={"akb:chat"}, scopes={"public"}, organization_id="org_stratos", identity_active=True, membership_active=True, application_access_active=True, entitlements=())
     monkeypatch.setattr(auth, "governance_client", lambda _: SimpleNamespace(user_projection=projection))
     first = auth._managed_principal(sign(user()), settings())
     second = auth._managed_principal(sign(user(sub=OTHER, identity_source="directory-b")), settings())

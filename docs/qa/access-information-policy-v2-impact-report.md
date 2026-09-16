@@ -27,7 +27,7 @@ gates.
   deterministic digest verification.
 - Registry enforces identity, membership, application access, capabilities,
   scopes, organization, policy audience, and TLP:RED explicit recipients.
-- User access is loaded from the current STRATOS `/api/v1/auth/me` projection;
+- User access is loaded from the active capability-bound STRATOS `/api/v2/auth/me` projection;
   static `stratos_access`/top-level claims and authorization headers are ignored
   in production.
 - Service document and audit authorization is delegated to the central STRATOS

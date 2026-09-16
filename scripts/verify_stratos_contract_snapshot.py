@@ -11,13 +11,15 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 SNAPSHOT_ROOT = ROOT / "contracts/stratos"
 EXPECTED = {
-    "access-governance/v1/access-governance.schema.json": "f3386878a4bf98028add1ad238c21e029954967dfb6d452164a2c8c78b2ac5cc",
-    "access-governance/v1/capability-catalog.json": "3902c425e600be1e8bede5e84df76042fe5165675d1ec6dc896922140fd81dec",
-    "access-governance/v1/keycloak-baseline.json": "f698d105b5b6c5eba98a8143e7395bf992afaed71a755c0b4607548fd045950b",
-    "information-policy/v2/information-policy.schema.json": "b32666bbb90d453aebbff8efc6d23c7e5a27c4dcfdbb47bcbd2565c109551f0a",
+    "access-governance/v1/access-governance.schema.json": "3127ed900c4b169724b6c6f988e5fd23c01c7a584f6a4adf154ca1af656f33de",
+    "access-governance/v1/capability-catalog.json": "05f90a80ed69a6041547dc17e83de021b58021df99578e0a2740e1359db16ef1",
+    "access-governance/v1/keycloak-baseline.json": "6a8da6af4d1ceea573830a28d46343594e0e31fd148aa64d1daca7a01cb043c5",
+    "access-governance/v2/access-projection.schema.json": "2ae99547645d266daa20b23a6e13232babc9a89b5045d12fd5068c0b769d5f1f",
+    "access-governance/v2/access-projection.metadata.json": "029addd00568a504e6ea7488bee327ef65f5fa9ade48d0b4fcebaf28d891f8e2",
+    "information-policy/v2/information-policy.schema.json": "d408aa5758d7375f307086a6e05dbe49d3c1f3ce348367ee80fac7b5968e553c",
     "information-policy/v2/policy-bundle.json": "f1b15294712323faea5605336847d9434c54ea7a8540e59578dd42cd6e49cf2f",
-    "information-policy/v2/policy-registry.openapi.json": "09b1ccef6e4eef7ce1fe748ec198a0b7c3a50bdbdf8f4a21ef4a73a649e47ba2",
-    "integration-envelope/v1/integration-envelope.schema.json": "d4eeaae84306a0ff0e47a9b6526f11b73c6b14f3e2ddc938ece459259ade305f",
+    "information-policy/v2/policy-registry.openapi.json": "c9f75099f43dd26f497c69e079b77655b09f7b0870f0e1e2a9ef9b6cdf3b8287",
+    "integration-envelope/v1/integration-envelope.schema.json": "c389a36cdca1569762c74e0c1a8806ec8f8e758043851a35dbf477dc0481c898",
     "conformance/v1/decision-fixtures.json": "d8c2e2b21695b58cd47fdadad825d7969e7d4cd41c5d330f169cd36b9a945f8a",
 }
 

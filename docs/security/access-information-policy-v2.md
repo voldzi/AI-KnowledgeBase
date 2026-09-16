@@ -4,7 +4,9 @@
 
 AKB G2/G3 accepts these exact versions:
 
-- `stratos-access-1`
+- `stratos-access-projection-2`, revision `2.1.0`, status `active`, catalog
+  `capabilities-1.12.2`, schema digest
+  `sha256:16509ccbdc3e49e7a9918a29c833a8ae1aa7c78777b0a8693a2477acc2f0dafa`
 - `information-policy-2.0.0`
 - `stratos-integration-envelope-1`
 
@@ -16,12 +18,14 @@ classifications fail closed.
 
 ## Access Decision
 
-For a `stratos-access-1` principal, AKB requires all of the following:
+For an active Access Projection V2 principal, AKB requires all of the following:
 
 1. active identity, organization membership, and AKB application access;
 2. `organizationId=org_stratos`;
-3. the operation-specific `akb:*` capability;
-4. a scope matching the document policy audience;
+3. one current AKB entitlement containing `akb:access` and the
+   operation-specific `akb:*` capability;
+4. the same entitlement's `effectiveScopes` matching the exact governed
+   resource scope and document policy audience;
 5. a valid current Information Policy V2 binding.
 
 Global roles `stratos_user` and `stratos_admin` do not grant document content,
@@ -32,12 +36,25 @@ disclosure.
 
 The Keycloak token is accepted only after signature, issuer, audience, and
 expiry verification and serves only as identity proof. For users, web and
-Registry load the current AKB projection from STRATOS `GET /api/v1/auth/me`
+Registry and both AKB web surfaces load the current projection from STRATOS
+`GET /api/v2/auth/me`
 using the user's bearer token. Capabilities, scopes, active membership, and AKB
 application access are not read from `stratos_access`, top-level token claims,
 or client headers. Missing, malformed, rejected, expired, or unavailable
 projection data fails closed. The default projection cache TTL is zero; any
-configured cache is bounded by token expiry.
+configured cache is bounded by token expiry and the projection `expiresAt`.
+Unknown fields, future `generatedAt`, a lifetime over 15 minutes, contract
+drift, an inactive identity or membership, and a subject mismatch are rejected.
+Capabilities and scopes are never unioned across entitlements for Registry
+authorization.
+
+The virtual `system:akb:employee-baseline` is accepted only for an active
+human employee and only with its exact SYSTEM provenance, profile,
+capabilities, and public/organization/employee-directives scopes. It can read
+or query `PUBLIC`/`INTERNAL` content with `TLP:CLEAR` or `TLP:GREEN`; it cannot
+grant upload, management, export, audit, administration, restricted or
+confidential access. Narrow Budget, project, document, and recipient-set
+access stays bound to its own entitlement.
 
 Service-to-service document and audit decisions use STRATOS
 `POST /api/v1/policy/decisions` with an AKB runtime credential and delegated

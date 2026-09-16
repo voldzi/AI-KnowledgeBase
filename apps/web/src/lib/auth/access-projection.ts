@@ -5,15 +5,7 @@ import { ApiClientError, type ApiRequestContext } from "@/lib/types";
 
 import { contextFromOidcAccessToken } from "./oidc";
 import { isManagedIdentity, verifyManagedUserToken } from "./managed-oidc";
-
-interface ProjectionAccess {
-  application?: unknown;
-  profileId?: unknown;
-  capabilities?: unknown;
-  scopes?: unknown;
-  effectiveScopes?: unknown;
-  validUntil?: unknown;
-}
+import { parseActiveProjectionV2 } from "./access-projection-v2-shadow";
 
 interface CacheEntry {
   context: ApiRequestContext;
@@ -72,62 +64,65 @@ export async function contextFromStratosAccessProjection(
   if (!response.ok) throw projectionUnavailable(`STRATOS access projection returned ${response.status}.`);
 
   const body = await response.json().catch(() => null);
-  if (!isRecord(body) || !Array.isArray(body.applicationAccess)) {
-    throw projectionUnavailable("STRATOS access projection is malformed.");
+  let projection: ReturnType<typeof parseActiveProjectionV2>;
+  try {
+    projection = parseActiveProjectionV2(body, nowMs);
+  } catch {
+    throw projectionUnavailable("STRATOS access projection is malformed, stale, or incompatible.");
   }
-  if (body.tenantId !== "org_stratos") {
-    throw new ApiClientError("STRATOS organization does not match AKB.", 403, "ORGANIZATION_MISMATCH", "stratos-access");
-  }
-  if (managed && (body.id !== identity.subjectId || (body.identitySubject !== undefined && body.identitySubject !== identity.subjectId) || body.active === false || body.isActive === false || body.identityActive === false)) {
+  if (projection.subjectId !== identity.subjectId) {
     throw new ApiClientError("STRATOS identity does not match the verified subject.", 403, "ACCESS_PROJECTION_IDENTITY_MISMATCH", "stratos-access");
   }
-
-  const applicationAccess = body.applicationAccess
-    .filter(isRecord)
-    .flatMap((item) => {
-      if (typeof item.application !== "string" || !item.application) return [];
-      return [{
-        application: item.application,
-        capabilities: stringArray(item.capabilities),
-        scopes: scopeArray(item.scopes),
-        effectiveScopes: scopeArray(item.effectiveScopes),
-        validUntil: typeof item.validUntil === "string" ? item.validUntil : null,
-      }];
-    });
-  const access = body.applicationAccess
-    .filter(isRecord)
-    .find((item) => normalizeApplication(item.application) === "akb") as ProjectionAccess | undefined;
-  const validUntil = typeof access?.validUntil === "string" ? Date.parse(access.validUntil) : Number.POSITIVE_INFINITY;
-  if (access && Number.isNaN(validUntil)) {
-    throw projectionUnavailable("STRATOS access projection contains an invalid validity boundary.");
+  if (!projection.identityActive || !projection.membershipActive) {
+    throw new ApiClientError("STRATOS identity or membership is inactive.", 403, "ACCESS_PROJECTION_DENIED", "stratos-access");
   }
-  const active = Boolean(access && validUntil > nowMs);
+
+  const currentEntitlement = (validFrom: string | null, validUntil: string | null) =>
+    (validFrom === null || Date.parse(validFrom) <= nowMs)
+    && (validUntil === null || Date.parse(validUntil) > nowMs);
+  const applicationAccess = projection.applicationAccess.flatMap((item) =>
+    item.entitlements
+      .filter((entitlement) => currentEntitlement(entitlement.validFrom, entitlement.validUntil))
+      .map((entitlement) => ({
+        application: item.applicationId,
+        entitlementId: entitlement.entitlementId,
+        profileId: entitlement.profileId,
+        source: entitlement.source,
+        virtual: entitlement.virtual,
+        capabilities: entitlement.capabilities,
+        scopes: entitlement.scopes.map(scopeKey),
+        effectiveScopes: entitlement.effectiveScopes.map(scopeKey),
+        validUntil: entitlement.validUntil,
+      }))
+  );
+  const akbEntitlements = applicationAccess.filter((item) => normalizeApplication(item.application) === "akb");
+  const active = Boolean(projection.identityActive && projection.membershipActive && akbEntitlements.length > 0);
   const context: ApiRequestContext = {
     subjectId: identity.subjectId,
     roles: [],
     groups: [],
-    capabilities: active ? stringArray(access?.capabilities) : [],
+    capabilities: active ? [...new Set(akbEntitlements.flatMap((item) => item.capabilities))] : [],
     // Only the central projection's effective scope closure is authoritative.
     // Raw grants can contain inactive, orphaned or non-descendant scopes and
     // must never be evaluated locally as runtime access.
-    scopes: active ? scopeArray(access?.effectiveScopes) : [],
+    scopes: active ? [...new Set(akbEntitlements.flatMap((item) => item.effectiveScopes))] : [],
     organizationId: "org_stratos",
-    identityActive: true,
-    membershipActive: true,
+    identityActive: projection.identityActive,
+    membershipActive: projection.membershipActive,
     applicationAccessActive: active,
     applicationAccess,
     authorizationSource: "stratos_projection",
     accessToken,
   };
   if (managedClaims?.identity_audience === "external") {
-    if (applicationAccess.some((item) => [...item.scopes, ...item.effectiveScopes].includes("recipient_set:employee-directives"))) {
+    if (projection.employeeEligible || applicationAccess.some((item) => item.entitlementId === "system:akb:employee-baseline")) {
       throw new ApiClientError("Employee scope is not valid for this identity.", 403, "ACCESS_PROJECTION_IDENTITY_MISMATCH", "stratos-access");
     }
   }
 
   const tokenExpiry = tokenExpiryMs(accessToken);
   const configuredExpiry = nowMs + oidc.accessProjectionCacheTtlMs;
-  const expiresAt = Math.min(tokenExpiry ?? configuredExpiry, configuredExpiry);
+  const expiresAt = Math.min(tokenExpiry ?? configuredExpiry, configuredExpiry, Date.parse(projection.expiresAt));
   if (!managed && oidc.accessProjectionCacheTtlMs > 0 && expiresAt > nowMs) {
     projectionCache.set(key, { context, expiresAt });
   }
@@ -142,16 +137,8 @@ function normalizeApplication(value: unknown): string {
   return typeof value === "string" ? value.toLowerCase().replaceAll("_", "-") : "";
 }
 
-function stringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.length > 0) : [];
-}
-
-function scopeArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((scope) => {
-    if (!isRecord(scope) || typeof scope.type !== "string" || !scope.type) return [];
-    return [typeof scope.id === "string" && scope.id ? `${scope.type}:${scope.id}` : scope.type];
-  });
+function scopeKey(scope: { type: string; id?: string }): string {
+  return scope.id ? `${scope.type}:${scope.id}` : scope.type;
 }
 
 function tokenExpiryMs(token: string): number | null {
@@ -161,10 +148,6 @@ function tokenExpiryMs(token: string): number | null {
   } catch {
     return null;
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function projectionUnavailable(message: string): ApiClientError {

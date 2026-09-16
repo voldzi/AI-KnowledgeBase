@@ -7,6 +7,7 @@ import {
 } from "../src/lib/stratos/actor-authorization";
 import { resetAccessProjectionCacheForTests } from "../src/lib/auth/access-projection";
 import { ApiClientError } from "../src/lib/types";
+import { accessProjectionV2 } from "./helpers/managed-identity";
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -27,22 +28,14 @@ beforeEach(() => {
     AKL_WEB_OIDC_CLIENT_ID: "akl-web",
     AKL_WEB_OIDC_CLIENT_SECRET: "test-only-secret",
     AKL_WEB_SESSION_SECRET: "test-only-session-secret-that-is-long-enough",
-    AKL_WEB_STRATOS_AUTH_ME_URL: "http://stratos.test/api/v1/auth/me",
+    AKL_WEB_STRATOS_AUTH_ME_URL: "http://stratos.test/api/v2/auth/me",
     AKL_WEB_ACCESS_PROJECTION_CACHE_TTL_MS: "0",
   });
   globalThis.fetch = async (input, init) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    assert.equal(url, "http://stratos.test/api/v1/auth/me");
+    assert.equal(url, "http://stratos.test/api/v2/auth/me");
     assert.match(new Headers(init?.headers).get("Authorization") ?? "", /^Bearer /);
-    return Response.json({
-      tenantId: "org_stratos",
-      applicationAccess: [{
-        application: "AKB",
-        capabilities: ["akb:ingest_document"],
-        scopes: [],
-        effectiveScopes: [{ type: "budget_scope", id: "budget:sekce-it" }],
-      }],
-    });
+    return Response.json(accessProjectionV2("subject-budget-123"));
   };
 });
 

@@ -14,7 +14,7 @@ describe("STRATOS access projection", () => {
     let probe: string | null = null;
     await contextFromStratosAccessProjection(jwt({ sub: "user-123", exp: 2_000 }), config(), async (_url, init) => {
       probe = new Headers(init?.headers).get("X-STRATOS-Session-Probe");
-      return Response.json({ tenantId: "org_stratos", applicationAccess: [] });
+      return Response.json(projection([]));
     }, NOW, true, true);
     assert.equal(probe, "1");
   });
@@ -29,20 +29,19 @@ describe("STRATOS access projection", () => {
     const context = await contextFromStratosAccessProjection(
       token,
       config(),
-      async () => Response.json({
-        tenantId: "org_stratos",
-        applicationAccess: [{
-          application: "AKB",
+      async () => Response.json(projection([{
+          applicationId: "akb",
+          entitlementId: "grant-akb-chat",
           capabilities: ["akb:chat"],
           scopes: [{ type: "project", id: "inactive-or-orphaned" }],
           effectiveScopes: [{ type: "organization", id: "org_stratos" }],
         }, {
-          application: "budget",
+          applicationId: "budget",
+          entitlementId: "grant-budget-read",
           capabilities: ["budget:read"],
           scopes: [{ type: "project", id: "raw-and-untrusted" }],
           effectiveScopes: [{ type: "project", id: "project-001" }],
-        }],
-      }),
+        }])),
       NOW,
     );
 
@@ -52,13 +51,21 @@ describe("STRATOS access projection", () => {
     assert.deepEqual(context.capabilities, ["akb:chat"]);
     assert.deepEqual(context.scopes, ["organization:org_stratos"]);
     assert.deepEqual(context.applicationAccess, [{
-      application: "AKB",
+      application: "akb",
+      entitlementId: "grant-akb-chat",
+      profileId: null,
+      source: "MANUAL",
+      virtual: false,
       capabilities: ["akb:chat"],
       scopes: ["project:inactive-or-orphaned"],
       effectiveScopes: ["organization:org_stratos"],
       validUntil: null,
     }, {
       application: "budget",
+      entitlementId: "grant-budget-read",
+      profileId: null,
+      source: "MANUAL",
+      virtual: false,
       capabilities: ["budget:read"],
       scopes: ["project:raw-and-untrusted"],
       effectiveScopes: ["project:project-001"],
@@ -71,12 +78,9 @@ describe("STRATOS access projection", () => {
   it("denies immediately after AKB application access disappears", async () => {
     const token = jwt({ sub: "user-123", exp: 2_000 });
     let active = true;
-    const fetcher: typeof fetch = async () => Response.json({
-      tenantId: "org_stratos",
-      applicationAccess: active
-        ? [{ application: "akb", capabilities: ["akb:chat"], scopes: [], effectiveScopes: [] }]
-        : [],
-    });
+    const fetcher: typeof fetch = async () => Response.json(projection(active
+      ? [{ applicationId: "akb", entitlementId: "grant-chat", capabilities: ["akb:chat"], scopes: [{ type: "public" }], effectiveScopes: [{ type: "public" }] }]
+      : []));
 
     const first = await contextFromStratosAccessProjection(token, config(), fetcher, NOW);
     active = false;
@@ -95,12 +99,9 @@ describe("STRATOS access projection", () => {
     let calls = 0;
     const fetcher: typeof fetch = async () => {
       calls += 1;
-      return Response.json({
-        tenantId: "org_stratos",
-        applicationAccess: active
-          ? [{ application: "akb", capabilities: ["akb:chat"], effectiveScopes: [] }]
-          : [],
-      });
+      return Response.json(projection(active
+        ? [{ applicationId: "akb", entitlementId: "grant-chat", capabilities: ["akb:chat"], scopes: [{ type: "public" }], effectiveScopes: [{ type: "public" }] }]
+        : []));
     };
 
     const first = await contextFromStratosAccessProjection(token, cachedConfig, fetcher, NOW);
@@ -119,18 +120,17 @@ describe("STRATOS access projection", () => {
     const context = await contextFromStratosAccessProjection(
       token,
       config(),
-      async () => Response.json({
-        tenantId: "org_stratos",
-        applicationAccess: [{
-          application: "akb",
+      async () => Response.json(projection([{
+          applicationId: "akb",
+          entitlementId: "grant-read",
           capabilities: ["akb:read_document"],
           scopes: [{ type: "organization", id: "org_stratos" }],
-        }],
-      }),
+          effectiveScopes: [{ type: "public" }],
+        }])),
       NOW,
     );
 
-    assert.deepEqual(context.scopes, []);
+    assert.deepEqual(context.scopes, ["public"]);
     assert.equal(context.applicationAccessActive, true);
   });
 
@@ -150,6 +150,30 @@ describe("STRATOS access projection", () => {
           tenantId: "org_stratos",
           applicationAccess: [{ application: "akb", validUntil: "not-a-date" }],
         }),
+        NOW,
+      ),
+      (error: unknown) => error instanceof ApiClientError
+        && error.status === 503
+        && error.code === "ACCESS_PROJECTION_UNAVAILABLE",
+    );
+  });
+
+  it("rejects an entitlement whose validity ends before it starts", async () => {
+    const body = projection([{
+      applicationId: "akb",
+      entitlementId: "grant-read",
+      capabilities: ["akb:read_document"],
+      scopes: [{ type: "public" }],
+      effectiveScopes: [{ type: "public" }],
+    }]);
+    body.applicationAccess[0]!.entitlements[0]!.validFrom = new Date(NOW + 1_000).toISOString();
+    body.applicationAccess[0]!.entitlements[0]!.validUntil = new Date(NOW).toISOString();
+
+    await assert.rejects(
+      () => contextFromStratosAccessProjection(
+        jwt({ sub: "user-123", exp: 2_000 }),
+        config(),
+        async () => Response.json(body),
         NOW,
       ),
       (error: unknown) => error instanceof ApiClientError
@@ -218,7 +242,7 @@ function config(): AklConfig {
       redirectUri: "https://stratos.example/akb/api/auth/callback",
       scopes: "openid profile email",
       sessionSecret: "test-secret",
-      stratosAuthMeUrl: "https://stratos.example/api/v1/auth/me",
+      stratosAuthMeUrl: "https://stratos.example/api/v2/auth/me",
       accessProjectionTimeoutMs: 3_000,
       accessProjectionCacheTtlMs: 0,
     },
@@ -231,4 +255,45 @@ function jwt(payload: Record<string, unknown>): string {
     Buffer.from(JSON.stringify(payload)).toString("base64url"),
     "",
   ].join(".");
+}
+
+type TestGrant = {
+  applicationId: string;
+  entitlementId: string;
+  capabilities: string[];
+  scopes: Array<{ type: string; id?: string }>;
+  effectiveScopes: Array<{ type: string; id?: string }>;
+};
+
+function projection(grants: TestGrant[]) {
+  const byApplication = new Map<string, TestGrant[]>();
+  for (const grant of grants) byApplication.set(grant.applicationId, [...(byApplication.get(grant.applicationId) ?? []), grant]);
+  return {
+    schemaVersion: "stratos-access-projection-2",
+    contractRevision: "2.1.0",
+    contractStatus: "active",
+    contractDigest: "sha256:16509ccbdc3e49e7a9918a29c833a8ae1aa7c78777b0a8693a2477acc2f0dafa",
+    catalogVersion: "capabilities-1.12.2",
+    generatedAt: new Date(NOW - 1_000).toISOString(),
+    expiresAt: new Date(NOW + 10 * 60_000).toISOString(),
+    organizationId: "org_stratos",
+    identity: { subjectId: "user-123", kind: "person", active: true, employeeEligible: false },
+    membership: { active: true, validUntil: null },
+    applicationAccess: [...byApplication.entries()].map(([applicationId, items]) => ({
+      applicationId,
+      entitlements: items.map((item) => ({
+        entitlementId: item.entitlementId,
+        definitionVersion: "capabilities-1.12.2",
+        profileId: null,
+        source: "MANUAL",
+        sourceRef: null,
+        virtual: false,
+        capabilities: item.capabilities,
+        scopes: item.scopes,
+        effectiveScopes: item.effectiveScopes,
+        validFrom: new Date(NOW - 10_000).toISOString(),
+        validUntil: null as string | null,
+      })),
+    })),
+  };
 }

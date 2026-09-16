@@ -11,7 +11,7 @@ import { contextFromStratosAccessProjection } from "../src/lib/auth/access-proje
 import { GET as login } from "../src/app/api/auth/login/route";
 import { GET as sso } from "../src/app/api/auth/sso/route";
 import { isSameAppRscNavigation } from "../src/lib/auth/login-navigation";
-import { identityFixture, managedConfig, managedEnv, SUBJECT } from "./helpers/managed-identity";
+import { accessProjectionV2, identityFixture, managedConfig, managedEnv, SUBJECT } from "./helpers/managed-identity";
 import nextConfig from "../next.config";
 
 const DAY = 86_400_000;
@@ -191,7 +191,7 @@ describe("central SSO redirect guard", () => {
       }
       if (url.endsWith("/auth/me")) {
         if (state.unavailable) return new Response(null, { status: 503 });
-        return Response.json({ id: SUBJECT, identitySubject: SUBJECT, tenantId: "org_stratos", applicationAccess: state.granted ? [{ application: "akb", capabilities: ["akb:access", "akb:read_document"], effectiveScopes: [] }] : [] });
+        return Response.json(accessProjectionV2(SUBJECT, identity.nowMs, { includeBaseline: state.granted }));
       }
     };
     globalThis.fetch = identity.fetcher;

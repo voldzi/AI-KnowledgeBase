@@ -225,7 +225,7 @@ export function getAklConfig(env: EnvSource = process.env): AklConfig {
           stratosAuthMeUrl: requireEnv(
             env.AKL_WEB_STRATOS_AUTH_ME_URL
               ?? (env.AKL_STRATOS_API_BASE_URL
-                ? `${env.AKL_STRATOS_API_BASE_URL.replace(/\/+$/, "")}/api/v1/auth/me`
+                ? `${env.AKL_STRATOS_API_BASE_URL.replace(/\/+$/, "")}/api/v2/auth/me`
                 : undefined),
             "AKL_WEB_STRATOS_AUTH_ME_URL"
           ),

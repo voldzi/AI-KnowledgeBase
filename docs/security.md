@@ -82,7 +82,7 @@ contract, removal of old binary aliases and immutable replay evidence.
   presents `svc-ingestion`/`service_ingestion`; RAG presents
   `svc-rag`/`service_rag`; both target audience `llm-gateway-service`.
 - Caller OIDC tokens prove identity but do not contain authoritative dynamic
-  document permissions. AKB loads user access from STRATOS `/api/v1/auth/me`
+  document permissions. AKB loads capability-bound user access from STRATOS `/api/v2/auth/me`
   and Registry evaluates the current document action before issuing a
   short-lived proof bound to the exact actor, action, document/version,
   correlation id and idempotency key. Caller tokens are never reused as

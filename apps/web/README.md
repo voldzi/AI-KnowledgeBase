@@ -84,7 +84,7 @@ Copy `.env.example` to `.env.local` for local overrides.
 | `AKL_RAG_API_BASE_URL` | RAG Retrieval Service `/api/v1` base URL |
 | `AKL_GOVERNANCE_API_BASE_URL` | Governance Service `/api/v1` base URL |
 | `AKL_EVALUATION_API_BASE_URL` | Evaluation Service `/api/v1` base URL |
-| `AKL_WEB_STRATOS_AUTH_ME_URL` | Authoritative STRATOS `GET /api/v1/auth/me` projection endpoint |
+| `AKL_WEB_STRATOS_AUTH_ME_URL` | Authoritative capability-bound STRATOS `GET /api/v2/auth/me` projection endpoint |
 | `AKL_WEB_STRATOS_ACCESS_TIMEOUT_MS` | Projection timeout; defaults to 3000 ms |
 | `AKL_WEB_STRATOS_ACCESS_CACHE_TTL_MS` | Projection cache TTL; defaults to zero and never exceeds token expiry |
 | `AKL_DEV_ACCESS_TOKEN` | Optional local integration token |
