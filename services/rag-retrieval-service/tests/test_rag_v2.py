@@ -285,6 +285,7 @@ async def test_exact_resolver_scopes_before_retrieval_and_uses_full_query_embedd
     assert [chunk.citation.document_id for chunk in run.response.chunks] == ["doc_law"]
     assert resolver_filters[0].document_ids == []
     assert retrieval_filters[0].document_ids == ["doc_law"]
+    assert retrieval_filters[0].document_version_ids == ["ver_1"]
     assert embedded_queries == [["365/2000 Sb."]]
     assert run.response.retrieval_diagnostics["exact_document_scope_applied"] is True
     # Exact resolution narrows the document first, then the full user query is

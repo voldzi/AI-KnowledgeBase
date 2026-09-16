@@ -2266,8 +2266,23 @@ class RagRetrievalService:
                     exact_resolver_authorized = len(resolved_authorized)
                     denied_document_ids.update(resolved_denied)
                     exact_document_id = resolved_document_id
+                    resolved_version_ids = sorted(
+                        {
+                            chunk.citation.document_version_id
+                            for chunk in resolved_authorized
+                            if chunk.citation.document_id == resolved_document_id
+                        }
+                    )
                     retrieval_filters = retrieval_filters.model_copy(
-                        update={"document_ids": [resolved_document_id]}
+                        update={
+                            "document_ids": [resolved_document_id],
+                            # The Registry has already evaluated validity and
+                            # authorization for these immutable versions. Keep
+                            # the subsequent dense/lexical search inside that
+                            # exact evidence set so a superseded version cannot
+                            # displace the current provision in the context.
+                            "document_version_ids": resolved_version_ids,
+                        }
                     )
             else:
                 stage_timings_ms["exact_resolution"] = 0.0
