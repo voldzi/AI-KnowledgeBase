@@ -101,7 +101,8 @@ Important settings:
 | `AKL_OLLAMA_ENDPOINT_TIMEOUT_SECONDS` | Per-candidate timeout for Ollama endpoint probes before the gateway tries the next URL. |
 | `AKL_OLLAMA_THINK` | Default Ollama `think` value; default `false` prevents thinking-only empty responses. |
 | `AKL_OPENAI_COMPAT_BASE_URL` | vLLM/OpenAI-compatible base URL. |
-| `AKL_OPENAI_COMPAT_API_KEY` | Optional API key for OpenAI-compatible endpoint. |
+| `AKL_OPENAI_COMPAT_API_KEY` | Legacy development-only API-key value. |
+| `AKL_OPENAI_COMPAT_API_KEY_FILE` | Preferred path to an operator-managed API-key file; takes precedence over the legacy value. |
 
 ## Security and Logging
 
@@ -137,7 +138,7 @@ X-AKL-Roles
 X-AKL-Audience
 ```
 
-It does not forward inbound service bearer tokens to LLM runtimes. OpenAI-compatible authentication uses only `AKL_OPENAI_COMPAT_API_KEY`.
+It does not forward inbound service bearer tokens to LLM runtimes. OpenAI-compatible authentication uses only the dedicated provider API key. Deployments use `AKL_OPENAI_COMPAT_API_KEY_FILE`; the direct environment value is retained solely for backwards-compatible local development.
 
 ## Limits
 
