@@ -1,5 +1,5 @@
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import func, select, text
@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from app.access_governance import GovernedResourceRegistration, GovernanceInvalidResponse
 from app.document_profile import DocumentAdmissionExpectation, verify_document_admission_confirmation
 from app.document_profile_storage import DocumentProfileConflict, persist_root_revision, persist_version_snapshot
+from app.document_profile_runtime import require_current_root, source_lineage_from_verified_file
 from app.models import Document, DocumentVersion, DocumentFile, DocumentProfileRootRevision, DocumentProfileVersionSnapshot
 from app.schemas import DocumentResponse, DocumentVersionResponse
 from test_document_profile import expectation, prepared, proof
@@ -129,6 +130,16 @@ def test_version_profile_requires_exact_verified_bytes_and_root(db_session, muta
     elif mutation == "dates": version.valid_from = None
     with pytest.raises(DocumentProfileConflict): store_version(db_session, document, version, file, authority)
     assert db_session.scalar(select(func.count()).select_from(DocumentProfileVersionSnapshot)) == 0
+
+
+def test_verified_source_normalizes_database_capture_time_to_utc(db_session):
+    document, _ = admitted_document(db_session)
+    version, file, _ = version_records(db_session, document)
+    file.content_security_scanned_at = datetime(2026, 9, 16, 3, 5, 26, tzinfo=timezone(timedelta(hours=2)))
+    lineage = source_lineage_from_verified_file(
+        require_current_root(document), version, file, source_version=file.sha256
+    )
+    assert lineage.captured_at == datetime(2026, 9, 16, 1, 5, 26, tzinfo=timezone.utc)
 
 
 def test_unconfirmed_registration_never_persists_snapshot(db_session):

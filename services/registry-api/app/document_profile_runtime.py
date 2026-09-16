@@ -54,8 +54,14 @@ def requires_independent_profile_approval(document):
 
 def source_lineage_from_verified_file(root, version, file, *, source_version=None):
     captured = file.content_security_scanned_at
-    if captured is not None and captured.tzinfo is None:
-        captured = captured.replace(tzinfo=timezone.utc)
+    if captured is not None:
+        # PostgreSQL may return an aware timestamp in the session timezone.
+        # The profile contract persists every capture instant explicitly in UTC.
+        captured = (
+            captured.replace(tzinfo=timezone.utc)
+            if captured.tzinfo is None
+            else captured.astimezone(timezone.utc)
+        )
     if (file.content_security_status != "clean" or not file.content_security_attestation_sha256
         or captured is None or not file.sha256 or file.sha256 != version.file_hash
         or file.uri != version.source_file_uri):
