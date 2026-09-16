@@ -22,6 +22,7 @@ import {
 } from "@/lib/upload/preflight";
 
 import { uploadErrorResponse } from "@/app/api/controlled-document/upload/errors";
+import { ApiClientError } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -55,6 +56,16 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     });
     return NextResponse.json(accepted, { status: 201, headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
+    console.warn(JSON.stringify({
+      event: "document_intake_content_rejected",
+      error_code: error instanceof UploadPreflightError || error instanceof ApiClientError
+        ? error.code
+        : "UNEXPECTED",
+      error_status: error instanceof UploadPreflightError || error instanceof ApiClientError
+        ? error.status
+        : 500,
+      error_name: error instanceof Error ? error.name : "UnknownError",
+    }));
     return uploadErrorResponse(error);
   }
 }
