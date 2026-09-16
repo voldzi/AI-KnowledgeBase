@@ -127,6 +127,11 @@ In `AKL_AUTH_MODE=oidc`, the gateway requires an inbound bearer token but does n
 
 Application logs include request id, correlation id, provider, model id, counts, status, latency, and usage metadata. Logs do not include full prompts, full responses, bearer tokens, API keys, or embedding input text.
 
+Provider-reported token usage is returned to callers. Direct OpenAI responses
+also include a bounded cost estimate for models in `app/pricing.py`; the
+pricing snapshot version is returned with the estimate and unknown models are
+left unpriced.
+
 The service propagates:
 
 ```text

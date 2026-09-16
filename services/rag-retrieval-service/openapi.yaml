@@ -1412,6 +1412,11 @@ components:
       title: AssistantChatRequest
     AssistantChatResponse:
       properties:
+        llm_usage:
+          anyOf:
+          - type: object
+            additionalProperties: true
+          - type: 'null'
         response_type:
           type: string
           enum:

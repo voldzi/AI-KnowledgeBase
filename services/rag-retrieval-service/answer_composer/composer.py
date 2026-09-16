@@ -8,7 +8,7 @@ import unicodedata
 
 from app.config import Settings
 from app.errors import RetrievalError
-from app.llm_client import LLMGatewayClient
+from app.llm_client import ChatCompletionResult, LLMGatewayClient
 from app.schemas import (
     AnswerMode,
     Citation,
@@ -100,12 +100,13 @@ class AnswerComposer:
         }
         retried_incomplete_answer = False
         try:
-            answer = await self._llm_client.chat_completion(
+            completion = await self._completion_result(
                 messages=messages,
                 metadata=completion_metadata,
                 model=selected_chat_model,
                 auth_context=auth_context,
             )
+            answer = completion.content
         except RetrievalError as exc:
             if exc.code != "LLM_ANSWER_INCOMPLETE":
                 raise
@@ -122,12 +123,13 @@ class AnswerComposer:
                 messages[1],
             ]
             try:
-                answer = await self._llm_client.chat_completion(
+                completion = await self._completion_result(
                     messages=retry_messages,
                     metadata={**completion_metadata, "incomplete_answer_retry": True},
                     model=selected_chat_model,
                     auth_context=auth_context,
                 )
+                answer = completion.content
             except RetrievalError as retry_exc:
                 if retry_exc.code != "LLM_ANSWER_INCOMPLETE":
                     raise
@@ -171,6 +173,43 @@ class AnswerComposer:
             missing_information=None,
             policy_bindings=_answer_policy_bindings(selected),
             obligations=list(_policy_metadata(selected).get("obligations", [])),
+            llm_usage={
+                "provider": completion.provider,
+                "model": completion.model,
+                "prompt_tokens": completion.prompt_tokens,
+                "completion_tokens": completion.completion_tokens,
+                "total_tokens": completion.total_tokens,
+                "cached_prompt_tokens": completion.cached_prompt_tokens,
+                "estimated_cost_usd": completion.estimated_cost_usd,
+                "pricing_version": completion.pricing_version,
+            },
+        )
+
+    async def _completion_result(
+        self,
+        *,
+        messages: list[dict[str, str]],
+        metadata: dict[str, object],
+        model: str | None,
+        auth_context: AuthContext | None,
+    ) -> ChatCompletionResult:
+        result_method = getattr(self._llm_client, "chat_completion_result", None)
+        if callable(result_method):
+            return await result_method(
+                messages=messages,
+                metadata=metadata,
+                model=model,
+                auth_context=auth_context,
+            )
+        content = await self._llm_client.chat_completion(
+            messages=messages,
+            metadata=metadata,
+            model=model,
+            auth_context=auth_context,
+        )
+        return ChatCompletionResult(
+            content=content,
+            model=model or self._settings.chat_model,
         )
 
     def compose_director_findings(

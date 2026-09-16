@@ -109,6 +109,20 @@ export interface RoleMapping {
   updated_at: string;
 }
 
+export interface AssistantLlmUsageSummary {
+  period_days: number;
+  request_count: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  cached_prompt_tokens: number;
+  estimated_cost_usd: number;
+  unpriced_request_count: number;
+  providers: Record<string, number>;
+  models: Record<string, number>;
+  protection: Record<string, boolean>;
+}
+
 export interface UpsertRoleMappingRequest {
   subject_type: string;
   subject_id: string;
@@ -413,6 +427,7 @@ export interface RegistryApiClient {
     limit?: number
   ): Promise<DirectoryUser[]>;
   listRoleMappings(context: ApiRequestContext, includeRemoved?: boolean): Promise<RoleMapping[]>;
+  getAssistantLlmUsageSummary(context: ApiRequestContext, days?: number): Promise<AssistantLlmUsageSummary>;
   importDirectoryUser(subjectId: string, context: ApiRequestContext): Promise<DirectoryUser>;
   upsertRoleMapping(request: UpsertRoleMappingRequest, context: ApiRequestContext): Promise<RoleMapping>;
   updateRoleMappingStatus(roleMappingId: string, status: string, context: ApiRequestContext): Promise<RoleMapping>;

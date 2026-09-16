@@ -828,6 +828,14 @@ export class ProductionRegistryClient implements RegistryApiClient {
     return response.members;
   }
 
+  getAssistantLlmUsageSummary(context: ApiRequestContext, days = 30): Promise<import("@/lib/types").AssistantLlmUsageSummary> {
+    return this.get<import("@/lib/types").AssistantLlmUsageSummary>(
+      `/admin/assistant/llm-usage?days=${days}`,
+      "getAssistantLlmUsageSummary",
+      context,
+    );
+  }
+
   importDirectoryUser(subjectId: string, context: ApiRequestContext): Promise<DirectoryUser> {
     return this.post<DirectoryUser>(
       "/admin/directory/users/import",

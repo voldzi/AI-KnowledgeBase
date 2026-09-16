@@ -9,9 +9,10 @@ export default async function AdminPage() {
   const clients = getServerApiClients();
   const context = await getServerRequestContextForPath("/admin");
   requireWorkspaceRouteAccess(context, "/admin");
-  const [authorization, roleMappings] = await Promise.all([
+  const [authorization, roleMappings, llmUsage] = await Promise.all([
     clients.registry.getAuthorizationHints(context),
     clients.registry.listRoleMappings(context, true),
+    clients.registry.getAssistantLlmUsageSummary(context, 30).catch(() => null),
   ]);
 
   return (
@@ -23,7 +24,7 @@ export default async function AdminPage() {
           en: "Manage directory identities and Registry-backed AKB role mappings."
         }}
       />
-      <AdminSkeleton authorization={authorization} initialRoleMappings={roleMappings} />
+      <AdminSkeleton authorization={authorization} initialRoleMappings={roleMappings} llmUsage={llmUsage} />
     </>
   );
 }

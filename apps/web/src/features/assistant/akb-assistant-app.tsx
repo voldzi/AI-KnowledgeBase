@@ -3290,6 +3290,25 @@ function AssistantResponseTools({
 
   return (
     <div className="akb-chat-answer-tools">
+      {response.llm_usage ? (
+        <details className="technical-details technical-details--compact">
+          <summary>{language === "cs" ? "Technické údaje AI" : "AI technical details"}</summary>
+          <div className="technical-details__body">
+            <p className="technical-details__line">
+              <strong>{language === "cs" ? "Model" : "Model"}</strong>
+              <span>{response.llm_usage.model ?? response.llm_usage.provider ?? "—"}</span>
+            </p>
+            <p className="technical-details__line">
+              <strong>{language === "cs" ? "Tokeny" : "Tokens"}</strong>
+              <span>{response.llm_usage.total_tokens.toLocaleString(language === "cs" ? "cs-CZ" : "en-US")} ({response.llm_usage.prompt_tokens.toLocaleString()} + {response.llm_usage.completion_tokens.toLocaleString()})</span>
+            </p>
+            <p className="technical-details__line">
+              <strong>{language === "cs" ? "Odhad ceny" : "Estimated cost"}</strong>
+              <span>{response.llm_usage.estimated_cost_usd == null ? "—" : `$${response.llm_usage.estimated_cost_usd.toFixed(6)}`}</span>
+            </p>
+          </div>
+        </details>
+      ) : null}
       {visibleWarnings.length ? (
         <div className="notice">
           <ShieldAlert size={16} aria-hidden="true" />
@@ -4130,7 +4149,10 @@ function responseFromPersistedMessage(
     confidence: typeof metadata.confidence === "string" ? metadata.confidence as AssistantChatResponse["confidence"] : null,
     warnings: Array.isArray(metadata.warnings) ? metadata.warnings.filter((item): item is string => typeof item === "string") : [],
     missing_information: nullableStringValue(metadata.missing_information),
-    recommended_action: nullableStringValue(metadata.recommended_action)
+    recommended_action: nullableStringValue(metadata.recommended_action),
+    llm_usage: metadata.llm_usage && typeof metadata.llm_usage === "object"
+      ? metadata.llm_usage as AssistantChatResponse["llm_usage"]
+      : null
   };
   return normalizeAssistantAnswerReports(response, previousUserMessage, "cs");
 }

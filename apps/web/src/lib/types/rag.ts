@@ -265,6 +265,18 @@ export interface AssistantChatResponse {
   warnings: string[];
   missing_information: string | null;
   recommended_action: string | null;
+  llm_usage?: AssistantLlmUsage | null;
+}
+
+export interface AssistantLlmUsage {
+  provider?: string | null;
+  model?: string | null;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  cached_prompt_tokens?: number;
+  estimated_cost_usd?: number | null;
+  pricing_version?: string | null;
 }
 
 export interface AssistantSuggestion {

@@ -190,6 +190,14 @@ The source being publicly accessible is not by itself an external-AI approval:
 STRATOS must attach an explicit policy binding that reflects the sanitized
 published version.
 
+The gateway records provider-reported input, output, cached and total token
+counts for every completed answer. For models in the reviewed pricing table it
+also stores a USD estimate and pricing snapshot version with the assistant
+message. Users can inspect this in the collapsed technical detail below an
+answer; administrators receive a 30-day aggregate and the active external-AI
+protection posture. Unknown models remain explicitly unpriced rather than
+being assigned an inferred rate.
+
 ## Smíšené routování
 
 ```text

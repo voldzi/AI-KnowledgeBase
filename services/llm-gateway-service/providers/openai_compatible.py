@@ -8,6 +8,7 @@ from typing import Any
 import httpx
 
 from app.config import Settings
+from app.pricing import PRICING_VERSION, estimate_openai_cost_usd
 from app.schemas import (
     ChatCompletionChunk,
     ChatCompletionRequest,
@@ -117,15 +118,32 @@ class OpenAICompatibleProvider(LLMProvider):
         if not isinstance(usage, dict):
             usage = {}
 
+        prompt_tokens = int(usage.get("prompt_tokens") or 0)
+        completion_tokens = int(usage.get("completion_tokens") or 0)
+        prompt_details = usage.get("prompt_tokens_details")
+        cached_prompt_tokens = int(
+            prompt_details.get("cached_tokens") or 0
+            if isinstance(prompt_details, dict)
+            else 0
+        )
+        response_model = str(data.get("model") or request.model)
         return ChatCompletionResponse(
             id=str(data.get("id") or ""),
-            model=str(data.get("model") or request.model),
+            model=response_model,
             content=str(message.get("content") or ""),
             finish_reason=str(choice.get("finish_reason") or "stop"),
             usage=Usage(
-                prompt_tokens=int(usage.get("prompt_tokens") or 0),
-                completion_tokens=int(usage.get("completion_tokens") or 0),
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
                 total_tokens=int(usage.get("total_tokens") or 0),
+                cached_prompt_tokens=cached_prompt_tokens,
+                estimated_cost_usd=estimate_openai_cost_usd(
+                    model=response_model,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    cached_prompt_tokens=cached_prompt_tokens,
+                ),
+                pricing_version=PRICING_VERSION,
             ),
             provider="openai",
         )

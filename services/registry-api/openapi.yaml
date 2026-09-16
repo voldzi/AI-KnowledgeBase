@@ -3665,6 +3665,32 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /api/v1/admin/assistant/llm-usage:
+    get:
+      summary: Assistant LLM usage summary
+      operationId: assistant_llm_usage_summary_api_v1_admin_assistant_llm_usage_get
+      parameters:
+      - name: days
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 365
+          default: 30
+      responses:
+        '200':
+          description: Aggregated token usage, estimated cost and active protection posture
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssistantLlmUsageSummaryResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
     post:
       summary: Upsert Role Mapping
       operationId: upsert_role_mapping_api_v1_admin_role_mappings_post
@@ -5911,6 +5937,27 @@ components:
       - updated_at
       - messages
       title: AssistantConversationDetailResponse
+    AssistantLlmUsageSummaryResponse:
+      type: object
+      required: [period_days, request_count, prompt_tokens, completion_tokens, total_tokens, cached_prompt_tokens, estimated_cost_usd, unpriced_request_count]
+      properties:
+        period_days: {type: integer, minimum: 1, maximum: 365}
+        request_count: {type: integer, minimum: 0}
+        prompt_tokens: {type: integer, minimum: 0}
+        completion_tokens: {type: integer, minimum: 0}
+        total_tokens: {type: integer, minimum: 0}
+        cached_prompt_tokens: {type: integer, minimum: 0}
+        estimated_cost_usd: {type: number, minimum: 0}
+        unpriced_request_count: {type: integer, minimum: 0}
+        providers:
+          type: object
+          additionalProperties: {type: integer}
+        models:
+          type: object
+          additionalProperties: {type: integer}
+        protection:
+          type: object
+          additionalProperties: true
     AssistantConversationListItemResponse:
       properties:
         conversation_id:

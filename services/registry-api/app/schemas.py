@@ -2460,3 +2460,17 @@ class AssistantConversationDetailResponse(BaseModel):
     updated_at: datetime
     shared_with: list[AssistantConversationShareResponse] = Field(default_factory=list)
     messages: list[AssistantMessageResponse]
+
+
+class AssistantLlmUsageSummaryResponse(BaseModel):
+    period_days: int = Field(ge=1, le=365)
+    request_count: int = Field(ge=0)
+    prompt_tokens: int = Field(ge=0)
+    completion_tokens: int = Field(ge=0)
+    total_tokens: int = Field(ge=0)
+    cached_prompt_tokens: int = Field(ge=0)
+    estimated_cost_usd: float = Field(ge=0)
+    unpriced_request_count: int = Field(ge=0)
+    providers: dict[str, int] = Field(default_factory=dict)
+    models: dict[str, int] = Field(default_factory=dict)
+    protection: dict[str, Any] = Field(default_factory=dict)

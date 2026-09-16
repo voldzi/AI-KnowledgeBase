@@ -1492,6 +1492,7 @@ class RagRetrievalService:
                 report_artifacts=report_artifacts,
                 confidence=rag_answer.confidence,
                 warnings=rag_answer.warnings,
+                llm_usage=rag_answer.llm_usage,
             )
             await self._audit_assistant(
                 actor_id=payload.user_id,
@@ -1776,6 +1777,7 @@ class RagRetrievalService:
                             ],
                             "missing_information": response.missing_information,
                             "recommended_action": response.recommended_action,
+                            "llm_usage": response.llm_usage,
                         },
                     },
                 ],

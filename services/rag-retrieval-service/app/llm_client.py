@@ -17,9 +17,13 @@ from retrievers.scoring import deterministic_embedding
 class ChatCompletionResult:
     content: str
     model: str
+    provider: str | None = None
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+    cached_prompt_tokens: int = 0
+    estimated_cost_usd: float | None = None
+    pricing_version: str | None = None
     finish_reason: str = "stop"
 
 
@@ -221,9 +225,21 @@ class HttpLLMGatewayClient:
         return ChatCompletionResult(
             content=str(payload.get("content", "")).strip(),
             model=str(payload.get("model") or selected_model),
+            provider=str(payload.get("provider") or "") or None,
             prompt_tokens=int(usage.get("prompt_tokens") or 0),
             completion_tokens=int(usage.get("completion_tokens") or 0),
             total_tokens=int(usage.get("total_tokens") or 0),
+            cached_prompt_tokens=int(usage.get("cached_prompt_tokens") or 0),
+            estimated_cost_usd=(
+                float(usage["estimated_cost_usd"])
+                if usage.get("estimated_cost_usd") is not None
+                else None
+            ),
+            pricing_version=(
+                str(usage["pricing_version"])
+                if usage.get("pricing_version")
+                else None
+            ),
             finish_reason="stop",
         )
 

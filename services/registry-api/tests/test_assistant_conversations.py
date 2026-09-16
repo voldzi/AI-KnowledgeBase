@@ -120,6 +120,33 @@ def test_create_empty_conversation_assigns_server_id_and_current_user(
     assert appended.json()["title"] == "Jaký má IT rozpočet na rok 2025?"
 
 
+def test_admin_llm_usage_summary_aggregates_safe_message_metadata(client: TestClient) -> None:
+    for index, usage in enumerate([
+        {"provider": "openai", "model": "gpt-5.6-luna", "prompt_tokens": 100, "completion_tokens": 20, "total_tokens": 120, "cached_prompt_tokens": 10, "estimated_cost_usd": 0.000044},
+        {"provider": "ollama", "model": "gemma4:12b-mlx", "prompt_tokens": 50, "completion_tokens": 10, "total_tokens": 60},
+    ]):
+        response = client.post(
+            f"/api/v1/assistant/conversations/conv_usage_{index}/messages",
+            json={
+                "user_id": "user_dev",
+                "messages": [
+                    {"role": "assistant", "content": "Odpověď", "metadata": {"llm_usage": usage}},
+                ],
+            },
+        )
+        assert response.status_code == 201, response.text
+
+    response = client.get("/api/v1/admin/assistant/llm-usage?days=30")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["request_count"] == 2
+    assert body["total_tokens"] == 180
+    assert body["estimated_cost_usd"] == 0.000044
+    assert body["unpriced_request_count"] == 1
+    assert body["providers"] == {"openai": 1, "ollama": 1}
+    assert body["protection"]["whole_documents_sent"] is False
+
+
 def test_create_empty_conversation_rejects_unknown_fields(
     client: TestClient,
 ) -> None:

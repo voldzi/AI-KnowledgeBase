@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { KeyRound, Search, ShieldCheck, UserCog, UserPlus } from "lucide-react";
+import { Bot, Coins, KeyRound, Search, ShieldCheck, UserCog, UserPlus } from "lucide-react";
 
 import { MetricCard } from "@/components/metric-card";
 import { StatusBadge } from "@/components/status-badge";
@@ -14,11 +14,12 @@ import {
 import { withAppBasePath } from "@/lib/app-url";
 import { formatDateTime, formatNumber } from "@/lib/format";
 import { useLanguage, type AklLanguage } from "@/lib/i18n";
-import type { AuthorizationHint, DirectoryUser, RoleMapping } from "@/lib/types";
+import type { AssistantLlmUsageSummary, AuthorizationHint, DirectoryUser, RoleMapping } from "@/lib/types";
 
 interface AdminSkeletonProps {
   authorization: AuthorizationHint;
   initialRoleMappings: RoleMapping[];
+  llmUsage: AssistantLlmUsageSummary | null;
 }
 
 const ROLE_OPTIONS = [
@@ -63,6 +64,13 @@ const adminCopy = {
     saved: "Mapování role bylo uloženo.",
     failed: "Operaci přístupu se nepodařilo dokončit.",
     searching: "Hledám...",
+    aiUsage: "Provoz AI za 30 dní",
+    aiRequests: "AI odpovědi",
+    aiTokens: "Tokeny",
+    aiCost: "Odhad nákladů",
+    aiProtection: "Ochrana externího AI",
+    protectionActive: "Aktivní – řízena Information Policy",
+    noWholeDocuments: "Do externího modelu se neposílají celé dokumenty.",
   },
   en: {
     activeMappings: "Active roles",
@@ -94,10 +102,17 @@ const adminCopy = {
     saved: "Role mapping saved.",
     failed: "The access operation could not be completed.",
     searching: "Searching...",
+    aiUsage: "AI operations over 30 days",
+    aiRequests: "AI responses",
+    aiTokens: "Tokens",
+    aiCost: "Estimated cost",
+    aiProtection: "External AI protection",
+    protectionActive: "Active – governed by Information Policy",
+    noWholeDocuments: "Whole documents are not sent to the external model.",
   },
 } satisfies Record<AklLanguage, Record<string, string>>;
 
-export function AdminSkeleton({ authorization, initialRoleMappings }: AdminSkeletonProps) {
+export function AdminSkeleton({ authorization, initialRoleMappings, llmUsage }: AdminSkeletonProps) {
   const { language } = useLanguage();
   const copy = adminCopy[language];
   const [members, setMembers] = useState(initialRoleMappings);
@@ -233,6 +248,27 @@ export function AdminSkeleton({ authorization, initialRoleMappings }: AdminSkele
         <MetricCard icon={ShieldCheck} label={copy.activeMappings} value={formatNumber(activeMembers.length, language)} detail={copy.activeMappingsDetail} tone="success" />
         <MetricCard icon={UserCog} label={copy.subjects} value={formatNumber(subjectCount, language)} detail={copy.subjectsDetail} tone="default" />
         <MetricCard icon={KeyRound} label={copy.roles} value={formatNumber(ROLE_OPTIONS.length, language)} detail={copy.rolesDetail} tone="default" />
+      </section>
+
+      <section className="panel">
+        <div className="panel__header">
+          <div>
+            <h2>{copy.aiUsage}</h2>
+            <p>{copy.aiProtection}</p>
+          </div>
+          <StatusBadge value="valid" label={copy.protectionActive} />
+        </div>
+        <div className="panel__body stack">
+          <div className="grid grid--three">
+            <MetricCard icon={Bot} label={copy.aiRequests} value={formatNumber(llmUsage?.request_count ?? 0, language)} detail="OpenAI / lokální LLM" tone="default" />
+            <MetricCard icon={KeyRound} label={copy.aiTokens} value={formatNumber(llmUsage?.total_tokens ?? 0, language)} detail={`${formatNumber(llmUsage?.prompt_tokens ?? 0, language)} + ${formatNumber(llmUsage?.completion_tokens ?? 0, language)}`} tone="default" />
+            <MetricCard icon={Coins} label={copy.aiCost} value={`$${(llmUsage?.estimated_cost_usd ?? 0).toFixed(4)}`} detail="USD · skutečné tokeny" tone="default" />
+          </div>
+          <div className="notice" role="note">
+            <ShieldCheck size={16} aria-hidden="true" />
+            {copy.noWholeDocuments}
+          </div>
+        </div>
       </section>
 
       <section className="panel">

@@ -267,6 +267,7 @@ class RagAnswer(BaseModel):
         description="Verifier identity. deterministic-extractive-support-v2 accepts only complete source statements; model verification requires complete claim coverage and verbatim evidence.",
     )
     conflicts: list[dict[str, Any]] = Field(default_factory=list)
+    llm_usage: dict[str, Any] | None = None
 
 
 class SourceLocation(BaseModel):
@@ -408,6 +409,7 @@ class AssistantChatResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     missing_information: str | None = None
     recommended_action: str | None = None
+    llm_usage: dict[str, Any] | None = None
 
 
 class AssistantSuggestion(BaseModel):

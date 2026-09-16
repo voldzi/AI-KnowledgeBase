@@ -1605,6 +1605,32 @@ export class MockRegistryClient implements RegistryApiClient {
     );
   }
 
+  async getAssistantLlmUsageSummary(
+    _context: ApiRequestContext,
+    days = 30,
+  ): Promise<import("@/lib/types").AssistantLlmUsageSummary> {
+    return {
+      period_days: days,
+      request_count: 0,
+      prompt_tokens: 0,
+      completion_tokens: 0,
+      total_tokens: 0,
+      cached_prompt_tokens: 0,
+      estimated_cost_usd: 0,
+      unpriced_request_count: 0,
+      providers: {},
+      models: {},
+      protection: {
+        policy_binding_required: true,
+        classified_content_denied: true,
+        restricted_content_denied: true,
+        no_external_ai_enforced: true,
+        local_processing_only_enforced: true,
+        whole_documents_sent: false,
+      },
+    };
+  }
+
   async importDirectoryUser(
     subjectId: string,
     _context: ApiRequestContext,

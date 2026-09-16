@@ -297,6 +297,7 @@ from app.schemas import (
     AssistantMessageFeedbackPutRequest,
     AssistantMessageFeedbackResponse,
     AssistantMessageResponse,
+    AssistantLlmUsageSummaryResponse,
 )
 
 router = APIRouter(prefix="/api/v1")
@@ -10964,6 +10965,73 @@ def search_directory_users(
     require_global_action(principal, Action.admin_manage, db)
     users = _directory_adapter().search_users(query, max_results=min(limit, 50))
     return DirectoryUserListResponse(users=[_directory_user_response(user) for user in users])
+
+
+@router.get("/admin/assistant/llm-usage", response_model=AssistantLlmUsageSummaryResponse)
+def assistant_llm_usage_summary(
+    days: int = Query(default=30, ge=1, le=365),
+    db: Session = Depends(get_db),
+    principal: Principal = Depends(get_current_principal),
+) -> AssistantLlmUsageSummaryResponse:
+    require_global_action(principal, Action.admin_manage, db)
+    since = utcnow() - timedelta(days=days)
+    messages = db.scalars(
+        select(AssistantMessage).where(
+            AssistantMessage.role == "assistant",
+            AssistantMessage.created_at >= since,
+        )
+    ).all()
+    totals = {
+        "request_count": 0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "cached_prompt_tokens": 0,
+        "estimated_cost_usd": 0.0,
+        "unpriced_request_count": 0,
+    }
+    providers: Counter[str] = Counter()
+    models: Counter[str] = Counter()
+    for message in messages:
+        usage = message.message_metadata.get("llm_usage")
+        if not isinstance(usage, dict):
+            continue
+        totals["request_count"] += 1
+        for key in ("prompt_tokens", "completion_tokens", "total_tokens", "cached_prompt_tokens"):
+            value = usage.get(key)
+            if isinstance(value, int) and value >= 0:
+                totals[key] += value
+        cost = usage.get("estimated_cost_usd")
+        if isinstance(cost, (int, float)) and cost >= 0:
+            totals["estimated_cost_usd"] += float(cost)
+        else:
+            totals["unpriced_request_count"] += 1
+        provider = usage.get("provider")
+        model = usage.get("model")
+        if isinstance(provider, str) and provider:
+            providers[provider] += 1
+        if isinstance(model, str) and model:
+            models[model] += 1
+    return AssistantLlmUsageSummaryResponse(
+        period_days=days,
+        request_count=int(totals["request_count"]),
+        prompt_tokens=int(totals["prompt_tokens"]),
+        completion_tokens=int(totals["completion_tokens"]),
+        total_tokens=int(totals["total_tokens"]),
+        cached_prompt_tokens=int(totals["cached_prompt_tokens"]),
+        estimated_cost_usd=round(float(totals["estimated_cost_usd"]), 6),
+        unpriced_request_count=int(totals["unpriced_request_count"]),
+        providers=dict(providers),
+        models=dict(models),
+        protection={
+            "policy_binding_required": True,
+            "classified_content_denied": True,
+            "restricted_content_denied": True,
+            "no_external_ai_enforced": True,
+            "local_processing_only_enforced": True,
+            "whole_documents_sent": False,
+        },
+    )
 
 
 @router.get("/directory/users", response_model=DirectoryUserListResponse)
