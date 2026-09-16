@@ -1010,6 +1010,11 @@ def test_archived_batch_can_mint_only_exact_indexing_proof_without_budget_mutati
     assert issued.json()["document_id"] == document["document_id"]
     assert issued.json()["document_version_id"] == version["document_version_id"]
     assert issued.json()["idempotency_key"] == idempotency_key
+    profile_checks = [
+        body for method, _url, body in verified_profile_authority.requests
+        if method == "POST" and body.get("auditActorSubjectId")
+    ]
+    assert profile_checks[-1]["auditActorSubjectId"] == ACTOR
 
     stored_external = db_session.get(
         ExternalDocumentRef, external["external_document_id"]

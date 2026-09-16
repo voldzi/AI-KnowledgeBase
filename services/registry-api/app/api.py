@@ -8562,7 +8562,11 @@ def _budget_historical_batch_ingestion_authority(
             "Only an exact signed CURRENT or ARCHIVED Budget batch version may be indexed without a live actor",
         )
     try:
-        require_fresh_document_profile(document, version=version, actor_id=principal.subject_id)
+        # A historical batch is service-authenticated, but its immutable Budget
+        # envelope already binds the verified internal person who owns the batch.
+        # Revalidate the profile as that person; the service subject is not an
+        # employee and STRATOS correctly rejects it as a document audit actor.
+        require_fresh_document_profile(document, version=version, actor_id=actor["subjectId"])
         authorization_basis = (
             "stratos_budget_historical_retry"
             if is_exact_failed_retry
