@@ -214,12 +214,17 @@ def _chat_payload(request: ChatCompletionRequest, stream: bool) -> dict[str, Any
         "messages": [message.model_dump() for message in request.messages],
         "stream": stream,
     }
-    if request.temperature is not None:
+    modern_reasoning_model = request.model.startswith(("gpt-5", "gpt-6", "o1", "o3", "o4"))
+    if request.temperature is not None and not modern_reasoning_model:
         payload["temperature"] = request.temperature
-    if request.top_p is not None:
+    if request.top_p is not None and not modern_reasoning_model:
         payload["top_p"] = request.top_p
     if request.max_tokens is not None:
-        payload["max_tokens"] = request.max_tokens
+        # Current OpenAI reasoning models reject the legacy max_tokens field.
+        # Keep it for generic OpenAI-compatible endpoints and older models.
+        payload[
+            "max_completion_tokens" if modern_reasoning_model else "max_tokens"
+        ] = request.max_tokens
     return payload
 
 
