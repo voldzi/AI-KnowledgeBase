@@ -216,6 +216,21 @@ def test_exact_czech_law_scope_keeps_only_matching_document() -> None:
     assert {chunk.citation.document_id for chunk in scoped} == {"doc_law"}
 
 
+def test_exact_czech_law_scope_ignores_amendment_title_that_only_mentions_law() -> None:
+    target = _chunk("law", "doc_law", "Právo na informace.")
+    target.citation.document_title = "106/1999 Sb. – Zákon o svobodném přístupu k informacím"
+    amendment = _chunk("amendment", "doc_amendment", "Změnová ustanovení.")
+    amendment.citation.document_title = (
+        "298/2016 Sb. – Zákon, kterým se mění zákon č. 106/1999 Sb., "
+        "o svobodném přístupu k informacím"
+    )
+
+    scoped, document_id = _apply_exact_identifier_scope("Co upravuje 106/1999 Sb.?", [target, amendment])
+
+    assert document_id == "doc_law"
+    assert [chunk.citation.document_id for chunk in scoped] == ["doc_law"]
+
+
 def test_profile_budgets_bound_expensive_retrieval_stages() -> None:
     assert _exact_resolver_limit(50) == 32
     assert _candidate_budget("exact", requested_chunks=50, planned_limit=50) == 50

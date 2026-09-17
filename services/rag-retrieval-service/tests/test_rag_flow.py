@@ -211,6 +211,66 @@ def test_authorization_filters_stale_version_without_hiding_current_version() ->
     assert denied_documents == set()
 
 
+def test_authorization_isolates_mixed_policy_hashes_for_one_document() -> None:
+    current = RetrievedChunk(
+        chunk_id="chunk_current",
+        score=0.9,
+        retrieval_method="opensearch",
+        text="Current governed content.",
+        citation=ChunkCitation(
+            document_id="doc_shared",
+            document_version_id="ver_current",
+            document_title="Governed document",
+            version_label="2.0",
+        ),
+        metadata={"policy_hash": "sha256:current", "policy_binding_id": "pb_current"},
+    )
+    stale = current.model_copy(
+        update={
+            "chunk_id": "chunk_stale",
+            "citation": current.citation.model_copy(
+                update={"document_version_id": "ver_stale", "version_label": "1.0"}
+            ),
+            "metadata": {"policy_hash": "sha256:stale", "policy_binding_id": "pb_stale"},
+        }
+    )
+    calls: list[dict[str, list[str]]] = []
+
+    class StrictRegistry:
+        async def filter_allowed_documents(self, **kwargs):
+            calls.append(kwargs["candidate_policy_hashes"])
+            hashes = kwargs["candidate_policy_hashes"]["doc_shared"]
+            if hashes == ["sha256:current"]:
+                return AuthzFilterResult(
+                    allowed_document_ids={"doc_shared"},
+                    denied_document_ids=set(),
+                    allowed_document_version_ids={"doc_shared": {"ver_current"}},
+                )
+            return AuthzFilterResult(
+                allowed_document_ids=set(),
+                denied_document_ids={"doc_shared"},
+                allowed_document_version_ids={},
+            )
+
+    service = object.__new__(RagRetrievalService)
+    service._settings = SimpleNamespace(authz_mode="disabled", registry_client_mode="http")
+    service._registry_client = StrictRegistry()
+
+    allowed, denied_documents = asyncio.run(
+        service._filter_authorized_chunks(
+            subject_id="user_123",
+            chunks=[stale, current],
+        )
+    )
+
+    assert [chunk.chunk_id for chunk in allowed] == ["chunk_current"]
+    assert calls == [
+        {"doc_shared": ["sha256:current"]},
+        {"doc_shared": ["sha256:stale"]},
+    ]
+    assert denied_documents == set()
+
+
 def _policy_chunk(
     *,
     chunk_id: str,

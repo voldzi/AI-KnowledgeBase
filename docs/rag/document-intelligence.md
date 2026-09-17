@@ -369,12 +369,21 @@ Registry authorization therefore evaluates candidate coordinates per immutable
 - the RAG service discards every chunk whose version is absent from the
   Registry response before reranking or answer composition.
 
+If one document has candidates carrying more than one policy hash, RAG sends
+each hash cohort through Registry authorization separately and unions only the
+explicitly allowed immutable versions. This prevents a stale historical index
+entry from poisoning authorization of the current version, while preserving
+fail-closed hash validation for every cohort.
+
 For a query with an exact document or statutory identifier, OpenSearch returns
 at most one resolver candidate per immutable `document_version_id`. This keeps
 one historical version with many chunks from exhausting the bounded resolver
 window before a current version is considered. Registry still chooses the
 versions valid and authorized for the effective query date; collapsing the
 resolver candidates does not grant access or replace version authorization.
+For Czech statutory identifiers such as `106/1999 Sb.`, the identifier must be
+anchored at the start of the governed document title. A later amendment whose
+title merely mentions that statute cannot become a second exact match.
 
 The source-aware reranker uses chunk content for general questions and applies
 an additional title signal only when the query strongly matches the governed

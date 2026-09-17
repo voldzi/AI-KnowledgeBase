@@ -2586,46 +2586,88 @@ class RagRetrievalService:
             for chunk in chunks
             if chunk.citation.document_id not in invalid_policy_document_ids
         ]
-        candidate_document_ids = sorted(
-            {chunk.citation.document_id for chunk in eligible_chunks}
-        )
-        candidate_policy_hashes: dict[str, list[str]] = {}
-        candidate_document_versions: dict[str, list[str]] = {}
+        hashes_by_document: dict[str, set[str]] = {}
         for chunk in eligible_chunks:
             policy_hash = chunk.metadata.get("policy_hash")
-            if not isinstance(policy_hash, str) or not policy_hash:
-                continue
-            values = candidate_policy_hashes.setdefault(chunk.citation.document_id, [])
-            if policy_hash not in values:
-                values.append(policy_hash)
-            version_values = candidate_document_versions.setdefault(
-                chunk.citation.document_id, []
-            )
-            if chunk.citation.document_version_id not in version_values:
-                version_values.append(chunk.citation.document_version_id)
-        authz = await self._registry_client.filter_allowed_documents(
-            subject_id=subject_id,
-            candidate_document_ids=candidate_document_ids,
-            auth_context=auth_context,
-            candidate_policy_hashes=candidate_policy_hashes,
-            candidate_document_versions=candidate_document_versions,
-            action=action,
-            effective_on=effective_on,
-        )
-        allowed = [
+            if isinstance(policy_hash, str) and policy_hash:
+                hashes_by_document.setdefault(chunk.citation.document_id, set()).add(policy_hash)
+        mixed_policy_documents = {
+            document_id
+            for document_id, hashes in hashes_by_document.items()
+            if len(hashes) > 1
+        }
+        batches: list[list[RetrievedChunk]] = []
+        ordinary = [
             chunk
             for chunk in eligible_chunks
-            if chunk.citation.document_id in authz.allowed_document_ids
-            and (
-                authz.allowed_document_version_ids is None
-                or chunk.citation.document_version_id
-                in authz.allowed_document_version_ids.get(
-                    chunk.citation.document_id,
-                    set(),
-                )
-            )
+            if chunk.citation.document_id not in mixed_policy_documents
         ]
-        return allowed, authz.denied_document_ids | invalid_policy_document_ids
+        if ordinary:
+            batches.append(ordinary)
+        for document_id in sorted(mixed_policy_documents):
+            for policy_hash in sorted(hashes_by_document[document_id]):
+                batches.append(
+                    [
+                        chunk
+                        for chunk in eligible_chunks
+                        if chunk.citation.document_id == document_id
+                        and chunk.metadata.get("policy_hash") == policy_hash
+                    ]
+                )
+
+        async def authorize(batch: list[RetrievedChunk]):
+            candidate_document_ids = sorted(
+                {chunk.citation.document_id for chunk in batch}
+            )
+            candidate_policy_hashes: dict[str, list[str]] = {}
+            candidate_document_versions: dict[str, list[str]] = {}
+            for chunk in batch:
+                policy_hash = chunk.metadata.get("policy_hash")
+                if not isinstance(policy_hash, str) or not policy_hash:
+                    continue
+                values = candidate_policy_hashes.setdefault(
+                    chunk.citation.document_id, []
+                )
+                if policy_hash not in values:
+                    values.append(policy_hash)
+                version_values = candidate_document_versions.setdefault(
+                    chunk.citation.document_id, []
+                )
+                if chunk.citation.document_version_id not in version_values:
+                    version_values.append(chunk.citation.document_version_id)
+            authz = await self._registry_client.filter_allowed_documents(
+                subject_id=subject_id,
+                candidate_document_ids=candidate_document_ids,
+                auth_context=auth_context,
+                candidate_policy_hashes=candidate_policy_hashes,
+                candidate_document_versions=candidate_document_versions,
+                action=action,
+                effective_on=effective_on,
+            )
+            allowed_chunk_ids = {
+                chunk.chunk_id
+                for chunk in batch
+                if chunk.citation.document_id in authz.allowed_document_ids
+                and (
+                    authz.allowed_document_version_ids is None
+                    or chunk.citation.document_version_id
+                    in authz.allowed_document_version_ids.get(
+                        chunk.citation.document_id,
+                        set(),
+                    )
+                )
+            }
+            return allowed_chunk_ids, authz.allowed_document_ids, authz.denied_document_ids
+
+        results = await asyncio.gather(*(authorize(batch) for batch in batches))
+        allowed_chunk_ids = set().union(*(result[0] for result in results)) if results else set()
+        allowed_document_ids = set().union(*(result[1] for result in results)) if results else set()
+        denied_document_ids = set().union(*(result[2] for result in results)) if results else set()
+        allowed = [chunk for chunk in eligible_chunks if chunk.chunk_id in allowed_chunk_ids]
+        return (
+            allowed,
+            (denied_document_ids - allowed_document_ids) | invalid_policy_document_ids,
+        )
 
     async def _audit_retrieval(
         self,
@@ -3511,9 +3553,9 @@ def _apply_exact_identifier_scope(
         return chunks, None
     matched_document_ids: set[str] = set()
     for chunk in chunks:
-        metadata_values = [
-            chunk.citation.document_title,
-            *(
+        title = _normalized_reference(chunk.citation.document_title)
+        metadata_haystack = _normalized_reference(
+            " ".join(
                 str(chunk.metadata.get(key, ""))
                 for key in (
                     "external_ref",
@@ -3522,10 +3564,20 @@ def _apply_exact_identifier_scope(
                     "file_name",
                     "filename",
                 )
-            ),
-        ]
-        haystack = _normalized_reference(" ".join(metadata_values))
-        if any(identifier in haystack for identifier in identifiers):
+            )
+        )
+        matches = False
+        for identifier in identifiers:
+            if re.fullmatch(r"\d+-\d{4}-sb", identifier):
+                # A statute identifier is authoritative only when it identifies
+                # the cited document itself.  Amendment titles often mention a
+                # different statute verbatim and must not create an ambiguity.
+                matches = title == identifier or title.startswith(f"{identifier}-")
+            else:
+                matches = identifier in title or identifier in metadata_haystack
+            if matches:
+                break
+        if matches:
             matched_document_ids.add(chunk.citation.document_id)
     if len(matched_document_ids) != 1:
         return chunks, None
