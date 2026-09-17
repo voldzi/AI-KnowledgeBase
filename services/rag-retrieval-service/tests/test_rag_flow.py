@@ -432,6 +432,21 @@ def test_assistant_chat_requests_clarification_for_vague_access_query() -> None:
     assert {question["id"] for question in body["questions"]} >= {"system", "request_type"}
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Vysvětli hlavní účel zákona 106/1999 Sb. o svobodném přístupu k informacím.",
+        "Do kdy musí úřad odpovědět podle zákona o svobodném přístupu k informacím?",
+    ],
+)
+def test_legal_information_access_query_retrieves_without_access_workflow_clarification(
+    message: str,
+) -> None:
+    questions = _clarification_questions(message, {})
+
+    assert questions == []
+
+
 def test_assistant_chat_rejects_removed_subject_id_alias() -> None:
     with make_client() as client:
         response = client.post(

@@ -4691,7 +4691,18 @@ def _clarification_questions(
         "obligation",
         "policy",
     }
-    if _is_access_query(normalized) and not documented_task:
+    # Legal questions about an explicitly identified source must reach retrieval
+    # before operational workflow clarification.  In particular, the title of
+    # Act No. 106/1999 contains "access to information", which must not be
+    # mistaken for an employee asking for access to an information system.
+    explicit_legal_source = bool(extract_identifiers(message)) or bool(
+        _assistant_legal_retrieval_hint(message)
+    )
+    if (
+        _is_access_query(normalized)
+        and not documented_task
+        and not explicit_legal_source
+    ):
         if not context.get("system"):
             questions.append(
                 ClarificationQuestion(
