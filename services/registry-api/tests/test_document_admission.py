@@ -190,6 +190,59 @@ def test_exact_candidate_filter_cannot_bypass_version_tlp(mode):
     ) == set()
 
 
+def test_v2_candidate_filter_authorizes_the_exact_historical_version_policy_not_the_document_root():
+    from app.permissions import Decision, SubjectContext
+
+    root_policy = admitted_policy()
+    historical_policy = admitted_policy(tlp="TLP:CLEAR")
+    document = Document(
+        document_id="doc_historical_candidate",
+        title="Historický důkaz",
+        document_type="law",
+        owner_id="user_owner",
+        classification="internal",
+        status=api.DocumentStatus.valid.value,
+        policy_summary=root_policy,
+        policy_hash="sha256:root-current",
+    )
+    version = DocumentVersion(
+        document_version_id="ver_historical_candidate",
+        document=document,
+        document_id=document.document_id,
+        version_label="1",
+        source_file_uri="s3://test/historical.pdf",
+        status=api.DocumentStatus.valid.value,
+        policy_summary=historical_policy,
+        policy_hash="sha256:historical-version",
+    )
+    context = SubjectContext(
+        subject_id="employee",
+        roles=set(),
+        groups=set(),
+        access_v2=True,
+        capabilities={"akb:chat"},
+        scopes={"organization:org_stratos"},
+        organization_id="org_stratos",
+        identity_active=True,
+        membership_active=True,
+        application_access_active=True,
+    )
+    kwargs = {
+        "context": context,
+        "decision": Decision(True, "Approved version", {}),
+        "document": document,
+        "candidate_versions": {version.document_version_id},
+        "versions_by_id": {version.document_version_id: version},
+        "action": "rag.query",
+    }
+    assert api._allowed_candidate_document_versions(
+        candidate_hashes={version.policy_hash}, **kwargs
+    ) == {version.document_version_id}
+    assert api._allowed_candidate_document_versions(
+        candidate_hashes={document.policy_hash}, **kwargs
+    ) == set()
+
+
 @pytest.mark.parametrize("policy", [None, admitted_policy(tlp=None)])
 def test_external_import_has_no_null_policy_exception(client, db_session, admin_headers, policy):
     from test_external_documents import _external_payload

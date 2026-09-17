@@ -9742,11 +9742,13 @@ def filter_authorized_documents(
                     document=document,
                     version=version,
                 )
-                if employee_decision is not None and _candidate_document_policy_allowed(
-                    context=context,
-                    decision=employee_decision,
-                    document=document,
-                    candidate_hashes=candidate_hashes,
+                if (
+                    employee_decision is not None
+                    and employee_decision.allowed
+                    and (
+                        not context.access_v2
+                        or version.policy_hash in candidate_hashes
+                    )
                 ):
                     employee_directive_allowed_versions.add(version_id)
         allowed_versions = _allowed_candidate_document_versions(
@@ -9816,12 +9818,7 @@ def _allowed_candidate_document_versions(
     versions_by_id: dict[str, DocumentVersion],
     action: str,
 ) -> set[str]:
-    if not _candidate_document_policy_allowed(
-        context=context,
-        decision=decision,
-        document=document,
-        candidate_hashes=candidate_hashes,
-    ) or not candidate_versions:
+    if not decision.allowed or not candidate_versions:
         return set()
     candidate_versions = {
         version_id for version_id in candidate_versions
@@ -9859,7 +9856,11 @@ def _allowed_candidate_document_versions(
         if (version := versions_by_id.get(version_id)) is not None
         and version.document_id == document.document_id
         and version.status in allowed_statuses
-        and version.policy_hash == document.policy_hash
+        # Chunks cite immutable document versions.  A document root may carry
+        # a newer policy after a later publication, so comparing every chunk
+        # to the root policy hash incorrectly rejects still-valid historical
+        # evidence and can make retrieval disagree with citation opening.
+        and version.policy_hash in candidate_hashes
     }
 
 

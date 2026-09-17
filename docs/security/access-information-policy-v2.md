@@ -72,9 +72,11 @@ scope to the central decision endpoint. AKB does not replace an
 deactivated or unrelated scope therefore fails immediately even if an older
 projection or index entry still exists.
 
-Legacy AKB roles remain as an explicit pre-reset compatibility path only for
-mock/local execution. They are not part of the new epoch and must not be
-assigned by the G7 Keycloak baseline.
+Legacy AKB roles and Access Projection V1 remain an explicit pre-reset
+compatibility path only for mock/local execution. Integrated AKB web, Registry,
+Chat and evaluation use only `GET /api/v2/auth/me`; V1 must never be widened
+with the employee baseline or organizational scope. They are not part of the
+new epoch and must not be assigned by the G7 Keycloak baseline.
 
 ## Policy Inheritance
 

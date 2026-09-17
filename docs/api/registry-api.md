@@ -134,10 +134,12 @@ Chybová odpověď odpovídá centrálnímu kontraktu:
   které jsou pro osobu právě povolené. `svc-ingestion` potvrzuje stejnou přesnou
   množinu před OpenSearch dotazem.
 - RAG Retrieval Service volá `/authz/filter-documents` a zapisuje auditní události.
-- `/authz/filter-documents` vyžaduje pro Access V2 přesný current policy hash a
-  množinu `candidate_document_versions`; pouze verze se stavem `valid`, správným
-  dokumentem a aktuálním hashem projde. Akce `rag.export` používá samostatnou
-  capability `akb:export`.
+- `/authz/filter-documents` vyžaduje pro Access V2 přesný policy hash každé
+  kandidátní immutable verze a množinu `candidate_document_versions`; projde
+  pouze verze se stavem `valid`, správným dokumentem a vlastním uloženým hashem.
+  Hash pozdější politiky kořenového dokumentu nesmí přepsat ani odmítnout
+  historický důkaz. Akce `rag.export` používá samostatnou capability
+  `akb:export`.
 - Pro `rag.query` a `document.read` lze přidat `effective_on: YYYY-MM-DD`.
   Každý kandidátní dokument musí mít přesné `candidate_document_versions`.
   Registry po běžné autorizaci povolí jen jedinou publikaci účinnou k tomuto
