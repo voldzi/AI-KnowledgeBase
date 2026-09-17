@@ -112,6 +112,13 @@ class QdrantHybridRetriever:
         # exact title before the document scope has been established.
         identifiers = extract_query_identifiers(query)
         resolver_query = " ".join(identifiers) if identifiers else query
+        if self._opensearch is not None:
+            return await self._opensearch.retrieve(
+                query=resolver_query,
+                filters=filters,
+                limit=limit,
+                collapse_by_version=True,
+            )
         return await self._retrieve_lexical_candidates(
             query=resolver_query,
             filters=filters,
@@ -402,8 +409,20 @@ class OpenSearchFullTextClient:
         allowed_statuses = {200, 404} if self._settings.env != "production" else {200}
         return "ready" if response.status_code in allowed_statuses else "not_ready"
 
-    async def retrieve(self, *, query: str, filters: RagQueryFilters, limit: int) -> list[RetrievedChunk]:
-        body = _opensearch_query(query=query, filters=filters, limit=limit)
+    async def retrieve(
+        self,
+        *,
+        query: str,
+        filters: RagQueryFilters,
+        limit: int,
+        collapse_by_version: bool = False,
+    ) -> list[RetrievedChunk]:
+        body = _opensearch_query(
+            query=query,
+            filters=filters,
+            limit=limit,
+            collapse_by_version=collapse_by_version,
+        )
         async with self._client() as client:
             response = await client.post(
                 f"{self._settings.opensearch_base_url}/{self._settings.opensearch_index}/_search",
@@ -768,7 +787,13 @@ def _source_chunk_sort_key(chunk: RetrievedChunk) -> tuple[str, str, int, str]:
     )
 
 
-def _opensearch_query(*, query: str, filters: RagQueryFilters, limit: int) -> dict[str, Any]:
+def _opensearch_query(
+    *,
+    query: str,
+    filters: RagQueryFilters,
+    limit: int,
+    collapse_by_version: bool = False,
+) -> dict[str, Any]:
     expanded_query = expand_query_text(query)
     should = [
         {
@@ -836,7 +861,7 @@ def _opensearch_query(*, query: str, filters: RagQueryFilters, limit: int) -> di
                 }
             }
         )
-    return {
+    body: dict[str, Any] = {
         "size": limit,
         "track_total_hits": False,
         "_source": True,
@@ -848,6 +873,14 @@ def _opensearch_query(*, query: str, filters: RagQueryFilters, limit: int) -> di
             }
         },
     }
+    if collapse_by_version:
+        # Exact identifiers can match thousands of chunks across historical
+        # versions of one law. One representative per immutable version keeps
+        # the current version inside the bounded authorization set; Registry
+        # still decides which version is valid and accessible for the query
+        # date, so this changes recall without weakening authority.
+        body["collapse"] = {"field": "document_version_id"}
+    return body
 
 
 def _bounded_fuzzy_query(query: str) -> str | None:

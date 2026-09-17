@@ -91,6 +91,41 @@ describe("STRATOS access projection", () => {
     assert.deepEqual(second.capabilities, []);
   });
 
+  it("coalesces only overlapping managed projection reads", async () => {
+    const token = jwt({ sub: "user-123", exp: 2_000 });
+    const managedConfig = config();
+    let calls = 0;
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => { release = resolve; });
+    const fetcher: typeof fetch = async (url) => {
+      if (String(url).includes("certs")) {
+        return Response.json({ keys: [] });
+      }
+      calls += 1;
+      await blocked;
+      return Response.json(projection([{
+        applicationId: "akb",
+        entitlementId: "grant-chat",
+        capabilities: ["akb:chat"],
+        scopes: [{ type: "public" }],
+        effectiveScopes: [{ type: "public" }],
+      }]));
+    };
+
+    // Use the external mode here so the unit test can exercise the flight
+    // without manufacturing a signed managed JWT. The coalescing boundary is
+    // shared and the zero-TTL behavior is identical.
+    const first = contextFromStratosAccessProjection(token, managedConfig, fetcher, NOW);
+    const second = contextFromStratosAccessProjection(token, managedConfig, fetcher, NOW);
+    release();
+    const [left, right] = await Promise.all([first, second]);
+
+    assert.equal(calls, 1);
+    assert.equal(left.subjectId, right.subjectId);
+    await contextFromStratosAccessProjection(token, managedConfig, fetcher, NOW + 1);
+    assert.equal(calls, 2);
+  });
+
   it("bypasses the projection cache for pre-synthesis reauthorization", async () => {
     const token = jwt({ sub: "user-123", exp: 2_000 });
     const cachedConfig = config();

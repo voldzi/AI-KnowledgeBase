@@ -43,6 +43,10 @@ application access are not read from `stratos_access`, top-level token claims,
 or client headers. Missing, malformed, rejected, expired, or unavailable
 projection data fails closed. The default projection cache TTL is zero; any
 configured cache is bounded by token expiry and the projection `expiresAt`.
+Concurrent reads that overlap for the same bearer identity are coalesced into
+one in-flight authority request in the web boundary and Registry. The result is
+discarded as soon as that request finishes, so the next operation still loads
+a fresh projection and observes membership or grant revocation.
 Unknown fields, future `generatedAt`, a lifetime over 15 minutes, contract
 drift, an inactive identity or membership, and a subject mismatch are rejected.
 Capabilities and scopes are never unioned across entitlements for Registry

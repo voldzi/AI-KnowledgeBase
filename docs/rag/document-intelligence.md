@@ -369,6 +369,13 @@ Registry authorization therefore evaluates candidate coordinates per immutable
 - the RAG service discards every chunk whose version is absent from the
   Registry response before reranking or answer composition.
 
+For a query with an exact document or statutory identifier, OpenSearch returns
+at most one resolver candidate per immutable `document_version_id`. This keeps
+one historical version with many chunks from exhausting the bounded resolver
+window before a current version is considered. Registry still chooses the
+versions valid and authorized for the effective query date; collapsing the
+resolver candidates does not grant access or replace version authorization.
+
 The source-aware reranker uses chunk content for general questions and applies
 an additional title signal only when the query strongly matches the governed
 document title. This preserves no-answer behavior for weak partial matches

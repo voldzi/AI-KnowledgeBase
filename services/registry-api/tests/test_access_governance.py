@@ -292,6 +292,49 @@ def test_user_projection_fails_closed_when_stratos_is_unavailable(monkeypatch) -
         pass
 
 
+def test_user_projection_coalesces_only_overlapping_reads(monkeypatch) -> None:
+    request_count = 0
+    request_lock = Lock()
+
+    class Client:
+        def __init__(self, **_kwargs):
+            pass
+
+        def get(self, _url, **_kwargs):
+            nonlocal request_count
+            with request_lock:
+                request_count += 1
+            time.sleep(0.05)
+            return SimpleNamespace(
+                status_code=200,
+                json=lambda: _projection([_entitlement()]),
+            )
+
+    monkeypatch.setattr("app.access_governance.httpx.Client", Client)
+    client = StratosGovernanceClient(_settings())
+    barrier = Barrier(2)
+
+    def load_projection():
+        barrier.wait()
+        return client.user_projection(
+            "same-user-token",
+            token_expires_at=None,
+            expected_subject="user-subject",
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(lambda _index: load_projection(), range(2)))
+
+    assert all(result.application_access_active for result in results)
+    assert request_count == 1
+    client.user_projection(
+        "same-user-token",
+        token_expires_at=None,
+        expected_subject="user-subject",
+    )
+    assert request_count == 2
+
+
 def test_governance_client_reuses_one_http_connection_pool(monkeypatch) -> None:
     constructed: list[object] = []
     closed: list[bool] = []

@@ -291,6 +291,7 @@ class StratosGovernanceClient:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self._cache: dict[str, tuple[float, AccessProjection]] = {}
+        self._projection_flights: dict[str, Future[AccessProjection]] = {}
         self._decision_flights: dict[str, Future[dict[str, Any]]] = {}
         self._lock = threading.Lock()
         # Runtime authorization can evaluate several distinct governed scopes
@@ -316,20 +317,31 @@ class StratosGovernanceClient:
             cached = self._cache.get(cache_key)
             if self.settings.identity_mode != "managed" and cached and cached[0] > now:
                 return cached[1]
+            flight = self._projection_flights.get(cache_key)
+            owns_flight = flight is None
+            if flight is None:
+                flight = Future()
+                self._projection_flights[cache_key] = flight
+        if not owns_flight:
+            try:
+                return flight.result(
+                    timeout=self.settings.stratos_access_timeout_seconds + 1
+                )
+            except FutureTimeoutError as exc:
+                raise GovernanceUnavailable(
+                    "STRATOS access projection did not complete within the configured timeout"
+                ) from exc
         try:
             response = self._http_client.get(
                 self.settings.stratos_auth_me_url,
                 headers={"Accept": "application/json", "Authorization": f"Bearer {token}"},
             )
-        except httpx.HTTPError as exc:
-            raise GovernanceUnavailable("STRATOS access projection is unavailable") from exc
-        if response.status_code in {401, 403}:
-            raise GovernanceDenied("STRATOS rejected the bearer identity")
-        if response.status_code != 200:
-            raise GovernanceUnavailable(
-                f"STRATOS access projection returned {response.status_code}"
-            )
-        try:
+            if response.status_code in {401, 403}:
+                raise GovernanceDenied("STRATOS rejected the bearer identity")
+            if response.status_code != 200:
+                raise GovernanceUnavailable(
+                    f"STRATOS access projection returned {response.status_code}"
+                )
             body = response.json()
             if not isinstance(body, dict):
                 raise ValueError("Invalid projection object")
@@ -343,19 +355,36 @@ class StratosGovernanceClient:
                 or any(item.entitlement_id == "system:akb:employee-baseline" for item in projection.entitlements)
             ):
                 raise GovernanceDenied("Employee scope is not valid for this identity")
+            ttl = self.settings.stratos_access_cache_ttl_seconds
+            cache_expires_at = min(
+                now + ttl,
+                token_expires_at or now + ttl,
+                projection.expires_at.timestamp() if projection.expires_at else now,
+            )
+            if self.settings.identity_mode != "managed" and ttl > 0 and cache_expires_at > now:
+                with self._lock:
+                    self._cache[cache_key] = (cache_expires_at, projection)
+            flight.set_result(projection)
+            return projection
+        except httpx.HTTPError as exc:
+            unavailable = GovernanceUnavailable(
+                "STRATOS access projection is unavailable"
+            )
+            flight.set_exception(unavailable)
+            raise unavailable from exc
         except (ValueError, TypeError) as exc:
-            raise GovernanceUnavailable("STRATOS access projection is malformed") from exc
-
-        ttl = self.settings.stratos_access_cache_ttl_seconds
-        cache_expires_at = min(
-            now + ttl,
-            token_expires_at or now + ttl,
-            projection.expires_at.timestamp() if projection.expires_at else now,
-        )
-        if self.settings.identity_mode != "managed" and ttl > 0 and cache_expires_at > now:
+            unavailable = GovernanceUnavailable(
+                "STRATOS access projection is malformed"
+            )
+            flight.set_exception(unavailable)
+            raise unavailable from exc
+        except BaseException as exc:
+            flight.set_exception(exc)
+            raise
+        finally:
             with self._lock:
-                self._cache[cache_key] = (cache_expires_at, projection)
-        return projection
+                if self._projection_flights.get(cache_key) is flight:
+                    self._projection_flights.pop(cache_key, None)
 
     def ensure_binding_registered(self, binding: InformationPolicyBinding) -> str:
         local_hash = canonical_policy_hash(binding)

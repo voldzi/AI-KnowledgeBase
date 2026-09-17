@@ -26,8 +26,8 @@ def test_exact_candidate_resolution_uses_only_statute_identifier() -> None:
     calls: list[str] = []
 
     class FakeOpenSearch:
-        async def retrieve(self, *, query, filters, limit):
-            calls.append(query)
+        async def retrieve(self, *, query, filters, limit, collapse_by_version=False):
+            calls.append((query, collapse_by_version))
             return []
 
     retriever._opensearch = FakeOpenSearch()
@@ -42,7 +42,19 @@ def test_exact_candidate_resolution_uses_only_statute_identifier() -> None:
         )
     )
 
-    assert calls == ["262/2006 sb"]
+    assert calls == [("262/2006 sb", True)]
+
+
+def test_exact_opensearch_resolution_collapses_chunks_by_immutable_version() -> None:
+    body = _opensearch_query(
+        query="394/2001 Sb.",
+        filters=RagQueryFilters(only_valid=True),
+        limit=32,
+        collapse_by_version=True,
+    )
+
+    assert body["collapse"] == {"field": "document_version_id"}
+    assert body["size"] == 32
 
 
 def test_missing_qdrant_collection_is_an_empty_retrieval_result(monkeypatch) -> None:

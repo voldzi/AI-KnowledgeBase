@@ -13,6 +13,7 @@ interface CacheEntry {
 }
 
 const projectionCache = new Map<string, CacheEntry>();
+const projectionFlights = new Map<string, Promise<ApiRequestContext>>();
 
 export async function contextFromStratosAccessProjection(
   accessToken: string,
@@ -38,6 +39,18 @@ export async function contextFromStratosAccessProjection(
   const key = crypto.createHash("sha256").update(accessToken).digest("hex");
   const cached = projectionCache.get(key);
   if (!managed && !bypassCache && cached && cached.expiresAt > nowMs) return cached.context;
+
+  // Managed identity intentionally has no cross-request TTL cache: every new
+  // operation must observe a revoked membership or grant.  A chat turn can,
+  // however, fan out into several requests at the same instant.  Coalesce only
+  // those overlapping reads of the same bearer identity.  The flight is
+  // removed immediately after completion, so the next operation still loads
+  // a fresh projection and preserves revocation semantics.
+  const flightKey = `${key}:${sessionProbe ? "probe" : "request"}`;
+  const existingFlight = projectionFlights.get(flightKey);
+  if (existingFlight) return existingFlight;
+
+  const flight = (async () => {
 
   const projectionRequestStartedAtMs = Date.now();
   let response: Response;
@@ -135,10 +148,18 @@ export async function contextFromStratosAccessProjection(
     projectionCache.set(key, { context, expiresAt });
   }
   return context;
+  })();
+  projectionFlights.set(flightKey, flight);
+  try {
+    return await flight;
+  } finally {
+    if (projectionFlights.get(flightKey) === flight) projectionFlights.delete(flightKey);
+  }
 }
 
 export function resetAccessProjectionCacheForTests(): void {
   projectionCache.clear();
+  projectionFlights.clear();
 }
 
 function normalizeApplication(value: unknown): string {
