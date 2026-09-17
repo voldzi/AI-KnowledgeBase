@@ -153,6 +153,12 @@ laws; after the catalog is complete, the worker revalidates it weekly in the
 same bounded batches. Changes become new immutable AKB versions and unchanged
 hashes remain idempotent.
 
+On `docker.home.cz` the worker reaches the AKB web bridge through the dedicated
+`akb-web` Docker DNS alias. The shared application network also contains
+STRATOS, so the generic `web` alias is not safe for an AKB-to-AKB call. If this
+alias is unavailable, the worker must fail the cycle and leave the prior state
+unchanged; it must never send an ingestion request to another application.
+
 The rollout is accepted only when all selected canonical e-Sbírka versions reach
 `INDEXED`, each retains its official PDF, TLP:CLEAR, organization audience,
 active owner and gestor, and a representative Chat answer cites and opens the

@@ -220,6 +220,7 @@ services:
       app_zone:
         aliases:
           - akl-platform-web
+          - akb-web
     healthcheck:
       test:
         [
@@ -244,7 +245,9 @@ services:
     entrypoint: ["node", "/app/official-source-worker.mjs"]
     environment:
       AKB_OFFICIAL_SOURCE_AUTOMATION_ENABLED: ${AKB_OFFICIAL_SOURCE_AUTOMATION_ENABLED:-false}
-      AKB_OFFICIAL_SOURCE_WEB_URL: http://web:3000${AKL_WEB_BASE_PATH:-/akb}
+      # `app_zone` is shared with STRATOS.  The generic `web` DNS alias is
+      # therefore ambiguous; the worker must use AKB's dedicated alias.
+      AKB_OFFICIAL_SOURCE_WEB_URL: http://akb-web:3000${AKL_WEB_BASE_PATH:-/akb}
       AKB_OFFICIAL_SOURCE_INTERNAL_SECRET_FILE: /run/secrets/akb-official-source-sync-internal-secret
       AKB_OFFICIAL_SOURCE_STATE_DIR: /data/official-source-sync
       AKB_OFFICIAL_SOURCE_COLLECTION_ID: ${AKB_OFFICIAL_SOURCE_COLLECTION_ID:-czech-law}
