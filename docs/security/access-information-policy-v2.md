@@ -5,7 +5,7 @@
 AKB G2/G3 accepts these exact versions:
 
 - `stratos-access-projection-2`, revision `2.1.0`, status `active`, catalog
-  `capabilities-1.12.2`, schema digest
+  `capabilities-1.12.3`, schema digest
   `sha256:16509ccbdc3e49e7a9918a29c833a8ae1aa7c78777b0a8693a2477acc2f0dafa`
 - `information-policy-2.0.0`
 - `stratos-integration-envelope-1`

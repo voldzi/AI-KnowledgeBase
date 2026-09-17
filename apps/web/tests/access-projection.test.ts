@@ -332,7 +332,7 @@ function projection(grants: TestGrant[]) {
     contractRevision: "2.1.0",
     contractStatus: "active",
     contractDigest: "sha256:16509ccbdc3e49e7a9918a29c833a8ae1aa7c78777b0a8693a2477acc2f0dafa",
-    catalogVersion: "capabilities-1.12.2",
+    catalogVersion: "capabilities-1.12.3",
     generatedAt: new Date(NOW - 1_000).toISOString(),
     expiresAt: new Date(NOW + 10 * 60_000).toISOString(),
     organizationId: "org_stratos",
@@ -342,7 +342,7 @@ function projection(grants: TestGrant[]) {
       applicationId,
       entitlements: items.map((item) => ({
         entitlementId: item.entitlementId,
-        definitionVersion: "capabilities-1.12.2",
+        definitionVersion: "capabilities-1.12.3",
         profileId: null,
         source: "MANUAL",
         sourceRef: null,
