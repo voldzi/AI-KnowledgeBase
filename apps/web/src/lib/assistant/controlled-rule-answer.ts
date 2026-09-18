@@ -114,6 +114,11 @@ export function controlledRuleIntentFromMessage(
     && !CONTROLLED_RULE_DECISION_RE.test(message)) {
     return null;
   }
+  if (PUBLIC_PROCUREMENT_RE.test(message)
+    && LEGAL_SOURCE_RE.test(message)
+    && !CONTROLLED_RULE_DECISION_RE.test(message)) {
+    return null;
+  }
   if (EXPLICIT_NON_PROCUREMENT_LEGAL_TOPIC_RE.test(message)) {
     return null;
   }

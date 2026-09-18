@@ -45,12 +45,14 @@ describe("assistant tool router", () => {
   });
 
   it("routes general public procurement principles to cited statute retrieval", () => {
-    const route = routeAssistantMessage(
+    for (const message of [
       "Jaké zásady musí zadavatel dodržovat při zadávání veřejné zakázky?",
-      "cs",
-    );
-    assert.equal(route.tool, "rag_document_answer");
-    assert.equal(route.controlledRuleIntent, null);
+      "Jaké základní povinnosti pro zadavatele vyplývají ze zákona o zadávání veřejných zakázek?",
+    ]) {
+      const route = routeAssistantMessage(message, "cs");
+      assert.equal(route.tool, "rag_document_answer");
+      assert.equal(route.controlledRuleIntent, null);
+    }
   });
 
   it("routes public procurement rules to the governed rule catalog", () => {
