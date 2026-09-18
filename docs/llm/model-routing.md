@@ -190,6 +190,14 @@ The source being publicly accessible is not by itself an external-AI approval:
 STRATOS must attach an explicit policy binding that reflects the sanitized
 published version.
 
+Keep `AKL_RAG_CHAT_MODEL` and `AKL_RAG_HIGH_QUALITY_CHAT_MODEL` mapped to a
+local provider whenever `AKL_RAG_EXTERNAL_CHAT_MODEL` is enabled. The external
+model is selected only for policy-approved `PUBLIC` or `INTERNAL` context; the
+local models are the mandatory answer path for `RESTRICTED`, `NO_EXTERNAL_AI`
+and `LOCAL_PROCESSING_ONLY` context. RAG rejects startup if the external model
+replaces either local role, because that configuration would turn a valid
+restricted-document question into an avoidable HTTP 403/502 response.
+
 The gateway records provider-reported input, output, cached and total token
 counts for every completed answer. For models in the reviewed pricing table it
 also stores a USD estimate and pricing snapshot version with the assistant

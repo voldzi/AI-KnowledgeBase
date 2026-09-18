@@ -156,6 +156,19 @@ def test_invalid_high_quality_min_context_chunks_is_rejected() -> None:
         load_settings({"AKL_RAG_HIGH_QUALITY_MIN_CONTEXT_CHUNKS": "0"})
 
 
+@pytest.mark.parametrize("local_key", ["AKL_RAG_CHAT_MODEL", "AKL_RAG_HIGH_QUALITY_CHAT_MODEL"])
+def test_external_model_cannot_replace_policy_safe_local_model(local_key: str) -> None:
+    with pytest.raises(ConfigError, match="AKL_RAG_EXTERNAL_CHAT_MODEL"):
+        load_settings(
+            {
+                "AKL_RAG_CHAT_MODEL": "gemma4:12b-mlx",
+                "AKL_RAG_HIGH_QUALITY_CHAT_MODEL": "gemma4:12b-mlx",
+                local_key: "gpt-5.6-luna",
+                "AKL_RAG_EXTERNAL_CHAT_MODEL": "gpt-5.6-luna",
+            }
+        )
+
+
 def test_opensearch_password_file_overrides_direct_password(tmp_path) -> None:
     password_file = tmp_path / "opensearch.password"
     password_file.write_text("reader-secret\n", encoding="utf-8")

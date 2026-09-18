@@ -467,6 +467,18 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         source,
         "AKL_OPENSEARCH_CA_FILE",
     )
+    chat_model = _get(source, "AKL_RAG_CHAT_MODEL", "mock-chat")
+    high_quality_chat_model = _parse_optional_str(
+        _get(source, "AKL_RAG_HIGH_QUALITY_CHAT_MODEL", "")
+    )
+    external_chat_model = _parse_optional_str(
+        _get(source, "AKL_RAG_EXTERNAL_CHAT_MODEL", "")
+    )
+    if external_chat_model and external_chat_model in {chat_model, high_quality_chat_model}:
+        raise ConfigError(
+            "AKL_RAG_EXTERNAL_CHAT_MODEL must differ from the local chat models so "
+            "RESTRICTED and NO_EXTERNAL_AI content retains a policy-safe answer path"
+        )
 
     if env_name == "production":
         if auth_mode not in {"bearer", "oidc"}:
@@ -619,9 +631,9 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         confidence_medium_threshold=confidence_medium_threshold,
         embedding_model=_get(source, "AKL_RAG_EMBEDDING_MODEL", "mock-embedding"),
         embedding_dimensions=embedding_dimensions,
-        chat_model=_get(source, "AKL_RAG_CHAT_MODEL", "mock-chat"),
-        high_quality_chat_model=_parse_optional_str(_get(source, "AKL_RAG_HIGH_QUALITY_CHAT_MODEL", "")),
-        external_chat_model=_parse_optional_str(_get(source, "AKL_RAG_EXTERNAL_CHAT_MODEL", "")),
+        chat_model=chat_model,
+        high_quality_chat_model=high_quality_chat_model,
+        external_chat_model=external_chat_model,
         high_quality_min_context_chunks=high_quality_min_context_chunks,
         mock_chat_response=source.get("AKL_RAG_MOCK_CHAT_RESPONSE") or None,
         mock_registry_denied_document_ids=denied,
