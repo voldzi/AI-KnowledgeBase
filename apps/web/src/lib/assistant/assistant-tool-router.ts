@@ -18,6 +18,7 @@ import {
 } from "./assistant-query-planner";
 import {
   controlledRuleIntentFromMessage,
+  hasExplicitLegalActIdentifier,
   type ControlledRuleIntent,
 } from "./controlled-rule-answer";
 import {
@@ -123,7 +124,7 @@ export function routeAssistantMessage(
       knowledgeScope: "governed_sources",
     });
   }
-  if (isRegistryDocumentReportQuestion(message, context)) {
+  if (!hasExplicitLegalActIdentifier(message) && isRegistryDocumentReportQuestion(message, context)) {
     return withQueryPlan(message, language, {
       tool: "registry_document_report",
       reason: "registry_metadata_intent",

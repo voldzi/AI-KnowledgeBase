@@ -36,6 +36,7 @@ const EXPLICIT_LEGAL_ACT_IDENTIFIER_RE = /(?:\b(?:zákon|zakon|vyhlášk|vyhlask
 const CONTROLLED_RULE_DECISION_RE = /(?:\bvzmr\b|veřejné\s+zakázky\s+malého\s+rozsahu|verejne\s+zakazky\s+maleho\s+rozsahu|limit|částk|castk|hran(?:ice|ičn)|do\s+kolika|od\s+kolika|přím\w*\s+nákup|prim\w*\s+nakup|průzkum\s+trhu|pruzkum\s+trhu)/i;
 const GENERAL_PROCUREMENT_PRINCIPLES_RE = /(?:(?:zásad\w*|zasad\w*).*(?:zadavatel|zadáván|zadavan|veřejn\w*\s+zakáz|verejn\w*\s+zakaz)|(?:co\s+musí|co\s+musi|jak[éý]\s+(?:jsou\s+)?(?:obecn[\p{L}]*\s+|konkrétn[\p{L}]*\s+)?povinnost).*(?:zadavatel|dodavatel).*(?:dodrž|dodrz|veřejn\w*\s+zakáz|verejn\w*\s+zakaz|zadáván\w*\s+zakáz|zadavan\w*\s+zakaz))/iu;
 const GENERAL_PROCUREMENT_LEGAL_OVERVIEW_RE = /(?:jak[ýéa]?\s+(?:vyplývají\s+)?podmínk|co\s+(?:stanoví|upravuje|vyplývá)|jak[éý]\s+(?:jsou\s+)?(?:obecn[\p{L}]*\s+|konkrétn[\p{L}]*\s+)?povinnost|vysvětli\w*|shrň\w*|popiš\w*).*(?:zákon|zakon|veřejn\w*\s+zakáz|verejn\w*\s+zakaz)/iu;
+const EXPLICIT_LEGAL_OVERVIEW_RE = /(?:vysvětli\w*|vysvetli\w*|shrň\w*|shrn\w*|popiš\w*|popis\w*|hlavn[íi]\s+účel|hlavn[íi]\s+ucel|oblast\s+úpravy|oblast\s+upravy)/iu;
 const INTERNAL_RULE_SOURCE_TYPES = new Set<ControlledRule["source_type"]>([
   "internal_directive",
   "internal_instruction",
@@ -103,6 +104,9 @@ export function controlledRuleIntentFromMessage(
   now = new Date(),
 ): ControlledRuleIntent | null {
   if (GENERAL_PROCUREMENT_PRINCIPLES_RE.test(message)) {
+    return null;
+  }
+  if (hasExplicitLegalActIdentifier(message) && EXPLICIT_LEGAL_OVERVIEW_RE.test(message)) {
     return null;
   }
   // General educational questions belong to document RAG, which can explain the

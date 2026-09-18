@@ -36,6 +36,18 @@ describe("assistant tool router", () => {
     }
   });
 
+  it("does not let an official act title override an explicit overview request", () => {
+    for (const message of [
+      "Vysvětli srozumitelně hlavní účel a oblast úpravy předpisu 172/2016 Sb. – Nařízení vlády o stanovení finančních limitů a částek pro účely zákona o zadávání veřejných zakázek.",
+      "Vysvětli srozumitelně hlavní účel a oblast úpravy předpisu 270/2010 Sb. – Vyhláška o inventarizaci majetku a závazků.",
+    ]) {
+      const route = routeAssistantMessage(message, "cs");
+      assert.equal(route.tool, "rag_document_answer");
+      assert.equal(route.controlledRuleIntent, null);
+      assert.equal(route.queryPlan.quality_gates.citations_required, true);
+    }
+  });
+
   it("keeps a threshold decision on the governed rule path", () => {
     const route = routeAssistantMessage(
       "Jaký je limit VZMR podle zákona č. 134/2016 Sb.?",
