@@ -2239,6 +2239,7 @@ class RagRetrievalService:
         exact_document_id = None
         exact_resolver_candidates = 0
         exact_resolver_authorized = 0
+        historical_exact_source_applied = False
         denied_document_ids: set[str] = set()
         exact_resolver = None
         if (
@@ -2254,12 +2255,37 @@ class RagRetrievalService:
                     filters=retrieval_filters,
                     limit=_exact_resolver_limit(payload.max_chunks),
                 )
-                stage_timings_ms["exact_resolution"] = _elapsed_stage_ms(stage_started)
                 exact_resolver_candidates = len(resolved_candidates)
                 scoped_candidates, resolved_document_id = _apply_exact_identifier_scope(
                     payload.query,
                     resolved_candidates,
                 )
+                # An explicit immutable source identifier must remain
+                # answerable after the source stops being effective. Retry
+                # resolution without the current-date prefilter only when no
+                # current exact source was found at all. If a current
+                # candidate exists but Registry denies it, keep the denial:
+                # falling back in that case could hide a stale index or an
+                # authorization failure behind an older version.
+                if not resolved_document_id and effective_on is not None:
+                    historical_filters = retrieval_filters.model_copy(
+                        update={"only_valid": False, "valid_on": None}
+                    )
+                    historical_candidates = await exact_resolver(
+                        query=payload.query,
+                        filters=historical_filters,
+                        limit=_exact_resolver_limit(payload.max_chunks),
+                    )
+                    exact_resolver_candidates += len(historical_candidates)
+                    scoped_candidates, resolved_document_id = _apply_exact_identifier_scope(
+                        payload.query,
+                        historical_candidates,
+                    )
+                    if resolved_document_id:
+                        historical_exact_source_applied = True
+                        retrieval_filters = historical_filters
+                        effective_on = None
+                stage_timings_ms["exact_resolution"] = _elapsed_stage_ms(stage_started)
                 if resolved_document_id:
                     stage_started = time.perf_counter()
                     resolved_authorized, resolved_denied = await self._filter_authorized_chunks(
@@ -2360,6 +2386,8 @@ class RagRetrievalService:
             )
         if exact_document_id:
             warnings.append("EXACT_DOCUMENT_SCOPE_APPLIED")
+        if historical_exact_source_applied and exact_document_id:
+            warnings.append("HISTORICAL_EXACT_SOURCE_APPLIED")
         if (
             self._settings.enable_reranking
             or self._settings.reranker_mode != "off"
@@ -2454,6 +2482,7 @@ class RagRetrievalService:
                     "exact_document_scope_applied": bool(exact_document_id),
                     "exact_resolver_candidates": exact_resolver_candidates,
                     "exact_resolver_authorized": exact_resolver_authorized,
+                    "historical_exact_source_applied": historical_exact_source_applied,
                     "reranker_mode": self._settings.reranker_mode,
                     "reranker_diagnostics": reranker_diagnostics,
                     "parent_retrieval_mode": self._settings.parent_retrieval_mode,

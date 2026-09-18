@@ -301,6 +301,7 @@ async def test_exact_resolver_scopes_before_retrieval_and_uses_full_query_embedd
 
     assert [chunk.citation.document_id for chunk in run.response.chunks] == ["doc_law"]
     assert resolver_filters[0].document_ids == []
+    assert len(resolver_filters) == 1
     assert retrieval_filters[0].document_ids == ["doc_law"]
     assert retrieval_filters[0].document_version_ids == ["ver_1"]
     # Adaptive retrieval is disabled, therefore its shadow analysis must not
@@ -315,6 +316,140 @@ async def test_exact_resolver_scopes_before_retrieval_and_uses_full_query_embedd
     # stage ran with the complete query.
     assert run.response.retrieval_diagnostics["stage_timings_ms"]["embedding"] >= 0.0
     assert run.response.retrieval_diagnostics["stage_timings_ms"]["parent_expansion"] == 0.0
+    assert run.response.retrieval_diagnostics["historical_exact_source_applied"] is False
+
+
+@pytest.mark.asyncio
+async def test_exact_resolver_does_not_hide_current_authorization_denial_with_history() -> None:
+    current = _chunk("current", "doc_current_law", "Aktuální znění zákona.")
+    current.citation.document_title = "264/2025 Sb. - Aktuální zákon"
+    resolver_filters: list[RagQueryFilters] = []
+
+    class Retriever:
+        async def resolve_exact_candidates(self, *, query, filters, limit):
+            resolver_filters.append(filters)
+            return [current]
+
+        async def retrieve(self, **kwargs):
+            return [current]
+
+    class LlmClient:
+        async def embeddings(self, queries, **kwargs):
+            return [[0.1, 0.2]]
+
+    class Registry:
+        async def filter_allowed_documents(self, **kwargs):
+            return AuthzFilterResult(
+                allowed_document_ids=set(),
+                denied_document_ids={"doc_current_law"},
+                allowed_document_version_ids={},
+            )
+
+    class Reranker:
+        async def rerank(self, *, query, chunks, limit):
+            return chunks[:limit], []
+
+    settings = load_settings(
+        {
+            "AKL_ENV": "test",
+            "AKL_AUTH_MODE": "disabled",
+            "AKL_RAG_DEPENDENCY_MODE": "mock",
+            "AKL_RAG_AUTHZ_MODE": "dev",
+            "AKL_RAG_RERANKER_MODE": "off",
+            "AKL_RAG_PARENT_RETRIEVAL_MODE": "off",
+        }
+    )
+    service = object.__new__(RagRetrievalService)
+    service._settings = settings
+    service._registry_client = Registry()
+    service._retriever = Retriever()
+    service._reranker = Reranker()
+    service._llm_client = LlmClient()
+
+    run = await service._retrieve_authorized(
+        payload=RetrieveRequest(
+            subject_id="user_123",
+            query="Co upravuje 264/2025 Sb.?",
+            filters=RagQueryFilters(classification_max="public"),
+            max_chunks=8,
+        ),
+        query_id="query_denied_current_exact",
+        expand_parent=False,
+    )
+
+    assert len(resolver_filters) == 1
+    assert run.response.chunks == []
+    assert "HISTORICAL_EXACT_SOURCE_APPLIED" not in run.response.warnings
+    assert run.response.retrieval_diagnostics["historical_exact_source_applied"] is False
+
+
+@pytest.mark.asyncio
+async def test_exact_resolver_retries_expired_source_without_current_date_filter() -> None:
+    historical = _chunk("historical", "doc_historical_law", "Historické znění zákona.")
+    historical.citation.document_title = "316/2021 Sb. - Historická vyhláška"
+    resolver_filters: list[RagQueryFilters] = []
+    retrieval_filters: list[RagQueryFilters] = []
+
+    class Retriever:
+        async def resolve_exact_candidates(self, *, query, filters, limit):
+            resolver_filters.append(filters)
+            return [] if filters.only_valid else [historical]
+
+        async def retrieve(self, **kwargs):
+            retrieval_filters.append(kwargs["filters"])
+            return [historical]
+
+    class LlmClient:
+        async def embeddings(self, queries, **kwargs):
+            return [[0.1, 0.2]]
+
+    class Reranker:
+        async def rerank(self, *, query, chunks, limit):
+            return chunks[:limit], []
+
+    settings = load_settings(
+        {
+            "AKL_ENV": "test",
+            "AKL_AUTH_MODE": "disabled",
+            "AKL_RAG_DEPENDENCY_MODE": "mock",
+            "AKL_RAG_AUTHZ_MODE": "dev",
+            "AKL_RAG_RERANKER_MODE": "off",
+            "AKL_RAG_PARENT_RETRIEVAL_MODE": "shadow",
+        }
+    )
+    service = object.__new__(RagRetrievalService)
+    service._settings = settings
+    service._registry_client = MockRegistryClient(settings)
+    service._retriever = Retriever()
+    service._reranker = Reranker()
+    service._llm_client = LlmClient()
+
+    run = await service._retrieve_authorized(
+        payload=RetrieveRequest(
+            subject_id="user_123",
+            query="Co upravovala vyhláška 316/2021 Sb.?",
+            filters=RagQueryFilters(classification_max="public"),
+            max_chunks=8,
+        ),
+        query_id="query_historical_exact",
+        expand_parent=False,
+    )
+
+    assert len(resolver_filters) == 2
+    assert resolver_filters[0].only_valid is True
+    assert resolver_filters[0].valid_on is not None
+    assert resolver_filters[1].only_valid is False
+    assert resolver_filters[1].valid_on is None
+    assert retrieval_filters[0].document_ids == ["doc_historical_law"]
+    assert retrieval_filters[0].document_version_ids == ["ver_1"]
+    assert retrieval_filters[0].only_valid is False
+    assert retrieval_filters[0].valid_on is None
+    assert [chunk.citation.document_id for chunk in run.response.chunks] == [
+        "doc_historical_law"
+    ]
+    assert "EXACT_DOCUMENT_SCOPE_APPLIED" in run.response.warnings
+    assert "HISTORICAL_EXACT_SOURCE_APPLIED" in run.response.warnings
+    assert run.response.retrieval_diagnostics["historical_exact_source_applied"] is True
 
 
 def test_document_title_is_not_proof_of_a_factual_statement() -> None:

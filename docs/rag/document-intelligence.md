@@ -385,6 +385,14 @@ For Czech statutory identifiers such as `106/1999 Sb.`, the identifier must be
 anchored at the start of the governed document title. A later amendment whose
 title merely mentions that statute cannot become a second exact match.
 
+When a user explicitly names a statutory identifier and no currently effective
+exact source exists, retrieval performs one bounded historical retry without a
+current-date prefilter. Registry still authorizes the exact immutable document
+version and policy before any text reaches ranking or answer composition. The
+retry is not used when a current candidate exists but authorization rejects it;
+that remains a fail-closed signal for stale indexing or denied access rather
+than silently substituting an older version.
+
 The source-aware reranker uses chunk content for general questions and applies
 an additional title signal only when the query strongly matches the governed
 document title. This preserves no-answer behavior for weak partial matches
