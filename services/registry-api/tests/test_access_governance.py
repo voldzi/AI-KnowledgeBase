@@ -87,7 +87,7 @@ def _projection(entitlements=None, *, subject_id="user-subject", identity_active
         "contractRevision": "2.1.0",
         "contractStatus": "active",
         "contractDigest": "sha256:16509ccbdc3e49e7a9918a29c833a8ae1aa7c78777b0a8693a2477acc2f0dafa",
-        "catalogVersion": "capabilities-1.12.2",
+        "catalogVersion": "capabilities-1.12.3",
         "generatedAt": (now - timedelta(seconds=1)).isoformat().replace("+00:00", "Z"),
         "expiresAt": (now + timedelta(minutes=10)).isoformat().replace("+00:00", "Z"),
         "organizationId": "org_stratos",
@@ -108,7 +108,7 @@ def _entitlement(entitlement_id="grant-akb-read", *, capabilities=None, scopes=N
     now = datetime.now(timezone.utc)
     return {
         "entitlementId": entitlement_id,
-        "definitionVersion": "capabilities-1.12.2",
+        "definitionVersion": "capabilities-1.12.3",
         "profileId": None,
         "source": "MANUAL",
         "sourceRef": None,
@@ -124,7 +124,7 @@ def _entitlement(entitlement_id="grant-akb-read", *, capabilities=None, scopes=N
 def _employee_baseline():
     return {
         "entitlementId": "system:akb:employee-baseline",
-        "definitionVersion": "capabilities-1.12.2",
+        "definitionVersion": "capabilities-1.12.3",
         "profileId": "stratos-user",
         "source": "SYSTEM",
         "sourceRef": "employee-baseline",
@@ -1734,7 +1734,7 @@ def test_employee_baseline_exact_version_uses_root_document_classification() -> 
     )
     baseline = AccessEntitlement(
         entitlement_id="system:akb:employee-baseline",
-        definition_version="capabilities-1.12.2",
+        definition_version="capabilities-1.12.3",
         profile_id="stratos-user",
         source="SYSTEM",
         source_ref="employee-baseline",

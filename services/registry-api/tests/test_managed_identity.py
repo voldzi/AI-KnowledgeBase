@@ -49,7 +49,7 @@ def service(**updates):
 def access_projection(subject_id=SUBJECT, *, active=True):
     now = time.time()
     baseline = {
-        "entitlementId": "system:akb:employee-baseline", "definitionVersion": "capabilities-1.12.2",
+        "entitlementId": "system:akb:employee-baseline", "definitionVersion": "capabilities-1.12.3",
         "profileId": "stratos-user", "source": "SYSTEM", "sourceRef": "employee-baseline", "virtual": True,
         "capabilities": ["akb:access", "akb:chat", "akb:read_document"],
         "scopes": [{"type": "public"}, {"type": "organization", "id": "org_stratos"}, {"type": "recipient_set", "id": "employee-directives"}],
@@ -59,7 +59,7 @@ def access_projection(subject_id=SUBJECT, *, active=True):
     return {
         "schemaVersion": "stratos-access-projection-2", "contractRevision": "2.1.0", "contractStatus": "active",
         "contractDigest": "sha256:16509ccbdc3e49e7a9918a29c833a8ae1aa7c78777b0a8693a2477acc2f0dafa",
-        "catalogVersion": "capabilities-1.12.2", "generatedAt": datetime.fromtimestamp(now - 1, timezone.utc).isoformat(),
+        "catalogVersion": "capabilities-1.12.3", "generatedAt": datetime.fromtimestamp(now - 1, timezone.utc).isoformat(),
         "expiresAt": datetime.fromtimestamp(now + 600, timezone.utc).isoformat(), "organizationId": "org_stratos",
         "identity": {"subjectId": subject_id, "kind": "person", "active": active, "employeeEligible": active},
         "membership": {"active": active, "validUntil": None},
