@@ -2312,9 +2312,9 @@ class RagRetrievalService:
         # and can return the opening pages instead of the relevant provision.
         retrieve = self._retriever.retrieve
         candidate_limit = _candidate_budget(
-            analyzed_plan.profile,
+            plan.profile,
             requested_chunks=payload.max_chunks,
-            planned_limit=analyzed_plan.candidate_limit,
+            planned_limit=plan.candidate_limit,
         )
         retrieve_kwargs = {
             "query": payload.query,

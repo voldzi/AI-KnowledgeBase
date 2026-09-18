@@ -247,6 +247,7 @@ async def test_exact_resolver_scopes_before_retrieval_and_uses_full_query_embedd
     noise = _chunk("noise", "doc_noise", "Výroční zpráva.")
     resolver_filters: list[RagQueryFilters] = []
     retrieval_filters: list[RagQueryFilters] = []
+    retrieval_limits: list[int] = []
     embedded_queries: list[list[str]] = []
 
     class Retriever:
@@ -258,6 +259,7 @@ async def test_exact_resolver_scopes_before_retrieval_and_uses_full_query_embedd
 
         async def retrieve(self, **kwargs):
             retrieval_filters.append(kwargs["filters"])
+            retrieval_limits.append(kwargs["limit"])
             return [target]
 
     class LlmClient:
@@ -291,7 +293,7 @@ async def test_exact_resolver_scopes_before_retrieval_and_uses_full_query_embedd
             subject_id="user_123",
             query="365/2000 Sb.",
             filters=RagQueryFilters(classification_max="public"),
-            max_chunks=50,
+            max_chunks=8,
         ),
         query_id="query_exact",
         expand_parent=False,
@@ -301,6 +303,10 @@ async def test_exact_resolver_scopes_before_retrieval_and_uses_full_query_embedd
     assert resolver_filters[0].document_ids == []
     assert retrieval_filters[0].document_ids == ["doc_law"]
     assert retrieval_filters[0].document_version_ids == ["ver_1"]
+    # Adaptive retrieval is disabled, therefore its shadow analysis must not
+    # silently expand the configured 24-candidate production budget to the
+    # 50-candidate exact profile before expensive per-version authorization.
+    assert retrieval_limits == [24]
     assert embedded_queries == [["365/2000 Sb."]]
     assert run.response.retrieval_diagnostics["exact_document_scope_applied"] is True
     # Exact resolution narrows the document first, then the full user query is
