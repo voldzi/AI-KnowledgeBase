@@ -312,6 +312,12 @@ The request timeout intentionally exceeds the isolated Docling worker's
 version, registry confirmation and both search-index writes before the
 synchronization caller can retry it.
 
+The AKB web service must also run with
+`AKL_WEB_LONG_INGESTION_HTTP_TRANSPORT=true`. This selects the bounded
+1,020-second Node HTTP transport for synchronous governed ingestion and avoids
+the built-in five-minute response-header timeout while Docling is still
+processing a large source.
+
 The host source files use UID `1000` and mode `0600`. At Web startup the
 privileged entrypoint copies both values into the private in-container runtime
 directory as read-only files owned by the `nextjs` process, then drops
