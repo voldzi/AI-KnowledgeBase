@@ -17,6 +17,7 @@ IDENTIFIER_PATTERNS = (
     re.compile(r"\b(?:odst|odstavec|paragraph)\.?\s*\d+[a-z]?\b"),
     re.compile(r"\b(?:pril|priloha|annex)\.?\s*\d+[a-z]?\b"),
 )
+DOCUMENT_IDENTIFIER_PATTERNS = IDENTIFIER_PATTERNS[:2]
 RISK_QUERY_TERMS = {"riziko", "rizika", "rizik", "risk", "risks"}
 RISK_TEXT_TERMS = {
     "chybove",
@@ -124,6 +125,23 @@ def extract_query_identifiers(query: str) -> list[str]:
                 identifiers.append(identifier)
                 seen.add(identifier)
     return identifiers
+
+
+def query_without_document_identifiers(query: str) -> str:
+    """Return the semantic part of a query once its source is already fixed.
+
+    Document identifiers are excellent source selectors, but every chunk of a
+    selected document commonly repeats that identifier in its title. Keeping
+    it in the within-document ranking query can therefore promote section-only
+    chunks above the provision that actually answers the question. Article,
+    paragraph and annex coordinates remain intact because they still carry
+    useful within-document meaning.
+    """
+    normalized = normalize_text(query)
+    for pattern in DOCUMENT_IDENTIFIER_PATTERNS:
+        normalized = pattern.sub(" ", normalized)
+    semantic = re.sub(r"\s+", " ", normalized).strip(" \t\r\n,;:.-?!")
+    return semantic if tokenize(semantic) else query.strip()
 
 
 def _contains_normalized_term(normalized_text: str, term: str) -> bool:

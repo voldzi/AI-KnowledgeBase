@@ -11,7 +11,10 @@
    názvem a zdrojovými metadaty. Jednoznačný dokument se autorizuje a další
    retrieval se omezí na jeho ID ještě před embeddingem a corpus-wide fusion.
    Nejednoznačný nebo nenalezený identifikátor bezpečně pokračuje standardní
-   hybridní cestou.
+   hybridní cestou. Po uzamčení konkrétního dokumentu a verze se dokumentový
+   identifikátor nepoužívá k řazení pasáží uvnitř dokumentu; pořadí určuje
+   význam lidské otázky, zatímco odkazy na článek, odstavec nebo přílohu se
+   zachovají.
 4. Qdrant a OpenSearch vrátí kandidáty. Běžný dotaz používá jen platné verze;
    explicitní version filter nebo časový profil může pracovat s historií.
 5. Registry autorizuje document ID, version ID a policy hash.

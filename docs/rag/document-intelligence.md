@@ -401,6 +401,14 @@ legal questions also receive the larger legal context budget so a human
 follow-up about duties or practical effects can retrieve provisions beyond the
 opening page without relaxing authorization or citation lineage.
 
+After the immutable document/version scope has been established, document-level
+identifiers are removed from the query used to rank passages inside that scope.
+They remain authoritative source coordinates, while the remaining human
+question drives embeddings, lexical retrieval and reranking. Article,
+paragraph and annex coordinates remain in the ranking query. This prevents a
+statute number repeated in every chunk title from promoting bare section
+headings above the substantive provisions requested by the user.
+
 The source-aware reranker uses chunk content for general questions and applies
 an additional title signal only when the query strongly matches the governed
 document title. This preserves no-answer behavior for weak partial matches

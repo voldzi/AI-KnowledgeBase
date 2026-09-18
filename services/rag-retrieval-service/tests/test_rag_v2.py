@@ -343,6 +343,67 @@ async def test_exact_resolver_scopes_before_retrieval_and_uses_full_query_embedd
 
 
 @pytest.mark.asyncio
+async def test_source_scoped_retrieval_ranks_by_semantic_question_without_document_identifier() -> None:
+    target = _chunk("law", "doc_law", "Dodavatel musí řídit bezpečnostní rizika.", version="ver_law")
+    captured_queries: list[str] = []
+    embedded_queries: list[list[str]] = []
+
+    class Retriever:
+        async def retrieve(self, **kwargs):
+            captured_queries.append(kwargs["query"])
+            return [target]
+
+    class LlmClient:
+        async def embeddings(self, queries, **kwargs):
+            embedded_queries.append(queries)
+            return [[0.1, 0.2]]
+
+    class Reranker:
+        async def rerank(self, *, query, chunks, limit):
+            captured_queries.append(query)
+            return chunks[:limit], []
+
+    settings = load_settings(
+        {
+            "AKL_ENV": "test",
+            "AKL_AUTH_MODE": "disabled",
+            "AKL_RAG_DEPENDENCY_MODE": "mock",
+            "AKL_RAG_AUTHZ_MODE": "dev",
+            "AKL_RAG_RERANKER_MODE": "off",
+            "AKL_RAG_PARENT_RETRIEVAL_MODE": "off",
+        }
+    )
+    service = object.__new__(RagRetrievalService)
+    service._settings = settings
+    service._registry_client = MockRegistryClient(settings)
+    service._retriever = Retriever()
+    service._reranker = Reranker()
+    service._llm_client = LlmClient()
+
+    await service._retrieve_authorized(
+        payload=RetrieveRequest(
+            subject_id="user_123",
+            query="Jaké povinnosti dodavatele stanoví 479/2024 Sb.?",
+            filters=RagQueryFilters(
+                classification_max="public",
+                document_ids=["doc_law"],
+                document_version_ids=["ver_law"],
+                only_valid=False,
+            ),
+            max_chunks=8,
+        ),
+        query_id="query_source_scoped",
+        expand_parent=False,
+    )
+
+    assert captured_queries == [
+        "jake povinnosti dodavatele stanovi",
+        "jake povinnosti dodavatele stanovi",
+    ]
+    assert embedded_queries == [["jake povinnosti dodavatele stanovi"]]
+
+
+@pytest.mark.asyncio
 async def test_exact_resolver_does_not_hide_current_authorization_denial_with_history() -> None:
     current = _chunk("current", "doc_current_law", "Aktuální znění zákona.")
     current.citation.document_title = "264/2025 Sb. - Aktuální zákon"

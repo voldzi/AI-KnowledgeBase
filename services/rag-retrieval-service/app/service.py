@@ -78,6 +78,7 @@ from policies.no_answer import NoAnswerPolicy, PolicyDecision
 from policies.evidence import EvidenceGate
 from retrievers.base import Retriever
 from retrievers.query_analysis import RetrievalPlan, analyze_query, extract_identifiers
+from retrievers.scoring import query_without_document_identifiers
 
 logger = logging.getLogger(__name__)
 
@@ -2329,9 +2330,16 @@ class RagRetrievalService:
         else:
             stage_timings_ms["exact_resolution"] = 0.0
 
+        ranking_query = (
+            query_without_document_identifiers(payload.query)
+            if exact_document_id
+            or retrieval_filters.document_ids
+            or retrieval_filters.document_version_ids
+            else payload.query
+        )
         stage_started = time.perf_counter()
         query_vectors = await self._llm_client.embeddings(
-            [payload.query],
+            [ranking_query],
             auth_context=auth_context,
         )
         stage_timings_ms["embedding"] = _elapsed_stage_ms(stage_started)
@@ -2348,7 +2356,7 @@ class RagRetrievalService:
             planned_limit=plan.candidate_limit,
         )
         retrieve_kwargs = {
-            "query": payload.query,
+            "query": ranking_query,
             "filters": retrieval_filters,
             "limit": candidate_limit,
         }
@@ -2404,7 +2412,7 @@ class RagRetrievalService:
                 available=len(authorized),
             )
             reranked, rerank_warnings = await self._rerank_chunks(
-                query=payload.query,
+                query=ranking_query,
                 chunks=authorized[:rerank_budget],
                 limit=min(max(payload.max_chunks * 2, payload.max_chunks), rerank_budget),
             )

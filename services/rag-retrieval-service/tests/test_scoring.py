@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from app.schemas import ChunkCitation, RagQueryFilters, RetrievedChunk
 from rerankers.lexical import LexicalReranker
-from retrievers.scoring import expand_query_text, extract_query_identifiers, payload_matches_filters, sparse_score
+from retrievers.scoring import (
+    expand_query_text,
+    extract_query_identifiers,
+    payload_matches_filters,
+    query_without_document_identifiers,
+    sparse_score,
+)
 
 
 def test_expand_query_text_adds_controlled_document_synonyms() -> None:
@@ -43,6 +49,17 @@ def test_extract_query_identifiers_recognizes_czech_statute_number() -> None:
     assert extract_query_identifiers("Jaký je obsah zákona 365/2000 Sb.?") == [
         "365/2000 sb"
     ]
+
+
+def test_source_scoped_ranking_removes_document_identifier_but_keeps_coordinates() -> None:
+    query = "Jaké povinnosti stanoví 479/2024 Sb. v čl. 4 odst. 2?"
+
+    ranked = query_without_document_identifiers(query)
+
+    assert "479/2024" not in ranked
+    assert "cl. 4" in ranked
+    assert "odst. 2" in ranked
+    assert "povinnosti" in ranked
 
 
 def test_reranker_prefers_exact_source_title_over_semantic_noise() -> None:
