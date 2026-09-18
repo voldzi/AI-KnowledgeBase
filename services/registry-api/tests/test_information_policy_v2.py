@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date
 
 import pytest
+from fastapi import HTTPException
 
 from app.information_policy import (
     InformationPolicyBinding,
@@ -77,6 +78,59 @@ def create_document(client, *, information_policy: dict | None = None):
             "information_policy": information_policy,
         }),
     )
+
+
+def test_filter_preserves_governance_outage_instead_of_false_denial(
+    client,
+    verified_profile_authority,
+    db_session,
+    monkeypatch,
+) -> None:
+    document = create_document(client, information_policy=policy()).json()
+    version = client.post(
+        f"/api/v1/documents/{document['document_id']}/versions",
+        headers=v2_headers(
+            subject="user_owner",
+            capabilities="akb:upload,akb:manage_document",
+            scopes="organization:org_stratos",
+        ),
+        json=profiled_version_request(document, {
+            "version_label": "1.0",
+            "source_file_uri": "s3://akl-documents/policy-v2/outage.pdf",
+            "file_hash": f"sha256:{'9' * 64}",
+        }),
+    ).json()
+    stored_document = db_session.get(Document, document["document_id"])
+    stored_version = db_session.get(DocumentVersion, version["document_version_id"])
+    stored_document.status = "valid"
+    stored_version.status = "valid"
+    db_session.commit()
+
+    def unavailable(*_args, **_kwargs):
+        raise HTTPException(status_code=503, detail="governance unavailable")
+
+    monkeypatch.setattr("app.api.require_fresh_document_profile", unavailable)
+    response = client.post(
+        "/api/v1/authz/filter-documents",
+        headers=v2_headers(
+            subject="user_owner",
+            capabilities="akb:chat,akb:read_document",
+            scopes="organization:org_stratos",
+        ),
+        json={
+            "subject_id": "user_owner",
+            "action": "rag.query",
+            "candidate_document_ids": [document["document_id"]],
+            "candidate_policy_hashes": {
+                document["document_id"]: [document["policy_hash"]]
+            },
+            "candidate_document_versions": {
+                document["document_id"]: [version["document_version_id"]]
+            },
+        },
+    )
+
+    assert response.status_code == 503
 
 
 def test_policy_binding_id_accepts_registry_and_central_namespaces() -> None:

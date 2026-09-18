@@ -9772,7 +9772,12 @@ def filter_authorized_documents(
         for candidate_id in tuple(allowed_versions):
             try:
                 require_fresh_document_profile(document, version=versions_by_id[candidate_id], actor_id=payload.subject_id)
-            except HTTPException:
+            except HTTPException as exc:
+                # A governance outage is not an authorization denial. Keep the
+                # decision fail-closed, but preserve 5xx so callers can retry
+                # the unavailable authority instead of showing a false 403.
+                if exc.status_code >= 500:
+                    raise
                 allowed_versions.discard(candidate_id)
         denied_versions = candidate_versions - allowed_versions
         coordinates_allowed = (
@@ -9788,7 +9793,9 @@ def filter_authorized_documents(
         if coordinates_allowed and not candidate_versions:
             try:
                 require_fresh_document_profile(document, actor_id=payload.subject_id)
-            except HTTPException:
+            except HTTPException as exc:
+                if exc.status_code >= 500:
+                    raise
                 coordinates_allowed = False
         if coordinates_allowed:
             allowed_document_ids.append(document_id)
