@@ -1357,11 +1357,12 @@ class RagRetrievalService:
             "extract_obligations",
             "normative_with_citations",
         }
+        explicit_identifier_request = bool(extract_identifiers(payload.message))
         max_chunks = (
             3
             if director_copilot_request
             else 10
-            if _assistant_legal_retrieval_hint(payload.message)
+            if explicit_identifier_request or _assistant_legal_retrieval_hint(payload.message)
             else 10
             if len(requested_facets) >= 2
             else 8
@@ -1394,11 +1395,15 @@ class RagRetrievalService:
             required_legal_evidence[1] in chunk.text.lower()
             for chunk in assistant_chunks
         ):
+            supplemental_filters = _supplemental_retrieval_filters(
+                retrieval_filters,
+                run.response,
+            )
             supplemental = await self._retrieve_authorized(
                 payload=RetrieveRequest(
                     subject_id=payload.user_id,
                     query=required_legal_evidence[0],
-                    filters=retrieval_filters,
+                    filters=supplemental_filters,
                     max_chunks=3,
                 ),
                 query_id=query_id,
@@ -4014,6 +4019,39 @@ def _citations_within_scope(
     return bool(citations) and all(
         (citation.document_id, citation.document_version_id) in allowed
         for citation in citations
+    )
+
+
+def _supplemental_retrieval_filters(
+    filters: RagQueryFilters,
+    response: RetrieveResponse,
+) -> RagQueryFilters:
+    """Keep secondary evidence lookup inside an already resolved exact source.
+
+    ``_retrieve_authorized`` resolves an explicit identifier internally and does
+    not mutate the caller's filters.  A later facet-specific lookup must carry
+    that immutable scope forward; otherwise a generic phrase in a long source
+    title can pull evidence from an unrelated document.
+    """
+    diagnostics = response.retrieval_diagnostics
+    if not isinstance(diagnostics, dict) or not diagnostics.get(
+        "exact_document_scope_applied"
+    ):
+        return filters
+    document_ids = sorted({chunk.citation.document_id for chunk in response.chunks})
+    version_ids = sorted(
+        {chunk.citation.document_version_id for chunk in response.chunks}
+    )
+    if len(document_ids) != 1 or not version_ids:
+        return filters
+    historical = bool(diagnostics.get("historical_exact_source_applied"))
+    return filters.model_copy(
+        update={
+            "document_ids": document_ids,
+            "document_version_ids": version_ids,
+            "only_valid": False if historical else filters.only_valid,
+            "valid_on": None if historical else filters.valid_on,
+        }
     )
 
 

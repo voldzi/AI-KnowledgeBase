@@ -176,6 +176,11 @@ labels, uploader identity and service credentials cannot replace central proof.
 See the [document profile contract](CONTRACTS/AKB_DOCUMENT_PROFILE_PROPOSAL.md).
 The required STRATOS registration/decision extensions are coordinated dependencies;
 unsupported, stale, denied or conflicting confirmation fails closed.
+An exact document-admission decision that receives a transient upstream
+`502`, `503`, `504`, or transport failure is retried at most twice with the
+same nonce-bound request before Registry returns unavailable. Denials and
+invalid confirmations are never retried or converted into access, and no
+stored proof substitutes for the fresh successful response.
 
 The specialized `/api/v1/integrations/ingestion/readiness` requires fresh central
 support for the exact catalog/profile revisions and atomic registration plus

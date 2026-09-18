@@ -2190,3 +2190,25 @@ def test_minimal_service_identity_rejects_foreign_roles_and_human_claims(extra):
     claims = {"scope": "service_ingestion", "azp": "stratos-archflow-akb-service",
               "client_id": "stratos-archflow-akb-service", **extra}
     assert auth_module._is_minimal_client_credentials_identity(claims) is False
+def test_document_admission_decision_retries_transient_upstream_failure(monkeypatch) -> None:
+    client = StratosGovernanceClient(_settings())
+    statuses = iter((503, 502, 200))
+    calls: list[int] = []
+
+    def request(*_args, **_kwargs):
+        status = next(statuses)
+        calls.append(status)
+        return SimpleNamespace(status_code=status, json=lambda: {"decision": "ALLOW"})
+
+    monkeypatch.setattr(client._http_client, "request", request)
+    monkeypatch.setattr("app.access_governance.time.sleep", lambda _seconds: None)
+
+    response = client._request(
+        "POST",
+        "https://stratos.example/api/v1/information/resources/akb/document_version/ver_1/document-admission/decisions",
+        "runtime-token",
+        {"requestNonce": "nonce"},
+    )
+
+    assert response == {"decision": "ALLOW"}
+    assert calls == [503, 502, 200]

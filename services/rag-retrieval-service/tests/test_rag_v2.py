@@ -14,6 +14,7 @@ from app.schemas import (
     RagAnswer,
     RagQueryFilters,
     RetrieveRequest,
+    RetrieveResponse,
     RetrievedChunk,
 )
 from app.service import (
@@ -24,6 +25,7 @@ from app.service import (
     _exact_resolver_limit,
     _reranker_budget,
     _reranker_diagnostics,
+    _supplemental_retrieval_filters,
 )
 from policies.evidence import EvidenceGate, _model_assessment
 import rerankers.cross_encoder as cross_encoder_module
@@ -67,6 +69,27 @@ def test_query_analyzer_routes_exact_temporal_comparison_and_live_data() -> None
     assert extract_identifiers("Smlouva 120-2022-S") == ("120-2022-S",)
     assert analyze_query("365/2000 Sb.", filters, **defaults).profile == "exact"
     assert extract_identifiers("zákon č. 365/2000 Sb.") == ("365/2000 Sb.",)
+
+
+def test_supplemental_lookup_preserves_resolved_exact_historical_version() -> None:
+    chunk = _chunk("law", "doc_447", "Povinnost podle přesně určené vyhlášky.", version="ver_447")
+    response = RetrieveResponse(
+        query_id="query_exact",
+        chunks=[chunk],
+        warnings=["EXACT_DOCUMENT_SCOPE_APPLIED", "HISTORICAL_EXACT_SOURCE_APPLIED"],
+        retrieval_profile="exact",
+        retrieval_diagnostics={
+            "exact_document_scope_applied": True,
+            "historical_exact_source_applied": True,
+        },
+    )
+
+    scoped = _supplemental_retrieval_filters(RagQueryFilters(), response)
+
+    assert scoped.document_ids == ["doc_447"]
+    assert scoped.document_version_ids == ["ver_447"]
+    assert scoped.only_valid is False
+    assert scoped.valid_on is None
 
 
 def test_reranker_diagnostics_contains_only_operational_metadata() -> None:

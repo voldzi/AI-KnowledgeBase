@@ -908,15 +908,35 @@ class StratosGovernanceClient:
             **(extra_headers or {}),
         }
         headers["Authorization"] = f"Bearer {token}"
-        try:
-            response = self._http_client.request(
-                method,
-                url,
-                headers=headers,
-                json=body,
-            )
-        except httpx.HTTPError as exc:
-            raise GovernanceUnavailable("STRATOS access governance is unavailable") from exc
+        admission_decision = url.rstrip("/").endswith("/document-admission/decisions")
+        attempts = 3 if admission_decision else 1
+        response: httpx.Response | Any | None = None
+        last_error: httpx.HTTPError | None = None
+        for attempt in range(attempts):
+            try:
+                response = self._http_client.request(
+                    method,
+                    url,
+                    headers=headers,
+                    json=body,
+                )
+                last_error = None
+            except httpx.HTTPError as exc:
+                last_error = exc
+                if attempt + 1 >= attempts:
+                    break
+            else:
+                if response.status_code not in {502, 503, 504} or attempt + 1 >= attempts:
+                    break
+                logger.warning(
+                    "stratos_document_admission_transient status=%s attempt=%s correlation_id=%s",
+                    response.status_code,
+                    attempt + 1,
+                    (extra_headers or {}).get("X-Correlation-ID", "missing"),
+                )
+            time.sleep(0.15 * (2**attempt))
+        if last_error is not None or response is None:
+            raise GovernanceUnavailable("STRATOS access governance is unavailable") from last_error
         if response.status_code in {401, 403}:
             upstream_code = "unknown"
             try:

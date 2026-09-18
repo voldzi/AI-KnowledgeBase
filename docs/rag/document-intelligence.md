@@ -393,6 +393,14 @@ retry is not used when a current candidate exists but authorization rejects it;
 that remains a fail-closed signal for stale indexing or denied access rather
 than silently substituting an older version.
 
+Once an explicit identifier resolves to one governed document and its allowed
+immutable versions, every secondary facet lookup remains inside those same
+coordinates. Broad words in a title, for example a reference to a contract in
+an otherwise unrelated regulation, cannot introduce a second document. Exact
+legal questions also receive the larger legal context budget so a human
+follow-up about duties or practical effects can retrieve provisions beyond the
+opening page without relaxing authorization or citation lineage.
+
 The source-aware reranker uses chunk content for general questions and applies
 an additional title signal only when the query strongly matches the governed
 document title. This preserves no-answer behavior for weak partial matches
