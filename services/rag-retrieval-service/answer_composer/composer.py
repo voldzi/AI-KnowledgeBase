@@ -128,6 +128,7 @@ class AnswerComposer:
                     messages=retry_messages,
                     metadata={**completion_metadata, "incomplete_answer_retry": True},
                     model=selected_chat_model,
+                    max_tokens=min(max(self._settings.answer_max_tokens * 2, 1536), 4096),
                     auth_context=auth_context,
                 )
                 answer = completion.content
@@ -222,22 +223,21 @@ class AnswerComposer:
         messages: list[dict[str, str]],
         metadata: dict[str, object],
         model: str | None,
+        max_tokens: int | None = None,
         auth_context: AuthContext | None,
     ) -> ChatCompletionResult:
+        completion_options: dict[str, object] = {
+            "messages": messages,
+            "metadata": metadata,
+            "model": model,
+            "auth_context": auth_context,
+        }
+        if max_tokens is not None:
+            completion_options["max_tokens"] = max_tokens
         result_method = getattr(self._llm_client, "chat_completion_result", None)
         if callable(result_method):
-            return await result_method(
-                messages=messages,
-                metadata=metadata,
-                model=model,
-                auth_context=auth_context,
-            )
-        content = await self._llm_client.chat_completion(
-            messages=messages,
-            metadata=metadata,
-            model=model,
-            auth_context=auth_context,
-        )
+            return await result_method(**completion_options)
+        content = await self._llm_client.chat_completion(**completion_options)
         return ChatCompletionResult(
             content=content,
             model=model or self._settings.chat_model,

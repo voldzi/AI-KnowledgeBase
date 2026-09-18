@@ -90,6 +90,7 @@ async function runCycle() {
             effectiveFrom: string(candidate.effectiveFrom, "effectiveFrom"),
             effectiveTo: candidate.effectiveTo === null ? null : candidate.effectiveTo ? string(candidate.effectiveTo, "effectiveTo") : null,
           } });
+          requireCompletedIngestion(result);
           state.completed[key] = { at: new Date().toISOString(), sha256: string(result.sha256, "sha256") };
           delete state.failures[key];
           succeeded += 1;
@@ -123,6 +124,12 @@ async function runCycle() {
     await lock.close();
     await unlink(lockPath).catch(() => undefined);
   }
+}
+
+function requireCompletedIngestion(result) {
+  const status = result?.job?.status;
+  if (status === "completed" || status === "completed_with_warnings") return;
+  throw new Error(`INGESTION_NOT_COMPLETED ${typeof status === "string" ? status : "missing"}`);
 }
 
 async function invoke(body, attempt = 0) {

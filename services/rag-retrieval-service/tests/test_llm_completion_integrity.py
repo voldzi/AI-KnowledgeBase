@@ -81,9 +81,11 @@ class InterruptedClient:
 class CompletesOnRetryClient:
     def __init__(self):
         self.calls = 0
+        self.max_tokens = []
 
     async def chat_completion(self, **kwargs):
         self.calls += 1
+        self.max_tokens.append(kwargs.get("max_tokens"))
         if self.calls == 1:
             raise RetrievalError("LLM_ANSWER_INCOMPLETE", "Incomplete")
         assert kwargs["metadata"]["incomplete_answer_retry"] is True
@@ -105,6 +107,18 @@ def test_composer_retries_one_incomplete_generation_and_keeps_citations():
     assert answer.answer == "A concise and complete answer."
     assert [citation.chunk_id for citation in answer.citations] == ["chunk-retry"]
     assert "LLM_ANSWER_RETRIED" in answer.warnings
+    assert llm.max_tokens == [None, 3072]
+
+
+def test_http_client_honors_bounded_retry_token_override(monkeypatch):
+    request = AsyncMock(return_value={
+        "content": "Complete answer.", "finish_reason": "stop", "usage": {"total_tokens": 42},
+    })
+    monkeypatch.setattr(llm_client, "request_json_with_retry", request)
+    asyncio.run(HttpLLMGatewayClient(settings()).chat_completion_result(
+        messages=[], metadata={"incomplete_answer_retry": True}, max_tokens=3072,
+    ))
+    assert request.call_args.kwargs["json_body"]["max_tokens"] == 3072
 
 def test_composer_replaces_partial_prose_and_never_certifies_it():
     chunk = RetrievedChunk(

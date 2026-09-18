@@ -134,7 +134,7 @@ Zkopirujte `.env.example` a nastavte hodnoty podle prostredi.
 | `AKL_LLM_GATEWAY_AUDIENCE` | `llm-gateway-service` | Audience posílaná se service identitou `svc-rag`. |
 | `AKL_RAG_NO_ANSWER_MIN_SCORE` | `0.35` | Minimalni rerank score pro odpoved. |
 | `AKL_RAG_MAX_CONTEXT_CHARS` | `20000` | Maximalni velikost autorizovaneho dokumentoveho kontextu pro LLM. |
-| `AKL_RAG_ANSWER_MAX_TOKENS` | `768` | Maximalni delka generovane odpovedi posilana do LLM Gateway. |
+| `AKL_RAG_ANSWER_MAX_TOKENS` | `1536` | Maximalni delka prvni generovane odpovedi. Jediny recovery pokus po token-limit ukonceni pouzije dvojnasobny rozpocet omezeny na 1536 az 4096 tokenu. |
 | `AKL_ASSISTANT_HISTORY_MAX_USER_MESSAGES` | `12` | Nejvyssi pocet predchozich uzivatelskych otazek pro relevantni navazani. |
 | `AKL_ASSISTANT_HISTORY_MAX_MESSAGE_CHARS` | `800` | Limit jedne historicke uzivatelske otazky. |
 | `AKL_ASSISTANT_HISTORY_MAX_CHARS` | `6000` | Celkovy limit historickych uzivatelskych otazek pro skladani odpovedi. |

@@ -42,6 +42,7 @@ class LLMGatewayClient(Protocol):
         messages: list[dict[str, str]],
         metadata: dict[str, Any],
         model: str | None = None,
+        max_tokens: int | None = None,
         auth_context: AuthContext | None = None,
     ) -> str:
         ...
@@ -52,6 +53,7 @@ class LLMGatewayClient(Protocol):
         messages: list[dict[str, str]],
         metadata: dict[str, Any],
         model: str | None = None,
+        max_tokens: int | None = None,
         auth_context: AuthContext | None = None,
     ) -> ChatCompletionResult:
         ...
@@ -88,12 +90,14 @@ class MockLLMGatewayClient:
         messages: list[dict[str, str]],
         metadata: dict[str, Any],
         model: str | None = None,
+        max_tokens: int | None = None,
         auth_context: AuthContext | None = None,
     ) -> str:
         result = await self.chat_completion_result(
             messages=messages,
             metadata=metadata,
             model=model,
+            max_tokens=max_tokens,
             auth_context=auth_context,
         )
         return result.content
@@ -104,6 +108,7 @@ class MockLLMGatewayClient:
         messages: list[dict[str, str]],
         metadata: dict[str, Any],
         model: str | None = None,
+        max_tokens: int | None = None,
         auth_context: AuthContext | None = None,
     ) -> ChatCompletionResult:
         if self._settings.mock_chat_response:
@@ -197,12 +202,14 @@ class HttpLLMGatewayClient:
         messages: list[dict[str, str]],
         metadata: dict[str, Any],
         model: str | None = None,
+        max_tokens: int | None = None,
         auth_context: AuthContext | None = None,
     ) -> str:
         result = await self.chat_completion_result(
             messages=messages,
             metadata=metadata,
             model=model,
+            max_tokens=max_tokens,
             auth_context=auth_context,
         )
         return result.content
@@ -213,6 +220,7 @@ class HttpLLMGatewayClient:
         messages: list[dict[str, str]],
         metadata: dict[str, Any],
         model: str | None = None,
+        max_tokens: int | None = None,
         auth_context: AuthContext | None = None,
     ) -> ChatCompletionResult:
         selected_model = model or self._settings.chat_model
@@ -225,7 +233,7 @@ class HttpLLMGatewayClient:
                 "model": selected_model,
                 "messages": messages,
                 "temperature": 0,
-                "max_tokens": self._settings.answer_max_tokens,
+                "max_tokens": max_tokens or self._settings.answer_max_tokens,
                 "stream": False,
                 "metadata": metadata,
             },

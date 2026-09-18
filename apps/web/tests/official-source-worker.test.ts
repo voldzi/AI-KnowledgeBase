@@ -28,7 +28,7 @@ test("official-source worker prioritizes current laws before historical versions
     }
     assert.equal(body.action, "sync");
     synchronized.push(body.source.sourceUrl);
-    response.end(JSON.stringify({ action: "created", sha256: "a".repeat(64) }));
+    response.end(JSON.stringify(completedSync("a")));
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
@@ -77,7 +77,7 @@ test("official-source worker trusts an explicit future temporal status", async (
       return;
     }
     synchronized.push(body.source.sourceUrl);
-    response.end(JSON.stringify({ action: "created", sha256: "c".repeat(64) }));
+    response.end(JSON.stringify(completedSync("c")));
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
@@ -115,7 +115,7 @@ test("official-source worker backs off a rejected law so later laws can progress
       response.end(JSON.stringify({ error: { code: "PUBLIC_SOURCE_APPROVAL_DENIED" } }));
       return;
     }
-    response.end(JSON.stringify({ action: "created", sha256: "b".repeat(64) }));
+    response.end(JSON.stringify(completedSync("b")));
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
@@ -136,9 +136,56 @@ test("official-source worker backs off a rejected law so later laws can progress
   } finally { server.close(); }
 });
 
+test("official-source worker never records a failed ingestion as completed", async () => {
+  const root = await mkdtemp(join(tmpdir(), "akb-official-source-terminal-"));
+  const secretFile = join(root, "secret");
+  const secret = "test-official-source-secret-at-least-32-bytes";
+  await writeFile(secretFile, secret, { mode: 0o600 });
+  let attempts = 0;
+  const server = createServer(async (request, response) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) chunks.push(Buffer.from(chunk));
+    const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    response.setHeader("content-type", "application/json");
+    if (body.action === "discover") {
+      response.end(JSON.stringify({ collectionRevision: "r1", candidates: [
+        candidate("https://e-sbirka.gov.cz/sb/1999/106/2024-01-01", "law", "2024-01-01", null, "current"),
+      ] }));
+      return;
+    }
+    attempts += 1;
+    response.end(JSON.stringify(attempts === 1
+      ? { action: "created", sha256: "d".repeat(64), job: { status: "failed" } }
+      : completedSync("d")));
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const env = { ...process.env, AKB_OFFICIAL_SOURCE_AUTOMATION_ENABLED: "true",
+    AKB_OFFICIAL_SOURCE_WEB_URL: `http://127.0.0.1:${address.port}`,
+    AKB_OFFICIAL_SOURCE_INTERNAL_SECRET_FILE: secretFile, AKB_OFFICIAL_SOURCE_STATE_DIR: root,
+    AKB_OFFICIAL_SOURCE_MAX_NEW_PER_RUN: "1", AKB_OFFICIAL_SOURCE_FAILURE_BACKOFF_SECONDS: "1",
+    AKB_OFFICIAL_SOURCE_START_DELAY_SECONDS: "0" };
+  try {
+    await runWorker(env);
+    let state = JSON.parse(await readFile(join(root, "state.json"), "utf8"));
+    assert.equal(Object.keys(state.completed).length, 0);
+    assert.equal(Object.keys(state.failures).length, 1);
+    await new Promise((resolve) => setTimeout(resolve, 1_050));
+    await runWorker(env);
+    state = JSON.parse(await readFile(join(root, "state.json"), "utf8"));
+    assert.equal(Object.keys(state.completed).length, 1);
+    assert.equal(Object.keys(state.failures).length, 0);
+  } finally { server.close(); }
+});
+
 function candidate(sourceUrl: string, suffix: string, effectiveFrom: string, effectiveTo: string | null, temporalStatus: string) {
   return { title: suffix, sourceUrl, canonicalUrl: sourceUrl.replace(/\/\d{4}-\d{2}-\d{2}$/, ""), versionLabel: "účinné-od-2024-01-01",
     effectiveFrom, effectiveTo, temporalStatus };
+}
+
+function completedSync(fill: string) {
+  return { action: "created", sha256: fill.repeat(64), job: { status: "completed" } };
 }
 
 async function runWorker(env: NodeJS.ProcessEnv, argument = "--once"): Promise<void> {

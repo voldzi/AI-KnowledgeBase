@@ -284,7 +284,9 @@ laws per cycle and processes every selected law's discovered effective
 versions. After the initial catalog is complete it revalidates the complete
 collection weekly in batches of ten laws. Its state and lock are durable in the
 `official-source-sync-state` volume, so restarts resume without duplicating a
-completed immutable version.
+completed immutable version. The worker records completion only after a
+terminal-successful ingestion (`completed` or `completed_with_warnings`);
+every other job state remains retryable after the configured backoff.
 
 Keep automation disabled until STRATOS has provisioned the collection and the
 exact confidential client. Production requires these file-backed secrets with

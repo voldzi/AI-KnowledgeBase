@@ -101,8 +101,13 @@ If the LLM Gateway returns an empty answer, the service returns `confidence=insu
 An answer is complete only when the gateway explicitly returns
 `finish_reason=stop`. A stream must also end with `[DONE]`. Token-limit stops,
 filter/tool stops, malformed stream frames and missing termination produce
-`LLM_ANSWER_INCOMPLETE`. The composer replaces unfinished prose with a localized
-retry/narrow-question message, no citations or used chunks, and
+`LLM_ANSWER_INCOMPLETE`. For a non-streaming answer the composer makes one
+bounded recovery attempt with a concise-answer instruction and a token budget
+of twice the configured answer limit, clamped to `1536..4096` tokens. This
+prevents a deployment with an old `700`-token override from repeating the same
+truncation with the same budget. If the recovery is also incomplete, the
+composer replaces unfinished prose with a localized retry/narrow-question
+message, no citations or used chunks, and
 `confidence=insufficient_source`. Employee chat preserves this distinction from
 missing documents. It never certifies or persists an unfinished answer as a
 supported answer; a final streaming result replaces any provisional deltas.

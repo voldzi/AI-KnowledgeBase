@@ -148,7 +148,10 @@ remains byte-identical and is retained only as immutable historical evidence.
 The independent `official-source-sync-worker` checks e-Sbírka every six hours.
 An initial cycle selects at most ten unseen laws, while importing all effective
 versions discovered for each selected law. Completion is stored per immutable
-source URL and effective date. Subsequent cycles continue with the next ten
+source URL and effective date only after its ingestion job reaches `completed`
+or `completed_with_warnings`. A failed, cancelled, missing or still running
+ingestion job remains retryable and is never counted as an indexed source.
+Subsequent cycles continue with the next ten
 laws; after the catalog is complete, the worker revalidates it weekly in the
 same bounded batches. Changes become new immutable AKB versions and unchanged
 hashes remain idempotent.
