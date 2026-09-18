@@ -124,11 +124,19 @@ describe("recipient documentation and operational source boundaries", () => {
       "Jaké podmínky vyplývají ze zákona o veřejných zakázkách?",
       "Co stanoví zákon o veřejných zakázkách?",
       "Vysvětli mi zákon o zadávání veřejných zakázek.",
+      "Co musí zadavatel dodržovat při zadávání veřejné zakázky?",
+      "Jaké jsou konkrétní povinnosti dodavatelů podle zákona o zadávání veřejných zakázek?",
     ]) {
       const route = routeAssistantMessage(message, "cs");
       assert.equal(route.tool, "rag_document_answer");
       assert.equal(route.controlledRuleIntent, null);
     }
+  });
+
+  it("keeps a dynamic purchasing system question in governed document retrieval", () => {
+    const route = routeAssistantMessage("Jaké podmínky platí pro dynamický nákupní systém?", "cs");
+    assert.equal(route.tool, "rag_document_answer");
+    assert.equal(route.knowledgeScope, "governed_sources");
   });
 
   it("does not classify an exact statute lookup as live STRATOS data", () => {
