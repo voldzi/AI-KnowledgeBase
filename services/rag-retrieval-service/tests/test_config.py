@@ -123,6 +123,7 @@ def test_current_http_profile_uses_explicit_akl_env_names(tmp_path) -> None:
             "AKL_RAG_CHAT_MODEL": "gemma4:12b-mlx",
             "AKL_RAG_HIGH_QUALITY_CHAT_MODEL": "gemma4:31b-mlx",
             "AKL_RAG_HIGH_QUALITY_MIN_CONTEXT_CHUNKS": "4",
+            "AKL_RAG_ASSISTANT_LLM_FOLLOW_UPS_ENABLED": "true",
         }
     )
 
@@ -149,6 +150,11 @@ def test_current_http_profile_uses_explicit_akl_env_names(tmp_path) -> None:
     assert settings.chat_model == "gemma4:12b-mlx"
     assert settings.high_quality_chat_model == "gemma4:31b-mlx"
     assert settings.high_quality_min_context_chunks == 4
+    assert settings.assistant_llm_follow_ups_enabled is True
+
+
+def test_llm_follow_ups_are_disabled_by_default() -> None:
+    assert load_settings({}).assistant_llm_follow_ups_enabled is False
 
 
 def test_invalid_high_quality_min_context_chunks_is_rejected() -> None:

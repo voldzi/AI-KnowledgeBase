@@ -1613,7 +1613,10 @@ class RagRetrievalService:
                 citations=rag_answer.citations,
                 follow_up_questions=(
                     _fallback_follow_up_questions(payload.message, payload.response_language)
-                    if not payload.persist_conversation
+                    if (
+                        not payload.persist_conversation
+                        or not self._settings.assistant_llm_follow_ups_enabled
+                    )
                     else await self._follow_up_questions(
                         message=payload.message,
                         answer=rag_answer.answer,

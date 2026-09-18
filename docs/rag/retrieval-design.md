@@ -67,6 +67,7 @@ Real local RAG používá:
 - `AKL_RAG_EMBEDDING_MODEL=bge-m3`
 - `AKL_RAG_MAX_CONTEXT_CHARS=20000`
 - `AKL_RAG_ANSWER_MAX_TOKENS=1536`
+- `AKL_RAG_ASSISTANT_LLM_FOLLOW_UPS_ENABLED=false`
 - `AKL_ASSISTANT_HISTORY_MAX_USER_MESSAGES=12`
 - `AKL_ASSISTANT_HISTORY_MAX_MESSAGE_CHARS=800`
 - `AKL_ASSISTANT_HISTORY_MAX_CHARS=6000`
@@ -81,6 +82,13 @@ Mock/dev-test profil používá `mock-embedding` s výchozí dimenzí 8. Tento p
 odpovědi. Standardní zaměstnanecké dotazy zůstávají na `AKL_RAG_CHAT_MODEL`,
 zatímco extrakce, porovnání, checklisty, manažerské/auditní odpovědi a velký
 kontext používají high-quality model, pokud je nastavený.
+
+Navazující otázky jsou ve výchozím stavu vytvářené deterministicky z tématu
+dotazu. Tím se citovaná odpověď nezdržuje druhým blokujícím voláním modelu a
+při souběhu uživatelů nevzniká fronta, která by mohla způsobit timeout samotné
+odpovědi. Experimentální modelové návrhy lze zapnout proměnnou
+`AKL_RAG_ASSISTANT_LLM_FOLLOW_UPS_ENABLED=true`; před provozním zapnutím musí
+projít zátěžovým a source-lineage testem.
 
 ## Qdrant payload
 

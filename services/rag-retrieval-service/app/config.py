@@ -228,6 +228,7 @@ class Settings:
     high_quality_min_context_chunks: int
     mock_chat_response: str | None
     mock_registry_denied_document_ids: tuple[str, ...]
+    assistant_llm_follow_ups_enabled: bool = False
     identity_mode: str = "external_oidc"
     managed_identity_issuer: str | None = None
 
@@ -637,4 +638,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         high_quality_min_context_chunks=high_quality_min_context_chunks,
         mock_chat_response=source.get("AKL_RAG_MOCK_CHAT_RESPONSE") or None,
         mock_registry_denied_document_ids=denied,
+        assistant_llm_follow_ups_enabled=_parse_bool(
+            _get(source, "AKL_RAG_ASSISTANT_LLM_FOLLOW_UPS_ENABLED", "false")
+        ),
     )
