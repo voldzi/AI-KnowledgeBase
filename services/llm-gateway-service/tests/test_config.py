@@ -98,6 +98,8 @@ def test_ollama_non_mock_profile_can_be_enabled() -> None:
     assert settings.default_chat_model == "gemma4:12b-mlx"
     assert settings.default_embedding_model == "bge-m3"
     assert settings.default_max_tokens == 512
+    assert settings.request_timeout_seconds == 120
+    assert settings.retry_attempts == 0
     assert settings.ollama_think is False
     assert settings.ollama_endpoint_timeout_seconds == 3
 

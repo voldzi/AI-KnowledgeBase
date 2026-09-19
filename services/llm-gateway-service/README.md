@@ -91,8 +91,8 @@ Important settings:
 | `AKL_LLM_ALLOW_MODEL_PULL` | Enables explicit model pull through providers that support it. |
 | `AKL_LLM_ALLOW_MODEL_DELETE` | Reserved safety switch for future delete support. |
 | `AKL_LLM_MODEL_PULL_TIMEOUT_SECONDS` | Timeout for explicit model pull operations. |
-| `AKL_LLM_REQUEST_TIMEOUT_SECONDS` | HTTP timeout for external provider calls. |
-| `AKL_LLM_RETRY_ATTEMPTS` | Retries after the first failed provider attempt. |
+| `AKL_LLM_REQUEST_TIMEOUT_SECONDS` | HTTP timeout for provider calls; defaults to 120 seconds so bounded local evidence verification can finish. |
+| `AKL_LLM_RETRY_ATTEMPTS` | Retries after the first failed provider attempt; defaults to `0` to prevent duplicate long-running inference and queue amplification. Durable callers retry whole jobs when appropriate. |
 | `AKL_RATE_LIMIT_ENABLED` | Enables the bounded per-authenticated-caller rate limiter. |
 | `AKL_RATE_LIMIT_PER_MINUTE` | Maximum requests per authenticated caller in a rolling minute window. |
 | `AKL_RATE_LIMIT_MAX_IDENTITIES` | Maximum caller counters retained in memory; oldest inactive entry is evicted when full. |

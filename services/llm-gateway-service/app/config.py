@@ -212,8 +212,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
             raise ConfigError("Production must not enable the mock LLM provider")
 
     try:
-        request_timeout_seconds = float(_get(source, "AKL_LLM_REQUEST_TIMEOUT_SECONDS", "30"))
-        retry_attempts = int(_get(source, "AKL_LLM_RETRY_ATTEMPTS", "2"))
+        request_timeout_seconds = float(_get(source, "AKL_LLM_REQUEST_TIMEOUT_SECONDS", "120"))
+        retry_attempts = int(_get(source, "AKL_LLM_RETRY_ATTEMPTS", "0"))
         retry_backoff_seconds = float(_get(source, "AKL_LLM_RETRY_BACKOFF_SECONDS", "0.25"))
         ollama_endpoint_timeout_seconds = float(_get(source, "AKL_OLLAMA_ENDPOINT_TIMEOUT_SECONDS", "3"))
         model_pull_timeout_seconds = float(_get(source, "AKL_LLM_MODEL_PULL_TIMEOUT_SECONDS", "1800"))
