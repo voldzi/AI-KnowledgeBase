@@ -61,7 +61,7 @@ semantic correctness ([OpenAI documentation](https://developers.openai.com/api/d
   unknown markers and exact verifier/source identity checks remain intact.
 - A second live response used deterministic fallback after malformed verifier
   output. Shadow verification is diagnostic, not a guarantee of correctness.
-  Deployment outcome remains pending the follow-up candidate.
+  Those intermediate candidates were rolled back; see final activation below.
 
 Temporal-closure issuance remains coordinated with STRATOS. Do not treat this
 UI/model change as deployment of the separate historical-admission contract.
@@ -101,3 +101,33 @@ returned five complete bullet claims against seven input fragments. List-item
 verification now preserves each complete item and all its sentences. It does
 not silently accept missing claims or changed numbers. The local suite now
 contains 428 passing tests.
+
+
+## Final activation
+
+- RAG revision: `def2dab526dc318e70eeb228cd4f09b2842a646f`.
+- Web/chat-web artifacts: `0476cf1`, activated in release `2d33a66`.
+- Branch: `codex/perfect-chat-evidence-lineage`, backed up on GitHub.
+- Local and exact Linux/amd64 RAG image: **428 tests passed**.
+- Authenticated final API smoke: HTTP 200, persisted answer, four expected
+  procurement principles present, exact citation open HTTP 200.
+- OpenAI verifier: `gpt-5.6-luna`, no format fallback in final smoke;
+  six claims, two supported including the main claim, zero citation-only claims.
+  Aggregate evidence status remains **partial**. This is functional acceptance
+  of diagnostic verification, not factual certification of the whole answer.
+- Final sample: 10,092 tokens, estimated USD 0.0047044 including verification;
+  verification used 6,281 tokens, estimated USD 0.0031492.
+- Public readiness: `ready`, no degraded dependencies.
+- Records: `/srv/akb/state/chat-integrity-2d33a66` (navigation/model profile),
+  `/srv/akb/state/chat-integrity-def2dab` (final RAG). Each manifest preserves
+  prior image identity and Compose chain for rollback. Rollback overrides are
+  stored per affected service; reactivate with the recorded chain and
+  `up -d --no-build --no-deps --pull never`, then health/readiness and smoke.
+- No document, version, policy, storage or database migration was performed.
+  No STRATOS release or temporal-closure grant was activated by this change.
+
+Next quality work remains explicit: calibrate semantic verification on diverse
+multi-turn questions, separate source metadata from normative assertions,
+finish temporal-closure joint acceptance, and diagnose intermittent session
+probe failures. Do not describe the existing 200-turn diagnostic or this smoke
+as proof that all human questions are answered correctly.
