@@ -1,6 +1,7 @@
 from scripts.evaluate_assistant_human_questions import (
     DEFAULT_MANIFEST,
     _claim_content_checks,
+    _completed_results,
     _manifest,
     _quote_reappears_in_source,
     _reopened_source_text,
@@ -103,3 +104,16 @@ def test_reopened_source_text_keeps_only_the_authorized_viewer_window():
     assert "pokračuje ve vybraném úseku" in reopened
     assert "a končí v následujícím úseku." in reopened
     assert "nezahrnout" not in reopened
+
+
+def test_resume_retries_failed_cases_and_keeps_only_successes():
+    existing = {
+        "results": [
+            {"case_id": "passed", "passed": True},
+            {"case_id": "failed", "passed": False},
+            {"case_id": "unfinished"},
+        ]
+    }
+    assert _completed_results(existing) == {
+        "passed": {"case_id": "passed", "passed": True}
+    }

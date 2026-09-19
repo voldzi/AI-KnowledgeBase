@@ -458,6 +458,19 @@ def _write(path: Path, payload: dict[str, Any]) -> None:
     os.replace(temporary, path)
 
 
+def _completed_results(existing: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Resume only successful cases; transient and quality failures are retried."""
+    return {
+        item["case_id"]: item
+        for item in existing.get("results", [])
+        if (
+            isinstance(item, dict)
+            and isinstance(item.get("case_id"), str)
+            and item.get("passed") is True
+        )
+    }
+
+
 async def _main(args: argparse.Namespace) -> int:
     if not 1 <= args.concurrency <= 8:
         raise ValueError("concurrency must be between 1 and 8")
@@ -471,11 +484,7 @@ async def _main(args: argparse.Namespace) -> int:
         existing = json.loads(args.output.read_text(encoding="utf-8"))
         if existing.get("manifest_sha256") != digest:
             raise ValueError("Cannot resume against a different manifest")
-    completed = {
-        item["case_id"]: item
-        for item in existing.get("results", [])
-        if isinstance(item, dict) and isinstance(item.get("case_id"), str)
-    }
+    completed = _completed_results(existing)
     client = AkbClient()
     client.timeout = min(600.0, max(2.0, float(args.timeout_seconds)))
     client.credentials.token()  # Prime refresh before concurrent work.
