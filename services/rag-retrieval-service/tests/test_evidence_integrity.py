@@ -412,6 +412,10 @@ async def test_verifier_inherits_source_processing_restrictions():
     claim_schema = schema["properties"]["claims"]["items"]
     assert claim_schema["additionalProperties"] is False
     assert claim_schema["properties"]["chunk_ids"]["items"]["enum"] == ["a"]
+    assert claim_schema["properties"]["chunk_ids"]["maxItems"] == 1
+    quote_schema = claim_schema["properties"]["quoted_support"]["anyOf"][1]
+    assert quote_schema["maxItems"] == 1
+    assert quote_schema["items"]["properties"]["quote"]["maxLength"] == 600
     assert "EVIDENCE_VERIFIER_LOCAL_POLICY_ROUTE" in result.warnings
     assert captured["content_logged"] is False
     assert SOURCE not in json.dumps(captured)

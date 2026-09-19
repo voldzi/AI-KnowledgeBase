@@ -504,7 +504,8 @@ def _verification_messages(answer: str, chunks: list[RetrievedChunk]) -> list[di
                 "the same order, copying it exactly into claim; do not omit or rewrite statements. "
                 "Each item has only claim, claim_type (main for the first, supporting otherwise), "
                 "chunk_ids (unique supplied IDs), quoted_support (an array of objects with only "
-                "chunk_id and quote, one verbatim passage for each cited ID), "
+                "chunk_id and quote, using at most two cited IDs and the shortest complete verbatim "
+                "passage that proves the statement; every quote must be at most 600 characters), "
                 "and supported (boolean). Set supported true ONLY if those passages together entail the entire "
                 "statement, including subject, polarity, quantities, units, dates, conditions and "
                 "exceptions. Topical similarity is not proof. Otherwise return supported false, "
@@ -536,7 +537,7 @@ def _verification_response_schema(
         "type": "object",
         "properties": {
             "chunk_id": {"type": "string", "enum": chunk_ids},
-            "quote": {"type": "string", "minLength": 1},
+            "quote": {"type": "string", "minLength": 1, "maxLength": 600},
         },
         "required": ["chunk_id", "quote"],
         "additionalProperties": False,
@@ -550,7 +551,7 @@ def _verification_response_schema(
                 "type": "array",
                 "items": {"type": "string", "enum": chunk_ids},
                 "uniqueItems": True,
-                "maxItems": len(chunk_ids),
+                "maxItems": min(2, len(chunk_ids)),
             },
             "quoted_support": {
                 "anyOf": [
@@ -559,7 +560,7 @@ def _verification_response_schema(
                         "type": "array",
                         "items": quote_span,
                         "minItems": 1,
-                        "maxItems": len(chunk_ids),
+                        "maxItems": min(2, len(chunk_ids)),
                     },
                 ]
             },
