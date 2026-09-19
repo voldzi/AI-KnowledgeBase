@@ -94,3 +94,10 @@ and STRATOS confirmed no restart. Its underlying transient cause is unresolved.
 Registry-backed page loads were around 24 seconds in observed logs. Navigation
 feedback is fixed; data-loading latency is not claimed to be fixed. Historical
 temporal-closure activation remains pending joint consumer acceptance.
+
+A full-response diagnostic identified the remaining format fallback precisely:
+naive sentence splitting split legal abbreviations within list items; the model
+returned five complete bullet claims against seven input fragments. List-item
+verification now preserves each complete item and all its sentences. It does
+not silently accept missing claims or changed numbers. The local suite now
+contains 428 passing tests.

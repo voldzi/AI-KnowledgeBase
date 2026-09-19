@@ -231,6 +231,13 @@ def _answer_statements(value: str, chunks: list[RetrievedChunk]) -> list[str]:
     # to verification. Citation authorization is enforced independently.
     for chunk in chunks:
         value = value.replace(f"[{chunk.chunk_id}]", "")
+    # Keep complete list items together. Splitting their text at every period
+    # cuts legal abbreviations (e.g. "č." / "Sb.") and creates fragments the
+    # verifier naturally merges again. Every sentence in an item must still be
+    # supported; no text is dropped from the receipt.
+    lines = [line.strip() for line in value.splitlines() if line.strip()]
+    if any(re.match(r"^(?:[-*+]\s|\d+[.)]\s)", line) for line in lines):
+        return lines
     return _sentences(value)
 
 

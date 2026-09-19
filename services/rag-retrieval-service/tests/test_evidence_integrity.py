@@ -56,6 +56,12 @@ def test_standalone_authorized_citation_is_not_an_answer_statement():
     assert _answer_statements(SOURCE + "\n[chunk_999]", chunks) == [SOURCE, "[chunk_999]"]
 
 
+def test_list_claims_preserve_legal_abbreviations_and_every_sentence():
+    first = "- Zákon č. 134/2016 Sb. upravuje zakázky. Dodavatel nesmí diskriminovat."
+    second = "- Lhůta činí 30 dnů."
+    assert _answer_statements(first + "\n" + second, []) == [first, second]
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("invalid", [False, True])
 async def test_verification_usage_is_included_even_when_its_output_is_invalid(invalid):
