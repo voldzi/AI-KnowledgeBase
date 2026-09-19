@@ -179,3 +179,16 @@ this expansion. The request chunk budget still applies and a limited expansion
 is reported with `PARENT_CONTEXT_BUDGET_LIMITED`. This is bounded context
 expansion, not proof of complete document coverage. Parent retrieval remains
 controlled by its existing off/shadow/enforce setting.
+
+## Multi-passage claim verification
+
+The model verifier can return a separate verbatim quote for each cited chunk,
+so a rule and its exception on different pages can support one statement.
+Every quote must occur in its own authorized chunk; the quote list must cover
+exactly the declared chunk IDs, without duplicate IDs or additional fields.
+The older single-string verifier response remains accepted. Public claim
+receipts retain their existing string `quoted_support` and chunk ID list.
+Number and polarity checks also apply to combined support. The verifier still
+must assess semantic entailment; matching quotations alone does not establish
+factual correctness. This change does not enable a verifier model or change
+the configured enforcement mode.

@@ -92,6 +92,47 @@ def test_duplicate_json_decision_is_rejected():
         _model_assessment(payload, [_chunk("a", "doc_a", SOURCE)], answer=SOURCE)
 
 
+def _combined_evidence():
+    rule = "Zadost se vyrizuje do 30 dnu."
+    exception = "U slozite zadosti se lhuta prodluzuje na 60 dnu."
+    claim = "Zadost se vyrizuje do 30 dnu, u slozite zadosti se lhuta prodluzuje na 60 dnu."
+    payload = _payload(claim, quote=[{"chunk_id": "a", "quote": rule},
+                                     {"chunk_id": "b", "quote": exception}])
+    payload["claims"][0]["chunk_ids"] = ["a", "b"]
+    return claim, payload, [_chunk("a", "doc_a", rule), _chunk("b", "doc_a", exception)]
+
+
+def test_model_can_support_rule_and_exception_from_separate_passages():
+    claim, payload, chunks = _combined_evidence()
+    result = _model_assessment(json.dumps(payload), chunks, answer=claim)
+    assert result.status == "supported"
+    assert result.claims[0]["chunk_ids"] == ["a", "b"]
+    assert isinstance(result.claims[0]["quoted_support"], str)
+
+
+@pytest.mark.parametrize("mutation", [
+    lambda p: p["claims"][0]["quoted_support"].pop(),
+    lambda p: p["claims"][0]["quoted_support"][1].update(chunk_id="a"),
+    lambda p: p["claims"][0]["quoted_support"][1].update(chunk_id="unknown"),
+    lambda p: p["claims"][0]["quoted_support"][1].update(extra=True),
+])
+def test_multi_passage_support_requires_exact_closed_source_mapping(mutation):
+    claim, payload, chunks = _combined_evidence()
+    mutation(payload)
+    with pytest.raises(ValueError):
+        _model_assessment(json.dumps(payload), chunks, answer=claim)
+
+
+def test_combined_quote_cannot_borrow_text_from_another_source_or_forge_numbers():
+    claim, payload, chunks = _combined_evidence()
+    payload["claims"][0]["quoted_support"][0]["quote"] = chunks[1].text
+    assert _model_assessment(json.dumps(payload), chunks, answer=claim).status == "unsupported"
+    claim, payload, chunks = _combined_evidence()
+    claim = claim.replace("60", "600")
+    payload["claims"][0]["claim"] = claim
+    assert _model_assessment(json.dumps(payload), chunks, answer=claim).status == "unsupported"
+
+
 @pytest.mark.asyncio
 async def test_invalid_verifier_output_is_fail_closed_without_echoing_content(caplog):
     class Verifier:
