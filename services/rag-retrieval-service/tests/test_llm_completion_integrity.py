@@ -42,6 +42,8 @@ def test_complete_answer_keeps_usage_and_bounded_token_budget(monkeypatch):
     assert result.finish_reason == "stop"
     assert result.total_tokens == 42
     assert request.call_args.kwargs["json_body"]["max_tokens"] == 1536
+    assert request.call_args.kwargs["timeout_seconds"] == 100
+    assert request.call_args.kwargs["retry_attempts"] == 0
 
 
 @pytest.mark.parametrize("reason,done,expected", [

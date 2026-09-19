@@ -176,6 +176,8 @@ class Settings:
     evidence_gate_mode: str
     evidence_min_overlap: float
     evidence_verifier_model: str | None
+    evidence_verifier_timeout_seconds: float
+    evidence_verifier_local_max_tokens: int
     colbert_mode: str
     colbert_base_url: str
     colbert_model: str
@@ -207,6 +209,8 @@ class Settings:
     request_timeout_seconds: float
     retry_attempts: int
     retry_backoff_seconds: float
+    llm_request_timeout_seconds: float
+    llm_retry_attempts: int
 
     default_max_chunks: int
     retrieval_candidate_limit: int
@@ -323,8 +327,18 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         parent_window = int(_get(source, "AKL_RAG_PARENT_WINDOW", "1"))
         max_chunks_per_document = int(_get(source, "AKL_RAG_MAX_CHUNKS_PER_DOCUMENT", "3"))
         evidence_min_overlap = float(_get(source, "AKL_RAG_EVIDENCE_MIN_OVERLAP", "0.18"))
+        evidence_verifier_timeout_seconds = float(
+            _get(source, "AKL_RAG_EVIDENCE_VERIFIER_TIMEOUT_SECONDS", "120")
+        )
+        evidence_verifier_local_max_tokens = int(
+            _get(source, "AKL_RAG_EVIDENCE_VERIFIER_LOCAL_MAX_TOKENS", "4096")
+        )
         colbert_timeout_seconds = float(_get(source, "AKL_RAG_COLBERT_TIMEOUT_SECONDS", "8"))
         colbert_candidate_limit = int(_get(source, "AKL_RAG_COLBERT_CANDIDATE_LIMIT", "24"))
+        llm_request_timeout_seconds = float(
+            _get(source, "AKL_RAG_LLM_REQUEST_TIMEOUT_SECONDS", "100")
+        )
+        llm_retry_attempts = int(_get(source, "AKL_RAG_LLM_RETRY_ATTEMPTS", "0"))
     except ValueError as exc:
         raise ConfigError("Numeric AKL_RAG_* configuration value is invalid") from exc
 
@@ -386,10 +400,22 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         raise ConfigError("AKL_RAG_MAX_CHUNKS_PER_DOCUMENT must be between 1 and 20")
     if not 0 <= evidence_min_overlap <= 1:
         raise ConfigError("AKL_RAG_EVIDENCE_MIN_OVERLAP must be between 0 and 1")
+    if evidence_verifier_timeout_seconds <= 0 or evidence_verifier_timeout_seconds > 300:
+        raise ConfigError(
+            "AKL_RAG_EVIDENCE_VERIFIER_TIMEOUT_SECONDS must be between 0 and 300"
+        )
+    if not 512 <= evidence_verifier_local_max_tokens <= 8192:
+        raise ConfigError(
+            "AKL_RAG_EVIDENCE_VERIFIER_LOCAL_MAX_TOKENS must be between 512 and 8192"
+        )
     if colbert_timeout_seconds <= 0:
         raise ConfigError("AKL_RAG_COLBERT_TIMEOUT_SECONDS must be greater than zero")
     if colbert_candidate_limit <= 0 or colbert_candidate_limit > 100:
         raise ConfigError("AKL_RAG_COLBERT_CANDIDATE_LIMIT must be between 1 and 100")
+    if llm_request_timeout_seconds <= 0 or llm_request_timeout_seconds > 300:
+        raise ConfigError("AKL_RAG_LLM_REQUEST_TIMEOUT_SECONDS must be between 0 and 300")
+    if llm_retry_attempts < 0 or llm_retry_attempts > 2:
+        raise ConfigError("AKL_RAG_LLM_RETRY_ATTEMPTS must be between 0 and 2")
 
     reranker_mode = _get(source, "AKL_RAG_RERANKER_MODE", "off").strip().lower()
     reranker_provider = _get(source, "AKL_RAG_RERANKER_PROVIDER", "tei").strip().lower()
@@ -581,6 +607,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         evidence_verifier_model=_parse_optional_str(
             _get(source, "AKL_RAG_EVIDENCE_VERIFIER_MODEL", "")
         ),
+        evidence_verifier_timeout_seconds=evidence_verifier_timeout_seconds,
+        evidence_verifier_local_max_tokens=evidence_verifier_local_max_tokens,
         colbert_mode=colbert_mode,
         colbert_base_url=colbert_base_url,
         colbert_model=_get(source, "AKL_RAG_COLBERT_MODEL", "colbert-multilingual-v2"),
@@ -628,6 +656,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         request_timeout_seconds=request_timeout_seconds,
         retry_attempts=retry_attempts,
         retry_backoff_seconds=retry_backoff_seconds,
+        llm_request_timeout_seconds=llm_request_timeout_seconds,
+        llm_retry_attempts=llm_retry_attempts,
         default_max_chunks=default_max_chunks,
         retrieval_candidate_limit=retrieval_candidate_limit,
         max_context_chars=max_context_chars,

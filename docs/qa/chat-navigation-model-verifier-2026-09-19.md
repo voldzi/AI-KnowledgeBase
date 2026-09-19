@@ -168,3 +168,12 @@ Verifier proto nově dědí stejný výběr interního modelu jako composer. Ve�
 zdroje mohou dále používat OpenAI. Přirozená otázka „Kdy musí být…“ se zároveň
 klasifikuje jako hledání lhůty; dříve propadla do obecného IT režimu, přestože
 správná veřejná pasáž s třicetidenní lhůtou byla mezi vybranými zdroji.
+
+První živý test interního verifieru odkryl nezávislou provozní chybu: obecný
+30sekundový HTTP limit zahodil legitimní lokální inferenci a automatické retry
+současně spouštělo její další kopie. Jediný chatový požadavek proto skončil až
+po 222 sekundách, přestože retrieval i výběr správné smlouvy proběhly správně.
+RAG nyní odděluje generativní timeout od ostatních závislostí, generaci bez
+idempotency klíče automaticky neopakuje, omezuje celý evidence pipeline a pro
+lokální verifier používá 4096tokenový strop. Bezpečnostní selhání zůstává
+fail-closed; změna pouze odstraňuje duplicitní práci a nekontrolovanou frontu.

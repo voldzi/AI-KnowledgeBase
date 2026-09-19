@@ -68,13 +68,17 @@ async def request_json_with_retry(
     service_identity: bool = False,
     audience: str | None = None,
     verify: ssl.SSLContext | bool = True,
+    timeout_seconds: float | None = None,
+    retry_attempts: int | None = None,
 ) -> dict[str, Any]:
     last_error: Exception | None = None
+    resolved_timeout = settings.request_timeout_seconds if timeout_seconds is None else timeout_seconds
+    resolved_retries = settings.retry_attempts if retry_attempts is None else retry_attempts
 
-    for attempt in range(settings.retry_attempts + 1):
+    for attempt in range(resolved_retries + 1):
         try:
             async with httpx.AsyncClient(
-                timeout=settings.request_timeout_seconds,
+                timeout=resolved_timeout,
                 verify=verify,
             ) as client:
                 response = await client.request(
@@ -91,7 +95,7 @@ async def request_json_with_retry(
                     json=json_body,
                 )
 
-            if response.status_code >= 500 and attempt < settings.retry_attempts:
+            if response.status_code >= 500 and attempt < resolved_retries:
                 await asyncio.sleep(settings.retry_backoff_seconds * (attempt + 1))
                 continue
 
@@ -116,7 +120,7 @@ async def request_json_with_retry(
                 attempt + 1,
                 exc.__class__.__name__,
             )
-            if attempt < settings.retry_attempts:
+            if attempt < resolved_retries:
                 await asyncio.sleep(settings.retry_backoff_seconds * (attempt + 1))
                 continue
 

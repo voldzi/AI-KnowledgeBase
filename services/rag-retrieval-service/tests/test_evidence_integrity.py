@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 import pytest
@@ -323,6 +324,7 @@ async def test_verifier_inherits_source_processing_restrictions():
         async def chat_completion(self, **kwargs):
             nonlocal captured_model
             captured.update(kwargs["metadata"])
+            captured["max_tokens"] = kwargs["max_tokens"]
             captured_model = kwargs["model"]
             return json.dumps(_payload())
 
@@ -337,6 +339,37 @@ async def test_verifier_inherits_source_processing_restrictions():
     assert captured["handling_class"] == "RESTRICTED"
     assert captured["obligations"] == ["LOCAL_PROCESSING_ONLY", "NO_EXPORT", "NO_EXTERNAL_AI"]
     assert captured_model == gate._settings.chat_model
+    assert captured["max_tokens"] == 4096
     assert "EVIDENCE_VERIFIER_LOCAL_POLICY_ROUTE" in result.warnings
     assert captured["content_logged"] is False
     assert SOURCE not in json.dumps(captured)
+
+
+@pytest.mark.asyncio
+async def test_verifier_pipeline_timeout_fails_closed_without_retrying_content():
+    calls = 0
+
+    class SlowVerifier:
+        async def chat_completion(self, **kwargs):
+            nonlocal calls
+            calls += 1
+            await asyncio.sleep(0.05)
+            return json.dumps(_payload())
+
+    gate = EvidenceGate(
+        load_settings({
+            "AKL_RAG_EVIDENCE_GATE_MODE": "repair",
+            "AKL_RAG_EVIDENCE_VERIFIER_MODEL": "test-verifier",
+            "AKL_RAG_EVIDENCE_VERIFIER_TIMEOUT_SECONDS": "0.001",
+        }),
+        SlowVerifier(),
+    )
+    result = await gate.verify_async(
+        RagAnswer(query_id="q", answer=SOURCE, confidence="high", citations=[], used_chunks=["a"]),
+        [_public_policy_chunk()],
+    )
+
+    assert calls == 1
+    assert result.confidence == "insufficient_source"
+    assert result.citations == []
+    assert "EVIDENCE_VERIFIER_UNAVAILABLE" in result.warnings

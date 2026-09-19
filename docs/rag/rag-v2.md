@@ -76,6 +76,16 @@ zvolí nakonfigurovaný interní high-quality/chat model a přidá diagnostiku
 hranici. Selhání interního verifieru v režimu `enforce`/`repair` zůstává
 fail-closed.
 
+Generativní volání používají vlastní limit `AKL_RAG_LLM_REQUEST_TIMEOUT_SECONDS`
+a výchozí `AKL_RAG_LLM_RETRY_ATTEMPTS=0`. Pozdní inferenci nelze bezpečně
+opakovat jako běžné idempotentní čtení: původní výpočet může pokračovat a jeho
+kopie by zahltila stejnou frontu nebo vytvořila další externí náklad. Celá
+ověřovací a případná opravná sekvence má společný strop
+`AKL_RAG_EVIDENCE_VERIFIER_TIMEOUT_SECONDS`. Interní policy-bound verifier má
+samostatný výstupní rozpočet `AKL_RAG_EVIDENCE_VERIFIER_LOCAL_MAX_TOKENS`;
+výchozích 4096 stačí pro uzavřený claim receipt bez monopolizace lokálního
+modelu. Překročení kteréhokoli limitu končí v `enforce`/`repair` fail-closed.
+
 Výpadek nebo neplatný výstup verifieru v `enforce` nebo `repair` končí no-answer.
 Nepodložené hlavní tvrzení končí bez citací a bez `used_chunks`.
 Ověřovací model přebírá stejné policy bindingy, handling class a kumulované

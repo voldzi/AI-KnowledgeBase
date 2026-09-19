@@ -18,6 +18,10 @@ def test_load_settings_defaults_to_mock_clients_for_development() -> None:
     assert settings.assistant_history_max_user_messages == 12
     assert settings.assistant_history_max_message_chars == 800
     assert settings.assistant_history_max_chars == 6000
+    assert settings.llm_request_timeout_seconds == 100
+    assert settings.llm_retry_attempts == 0
+    assert settings.evidence_verifier_timeout_seconds == 120
+    assert settings.evidence_verifier_local_max_tokens == 4096
 
 
 def test_production_rejects_mock_clients() -> None:
@@ -74,6 +78,20 @@ def test_evidence_repair_mode_is_supported_and_unknown_mode_is_rejected() -> Non
     assert load_settings({"AKL_RAG_EVIDENCE_GATE_MODE": "repair"}).evidence_gate_mode == "repair"
     with pytest.raises(ConfigError, match="off, shadow, enforce, repair"):
         load_settings({"AKL_RAG_EVIDENCE_GATE_MODE": "rewrite-everything"})
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("AKL_RAG_LLM_REQUEST_TIMEOUT_SECONDS", "0"),
+        ("AKL_RAG_LLM_RETRY_ATTEMPTS", "3"),
+        ("AKL_RAG_EVIDENCE_VERIFIER_TIMEOUT_SECONDS", "301"),
+        ("AKL_RAG_EVIDENCE_VERIFIER_LOCAL_MAX_TOKENS", "511"),
+    ],
+)
+def test_invalid_llm_and_verifier_bounds_are_rejected(key: str, value: str) -> None:
+    with pytest.raises(ConfigError, match=key):
+        load_settings({key: value})
 
 
 def test_reranker_candidate_limit_is_bounded() -> None:

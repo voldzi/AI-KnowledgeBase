@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from collections import Counter
 import json
@@ -49,8 +50,11 @@ class EvidenceGate:
             return self.verify(answer, chunks)
         source_policy = policy_metadata(chunks)
         model = configured_model
-        if not external_processing_allowed(source_policy):
+        allows_external = external_processing_allowed(source_policy)
+        verification_max_tokens = 8192
+        if not allows_external:
             model = self._settings.high_quality_chat_model or self._settings.chat_model
+            verification_max_tokens = self._settings.evidence_verifier_local_max_tokens
             if model != configured_model:
                 answer = answer.model_copy(
                     update={
@@ -62,68 +66,23 @@ class EvidenceGate:
                     }
                 )
         try:
-            answer, raw = await self._model_call(
-                answer,
-                messages=_verification_messages(answer.answer, chunks),
-                metadata={
-                    **policy_metadata(chunks),
-                    "purpose": "rag_claim_evidence_verification",
-                    "used_chunk_ids": [chunk.chunk_id for chunk in chunks],
-                    "content_logged": False,
-                },
-                model=model,
-                # The verification receipt repeats every claim plus its exact
-                # supporting passages. The user-answer limit (often 1536)
-                # truncates this JSON even for an ordinary six-point answer.
-                max_tokens=8192,
-                auth_context=auth_context,
-                usage_stage="verification",
-            )
-            assessment = _model_assessment(
-                raw,
-                chunks,
-                answer=answer.answer,
-                min_overlap=self._settings.evidence_min_overlap,
-            )
-            if self._settings.evidence_gate_mode == "repair" and assessment.status != "supported":
-                answer, repaired = await self._model_call(
-                    answer,
-                    messages=_repair_messages(answer.answer, chunks, assessment),
-                    metadata={
-                        **policy_metadata(chunks),
-                        "purpose": "rag_claim_evidence_repair",
-                        "used_chunk_ids": [chunk.chunk_id for chunk in chunks],
-                        "initial_evidence_status": assessment.status,
-                        "content_logged": False,
-                    },
-                    model=model,
-                    max_tokens=min(max(self._settings.answer_max_tokens * 2, 2048), 4096),
-                    auth_context=auth_context,
-                    usage_stage="repair",
-                )
-                if not repaired.strip():
-                    raise ValueError("evidence repair returned an empty answer")
-                answer = answer.model_copy(
-                    update={
-                        "answer": repaired.strip(),
-                        "warnings": list(
-                            dict.fromkeys([*answer.warnings, "EVIDENCE_REPAIR_APPLIED"])
-                        ),
-                    }
-                )
+            async with asyncio.timeout(self._settings.evidence_verifier_timeout_seconds):
                 answer, raw = await self._model_call(
                     answer,
                     messages=_verification_messages(answer.answer, chunks),
                     metadata={
                         **policy_metadata(chunks),
-                        "purpose": "rag_claim_evidence_reverification",
+                        "purpose": "rag_claim_evidence_verification",
                         "used_chunk_ids": [chunk.chunk_id for chunk in chunks],
                         "content_logged": False,
                     },
                     model=model,
-                    max_tokens=8192,
+                    # The receipt repeats every claim plus exact support. Local
+                    # policy-bound models get a smaller, still bounded budget
+                    # so verification cannot monopolize the inference queue.
+                    max_tokens=verification_max_tokens,
                     auth_context=auth_context,
-                    usage_stage="verification_after_repair",
+                    usage_stage="verification",
                 )
                 assessment = _model_assessment(
                     raw,
@@ -131,7 +90,53 @@ class EvidenceGate:
                     answer=answer.answer,
                     min_overlap=self._settings.evidence_min_overlap,
                 )
-            return self._apply(answer, assessment, verifier=model)
+                if self._settings.evidence_gate_mode == "repair" and assessment.status != "supported":
+                    answer, repaired = await self._model_call(
+                        answer,
+                        messages=_repair_messages(answer.answer, chunks, assessment),
+                        metadata={
+                            **policy_metadata(chunks),
+                            "purpose": "rag_claim_evidence_repair",
+                            "used_chunk_ids": [chunk.chunk_id for chunk in chunks],
+                            "initial_evidence_status": assessment.status,
+                            "content_logged": False,
+                        },
+                        model=model,
+                        max_tokens=min(max(self._settings.answer_max_tokens * 2, 2048), 4096),
+                        auth_context=auth_context,
+                        usage_stage="repair",
+                    )
+                    if not repaired.strip():
+                        raise ValueError("evidence repair returned an empty answer")
+                    answer = answer.model_copy(
+                        update={
+                            "answer": repaired.strip(),
+                            "warnings": list(
+                                dict.fromkeys([*answer.warnings, "EVIDENCE_REPAIR_APPLIED"])
+                            ),
+                        }
+                    )
+                    answer, raw = await self._model_call(
+                        answer,
+                        messages=_verification_messages(answer.answer, chunks),
+                        metadata={
+                            **policy_metadata(chunks),
+                            "purpose": "rag_claim_evidence_reverification",
+                            "used_chunk_ids": [chunk.chunk_id for chunk in chunks],
+                            "content_logged": False,
+                        },
+                        model=model,
+                        max_tokens=verification_max_tokens,
+                        auth_context=auth_context,
+                        usage_stage="verification_after_repair",
+                    )
+                    assessment = _model_assessment(
+                        raw,
+                        chunks,
+                        answer=answer.answer,
+                        min_overlap=self._settings.evidence_min_overlap,
+                    )
+                return self._apply(answer, assessment, verifier=model)
         except Exception as exc:
             logger.warning(
                 "evidence_verifier_failed mode=%s reason=%s content_logged=false",

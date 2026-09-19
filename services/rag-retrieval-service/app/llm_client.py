@@ -241,6 +241,8 @@ class HttpLLMGatewayClient:
             bearer_token_override=self._settings.llm_gateway_token,
             service_identity=True,
             audience=self._settings.llm_gateway_audience,
+            timeout_seconds=self._settings.llm_request_timeout_seconds,
+            retry_attempts=self._settings.llm_retry_attempts,
         )
         usage = payload.get("usage") if isinstance(payload.get("usage"), dict) else {}
         _require_complete_answer(payload.get("finish_reason"))
