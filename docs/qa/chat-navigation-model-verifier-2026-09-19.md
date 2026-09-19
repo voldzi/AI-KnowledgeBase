@@ -46,8 +46,22 @@ semantic correctness ([OpenAI documentation](https://developers.openai.com/api/d
   click during a transition opens Chat. At 390px, Documents opens in one tap;
   a second tap opens its submenu. Viewport restored afterwards.
 - Typecheck and 15 focused existing web navigation tests passed.
-- Deployment and post-deployment verification are recorded separately; these
-  local checks do not by themselves prove the candidate is live.
+- RAG local and exact Linux image: 423 tests passed before the citation-marker
+  follow-up. Three additional regression cases cover exact authorized citation
+  handles, altered numeric obligations and unknown citation markers.
+- Live browser confirmed an immediate named navigation status and completed
+  Documents → Chat switching. A transient authority fetch failure triggered the
+  first rollback; STRATOS subsequently confirmed healthy uninterrupted services.
+- First live API smoke returned HTTP 200, persisted the answer and opened its
+  exact citation. OpenAI generation plus verification used 9,707 tokens with
+  estimated cost USD 0.0041994. This is one measured example, not a budget forecast.
+- The smoke exposed a verifier defect: digits in technical citation handles were
+  treated as asserted quantities. Exact authorized citation markers are now
+  excluded only from semantic numeric/overlap checks. Actual claim numbers,
+  unknown markers and exact verifier/source identity checks remain intact.
+- A second live response used deterministic fallback after malformed verifier
+  output. Shadow verification is diagnostic, not a guarantee of correctness.
+  Deployment outcome remains pending the follow-up candidate.
 
 Temporal-closure issuance remains coordinated with STRATOS. Do not treat this
 UI/model change as deployment of the separate historical-admission contract.

@@ -371,14 +371,20 @@ def _model_assessment(
         else:
             raise ValueError("verifier quote is invalid")
         valid_ids = chunk_ids
+        # Citation handles are routing metadata, not quantities asserted in the
+        # answer. Strip only exact markers for supplied, authorized sources;
+        # unknown references and all actual numbers remain subject to checks.
+        semantic_claim = claim
+        for source_id in by_id:
+            semantic_claim = semantic_claim.replace(f"[{source_id}]", "")
         supported = (
             item["supported"]
             and isinstance(quote, str)
             and bool(quote.strip())
             and bool(valid_ids)
             and quotes_present
-            and _overlap(_tokens(claim), _tokens(quote)) >= min_overlap
-            and _critical_details_supported(claim, quote)
+            and _overlap(_tokens(semantic_claim), _tokens(quote)) >= min_overlap
+            and _critical_details_supported(semantic_claim, quote)
         )
         if claim_type == "main" and not supported:
             unsupported_main = True
