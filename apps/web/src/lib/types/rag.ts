@@ -256,6 +256,10 @@ export interface AssistantReportArtifact {
 export interface AssistantChatResponse {
   response_type: AssistantResponseType;
   conversation_id: string;
+  message_id?: string | null;
+  claims?: Array<Record<string, unknown>>;
+  evidence_status?: "supported" | "partial" | "unsupported" | "not_checked";
+  verification_model?: string | null;
   answer: string | null;
   message: string | null;
   questions: ClarificationQuestion[];

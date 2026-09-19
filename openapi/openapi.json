@@ -33052,6 +33052,50 @@
       },
       "RagRetrievalServiceAssistantChatResponse": {
         "properties": {
+          "message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Exact persisted assistant message returned by the append operation; never inferred from the latest conversation message.",
+            "title": "Message Id"
+          },
+          "claims": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Claims",
+            "type": "array"
+          },
+          "evidence_status": {
+            "default": "not_checked",
+            "enum": [
+              "supported",
+              "partial",
+              "unsupported",
+              "not_checked"
+            ],
+            "title": "Evidence Status",
+            "type": "string"
+          },
+          "verification_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Verification Model"
+          },
           "llm_usage": {
             "anyOf": [
               {

@@ -141,3 +141,17 @@ python3 scripts/evaluate_assistant_source_continuity.py \
   --subject-id '<token-subject>' \
   --output /tmp/assistant-source-continuity.json
 ```
+
+## Kontinuita zdrojů není věcná správnost
+
+`scripts/evaluate_assistant_source_continuity.py` měří pouze kontinuitu zdrojů
+ve 100 dvoutahových scénářích. Úspěch vyžaduje dvě odpovědi typu `answer`,
+neprázdné citace, očekávaný předpis a skutečně provedenou i zachovanou návaznost.
+Pokud API vrací přesné `message_id`, používá se tento doklad uložení místo
+poslední zprávy z historie. Report výslovně označuje věcnou správnost a úplnost
+jako nehodnocené. Prázdná sada nemůže projít.
+
+Tento běh nenahrazuje navrženou kvalifikační sadu 240 pracovních scénářů
+s ověřenými referencemi a odděleným holdoutem. Testy se syntetickými dokumenty
+ověřují mechaniku a bezpečnost toku; nejsou důkazem správnosti odpovědí nad
+skutečnými smlouvami, zákony ani živými údaji STRATOS.

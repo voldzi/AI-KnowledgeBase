@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Run 200 human-style assistant turns over the governed Czech-law catalog.
+"""Check source continuity over 100 two-turn Czech-law scenarios.
 
 The script sends two turns for every immutable source in the revision-2
 manifest.  The second turn is bound to the exact persisted assistant message
 and evidence-frame hash whenever the first turn supplied citable evidence.
+This checks provenance and transport, not factual correctness or completeness.
 It never writes prompts, answers, bearer tokens, or cookies to the report.
 """
 
@@ -40,6 +41,14 @@ class ScenarioResult:
     lineage_preserved: bool
     warnings: list[str]
     latency_ms: float
+
+
+def passes_source_continuity(result: ScenarioResult) -> bool:
+    return (
+        result.expected_law_found and result.lineage_attempted and result.lineage_preserved
+        and result.initial_status == "answer" and result.follow_up_status == "answer"
+        and result.initial_citation_count > 0 and result.follow_up_citation_count > 0
+    )
 
 
 class JsonApiClient:
@@ -226,8 +235,10 @@ async def _run_scenario(
         expected_law_found = any(law_reference in cited_title for cited_title in cited_titles)
         conversation_id = initial.get("conversation_id")
         scope_hash = _evidence_hash(initial)
-        parent_id: str | None = None
-        if isinstance(conversation_id, str):
+        parent_id = initial.get("message_id")
+        if not isinstance(parent_id, str):
+            parent_id = None
+        if parent_id is None and "message_id" not in initial and isinstance(conversation_id, str):
             history = await _json_request(
                 client,
                 "GET",
@@ -313,10 +324,13 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
     lineage_cases = [result for result in normalized if result.lineage_attempted]
     passed = [
         result for result in normalized
-        if result.expected_law_found and result.lineage_preserved
+        if passes_source_continuity(result)
     ]
     return {
         "contract_version": "assistant-source-continuity-eval-1",
+        "evaluation_scope": "source_continuity_only",
+        "factual_correctness": "not_evaluated",
+        "answer_completeness": "not_evaluated",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "started_at": started.isoformat(),
         "manifest_digest": manifest_digest,
@@ -336,7 +350,7 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
             "median": round(statistics.median(durations), 2) if durations else 0,
             "p95": round(sorted(durations)[max(0, int(len(durations) * 0.95) - 1)], 2) if durations else 0,
         },
-        "quality_gate": "passed" if len(passed) == len(sources) and not errors else "failed",
+        "quality_gate": "passed" if sources and len(passed) == len(sources) and not errors else "failed",
         "cases": [asdict(result) for result in normalized],
         "errors": errors,
     }

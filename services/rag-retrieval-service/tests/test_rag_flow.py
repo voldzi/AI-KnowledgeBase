@@ -16,7 +16,6 @@ from app.service import (
     _assistant_query,
     _assistant_query_has_referential_source,
     _assistant_uses_authorized_follow_up_source,
-    _apply_common_legal_core,
     _apply_answer_facet_completeness,
     _bounded_conversation_questions,
     _employee_answer,
@@ -28,9 +27,7 @@ from app.service import (
     _latest_available_assistant_context,
     _normalize_for_assistant,
     _requested_answer_facets,
-    _assistant_required_legal_evidence,
     _parse_follow_up_questions,
-    _promote_legal_evidence,
     _complete_chunk_policy_metadata,
     _citations_within_scope,
 )
@@ -937,86 +934,6 @@ def test_legal_retrieval_hint_is_not_added_to_answer_prompt() -> None:
     assert "Kanonický právní zdroj" not in query
 
 
-def test_human_legal_answer_focus_distinguishes_primary_process() -> None:
-    overtime = _assistant_answer_query(
-        "Co musí zaměstnavatel řešit, když zaměstnanec pracuje přesčas?", {}
-    )
-    information = _assistant_answer_query(
-        "Může občan požádat úřad o informace a jaká je běžná lhůta pro odpověď?", {}
-    )
-
-    assert "maximální rozsah" in overtime
-    assert "§ 93" in overtime
-    assert "sjednané mzdy" in overtime
-    assert "běžné první vyřízení" in information
-    assert "stížností" in information
-
-
-def test_human_legal_answer_focus_prioritizes_practical_employee_answer() -> None:
-    appeal = _assistant_answer_query(
-        "Jak se můžu odvolat proti rozhodnutí správního orgánu?", {}
-    )
-    contract = _assistant_answer_query(
-        "Jaké jsou základní náležitosti smlouvy mezi dvěma stranami?", {}
-    )
-    accounting = _assistant_answer_query("Kdo odpovídá za vedení účetnictví?", {})
-
-    assert "běžné odvolání" in appeal
-    assert "§ 83" in appeal
-    assert "prakticky a stručně" in contract
-    assert "univerzální povinný seznam" in contract
-    assert "První věta musí říci" in accounting
-    assert "Nepoužij dvojí zápor" in accounting
-
-
-def test_common_legal_question_promotes_direct_evidence_into_bounded_context() -> None:
-    unrelated = _policy_chunk(chunk_id="unrelated", document_id="law", binding_id="pb", handling_class="PUBLIC", obligations=[])
-    direct = _policy_chunk(chunk_id="direct", document_id="law", binding_id="pb", handling_class="PUBLIC", obligations=[]).model_copy(
-        update={"text": "Nařízená práce přesčas nesmí překročit zákonné limity."}
-    )
-
-    promoted = _promote_legal_evidence(
-        "Co musí zaměstnavatel řešit, když zaměstnanec pracuje přesčas?",
-        [unrelated, direct],
-    )
-
-    assert [chunk.chunk_id for chunk in promoted] == ["direct", "unrelated"]
-
-
-def test_common_legal_core_restores_verbatim_deadline_and_citation() -> None:
-    direct = _policy_chunk(
-        chunk_id="appeal-deadline",
-        document_id="law",
-        binding_id="pb",
-        handling_class="PUBLIC",
-        obligations=[],
-    ).model_copy(
-        update={
-            "text": "(1) Odvolací lhůta činí 15 dnů ode dne oznámení rozhodnutí, pokud zvláštní zákon nestanoví jinak."
-        }
-    )
-    initial = RagAnswer(
-        query_id="query",
-        answer="Odvolání podejte podle poučení v rozhodnutí.",
-        confidence="high",
-        citations=[],
-        warnings=[],
-        used_chunks=[],
-        missing_information=None,
-    )
-
-    corrected = _apply_common_legal_core(
-        "Jak se můžu bránit proti rozhodnutí správního orgánu?",
-        initial,
-        [direct],
-        _citations([direct]),
-    )
-
-    assert corrected.answer.startswith("Podle citovaného předpisu: Odvolací lhůta činí 15 dnů")
-    assert corrected.citations[0].chunk_id == "appeal-deadline"
-    assert corrected.used_chunks == ["appeal-deadline"]
-
-
 def test_short_explicit_legal_topic_does_not_inherit_history() -> None:
     query = _assistant_query(
         "Co je NIS2?",
@@ -1056,23 +973,6 @@ def test_explicit_statute_identifier_is_not_overridden_by_broad_employee_wording
     assert "89/1995 Sb." in query
     assert "262/2006 Sb." not in query
     assert "Kanonický právní zdroj pro vyhledání" not in query
-
-
-@pytest.mark.parametrize(
-    ("question", "phrase"),
-    [
-        ("Jaké zásady musí zadavatel dodržovat při zadávání veřejné zakázky?", "zásady transparentnosti"),
-        ("Do kdy musí úřad odpovědět na žádost podle zákona o svobodném přístupu k informacím?", "nejpozději do 15 dnů"),
-        ("Kdy podle občanského zákoníku vzniká smlouva a co musí obsahovat?", "smlouvou projevují strany vůli"),
-    ],
-)
-def test_common_legal_questions_require_direct_controlling_evidence(
-    question: str,
-    phrase: str,
-) -> None:
-    evidence = _assistant_required_legal_evidence(question)
-    assert evidence is not None
-    assert phrase in evidence[0]
 
 
 def test_referential_follow_up_keeps_conversation_questions() -> None:
@@ -1624,7 +1524,7 @@ def test_assistant_filters_resolve_historical_date_without_confusing_act_number(
     assert year_end.valid_on.isoformat() == "2024-12-31"
 
 
-def test_employee_answer_hides_internal_citation_markers_and_markdown() -> None:
+def test_employee_answer_preserves_technical_facts_and_markdown() -> None:
     raw = (
         "Architektura je **distribuovaná sada služeb** [chunk_abc123, chunk_def456].\n\n"
         "* **Infrastruktura:** Obsahuje registry-api, rag-retrieval-service, Qdrant a MinIO [chunk_ghi789]."
@@ -1633,14 +1533,9 @@ def test_employee_answer_hides_internal_citation_markers_and_markdown() -> None:
     cleaned = _employee_answer(raw)
 
     assert "chunk_" not in cleaned
-    assert "**" not in cleaned
-    assert "registry-api" not in cleaned
-    assert "rag-retrieval-service" not in cleaned
-    assert "Qdrant" not in cleaned
-    assert "MinIO" not in cleaned
     assert cleaned == (
-        "Architektura je distribuovaná sada služeb.\n"
-        "- Infrastruktura: Obsahuje registr dokumentů, vyhledávání ve znalostech, vyhledávací index a úložiště dokumentů."
+        "Architektura je **distribuovaná sada služeb**.\n"
+        "- **Infrastruktura:** Obsahuje registry-api, rag-retrieval-service, Qdrant a MinIO."
     )
 
 
@@ -1802,3 +1697,19 @@ def test_oidc_auth_mode_requires_bearer_token() -> None:
 
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "AUTH_REQUIRED"
+
+
+@pytest.mark.parametrize("question", [
+    "Jaké jsou podmínky práce přesčas?",
+    "Jak se odvolat proti rozhodnutí?",
+    "Kdo odpovídá za vedení účetnictví?",
+    "Jaké jsou základní náležitosti smlouvy?",
+    "Jaká je lhůta vyřízení žádosti o informace?",
+])
+def test_answer_prompt_does_not_supply_preprogrammed_legal_answers(question):
+    query = _assistant_answer_query(question, {})
+    assert question in query
+    assert "§ 93" not in query
+    assert "§ 83" not in query
+    assert "15 dnů" not in query
+    assert "První věta musí říci" not in query

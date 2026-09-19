@@ -108,3 +108,10 @@ describe("assistant warning presentation", () => {
     assert.doesNotMatch(labels.join(" "), /SOURCE_LINEAGE/);
   });
 });
+
+it("does not mistake retrieval confidence for verified claims", () => {
+  const citations = [{ document_id: "document", document_version_id: "version" }] as AssistantChatResponse["citations"];
+  assert.equal(assistantResponseStatus(response({ citations, confidence: "high", evidence_status: "not_checked" }), "cs")?.label, "Odpověď se zdroji");
+  assert.equal(assistantResponseStatus(response({ citations, evidence_status: "supported" }), "cs")?.label, "Podloženo zdroji");
+  assert.equal(assistantResponseStatus(response({ citations, evidence_status: "unsupported" }), "cs")?.value, "info");
+});

@@ -4197,6 +4197,10 @@ function responseFromPersistedMessage(
     why_needed: null,
     current_context: objectValue(metadata.current_context),
     citations: message.citations,
+    message_id: message.message_id,
+    evidence_status: ["supported", "partial", "unsupported", "not_checked"].includes(String(metadata.evidence_status))
+      ? metadata.evidence_status as AssistantChatResponse["evidence_status"] : "not_checked",
+    verification_model: nullableStringValue(metadata.verification_model),
     follow_up_questions: stringArrayValue(metadata.follow_up_questions),
     suggested_actions: suggestedActionsValue(metadata.suggested_actions),
     report_artifacts: reportArtifactsValue(metadata.report_artifacts),

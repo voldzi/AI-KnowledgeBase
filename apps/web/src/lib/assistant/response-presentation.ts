@@ -30,7 +30,8 @@ export function assistantResponseStatus(response: AssistantChatResponse, languag
     return badge("info", ["Obecná odpověď", "General answer"]);
   }
   if (workflow?.status === "unavailable" || sources.some((source) => source.status === "unavailable")
-    || warnings.has("DIRECTOR_COPILOT_V2_SOURCE_UNAVAILABLE") || warnings.has("DOCUMENT_EVIDENCE_UNAVAILABLE")) {
+    || warnings.has("DIRECTOR_COPILOT_V2_SOURCE_UNAVAILABLE") || warnings.has("DOCUMENT_EVIDENCE_UNAVAILABLE")
+    || warnings.has("EVIDENCE_VERIFIER_UNAVAILABLE") || warnings.has("GENERAL_KNOWLEDGE_UNAVAILABLE")) {
     return badge("insufficient_source", ["Dočasně nedostupné", "Temporarily unavailable"]);
   }
   if (workflow?.status === "no_data") return badge("info", ["Bez přiřazených záznamů", "No assigned records"]);
@@ -46,10 +47,16 @@ export function assistantResponseStatus(response: AssistantChatResponse, languag
   if (sources.length > 0 && sources.every((source) => source.status === "complete")) {
     return badge("high", ["Ověřená data", "Verified data"]);
   }
+  if (response.response_type === "answer" && response.citations.length > 0) {
+    return response.evidence_status === "supported"
+      ? badge("high", ["Podloženo zdroji", "Supported by sources"])
+      : badge("info", ["Odpověď se zdroji", "Answer with sources"]);
+  }
   return response.confidence ? { value: response.confidence } : null;
 }
 
 const PROVENANCE_MARKERS = new Set([
+  "DUPLICATE_CHUNKS_REMOVED", "EXACT_DOCUMENT_SCOPE_APPLIED",
   "REGISTRY_METADATA_REPORT", "REGISTRY_METADATA_SUMMARY", "REGISTRY_DOCUMENT_LIST",
   "DIRECTOR_COPILOT_PROJECTFLOW_LIVE_DATA", "DIRECTOR_COPILOT_BUDGET_LIVE_DATA", "DIRECTOR_COPILOT_V2_LIVE_DATA",
   "MIXED_EVIDENCE_COMPOSITION", "LIVE_DATA_FALLBACK_BLOCKED", "LIVE_DATA_NOT_REPLACED_BY_DOCUMENTS",
@@ -57,6 +64,10 @@ const PROVENANCE_MARKERS = new Set([
 ]);
 
 const WARNING_LABELS: Record<string, Translation> = {
+  EVIDENCE_GATE_UNSUPPORTED_CLAIMS: ["Automatická kontrola nepotvrdila podložení všech tvrzení. Důležité údaje ověřte v citovaných pasážích.", "The automatic check did not confirm support for every claim. Verify important details in the cited passages."],
+  EVIDENCE_VERIFIER_UNAVAILABLE: ["Ověření odpovědi je dočasně nedostupné. Zkuste dotaz zopakovat.", "Answer verification is temporarily unavailable. Try the question again."],
+  HISTORICAL_EXACT_SOURCE_APPLIED: ["Odpověď používá historické znění uvedeného zdroje. Nejde o potvrzení jeho dnešní účinnosti.", "This answer uses a historical version of the specified source, not confirmation that it is effective today."],
+  CONTEXT_TRUNCATED: ["Odpověď vychází z vybraných pasáží. Úplnost celého dokumentu nebyla ověřena.", "The answer uses selected passages. Coverage of the entire document has not been verified."],
   SOURCE_REVIEW_OVERDUE_POSSIBLY_STALE: ["Termín revize zdroje uplynul. Aktuálnost má potvrdit gestor.", "The source review is overdue. Its owner must confirm freshness."],
   BUDGET_APPROVED_PLAN_MISSING: ["Část oprávněných rozpočtových větví nemá schválený plán. Výsledek je nezahrnuje ani nenahrazuje nulou.", "Some authorized budget branches have no approved plan. They are excluded, not replaced with zero."],
   CONTROLLED_RULE_CONFLICT: ["Pravidla jsou v rozporu nebo nejsou připravena k rozhodnutí. Musí je posoudit gestor.", "Rules conflict or are not decision-ready. Their owner must review them."],

@@ -57,7 +57,8 @@ def test_source_scoped_ranking_removes_document_identifier_but_keeps_coordinates
     ranked = query_without_document_identifiers(query)
 
     assert "479/2024" not in ranked
-    assert "cl. 4" in ranked
+    assert "čl. 4" in ranked
+    assert "Jaké" in ranked
     assert "odst. 2" in ranked
     assert "povinnosti" in ranked
 

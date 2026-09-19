@@ -117,6 +117,7 @@ class AuthorizedConversationContext:
     source_scope_hash: str | None
     parent_evidence_available: bool
     parent_general_answer: str | None
+    parent_document_answer: str | None = None
 
 
 class RagRetrievalService:
@@ -1391,43 +1392,30 @@ class RagRetrievalService:
             }
         )
         assistant_chunks = list(run.response.chunks)
-        required_legal_evidence = _assistant_required_legal_evidence(payload.message)
-        if required_legal_evidence and not any(
-            required_legal_evidence[1] in chunk.text.lower()
-            for chunk in assistant_chunks
-        ):
-            supplemental_filters = _supplemental_retrieval_filters(
-                retrieval_filters,
-                run.response,
-            )
-            supplemental = await self._retrieve_authorized(
-                payload=RetrieveRequest(
-                    subject_id=payload.user_id,
-                    query=required_legal_evidence[0],
-                    filters=supplemental_filters,
-                    max_chunks=3,
-                ),
-                query_id=query_id,
-                auth_context=auth_context,
-            )
-            supplemental_ids = {
-                chunk.chunk_id for chunk in supplemental.response.chunks
-            }
-            assistant_chunks = [
-                *supplemental.response.chunks,
-                *(
-                    chunk
-                    for chunk in assistant_chunks
-                    if chunk.chunk_id not in supplemental_ids
-                ),
-            ]
-        assistant_chunks = _promote_legal_evidence(payload.message, assistant_chunks)
         logger.info(
             "assistant_context_selected query_id=%s chunk_ids=%s version_ids=%s content_logged=false",
             query_id,
             [chunk.chunk_id for chunk in assistant_chunks],
             sorted({chunk.citation.document_version_id for chunk in assistant_chunks}),
         )
+        conversation_reference = None
+        selected_pairs = {
+            (chunk.citation.document_id, chunk.citation.document_version_id)
+            for chunk in assistant_chunks
+        }
+        if (
+            inherit_authorized_source
+            and conversation_context.parent_document_answer
+            and conversation_context.citation_scope_pairs
+            and set(conversation_context.citation_scope_pairs).issubset(selected_pairs)
+        ):
+            # It resolves references, but never substitutes for current evidence.
+            # Every source of this reference must be present and freshly authorized
+            # so the completion's information policy also covers its content.
+            conversation_reference = (
+                conversation_context.parent_document_answer,
+                set(conversation_context.citation_scope_pairs),
+            )
         decision = self._no_answer_policy.evaluate(
             chunks=assistant_chunks,
             had_candidates=run.had_candidates,
@@ -1461,6 +1449,7 @@ class RagRetrievalService:
                 query_id=query_id,
                 query=answer_query,
                 chunks=assistant_chunks,
+                conversation_reference=conversation_reference,
                 confidence=decision.confidence,
                 warnings=decision.warnings,
                 max_chunks=max_chunks,
@@ -1468,17 +1457,10 @@ class RagRetrievalService:
                 response_language=payload.response_language,
                 auth_context=auth_context,
             )
-            composed_citations = list(rag_answer.citations)
             rag_answer = await self._evidence_gate.verify_async(
                 rag_answer,
                 assistant_chunks,
                 auth_context=auth_context,
-            )
-            rag_answer = _apply_common_legal_core(
-                payload.message,
-                rag_answer,
-                assistant_chunks,
-                composed_citations,
             )
             rag_answer = _apply_answer_facet_completeness(
                 answer=rag_answer,
@@ -1636,6 +1618,9 @@ class RagRetrievalService:
                 confidence=rag_answer.confidence,
                 warnings=rag_answer.warnings,
                 llm_usage=rag_answer.llm_usage,
+                claims=rag_answer.claims,
+                evidence_status=rag_answer.evidence_status,
+                verification_model=rag_answer.verification_model,
             )
             await self._audit_assistant(
                 actor_id=payload.user_id,
@@ -1928,6 +1913,10 @@ class RagRetrievalService:
                 messages,
                 parent_message_id=parent_message_id,
             ),
+            parent_document_answer=_available_document_parent_answer(
+                messages, parent_message_id=parent_message_id,
+                max_length=self._settings.assistant_history_max_chars,
+            ),
         )
 
     async def _follow_up_questions(
@@ -2073,8 +2062,9 @@ class RagRetrievalService:
         auth_context: AuthContext | None = None,
     ) -> bool:
         assistant_content = response.answer or response.message or ""
+        turn_id = f"turn_{uuid.uuid4().hex}"
         try:
-            await self._registry_client.append_conversation_messages(
+            appended = await self._registry_client.append_conversation_messages(
                 conversation_id=conversation_id,
                 user_id=user_id,
                 messages=[
@@ -2084,6 +2074,7 @@ class RagRetrievalService:
                         "parent_message_id": parent_message_id,
                         "citations": [],
                         "metadata": {
+                            "turn_id": turn_id,
                             "turn_origin": turn_origin,
                             "source_bound": source_bound,
                             "expected_source_scope_hash": source_scope_hash,
@@ -2095,6 +2086,10 @@ class RagRetrievalService:
                         "response_type": response.response_type,
                         "citations": [citation.model_dump(mode="json") for citation in response.citations],
                         "metadata": {
+                            "turn_id": turn_id,
+                            "claims": response.claims,
+                            "evidence_status": response.evidence_status,
+                            "verification_model": response.verification_model,
                             "confidence": response.confidence,
                             "warnings": response.warnings,
                             "current_context": response.current_context,
@@ -2113,6 +2108,17 @@ class RagRetrievalService:
                 ],
                 auth_context=auth_context,
             )
+            if isinstance(appended, dict) and isinstance(appended.get("messages"), list):
+                for stored in appended["messages"]:
+                    if (
+                        isinstance(stored, dict)
+                        and stored.get("role") == "assistant"
+                        and isinstance(stored.get("metadata"), dict)
+                        and stored["metadata"].get("turn_id") == turn_id
+                        and isinstance(stored.get("message_id"), str)
+                    ):
+                        response.message_id = stored["message_id"]
+                        break
             return True
         except Exception as exc:
             logger.warning(
@@ -2273,7 +2279,11 @@ class RagRetrievalService:
                 # candidate exists but Registry denies it, keep the denial:
                 # falling back in that case could hide a stale index or an
                 # authorization failure behind an older version.
-                if not resolved_document_id and effective_on is not None:
+                if (
+                    not resolved_document_id
+                    and effective_on is not None
+                    and payload.filters.valid_on is None
+                ):
                     historical_filters = retrieval_filters.model_copy(
                         update={"only_valid": False, "valid_on": None}
                     )
@@ -2428,7 +2438,7 @@ class RagRetrievalService:
             limit=payload.max_chunks,
             max_per_document=(
                 payload.max_chunks
-                if exact_document_id
+                if exact_document_id or len(retrieval_filters.document_ids) == 1 or len(retrieval_filters.document_version_ids) == 1
                 else max(self._settings.max_chunks_per_document, min(6, payload.max_chunks))
                 if len(_requested_answer_facets(payload.query)) >= 2
                 else self._settings.max_chunks_per_document
@@ -2867,25 +2877,19 @@ def _query_id() -> str:
 
 def _deduplicate_chunks(chunks: list[RetrievedChunk]) -> tuple[list[RetrievedChunk], int]:
     selected: list[RetrievedChunk] = []
-    signatures: dict[tuple[str, str], set[str]] = {}
+    signatures: set[tuple[str, str, tuple[str, ...]]] = set()
     removed = 0
     for chunk in chunks:
-        text_hash = _metadata_string(chunk.metadata, "text_hash") or hashlib.sha256(
-            re.sub(r"\s+", " ", chunk.text).strip().lower().encode("utf-8")
+        text_hash = hashlib.sha256(
+            re.sub(r"\s+", " ", chunk.text).strip().encode("utf-8")
         ).hexdigest()
-        coordinate = (chunk.citation.document_version_id, text_hash)
+        coordinate = (chunk.citation.document_version_id, text_hash, tuple(chunk.citation.section_path))
         if coordinate in signatures:
             removed += 1
             continue
-        tokens = set(re.findall(r"[a-z0-9]{3,}", chunk.text.lower()))
-        near_duplicate = any(
-            version_id == chunk.citation.document_version_id and _jaccard(tokens, existing) >= 0.94
-            for (version_id, _), existing in signatures.items()
-        )
-        if near_duplicate:
-            removed += 1
-            continue
-        signatures[coordinate] = tokens
+        # Near-equal provisions can differ only in a number, unit or negation.
+        # Only identical text in the same version/section is redundant evidence.
+        signatures.add(coordinate)
         selected.append(chunk)
     return selected, removed
 
@@ -3553,6 +3557,8 @@ def _assistant_valid_on(
     )
     if year_match:
         return date(int(year_match.group(1)), 12, 31)
+    if re.search(r"\b(dnes|dnešní|dnešnímu|today|currently)\b", query, re.I):
+        return datetime.now(ZoneInfo("Europe/Prague")).date()
     return None
 
 
@@ -3613,7 +3619,7 @@ def _apply_exact_identifier_scope(
         )
         matches = False
         for identifier in identifiers:
-            if re.fullmatch(r"\d+-\d{4}-sb", identifier):
+            if re.fullmatch(r"\d+-\d{4}(?:-sb)?", identifier):
                 # A statute identifier is authoritative only when it identifies
                 # the cited document itself.  Amendment titles often mention a
                 # different statute verbatim and must not create an ambiguity.
@@ -3967,9 +3973,7 @@ def _available_citation_scope(
             return [], [], [], None, False
         citations = value.get("citations")
         if not isinstance(citations, list) or not citations:
-            if parent_message_id is not None:
-                return [], [], [], None, False
-            continue
+            return [], [], [], None, False
         document_ids: list[str] = []
         document_version_ids: list[str] = []
         scope_pairs: list[tuple[str, str]] = []
@@ -3998,6 +4002,22 @@ def _available_citation_scope(
         if parent_message_id is not None:
             return [], [], [], None, False
     return [], [], [], None, False
+
+
+def _available_document_parent_answer(
+    messages: list[object], *, parent_message_id: str | None, max_length: int = 6000,
+) -> str | None:
+    for value in reversed(messages):
+        if not isinstance(value, dict) or value.get("role") != "assistant":
+            continue
+        if parent_message_id is not None and value.get("message_id") != parent_message_id:
+            continue
+        if value.get("availability") != "available" or not value.get("citations"):
+            return None
+        content = value.get("content")
+        # Do not truncate a structured list and silently change its referents.
+        return content if isinstance(content, str) and len(content) <= max_length else None
+    return None
 
 
 def _source_scope_hash_from_pairs(pairs: list[tuple[str, str]]) -> str:
@@ -4230,194 +4250,6 @@ def _assistant_legal_retrieval_hint(message: str) -> str | None:
     return None
 
 
-def _assistant_required_legal_evidence(message: str) -> tuple[str, str] | None:
-    """Return a narrow evidence query and its mandatory source phrase for common legal questions."""
-    normalized = _normalize_for_assistant(message)
-    if re.search(
-        r"\b(spravn\w*\s+(?:organ|rizeni|rozhodnut|rad)\w*|odvolan\w*\s+proti\s+rozhodnut\w*)\b",
-        normalized,
-    ):
-        return (
-            "500/2004 Sb. § 83: Odvolací lhůta činí 15 dnů ode dne oznámení rozhodnutí",
-            "odvolací lhůta činí 15 dnů",
-        )
-    if re.search(r"\b(ucetnictv\w*|ucetn\w*\s+jednotk|veden\w*\s+uct)\b", normalized):
-        return (
-            "563/1991 Sb. § 5: pověření vedením účetnictví nezbavuje účetní jednotku odpovědnosti",
-            "nezbavuje účetní jednotku odpovědnosti",
-        )
-    if re.search(
-        r"\b(svobodn\w*\s+pristup\w*\s+k?\s*informac\w*|zadost\w*\s+o\s+informac\w*|pozad\w*(?:\s+\w+){0,5}\s+o\s+informac\w*)\b",
-        normalized,
-    ):
-        return (
-            "106/1999 Sb. § 14 odst. 5 písm. d): poskytne informaci v souladu se žádostí ve lhůtě nejpozději do 15 dnů",
-            "ve lhůtě nejpozději do 15 dnů",
-        )
-    if re.search(
-        r"\b(nalezitost\w*(?:\s+\w+){0,4}\s+smlouv\w*|vznik\w*(?:\s+\w+){0,3}\s+smlouv\w*|smlouv\w*(?:\s+\w+){0,4}\s+obsah\w*|smlouv\w*\s+mezi\s+(?:dvema|stran))\b",
-        normalized,
-    ):
-        return (
-            "89/2012 Sb. § 1724: smlouvou projevují strany vůli zřídit mezi sebou závazek a řídit se obsahem smlouvy",
-            "smlouvou projevují strany vůli zřídit mezi sebou závazek",
-        )
-    if re.search(r"\b(verejn\w*\s+zakaz\w*|zadavan\w*\s+verejn\w*\s+zakaz\w*)\b", normalized):
-        return (
-            "134/2016 Sb. § 6: zásady transparentnosti, přiměřenosti, rovného zacházení a zákazu diskriminace",
-            "zásady transparentnosti",
-        )
-    return None
-
-
-def _promote_legal_evidence(message: str, chunks: list[RetrievedChunk]) -> list[RetrievedChunk]:
-    """Move the passage that directly answers a common legal question into the bounded LLM context."""
-    normalized = _normalize_for_assistant(message)
-    needles: tuple[str, ...] = ()
-    if re.search(r"\b(prescas\w*|zakonik\w*\s+prac)\b", normalized):
-        needles = ("nařízená práce přesčas nesmí", "celkový rozsah práce přesčas")
-    elif re.search(r"\b(svobodn\w*\s+pristup\w*\s+k?\s*informac\w*|pozad\w*(?:\s+\w+){0,5}\s+o\s+informac\w*)\b", normalized):
-        needles = ("ve lhůtě nejpozději do 15 dnů", "poskytne informaci v souladu se žádostí")
-    elif re.search(r"\b(verejn\w*\s+zakaz\w*|zadavan\w*\s+verejn\w*\s+zakaz\w*)\b", normalized):
-        needles = ("zásady transparentnosti",)
-    elif re.search(r"\b(spravn\w*\s+(?:organ|rizeni|rozhodnut|rad)\w*|odvolan\w*\s+proti\s+rozhodnut\w*)\b", normalized):
-        needles = ("odvolací lhůta činí 15 dnů",)
-    elif re.search(r"\b(ucetnictv\w*|ucetn\w*\s+jednotk|veden\w*\s+uct)\b", normalized):
-        needles = ("nezbavuje účetní jednotku odpovědnosti",)
-    elif re.search(r"\b(nalezitost\w*(?:\s+\w+){0,4}\s+smlouv\w*|vznik\w*(?:\s+\w+){0,3}\s+smlouv\w*|smlouv\w*(?:\s+\w+){0,4}\s+obsah\w*|smlouv\w*\s+mezi\s+(?:dvema|stran))\b", normalized):
-        needles = ("smlouvou projevují strany vůli zřídit mezi sebou závazek",)
-    if not needles:
-        return chunks
-    direct = [chunk for chunk in chunks if any(needle in chunk.text.lower() for needle in needles)]
-    if not direct:
-        return chunks
-    direct_ids = {chunk.chunk_id for chunk in direct}
-    return [*direct, *(chunk for chunk in chunks if chunk.chunk_id not in direct_ids)]
-
-
-def _apply_common_legal_core(
-    message: str,
-    answer: RagAnswer,
-    chunks: list[RetrievedChunk],
-    composed_citations: list[Citation],
-) -> RagAnswer:
-    """Restore a short verbatim legal core when a model omits the direct controlling sentence."""
-    normalized = _normalize_for_assistant(message)
-    needle: str | None = None
-    if re.search(
-        r"\b(spravn\w*\s+(?:organ|rizeni|rozhodnut|rad)\w*|odvolan\w*\s+proti\s+rozhodnut\w*)\b",
-        normalized,
-    ):
-        needle = "odvolací lhůta činí 15 dnů"
-    elif re.search(r"\b(ucetnictv\w*|ucetn\w*\s+jednotk|veden\w*\s+uct)\b", normalized):
-        needle = "nezbavuje účetní jednotku odpovědnosti"
-    if not needle:
-        return answer
-
-    source = next((chunk for chunk in chunks if needle in chunk.text.lower()), None)
-    if source is None:
-        return answer
-    sentence = _source_sentence_with(source.text, needle)
-    if not sentence:
-        return answer
-    normalized_answer = " ".join(answer.answer.lower().split())
-    normalized_sentence = " ".join(sentence.lower().split()).strip(" .")
-    if normalized_sentence in normalized_answer:
-        return answer
-
-    prefix = f"Podle citovaného předpisu: {sentence}"
-    source_citation = next(
-        (citation for citation in composed_citations if citation.chunk_id == source.chunk_id),
-        None,
-    )
-    citations = list(answer.citations)
-    if source_citation and all(item.chunk_id != source.chunk_id for item in citations):
-        citations.insert(0, source_citation)
-    used_chunks = list(answer.used_chunks)
-    if source.chunk_id not in used_chunks:
-        used_chunks.insert(0, source.chunk_id)
-    claims = [
-        {
-            "claim": prefix,
-            "claim_type": "main",
-            "chunk_ids": [source.chunk_id],
-            "quoted_support": sentence,
-            "supported": True,
-            "support_score": 1.0,
-        },
-        *[
-            {**claim, "claim_type": "supporting"}
-            if isinstance(claim, dict) and claim.get("claim_type") == "main"
-            else claim
-            for claim in answer.claims
-        ],
-    ]
-    return answer.model_copy(
-        update={
-            "answer": f"{prefix}\n\n{answer.answer}",
-            "citations": citations,
-            "used_chunks": used_chunks,
-            "claims": claims,
-        }
-    )
-
-
-def _source_sentence_with(text: str, needle: str) -> str | None:
-    normalized = " ".join(text.replace("\u00ad", "").split())
-    for sentence in re.split(r"(?<=[.!?])\s+", normalized):
-        if needle in sentence.lower():
-            return re.sub(r"^\(\d+\)\s*", "", sentence).strip()
-    return None
-
-
-def _assistant_legal_answer_focus(message: str) -> str | None:
-    """Clarify the requested legal facet without supplying an answer or fact."""
-    normalized = _normalize_for_assistant(message)
-    if re.search(r"\b(prescas\w*|zakonik\w*\s+prac)\b", normalized):
-        return (
-            "První odstavec musí stručně uvést podmínky práce přesčas a samostatně celý "
-            "obecný maximální rozsah "
-            "podle § 93: limit nařízené práce za rok a průměrný týdenní limit v "
-            "vyrovnávacím období, pokud je citovaný kontext dokládá. Až potom stručně "
-            "popiš odměnu nebo náhradní volno. Pro běžnou odpověď použij pravidla mzdy "
-            "z § 114. Pravidla platu z § 127, včetně zvláštní sazby za dny nepřetržitého "
-            "odpočinku, uveď pouze jako výslovně označenou samostatnou variantu. "
-            "Nezaměň obecný limit práce přesčas s rozsahem zahrnutým do sjednané mzdy."
-        )
-    if re.search(
-        r"\b(svobodn\w*\s+pristup\w*\s+k?\s*informac|pozad\w*(?:\s+\w+){0,5}\s+o\s+informac\w*)\b",
-        normalized,
-    ):
-        return (
-            "Zaměř odpověď na běžné první vyřízení řádné žádosti. Nezaměň tuto lhůtu "
-            "s lhůtou po zaplacení úhrady, stížností, odvoláním ani přezkumem."
-        )
-    if re.search(
-        r"\b(spravn\w*\s+(?:organ|rizeni|rozhodnut|rad)\w*|odvolan\w*\s+proti\s+rozhodnut\w*)\b",
-        normalized,
-    ):
-        return (
-            "První věta musí popsat běžné odvolání proti oznámenému správnímu rozhodnutí "
-            "a uvést obecnou lhůtu podle § 83, pokud ji citovaný kontext dokládá. "
-            "Zvláštní režim neoznámeného rozhodnutí podle "
-            "§ 84 uveď jen jako jasně označenou výjimku, pokud jej citace dokládá."
-        )
-    if re.search(r"\b(nalezitost\w*(?:\s+\w+){0,4}\s+smlouv|smlouv\w*\s+mezi\s+(?:dvema|stran))\b", normalized):
-        return (
-            "Odpověz prakticky a stručně: uveď strany, předmět a obsah závazku, "
-            "potřebnou formu a podpisy jen tehdy, pokud je pro daný typ smlouvy "
-            "vyžaduje zákon. Nevytvářej univerzální povinný seznam pro všechny smlouvy."
-        )
-    if re.search(r"\b(ucetnictv\w*|ucetn\w*\s+jednotk|veden\w*\s+uct)\b", normalized):
-        return (
-            "První věta musí říci, že za vedení účetnictví odpovídá účetní jednotka a že "
-            "pověření jiné osoby ji této odpovědnosti nezbavuje, pokud to citovaný "
-            "kontext dokládá. Speciální pravidla pro fondy a jednotky bez právní osobnosti "
-            "uveď až potom a jen pokud jsou pro dotaz užitečná. Nepoužij dvojí zápor."
-        )
-    return None
-
-
 def _assistant_legal_history_retrieval_hint(earlier_questions: object) -> str | None:
     hint, _question = _assistant_legal_history_retrieval_context(earlier_questions)
     return hint
@@ -4486,6 +4318,8 @@ def _assistant_query_uses_history(message: str, earlier_questions: object) -> bo
     normalized = _normalize_for_assistant(message).strip()
     if not normalized:
         return False
+    if re.match(r"^(rozved|zjednodus|preformuluj|shrn\w*|rewrite|simplify|elaborate)\b", normalized):
+        return not extract_identifiers(message)
     if re.match(
         r"^(a\s+(co|jak(?:a|e|y|ou)?)|co\s+(s\s+tim|to|dale)|jak\s+je\s+to|jak\s+to|"
         r"ktery\s+z\s+nich|ktera\s+z\s+nich|kolik\s+jich|a\s+dale|a\s+dal|"
@@ -4517,6 +4351,7 @@ def _assistant_uses_authorized_follow_up_source(
 ) -> bool:
     return bool(
         _assistant_query_uses_history(message, earlier_questions)
+        and not extract_identifiers(message)
         and (
             _assistant_query_has_referential_source(message)
             or not _assistant_legal_retrieval_hint(message)
@@ -4525,7 +4360,6 @@ def _assistant_uses_authorized_follow_up_source(
             _assistant_query_has_referential_source(message)
             or not _assistant_query_has_explicit_source_topic(message)
         )
-        and _assistant_legal_history_retrieval_hint(earlier_questions)
     )
 
 
@@ -4550,9 +4384,6 @@ def _assistant_answer_query(
         history_max_length=history_max_length,
         max_query_length=12000,
     )
-    legal_focus = _assistant_legal_answer_focus(message)
-    if legal_focus:
-        query = f"{query}\n\nZaměření odpovědi:\n{legal_focus}"
     evidence = _director_copilot_evidence_context(
         context.get("director_copilot_evidence")
     )
@@ -5106,9 +4937,7 @@ def _is_approval_query(value: str) -> bool:
 def _employee_answer(answer: str, response_language: ResponseLanguage = "cs") -> str:
     text = answer.strip()
     text = _strip_inline_chunk_citations(text)
-    text = _strip_markdown_emphasis(text)
     text = _normalize_markdown_bullets(text)
-    text = _soften_employee_technical_terms(text, response_language)
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r" *\n *", "\n", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
@@ -5299,17 +5128,16 @@ def _fallback_follow_up_questions(message: str, response_language: ResponseLangu
             _localized(response_language, "followup_incident_category"),
             _localized(response_language, "followup_incident_description"),
         ]
-    topic = _follow_up_topic(message, response_language)
     if response_language == "en":
         return [
-            f"What responsibilities follow from {topic}?",
-            f"Which exception or approval process applies to {topic}?",
-            f"Can you prepare a checklist for {topic}?",
+            "Can you explain this answer more simply?",
+            "Which conditions and exceptions apply to this answer?",
+            "Can you turn this answer into a checklist?",
         ]
     return [
-        f"Jaké povinnosti z toho vyplývají pro {topic}?",
-        f"Jaký postup nebo schvalování se vztahuje k tématu {topic}?",
-        f"Můžeš připravit kontrolní seznam pro {topic}?",
+        "Můžeš tuto odpověď vysvětlit jednodušeji?",
+        "Jaké podmínky a výjimky se vztahují k této odpovědi?",
+        "Můžeš z této odpovědi připravit kontrolní seznam?",
     ]
 
 

@@ -505,7 +505,9 @@ async function handlePost(request: NextRequest) {
         language: responseLanguage,
         route: assistantRoute
       });
-    let persistedConversation = normalizedResponse.warnings.includes(
+    const hasExactPersistenceReceipt = Object.prototype.hasOwnProperty.call(normalizedResponse, "message_id");
+    const persistedMessageId = normalizedResponse.message_id ?? null;
+    let persistedConversation = (conversationId && hasExactPersistenceReceipt) || normalizedResponse.warnings.includes(
       "CONVERSATION_HISTORY_NOT_PERSISTED",
     )
       ? undefined
@@ -521,12 +523,14 @@ async function handlePost(request: NextRequest) {
         )
         .catch(() => persistedConversation);
     }
+    const confirmedMessageId = hasExactPersistenceReceipt
+      ? persistedMessageId : latestAssistantMessageId(persistedConversation);
     return NextResponse.json({
-      response: persistedConversation
+      response: confirmedMessageId
         ? normalizedResponse
         : withHistoryPersistenceWarning(normalizedResponse),
-      message_id: latestAssistantMessageId(persistedConversation),
-      persistence_status: persistedConversation ? "persisted" : "failed",
+      message_id: confirmedMessageId,
+      persistence_status: confirmedMessageId ? "persisted" : "failed",
     });
   } catch (error) {
     return assistantBridgeError(error);

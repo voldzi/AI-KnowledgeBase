@@ -88,7 +88,7 @@ class RegistryClient(Protocol):
         user_id: str,
         messages: list[dict[str, object]],
         auth_context: AuthContext | None = None,
-    ) -> None:
+    ) -> dict[str, object] | None:
         ...
 
     async def fetch_conversation(
@@ -227,7 +227,7 @@ class MockRegistryClient:
         user_id: str,
         messages: list[dict[str, object]],
         auth_context: AuthContext | None = None,
-    ) -> None:
+    ) -> dict[str, object] | None:
         from uuid import uuid4
 
         conversation = self._conversations.setdefault(
@@ -251,6 +251,7 @@ class MockRegistryClient:
             if message.get("role") == "user":
                 latest_user_message_id = message_id
         conversation["messages"] = stored_messages
+        return conversation
 
     async def fetch_conversation(
         self,
@@ -610,14 +611,14 @@ class HttpRegistryClient:
         user_id: str,
         messages: list[dict[str, object]],
         auth_context: AuthContext | None = None,
-    ) -> None:
+    ) -> dict[str, object] | None:
         # A generated answer may complete after the caller's short-lived user
         # access token expires.  Persist the already-authorized turn with the
         # narrowly granted RAG service identity so conversation lineage is not
         # lost at that boundary.  Registry still records and validates the
         # explicit user_id and the service route cannot read document content.
         service_token = await self._service_token()
-        await request_json_with_retry(
+        return await request_json_with_retry(
             dependency="registry-api",
             settings=self._settings,
             method="POST",
@@ -831,8 +832,8 @@ class DevAuthzRegistryClient:
         user_id: str,
         messages: list[dict[str, object]],
         auth_context: AuthContext | None = None,
-    ) -> None:
-        await self._audit_client.append_conversation_messages(
+    ) -> dict[str, object] | None:
+        return await self._audit_client.append_conversation_messages(
             conversation_id=conversation_id,
             user_id=user_id,
             messages=messages,

@@ -110,7 +110,7 @@ class QdrantHybridRetriever:
         # Resolve the source with the identifier alone. Sending the whole natural
         # language question can rank similar chunks from other laws above the
         # exact title before the document scope has been established.
-        identifiers = extract_query_identifiers(query)
+        identifiers = extract_query_identifiers(query, document_only=True)
         resolver_query = " ".join(identifiers) if identifiers else query
         if self._opensearch is not None:
             return await self._opensearch.retrieve(

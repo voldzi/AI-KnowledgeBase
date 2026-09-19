@@ -16,6 +16,7 @@ IDENTIFIER_PATTERNS = (
     re.compile(r"\b(?:cl|clanek|article)\.?\s*\d+[a-z]?\b"),
     re.compile(r"\b(?:odst|odstavec|paragraph)\.?\s*\d+[a-z]?\b"),
     re.compile(r"\b(?:pril|priloha|annex)\.?\s*\d+[a-z]?\b"),
+    re.compile(r"§\s*\d+[a-z]?\b"),
 )
 DOCUMENT_IDENTIFIER_PATTERNS = IDENTIFIER_PATTERNS[:2]
 RISK_QUERY_TERMS = {"riziko", "rizika", "rizik", "risk", "risks"}
@@ -114,11 +115,11 @@ def expand_query_text(query: str) -> str:
     return " ".join([stripped, *additions])
 
 
-def extract_query_identifiers(query: str) -> list[str]:
+def extract_query_identifiers(query: str, *, document_only: bool = False) -> list[str]:
     normalized = normalize_text(query)
     identifiers: list[str] = []
     seen: set[str] = set()
-    for pattern in IDENTIFIER_PATTERNS:
+    for pattern in DOCUMENT_IDENTIFIER_PATTERNS if document_only else IDENTIFIER_PATTERNS:
         for match in pattern.finditer(normalized):
             identifier = _normalize_identifier(match.group(0))
             if identifier and identifier not in seen:
@@ -137,10 +138,28 @@ def query_without_document_identifiers(query: str) -> str:
     paragraph and annex coordinates remain intact because they still carry
     useful within-document meaning.
     """
-    normalized = normalize_text(query)
+    # Search a normalized shadow but remove spans from the original Unicode
+    # text. Dense embeddings and language models need the original language.
+    shadow: list[str] = []
+    positions: list[int] = []
+    for index, char in enumerate(query):
+        value = normalize_text(char)
+        shadow.extend(value)
+        positions.extend([index] * len(value))
+    normalized = "".join(shadow)
+    spans: list[tuple[int, int]] = []
+    remaining = normalized
     for pattern in DOCUMENT_IDENTIFIER_PATTERNS:
-        normalized = pattern.sub(" ", normalized)
-    semantic = re.sub(r"\s+", " ", normalized).strip(" \t\r\n,;:.-?!")
+        matches = list(pattern.finditer(remaining))
+        spans.extend(match.span() for match in matches)
+        remaining = pattern.sub(lambda match: " " * len(match.group(0)), remaining)
+    # Multiple identifiers can describe a comparison or a referenced source;
+    # removing them would erase the distinction the user is asking about.
+    identifiers = {re.sub(r"\s+", "", normalized[start:end]) for start, end in spans}
+    if len(identifiers) > 1:
+        return query.strip()
+    removed = {i for start, end in spans for i in range(positions[start], positions[end - 1] + 1)}
+    semantic = re.sub(r"\s+", " ", "".join(" " if i in removed else char for i, char in enumerate(query))).strip(" \t\r\n,;:.-?!")
     return semantic if tokenize(semantic) else query.strip()
 
 

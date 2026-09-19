@@ -138,3 +138,32 @@ and missing approved plans retain visible explanations. Overdue source review
 is separate from a conflict or a transport failure. Safe, localized warnings
 are deduplicated; unknown technical codes are not reflected into user-facing
 text. These presentation rules do not weaken backend evidence checks.
+
+## Conversation reference and meaning integrity
+
+For a source-bound follow-up the composer may receive the selected prior
+assistant answer as untrusted reference data (for example, to resolve “the
+second point”). Registry must have freshly marked that message available.
+Every document/version pair cited by it must also be represented in the final
+selected context after authorization and the context budget. Otherwise the
+previous answer is omitted. It is never evidence or a system instruction.
+
+The assistant preserves Unicode query text, numbers, negation, units, technical
+names and parenthetical conditions. Deduplication removes only identical text
+(with normalized whitespace) in the same version and section. Document-bound
+follow-ups use their requested chunk budget instead of the cross-document
+per-document diversity quota. Explicit effective dates, including “today”, must
+not be discarded by historical fallback.
+
+No predefined legal deadline, paragraph or expected answer is injected by the
+former common-legal-core path. Domain alias lookup remains separate from answer
+composition. Final rendering preserves Markdown and factual text; internal
+chunk markers are still stripped pending a dedicated inline citation renderer.
+
+`AssistantChatResponse` additively exposes `message_id`, `claims`,
+`evidence_status` and `verification_model`. The message ID comes from the exact
+Registry append receipt matched by a generated turn ID, never from a concurrent
+last-message lookup. Older servers remain readable through the web compatibility
+path; a new server's null receipt is not replaced with an unrelated history ID.
+The evidence status is persisted with the answer. Retrieval confidence alone
+must not be presented as verification of its factual claims.

@@ -417,6 +417,10 @@ class AssistantReportArtifact(BaseModel):
 class AssistantChatResponse(BaseModel):
     response_type: AssistantResponseType
     conversation_id: str
+    message_id: str | None = Field(default=None, description="Exact persisted assistant message returned by the append operation; never inferred from the latest conversation message.")
+    claims: list[dict[str, Any]] = Field(default_factory=list)
+    evidence_status: Literal["supported", "partial", "unsupported", "not_checked"] = "not_checked"
+    verification_model: str | None = None
     answer: str | None = None
     message: str | None = None
     questions: list[ClarificationQuestion] = Field(default_factory=list)

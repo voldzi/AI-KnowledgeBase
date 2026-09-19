@@ -397,10 +397,10 @@ async def test_source_scoped_retrieval_ranks_by_semantic_question_without_docume
     )
 
     assert captured_queries == [
-        "jake povinnosti dodavatele stanovi",
-        "jake povinnosti dodavatele stanovi",
+        "Jaké povinnosti dodavatele stanoví",
+        "Jaké povinnosti dodavatele stanoví",
     ]
-    assert embedded_queries == [["jake povinnosti dodavatele stanovi"]]
+    assert embedded_queries == [["Jaké povinnosti dodavatele stanoví"]]
 
 
 @pytest.mark.asyncio

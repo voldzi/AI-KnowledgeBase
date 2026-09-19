@@ -21,13 +21,13 @@ _IDENTIFIER_RE = re.compile(
     r"[A-Z]{2,}[A-Z0-9_-]*[-/]\d{2,}"
     r"|doc_[a-z0-9]+"
     r"|ver_[a-z0-9]+"
-    r"|\d{1,4}/(?:19|20)\d{2}\s*Sb\.?"
+    r"|\d{1,4}\s*/\s*(?:19|20)\d{2}\b(?:\s*Sb\.?)?"
     r"|\d{1,6}[-/](?:19|20)\d{2}[-/][A-Z0-9][A-Z0-9_-]*"
     r")",
     re.I,
 )
 _COMPARE_RE = re.compile(r"\b(porovnej|porovnání|rozdíl|oproti|compare|difference|konflikt|rozpor)\b", re.I)
-_LIVE_RE = re.compile(r"\b(aktuální rozpočet|čerpání|stav projektu|milník|úkol|live data|dnes)\b", re.I)
+_LIVE_RE = re.compile(r"\b(aktuální rozpočet|čerpání|stav projektu|milník|úkol|live data)\b", re.I)
 
 
 def extract_identifiers(query: str) -> tuple[str, ...]:
@@ -43,17 +43,18 @@ def analyze_query(
 ) -> RetrievalPlan:
     explicit_documents = bool(filters.document_ids or filters.document_version_ids)
     has_identifier = bool(extract_identifiers(query))
-    has_date = bool(_DATE_RE.search(query))
+    # A year inside a source identifier is not the requested effective date.
+    has_date = bool(filters.valid_on or _DATE_RE.search(_IDENTIFIER_RE.sub(" ", query)))
     is_comparison = bool(_COMPARE_RE.search(query))
 
-    if _LIVE_RE.search(query):
-        return RetrievalPlan("copilot_live_data", 50, 0.25, 6)
     if is_comparison:
         return RetrievalPlan("cross_document", 100, 0.45, 12, require_multiple_documents=True)
     if explicit_documents:
         return RetrievalPlan("document_scoped", 64, 0.45, max(1, len(filters.document_ids) or 2))
     if has_identifier:
         return RetrievalPlan("exact", 50, 0.15, 6)
+    if _LIVE_RE.search(query):
+        return RetrievalPlan("copilot_live_data", 50, 0.25, 6)
     if has_date:
         return RetrievalPlan("temporal", 80, 0.35, 8)
     return RetrievalPlan(
