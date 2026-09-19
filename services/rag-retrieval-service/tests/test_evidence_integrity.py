@@ -5,7 +5,15 @@ import pytest
 
 from app.config import load_settings
 from app.schemas import RagAnswer
-from policies.evidence import EvidenceGate, _model_assessment, _quote_in_source, _answer_statements
+from policies.evidence import (
+    EvidenceAssessment,
+    EvidenceGate,
+    _answer_statements,
+    _model_assessment,
+    _quote_in_source,
+    _repair_messages,
+    _verification_messages,
+)
 from tests.test_rag_v2 import _chunk
 
 
@@ -115,6 +123,17 @@ def test_compound_list_item_keeps_supported_sentence_independent():
         "Dalsi tvrzeni nema oporu.",
     ]
     assert [item["supported"] for item in assessment.claims] == [True, False]
+
+
+def test_model_prompts_require_atomic_explicit_claims_and_allow_faithful_paraphrase():
+    chunk = _chunk("a", "doc_a", SOURCE)
+    assessment = EvidenceAssessment([], "partial", False)
+    repair_system = _repair_messages(SOURCE, [chunk], assessment)[0]["content"]
+    verification_system = _verification_messages(SOURCE, [chunk])[0]["content"]
+    assert "one independently supportable factual statement per sentence" in repair_system
+    assert "explicit subject" in repair_system
+    assert "does not require verbatim wording" in verification_system
+    assert "every material detail is preserved" in verification_system
 
 
 @pytest.mark.asyncio

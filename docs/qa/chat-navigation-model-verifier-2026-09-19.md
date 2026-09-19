@@ -179,3 +179,27 @@ RAG nyní odděluje generativní timeout od ostatních závislostí, generaci be
 idempotency klíče automaticky neopakuje, omezuje celý evidence pipeline a pro
 lokální verifier používá 4096tokenový strop. Bezpečnostní selhání zůstává
 fail-closed; změna pouze odstraňuje duplicitní práci a nekontrolovanou frontu.
+
+## Navazující živé ověření právních a smluvních odpovědí
+
+Externí Structured Outputs nejprve odmítly evidence schema kvůli nepodporovanému
+`uniqueItems`. Schema tento pokyn již neposílá; server dál sám odmítá duplicitní
+chunk ID. Stejný dotaz na základní zásady zadávání veřejných zakázek poté přešel
+z no-answer na plně podloženou odpověď s vysokou důvěrou. Obsahoval
+transparentnost, přiměřenost, rovné zacházení i zákaz diskriminace a všechny tři
+citace šly autorizovaně otevřít.
+
+A/B test veřejného dotazu na statistickou mlčenlivost porovnal Lunu a Sol nad
+stejným korpusem a politikou. Sol zachoval také sankci 200 000 Kč z další části
+zákona a otevřel obě konkrétní citace. Naměřený celkový odhad byl 0,0472012 USD
+pro Sol proti 0,0045424 USD pro Lunu. Jde o jeden vzorek, nikoli rozpočtovou
+předpověď. Kvalitativní profil proto používá Sol pro veřejné ověření a případnou
+jednorázovou opravu. Omezená SIS smlouva zůstala na interním modelu kvůli
+`NO_EXTERNAL_AI`; v živém testu vrátila podrobný rozsah podpory a tři platné
+citace. Evidence gate zůstává fail-closed v obou trasách.
+
+Opravný prompt nově vyžaduje jednu samostatně doložitelnou skutečnost na větu,
+explicitní subjekt a pokud možno terminologii i slovosled zdroje. Verifier smí
+přijmout věrnou parafrázi, ale stále musí zachovat subjekt, modalitu, čísla,
+podmínky a výjimky. Konečný obsahový certifikát vyžaduje samostatnou kurátorovanou
+sadu 200 lidských dotazů; uvedené cílené průchody jej nenahrazují.

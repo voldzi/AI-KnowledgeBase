@@ -80,6 +80,12 @@ zvolí nakonfigurovaný interní high-quality/chat model a přidá diagnostiku
 hranici. Selhání interního verifieru v režimu `enforce`/`repair` zůstává
 fail-closed.
 
+Pre-pilot kvalitativní profil používá pro veřejné zdroje `gpt-5.6-sol` jako
+samostatný verifier a případný jednorázový opravný model. Počáteční kompozice
+může zůstat na levnějším modelu. Sol byl zvolen pro přesnější posouzení právních
+parafrází; každý běh dál zaznamenává tokeny a odhad ceny. Zdroj s omezením
+externího zpracování se na Sol neposílá a používá interní policy-bound model.
+
 Generativní volání používají vlastní limit `AKL_RAG_LLM_REQUEST_TIMEOUT_SECONDS`
 a výchozí `AKL_RAG_LLM_RETRY_ATTEMPTS=0`. Pozdní inferenci nelze bezpečně
 opakovat jako běžné idempotentní čtení: původní výpočet může pokračovat a jeho
