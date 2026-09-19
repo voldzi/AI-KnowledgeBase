@@ -38,7 +38,7 @@
 | --- | --- | --- |
 | V2 dual-write | `AKL_RAG_V2_INDEX_MODE` | `AKL_QDRANT_V2_COLLECTION` |
 | V2 dense read | `AKL_RAG_V2_RETRIEVAL_MODE` | `AKL_QDRANT_V2_COLLECTION` |
-| Cross-encoder | `AKL_RAG_RERANKER_MODE` | provider, URL list, model, revision, timeout, batch, min score |
+| Cross-encoder | `AKL_RAG_RERANKER_MODE` | provider, URL list, model, revision, timeout, candidate limit, batch, min score |
 | Adaptivní retrieval | `AKL_RAG_ADAPTIVE_RETRIEVAL_MODE` | profil, candidate limit, dense/BM25 váha |
 | Parent retrieval | `AKL_RAG_PARENT_RETRIEVAL_MODE` | window, max chunks per document |
 | Evidence gate | `AKL_RAG_EVIDENCE_GATE_MODE` | minimum overlap |
@@ -89,6 +89,11 @@ Proto se jeho extraktivní výstup znovu neposílá modelovému verifieru.
 ## Rerankery
 
 - TEI kontrakt: `POST /rerank` s `query`, `texts`, `raw_scores=false`.
+- Široká hybridní množina se nejprve levně lexikálně seřadí a cross-encoder
+  dostane nejvýše `AKL_RAG_RERANKER_CANDIDATE_LIMIT` autorizovaných kandidátů.
+  Jde o latencí omezený shortlist, nikoli o snížení recall rozpočtu Qdrantu a
+  OpenSearch. Pre-pilot profil na současném CPU používá osm kandidátů; silnější
+  cílový hardware může limit zvýšit až po měření kvality a odezvy.
 - Llama/Qwen kontrakt: `POST /v1/rerank` s `model`, `query`, `documents`, `top_n`.
 - `AKL_RAG_RERANKER_BASE_URLS` obsahuje alternativní interní cesty ke stejnému
   runtime. AKB je nepoužívá jako load-balancing pool: vybere zdravou cestu,

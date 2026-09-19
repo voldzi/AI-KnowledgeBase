@@ -76,6 +76,12 @@ def test_evidence_repair_mode_is_supported_and_unknown_mode_is_rejected() -> Non
         load_settings({"AKL_RAG_EVIDENCE_GATE_MODE": "rewrite-everything"})
 
 
+def test_reranker_candidate_limit_is_bounded() -> None:
+    assert load_settings({"AKL_RAG_RERANKER_CANDIDATE_LIMIT": "8"}).reranker_candidate_limit == 8
+    with pytest.raises(ConfigError, match="AKL_RAG_RERANKER_CANDIDATE_LIMIT"):
+        load_settings({"AKL_RAG_RERANKER_CANDIDATE_LIMIT": "0"})
+
+
 def test_invalid_source_context_window_is_rejected() -> None:
     with pytest.raises(ConfigError, match="AKL_RAG_SOURCE_CONTEXT_WINDOW"):
         load_settings({"AKL_RAG_SOURCE_CONTEXT_WINDOW": "6"})

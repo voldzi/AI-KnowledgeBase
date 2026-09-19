@@ -76,7 +76,12 @@ class CrossEncoderReranker:
         if not chunks or (self._settings.reranker_mode == "off" and not colbert_active):
             return lexical[:limit], []
 
-        candidates = chunks
+        # Hybrid retrieval intentionally has a broad recall budget. Sending the
+        # entire recall set to a cross-encoder makes latency grow with corpus
+        # breadth and can exhaust the model timeout. A cheap lexical ordering
+        # first selects a bounded, still-authorized candidate set; the semantic
+        # model then decides the final order within that set.
+        candidates = lexical[: self._settings.reranker_candidate_limit]
         warnings: list[str] = []
         if self._settings.colbert_mode != "off" and self._settings.reranker_strategy in {"colbert", "cascade"}:
             try:
@@ -91,7 +96,12 @@ class CrossEncoderReranker:
                     ]
                     warnings.append("COLBERT_SHADOW")
                 else:
-                    candidates = colbert[: self._settings.colbert_candidate_limit]
+                    candidates = colbert[
+                        : min(
+                            self._settings.colbert_candidate_limit,
+                            self._settings.reranker_candidate_limit,
+                        )
+                    ]
                 if (
                     self._settings.reranker_strategy == "colbert"
                     and self._settings.colbert_mode == "enforce"

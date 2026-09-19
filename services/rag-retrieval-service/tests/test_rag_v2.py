@@ -596,6 +596,33 @@ async def test_cross_encoder_enforce_orders_candidates_and_records_provenance(mo
 
 
 @pytest.mark.asyncio
+async def test_cross_encoder_semantically_scores_only_the_bounded_lexical_shortlist(monkeypatch) -> None:
+    settings = load_settings(
+        {
+            "AKL_RAG_RERANKER_MODE": "enforce",
+            "AKL_RAG_RERANKER_PROVIDER": "tei",
+            "AKL_RAG_RERANKER_BASE_URL": "http://reranker:3000",
+            "AKL_RAG_RERANKER_CANDIDATE_LIMIT": "3",
+        }
+    )
+    reranker = CrossEncoderReranker(settings)
+    scored_ids = []
+
+    async def score(*, query, chunks):
+        scored_ids.extend(chunk.chunk_id for chunk in chunks)
+        return [0.9 - index * 0.1 for index in range(len(chunks))]
+
+    monkeypatch.setattr(reranker, "_score", score)
+    chunks = [_chunk(str(index), f"doc_{index}", f"schválení dokumentu {index}") for index in range(12)]
+    result, warnings = await reranker.rerank(query="schválení", chunks=chunks, limit=2)
+
+    assert len(scored_ids) == 3
+    assert len(result) == 2
+    assert set(item.chunk_id for item in result).issubset(set(scored_ids))
+    assert warnings == []
+
+
+@pytest.mark.asyncio
 async def test_cross_encoder_fails_over_to_next_internal_endpoint(monkeypatch) -> None:
     settings = load_settings(
         {

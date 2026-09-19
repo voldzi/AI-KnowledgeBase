@@ -164,6 +164,7 @@ class Settings:
     reranker_health_timeout_seconds: float
     reranker_failure_cooldown_seconds: float
     reranker_max_concurrency: int
+    reranker_candidate_limit: int
     reranker_batch_size: int
     reranker_max_document_chars: int
     reranker_min_score: float
@@ -311,6 +312,9 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         reranker_max_concurrency = int(
             _get(source, "AKL_RAG_RERANKER_MAX_CONCURRENCY", "1")
         )
+        reranker_candidate_limit = int(
+            _get(source, "AKL_RAG_RERANKER_CANDIDATE_LIMIT", "24")
+        )
         reranker_batch_size = int(_get(source, "AKL_RAG_RERANKER_BATCH_SIZE", "32"))
         reranker_max_document_chars = int(
             _get(source, "AKL_RAG_RERANKER_MAX_DOCUMENT_CHARS", "4000")
@@ -366,6 +370,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         )
     if reranker_max_concurrency <= 0 or reranker_max_concurrency > 16:
         raise ConfigError("AKL_RAG_RERANKER_MAX_CONCURRENCY must be between 1 and 16")
+    if reranker_candidate_limit <= 0 or reranker_candidate_limit > 100:
+        raise ConfigError("AKL_RAG_RERANKER_CANDIDATE_LIMIT must be between 1 and 100")
     if reranker_batch_size <= 0 or reranker_batch_size > 100:
         raise ConfigError("AKL_RAG_RERANKER_BATCH_SIZE must be between 1 and 100")
     if reranker_max_document_chars < 512 or reranker_max_document_chars > 20000:
@@ -561,6 +567,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         reranker_health_timeout_seconds=reranker_health_timeout_seconds,
         reranker_failure_cooldown_seconds=reranker_failure_cooldown_seconds,
         reranker_max_concurrency=reranker_max_concurrency,
+        reranker_candidate_limit=reranker_candidate_limit,
         reranker_batch_size=reranker_batch_size,
         reranker_max_document_chars=reranker_max_document_chars,
         reranker_min_score=reranker_min_score,
