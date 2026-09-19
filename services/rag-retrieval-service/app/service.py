@@ -1229,10 +1229,18 @@ class RagRetrievalService:
             if conversation_context.earlier_questions:
                 query_context["earlier_user_questions"] = conversation_context.earlier_questions
 
-        if payload.source_bound and (
-            not conversation_context.parent_evidence_available
-            or conversation_context.source_scope_hash != payload.source_scope_hash
-        ):
+        typed_source_reference = bool(
+            payload.conversation_id
+            and _assistant_query_has_referential_source(payload.message)
+            and not extract_identifiers(payload.message)
+            and not _assistant_allows_general_knowledge(query_context)
+        )
+        if (
+            payload.source_bound and (
+                not conversation_context.parent_evidence_available
+                or conversation_context.source_scope_hash != payload.source_scope_hash
+            )
+        ) or (typed_source_reference and not conversation_context.parent_evidence_available):
             _set_current_span_attributes(
                 {
                     "akb.assistant.lineage_available": conversation_context.parent_evidence_available,
@@ -4372,6 +4380,11 @@ def _assistant_query_uses_history(message: str, earlier_questions: object) -> bo
         return False
     normalized = _normalize_for_assistant(message).strip()
     if not normalized:
+        return False
+    # A newly named source is self-contained unless the user explicitly compares
+    # it with a previous source/answer. Shared words such as "Sb." must not pull
+    # an unrelated earlier document identifier into exact-source resolution.
+    if extract_identifiers(message) and not _assistant_query_has_referential_source(message):
         return False
     if re.match(r"^(rozved|zjednodus|preformuluj|shrn\w*|rewrite|simplify|elaborate)\b", normalized):
         return not extract_identifiers(message)

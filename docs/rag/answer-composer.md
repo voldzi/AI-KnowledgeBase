@@ -154,6 +154,13 @@ the freshly authorized parent document/version scope. An explicit new document
 identifier overrides implicit inheritance; absent or revoked history cannot
 provide a source scope.
 
+An explicit new identifier also excludes unrelated earlier questions from the
+source-resolution query; vocabulary overlap alone cannot turn a topic switch
+into a multi-document lookup. An explicit comparison with “this document”
+retains reference context. A typed document/answer reference whose selected
+parent is missing or revoked returns clarification rather than searching for
+a replacement source. Explicit general-knowledge mode remains separate.
+
 Source discovery may use document aliases and task vocabulary. After resolving
 an exact authorized document/version, embedding, passage search and reranking
 use the employee's semantic question and conversational context without those

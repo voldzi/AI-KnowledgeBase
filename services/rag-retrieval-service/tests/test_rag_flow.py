@@ -1259,6 +1259,27 @@ def test_source_bound_follow_up_fails_closed_on_scope_hash_mismatch() -> None:
     assert "SOURCE_LINEAGE_UNAVAILABLE" in follow_up.json()["warnings"]
 
 
+@pytest.mark.parametrize("availability", ["source_access_changed", "missing"])
+def test_typed_source_reference_never_searches_globally_after_history_loss(availability):
+    with make_client() as client:
+        service = client.app.state.rag_service
+        messages = [] if availability == "missing" else [{
+            "role": "assistant", "message_id": "revoked", "availability": availability,
+            "citations": [{"document_id": "doc_old", "document_version_id": "ver_old"}],
+        }]
+        service._registry_client.fetch_conversation = AsyncMock(return_value={"messages": messages})
+        service._retrieve_authorized = AsyncMock(side_effect=AssertionError("must not search a replacement source"))
+        response = client.post("/api/v1/assistant/chat", json={
+            "user_id": "employee_1", "conversation_id": "previous",
+            "message": "Můžeš tuto odpověď vysvětlit jednodušeji?",
+        })
+        service._retrieve_authorized.assert_not_awaited()
+    assert response.status_code == 200
+    assert response.json()["response_type"] == "clarification_needed"
+    assert "SOURCE_LINEAGE_UNAVAILABLE" in response.json()["warnings"]
+    assert response.json()["citations"] == []
+
+
 def test_general_knowledge_scope_returns_a_clearly_unbound_model_answer() -> None:
     with make_client() as client:
         response = client.post(

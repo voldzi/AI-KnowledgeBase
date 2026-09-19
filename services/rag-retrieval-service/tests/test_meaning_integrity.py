@@ -81,6 +81,27 @@ def test_ranking_query_preserves_comparison_and_original_czech():
     assert "134/2016" not in result
 
 
+def test_explicit_topic_change_does_not_import_previous_document_identifiers():
+    from app.service import _assistant_query
+    question = "Nyní jiné téma: jaké zdroje máš k zákonu č. 89/1995 Sb.?"
+    result = _assistant_query(question, {"earlier_user_questions": [
+        "Jaké jsou hlavní zásady podle zákona č. 134/2016 Sb.?",
+        "Vysvětli tuto odpověď.",
+    ]})
+    assert result == question
+    assert "134/2016" not in result
+
+
+def test_explicit_comparison_with_previous_source_retains_reference_context():
+    from app.service import _assistant_query
+    result = _assistant_query(
+        "Porovnej tento zákon se zákonem 89/2012 Sb.",
+        {"earlier_user_questions": ["Co upravuje zákon 134/2016 Sb.?"]},
+        include_retrieval_hint=False,
+    )
+    assert "134/2016" in result and "89/2012" in result
+
+
 def test_today_is_an_explicit_date_not_permission_for_historical_fallback():
     from datetime import datetime
     from zoneinfo import ZoneInfo
