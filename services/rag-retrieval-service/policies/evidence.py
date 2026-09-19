@@ -91,7 +91,10 @@ class EvidenceGate:
                     answer=answer.answer,
                     min_overlap=self._settings.evidence_min_overlap,
                 )
+                _log_assessment("verification", assessment)
                 if self._settings.evidence_gate_mode == "repair" and assessment.status != "supported":
+                    original_answer = answer
+                    original_assessment = assessment
                     answer, repaired = await self._model_call(
                         answer,
                         messages=_repair_messages(answer.answer, chunks, assessment),
@@ -110,14 +113,7 @@ class EvidenceGate:
                     )
                     if not repaired.strip():
                         raise ValueError("evidence repair returned an empty answer")
-                    answer = answer.model_copy(
-                        update={
-                            "answer": repaired.strip(),
-                            "warnings": list(
-                                dict.fromkeys([*answer.warnings, "EVIDENCE_REPAIR_APPLIED"])
-                            ),
-                        }
-                    )
+                    answer = answer.model_copy(update={"answer": repaired.strip()})
                     answer, raw = await self._model_call(
                         answer,
                         messages=_verification_messages(answer.answer, chunks),
@@ -139,6 +135,27 @@ class EvidenceGate:
                         answer=answer.answer,
                         min_overlap=self._settings.evidence_min_overlap,
                     )
+                    _log_assessment("verification_after_repair", assessment)
+                    if _assessment_rank(assessment) < _assessment_rank(original_assessment):
+                        answer = original_answer.model_copy(
+                            update={
+                                "llm_usage": answer.llm_usage,
+                                "warnings": list(
+                                    dict.fromkeys(
+                                        [*original_answer.warnings, "EVIDENCE_REPAIR_REJECTED"]
+                                    )
+                                ),
+                            }
+                        )
+                        assessment = original_assessment
+                    else:
+                        answer = answer.model_copy(
+                            update={
+                                "warnings": list(
+                                    dict.fromkeys([*answer.warnings, "EVIDENCE_REPAIR_APPLIED"])
+                                )
+                            }
+                        )
                 return self._apply(answer, assessment, verifier=model)
         except Exception as exc:
             logger.warning(
@@ -315,6 +332,23 @@ class EvidenceGate:
 
 def _sentences(value: str) -> list[str]:
     return [part.strip() for part in re.split(r"(?<=[.!?])\s+|\n+", value) if part.strip()]
+
+
+def _assessment_rank(assessment: EvidenceAssessment) -> tuple[int, int, int]:
+    supported = sum(1 for item in assessment.claims if bool(item.get("supported")))
+    status_rank = {"unsupported": 0, "partial": 1, "supported": 2}.get(assessment.status, 0)
+    return (0 if assessment.unsupported_main_claim else 1, supported, status_rank)
+
+
+def _log_assessment(stage: str, assessment: EvidenceAssessment) -> None:
+    logger.info(
+        "evidence_assessment_completed stage=%s status=%s claim_count=%s supported_count=%s unsupported_main=%s content_logged=false",
+        stage,
+        assessment.status,
+        len(assessment.claims),
+        sum(1 for item in assessment.claims if bool(item.get("supported"))),
+        assessment.unsupported_main_claim,
+    )
 
 
 def _answer_statements(value: str, chunks: list[RetrievedChunk]) -> list[str]:

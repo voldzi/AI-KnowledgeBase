@@ -172,6 +172,43 @@ async def test_repair_mode_fails_closed_when_reverification_is_invalid():
     assert "EVIDENCE_VERIFIER_UNAVAILABLE" in result.warnings
 
 
+@pytest.mark.asyncio
+async def test_repair_cannot_replace_a_better_partially_supported_answer():
+    from app.llm_client import ChatCompletionResult
+
+    second = "Dalsi tvrzeni nema oporu."
+    answer_text = SOURCE + "\n" + second
+    initial = {
+        "claims": [
+            _payload()["claims"][0],
+            {"claim": second, "claim_type": "supporting", "chunk_ids": [],
+             "quoted_support": None, "supported": False},
+        ]
+    }
+    repaired = SOURCE.replace("30", "300")
+    after_repair = _payload(repaired, quote=None, supported=False)
+    after_repair["claims"][0]["chunk_ids"] = []
+    responses = [json.dumps(initial), repaired, json.dumps(after_repair)]
+
+    class Verifier:
+        async def chat_completion_result(self, **kwargs):
+            return ChatCompletionResult(content=responses.pop(0), model="verifier", provider="mock")
+
+    result = await EvidenceGate(
+        load_settings({"AKL_RAG_EVIDENCE_GATE_MODE": "repair",
+                       "AKL_RAG_EVIDENCE_VERIFIER_MODEL": "verifier"}),
+        Verifier(),
+    ).verify_async(
+        RagAnswer(query_id="q", answer=answer_text, confidence="high", citations=[], used_chunks=["a"]),
+        [_public_policy_chunk()],
+    )
+
+    assert result.answer == SOURCE
+    assert result.evidence_status == "partial"
+    assert "EVIDENCE_REPAIR_REJECTED" in result.warnings
+    assert "EVIDENCE_REPAIR_APPLIED" not in result.warnings
+
+
 @pytest.mark.parametrize("claim", [
     "Lhuta pro vyrizeni zadosti je 300 dnu.",
     "Lhuta pro vyrizeni zadosti neni 30 dnu.",
