@@ -29,6 +29,46 @@ class FakeClient:
 
 
 class AkbChatMcpTests(unittest.TestCase):
+    def test_long_request_refreshes_token_before_it_can_expire_midflight(self):
+        with tempfile.TemporaryDirectory() as directory:
+            session_file = Path(directory) / "session.json"
+            session_file.write_text(json.dumps({
+                "refresh_token": "refresh",
+                "token_endpoint": "https://login.example/token",
+                "client_id": "client",
+            }), encoding="utf-8")
+            session_file.chmod(0o600)
+            provider = mcp.CredentialProvider(session_file)
+            provider._token = "nearly-expired"
+            provider._expires_at = 1_150.0
+            with (
+                patch.object(mcp.time, "time", return_value=1_000.0),
+                patch.object(mcp, "_form_request", return_value={
+                    "access_token": "fresh",
+                    "refresh_token": "rotated",
+                    "expires_in": 300,
+                }) as refresh,
+            ):
+                self.assertEqual(
+                    provider.token(minimum_validity_seconds=180.0),
+                    "fresh",
+                )
+            refresh.assert_called_once()
+
+    def test_long_request_reuses_token_with_sufficient_remaining_lifetime(self):
+        with tempfile.TemporaryDirectory() as directory:
+            session_file = Path(directory) / "session.json"
+            session_file.write_text("{}", encoding="utf-8")
+            session_file.chmod(0o600)
+            provider = mcp.CredentialProvider(session_file)
+            provider._token = "still-valid"
+            provider._expires_at = 1_300.0
+            with patch.object(mcp.time, "time", return_value=1_000.0):
+                self.assertEqual(
+                    provider.token(minimum_validity_seconds=180.0),
+                    "still-valid",
+                )
+
     def test_tools_list_exposes_governed_chat_and_citation(self):
         response = mcp.dispatch(FakeClient(), {"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
         names = {tool["name"] for tool in response["result"]["tools"]}

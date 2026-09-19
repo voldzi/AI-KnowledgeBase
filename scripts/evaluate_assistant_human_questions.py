@@ -66,9 +66,11 @@ class LockedCredentials:
         self._delegate = delegate
         self._lock = threading.Lock()
 
-    def token(self) -> str:
+    def token(self, *, minimum_validity_seconds: float = 30.0) -> str:
         with self._lock:
-            return self._delegate.token()
+            return self._delegate.token(
+                minimum_validity_seconds=minimum_validity_seconds
+            )
 
 
 def _args() -> argparse.Namespace:

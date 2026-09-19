@@ -83,11 +83,12 @@ class CredentialProvider:
         self._token: str | None = None
         self._expires_at = 0.0
 
-    def token(self) -> str:
+    def token(self, *, minimum_validity_seconds: float = 30.0) -> str:
         token_file = os.environ.get("AKB_CHAT_MCP_BEARER_TOKEN_FILE")
         if token_file:
             return _read_secret(Path(token_file).expanduser())
-        if self._token and self._expires_at > time.time() + 30:
+        minimum_validity_seconds = max(30.0, min(240.0, minimum_validity_seconds))
+        if self._token and self._expires_at > time.time() + minimum_validity_seconds:
             return self._token
         session = _json_object(json.loads(_read_secret(self.session_file)), "session")
         refresh_token = session.get("refresh_token")
@@ -155,7 +156,13 @@ class AkbClient:
         headers = {"Accept": "application/json", "X-Correlation-ID": f"mcp-{secrets.token_hex(12)}"}
         data = None
         if authenticated:
-            headers["Authorization"] = f"Bearer {self.credentials.token()}"
+            # A governed chat request can spend well over a minute in retrieval,
+            # reranking and evidence verification before the Registry performs
+            # its final authorization check.  Do not start such a request with a
+            # bearer token that is about to expire mid-flight.
+            headers["Authorization"] = (
+                f"Bearer {self.credentials.token(minimum_validity_seconds=self.timeout + 30.0)}"
+            )
         if body is not None:
             data = json.dumps(body, ensure_ascii=False).encode()
             headers["Content-Type"] = "application/json"
