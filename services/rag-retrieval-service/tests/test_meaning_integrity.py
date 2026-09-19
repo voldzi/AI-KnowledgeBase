@@ -335,6 +335,39 @@ async def test_adjacent_page_keeps_own_citation_and_requires_fresh_authorization
 
 
 @pytest.mark.asyncio
+async def test_parent_expansion_does_not_merge_already_selected_same_page_seeds():
+    from types import SimpleNamespace
+    from app.registry_client import AuthzFilterResult
+
+    first = _chunk("first", "law", "První samostatně vybrané ustanovení.")
+    second = _chunk("second", "law", "Druhé samostatně vybrané ustanovení.")
+    first.citation.page_number = second.citation.page_number = 3
+    first.metadata["source_mime_type"] = second.metadata["source_mime_type"] = "application/pdf"
+
+    class Retriever:
+        async def get_context_chunks(self, *args, **kwargs):
+            return [first, second]
+
+    class Registry:
+        async def filter_allowed_documents(self, **kwargs):
+            return AuthzFilterResult(allowed_document_ids={"law"}, denied_document_ids=set())
+
+    service = object.__new__(RagRetrievalService)
+    service._settings = SimpleNamespace(
+        parent_window=1, max_context_chars=5000, parent_retrieval_mode="enforce",
+        authz_mode="registry", registry_client_mode="mock",
+    )
+    service._retriever, service._registry_client = Retriever(), Registry()
+
+    result, _ = await service._expand_authorized_context(
+        subject_id="employee", chunks=[first, second], auth_context=None,
+    )
+
+    assert [item.text for item in result] == [first.text, second.text]
+    assert [item.metadata["expanded_chunk_ids"] for item in result] == [["first"], ["second"]]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize('read_denied', [False, True])
 async def test_redacted_write_receipt_is_resolved_only_through_fresh_user_authorization(read_denied):
     from app.schemas import AssistantChatResponse

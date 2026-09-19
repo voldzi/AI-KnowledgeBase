@@ -123,6 +123,15 @@ class AuthorizedConversationContext:
     parent_document_answer: str | None = None
 
 
+def _answer_evidence_chunks(
+    answer: RagAnswer,
+    chunks: list[RetrievedChunk],
+) -> list[RetrievedChunk]:
+    """Keep verification on the exact context supplied to the composer."""
+    used = set(answer.used_chunks)
+    return [chunk for chunk in chunks if chunk.chunk_id in used]
+
+
 class RagRetrievalService:
     def __init__(
         self,
@@ -1475,11 +1484,13 @@ class RagRetrievalService:
                 response_language=payload.response_language,
                 auth_context=auth_context,
             )
-            rag_answer = await self._evidence_gate.verify_async(
-                rag_answer,
-                assistant_chunks,
-                auth_context=auth_context,
-            )
+            evidence_chunks = _answer_evidence_chunks(rag_answer, assistant_chunks)
+            if evidence_chunks:
+                rag_answer = await self._evidence_gate.verify_async(
+                    rag_answer,
+                    evidence_chunks,
+                    auth_context=auth_context,
+                )
             rag_answer = _apply_answer_facet_completeness(
                 answer=rag_answer,
                 requested_facets=requested_facets,
@@ -2631,6 +2642,7 @@ class RagRetrievalService:
             effective_on=effective_on,
         )
         authorized_chunk_ids = {item.chunk_id for item in authorized_related}
+        selected_seed_ids = {item.chunk_id for item in chunks}
 
         expanded: list[RetrievedChunk] = []
         for seed, related in zip(chunks, related_by_seed, strict=True):
@@ -2640,6 +2652,11 @@ class RagRetrievalService:
                 item
                 for item in related
                 if item.chunk_id in authorized_chunk_ids
+                # A top-level seed is already rendered with its own citation.
+                # Merging selected seeds into each other duplicates the same
+                # page, consumes the context budget and can hide a later,
+                # more relevant provision.
+                if item.chunk_id not in selected_seed_ids
                 if item.citation.document_id == seed.citation.document_id
                 and item.citation.document_version_id == seed.citation.document_version_id
                 and item.citation.page_number == seed.citation.page_number

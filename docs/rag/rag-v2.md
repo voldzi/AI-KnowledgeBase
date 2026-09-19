@@ -98,6 +98,11 @@ ověření zvoleného verifieru. Samotné `supported=true` není certifikací
 správnosti modelu. Neměnit režim na `off` jako řešení nedostatečné kvality.
 Opravný model nesmí do uživatelského textu vkládat interní ID; citace připojuje
 API samostatně a po opravě ponechá jen chunky potvrzené druhým ověřením.
+Verifier i opravný model dostanou pouze přesnou množinu chunků, kterou po
+kontextovém limitu skutečně obdržel composer. Parent retrieval neslučuje dva
+chunky, které už byly oba vybrány jako samostatné seedy; každý si zachová svůj
+text a citaci. Tím se zabrání duplicitnímu vyčerpání kontextu i tomu, aby oprava
+použila sice autorizovanou, ale composerem neviděnou pasáž.
 
 Evidence gate se uplatňuje také na běžný `/assistant/chat`. Copilot ředitele
 používá oddělenou deterministickou cestu: nejvýše tři autorizované smluvní

@@ -864,6 +864,24 @@ def test_regular_assistant_chat_applies_enforced_evidence_gate() -> None:
     assert "EVIDENCE_GATE_UNSUPPORTED_CLAIMS" in body["warnings"]
 
 
+def test_evidence_context_is_limited_to_chunks_seen_by_composer() -> None:
+    from app.schemas import RagAnswer
+    from app.service import _answer_evidence_chunks
+    from tests.test_rag_v2 import _chunk
+
+    visible = _chunk("visible", "doc", "Composer tento text skutečně obdržel.")
+    omitted = _chunk("omitted", "doc", "Tento text se do kontextového limitu nevešel.")
+    answer = RagAnswer(
+        query_id="query",
+        answer="Odpověď",
+        confidence="high",
+        citations=[],
+        used_chunks=["visible"],
+    )
+
+    assert _answer_evidence_chunks(answer, [visible, omitted]) == [visible]
+
+
 def test_it_support_no_source_does_not_invent_an_unavailable_handoff() -> None:
     with make_client() as client:
         response = client.post(
