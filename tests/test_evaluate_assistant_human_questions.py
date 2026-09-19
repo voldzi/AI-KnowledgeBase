@@ -6,6 +6,7 @@ from scripts.evaluate_assistant_human_questions import (
     _quote_reappears_in_source,
     _reopened_source_text,
     _source_scope_hash,
+    _visible_answer_statements,
 )
 
 
@@ -50,7 +51,7 @@ def test_supported_visible_claim_and_reopened_quote_pass_content_checks():
 def test_unsupported_claim_must_not_remain_visible():
     response = {
         "response_type": "answer",
-        "answer": "Lhůta je 999 dnů." * 5,
+        "answer": " ".join(["Lhůta je 999 dnů."] * 5),
         "claims": [
             {
                 "claim": "Lhůta je 999 dnů.",
@@ -64,6 +65,43 @@ def test_unsupported_claim_must_not_remain_visible():
     assert "UNSUPPORTED_CLAIM_VISIBLE" in failures
     assert "NO_SUPPORTED_CLAIM" in failures
     assert (supported, total) == (0, 1)
+
+
+def test_unsupported_substring_of_supported_claim_is_not_a_visible_statement():
+    supported = "Povinný subjekt poskytuje informace vztahující se k jeho působnosti."
+    unsupported = "Povinný subjekt poskytuje informace."
+    response = {
+        "response_type": "answer",
+        "answer": supported,
+        "claims": [
+            {
+                "claim": supported,
+                "supported": True,
+                "chunk_ids": ["chunk_a"],
+                "quoted_support": supported,
+            },
+            {
+                "claim": unsupported,
+                "supported": False,
+                "chunk_ids": [],
+                "quoted_support": None,
+            },
+        ],
+    }
+    failures, supported_count, total = _claim_content_checks(
+        response,
+        {"chunk_a": _check(supported)},
+    )
+    assert "UNSUPPORTED_CLAIM_VISIBLE" not in failures
+    assert (supported_count, total) == (1, 2)
+
+
+def test_visible_statement_parser_preserves_czech_legal_abbreviations():
+    answer = "Zákon č. 106/1999 Sb. upravuje poskytování informací. Platí pro povinné subjekty."
+    assert _visible_answer_statements(answer) == {
+        "zákon č. 106/1999 sb. upravuje poskytování informací.",
+        "platí pro povinné subjekty.",
+    }
 
 
 def test_source_scope_hash_is_read_only_from_complete_evidence_frame():

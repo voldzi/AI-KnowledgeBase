@@ -52,6 +52,11 @@ EVIDENCE_POLARITY_TOKENS = {
     "nikoliv",
     "bez",
 }
+_PERIOD_SENTINEL = "\uf000"
+_LEGAL_ABBREVIATION = re.compile(
+    r"\b(?:č|sb|odst|písm|čl|např|tj|tzn|resp|popř|str|čj|sp|zn|tzv|apod|atd)\.",
+    re.IGNORECASE,
+)
 
 
 class LockedCredentials:
@@ -139,6 +144,30 @@ def _percentile(values: list[float], fraction: float) -> float:
     return round(ordered[index], 1)
 
 
+def _visible_answer_statements(answer: str) -> set[str]:
+    """Mirror the RAG claim boundaries without treating substrings as claims."""
+    statements: set[str] = set()
+    for raw_line in answer.splitlines() or [answer]:
+        line = raw_line.strip()
+        if not line:
+            continue
+        protected = _LEGAL_ABBREVIATION.sub(
+            lambda match: match.group(0).replace(".", _PERIOD_SENTINEL),
+            line,
+        )
+        protected = re.sub(r"(?<=\d)\.(?=\s+\d)", _PERIOD_SENTINEL, protected)
+        protected = re.sub(
+            r"\b(?:[A-Za-zÁ-Žá-ž]\.){2,}",
+            lambda match: match.group(0).replace(".", _PERIOD_SENTINEL),
+            protected,
+        )
+        for part in re.split(r"(?<=[.!?])\s+", protected):
+            statement = _normalized(part.replace(_PERIOD_SENTINEL, "."))
+            if statement:
+                statements.add(statement)
+    return statements
+
+
 def _response(chat: dict[str, Any]) -> dict[str, Any]:
     data = chat.get("data")
     response = data.get("response") if isinstance(data, dict) else None
@@ -200,6 +229,7 @@ def _claim_content_checks(
     supported = [item for item in claims if item.get("supported") is True]
     answer = response.get("answer") if isinstance(response.get("answer"), str) else ""
     normalized_answer = _normalized(answer)
+    visible_statements = _visible_answer_statements(answer)
     if response.get("response_type") == "answer" and len(normalized_answer) < 60:
         failures.append("ANSWER_TOO_SHORT")
     if TECHNICAL_ID.search(answer):
@@ -208,7 +238,7 @@ def _claim_content_checks(
         failures.append("NO_SUPPORTED_CLAIM")
     for claim in claims:
         text = claim.get("claim") if isinstance(claim.get("claim"), str) else ""
-        visible = bool(text) and _normalized(text) in normalized_answer
+        visible = bool(text) and _normalized(text) in visible_statements
         if claim.get("supported") is True and not visible:
             failures.append("SUPPORTED_CLAIM_MISSING_FROM_ANSWER")
         if claim.get("supported") is not True and visible:
