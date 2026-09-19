@@ -168,6 +168,11 @@ path; a new server's null receipt is not replaced with an unrelated history ID.
 The evidence status is persisted with the answer. Retrieval confidence alone
 must not be presented as verification of its factual claims.
 
+Registry can redact metadata in a write-only service's append receipt. If that
+receipt hides the turn ID, RAG rereads the conversation with the original
+user's current authorization and matches the exact turn ID there. A denied
+read never falls back to the last message or grants the writer document access.
+
 
 ## Adjacent-page context
 

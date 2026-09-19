@@ -2063,6 +2063,16 @@ class RagRetrievalService:
     ) -> bool:
         assistant_content = response.answer or response.message or ""
         turn_id = f"turn_{uuid.uuid4().hex}"
+        def own_message_id(receipt: object) -> str | None:
+            if not isinstance(receipt, dict) or not isinstance(receipt.get("messages"), list):
+                return None
+            for stored in receipt["messages"]:
+                if (isinstance(stored, dict) and stored.get("role") == "assistant"
+                        and isinstance(stored.get("metadata"), dict)
+                        and stored["metadata"].get("turn_id") == turn_id
+                        and isinstance(stored.get("message_id"), str)):
+                    return stored["message_id"]
+            return None
         try:
             appended = await self._registry_client.append_conversation_messages(
                 conversation_id=conversation_id,
@@ -2108,17 +2118,19 @@ class RagRetrievalService:
                 ],
                 auth_context=auth_context,
             )
-            if isinstance(appended, dict) and isinstance(appended.get("messages"), list):
-                for stored in appended["messages"]:
-                    if (
-                        isinstance(stored, dict)
-                        and stored.get("role") == "assistant"
-                        and isinstance(stored.get("metadata"), dict)
-                        and stored["metadata"].get("turn_id") == turn_id
-                        and isinstance(stored.get("message_id"), str)
-                    ):
-                        response.message_id = stored["message_id"]
-                        break
+            response.message_id = own_message_id(appended)
+            if response.message_id is None and auth_context is not None:
+                # The write-only service receipt can be source-redacted. Read
+                # through the caller's current authorization, matching our turn
+                # rather than borrowing a concurrent conversation's last ID.
+                try:
+                    visible = await self._registry_client.fetch_conversation(
+                        conversation_id=conversation_id, auth_context=auth_context,
+                    )
+                    response.message_id = own_message_id(visible)
+                except Exception:
+                    # A lost/expired reader authorization does not undo the write.
+                    pass
             return True
         except Exception as exc:
             logger.warning(

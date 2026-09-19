@@ -261,3 +261,34 @@ async def test_adjacent_page_keeps_own_citation_and_requires_fresh_authorization
         assert [item.citation.page_number for item in result] == [1, 2]
         assert result[0].text == first.text
         assert result[1].text == second.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('read_denied', [False, True])
+async def test_redacted_write_receipt_is_resolved_only_through_fresh_user_authorization(read_denied):
+    from app.schemas import AssistantChatResponse
+    from app.errors import RetrievalError
+    caller = object()
+
+    class Registry:
+        async def append_conversation_messages(self, **kwargs):
+            self.own = dict(kwargs['messages'][-1], message_id='own-answer')
+            return {'messages': [dict(self.own, metadata={'history_access_changed': True})]}
+
+        async def fetch_conversation(self, **kwargs):
+            assert kwargs['auth_context'] is caller
+            if read_denied:
+                raise RetrievalError('AUTH_DENIED', 'revoked', status_code=403)
+            other = dict(self.own, message_id='concurrent-answer', metadata={'turn_id': 'other'})
+            return {'messages': [self.own, other]}
+
+    service = object.__new__(RagRetrievalService)
+    service._registry_client = Registry()
+    response = AssistantChatResponse(response_type='answer', conversation_id='conversation', answer='Odpověď')
+    persisted = await service._persist_conversation_turn(
+        conversation_id='conversation', user_id='employee', user_message='Dotaz', response=response,
+        parent_message_id=None, turn_origin='typed', source_bound=False, source_scope_hash=None,
+        auth_context=caller,
+    )
+    assert persisted
+    assert response.message_id == (None if read_denied else 'own-answer')
