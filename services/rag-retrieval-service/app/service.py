@@ -4344,12 +4344,14 @@ def _assistant_query_has_referential_source(message: str) -> bool:
     """Detect a source reference whose identity must come from conversation lineage."""
     normalized = _normalize_for_assistant(message)
     demonstrative = (
-        r"(?:tento|tato|toto|tohoto|teto|tomto|tomuhle|uveden\w*|predchoz\w*|"
+        r"(?:tento|tato|toto|tuto|tohoto|teto|tomto|tomuto|timto|touto|"
+        r"tenhle|tahle|tohle|tuhle|tohohle|tehle|tomuhle|timhle|touhle|"
+        r"uveden\w*|predchoz\w*|"
         r"vyse\s+uveden\w*|this|that|the\s+above|previous)"
     )
     source = (
         r"(?:zakon|predpis|smlouv|dokument|manual|metodik|smernic|projekt|"
-        r"zdroj|odpoved|law|regulation|contract|document|manual|project|source)\w*"
+        r"zdroj|odpoved|law|regulation|contract|document|manual|project|source|answer|response)\w*"
     )
     return bool(
         re.search(rf"\b{demonstrative}\s+{source}\b", normalized)

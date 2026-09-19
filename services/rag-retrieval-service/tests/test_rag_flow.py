@@ -1083,6 +1083,28 @@ def test_demonstrative_legal_follow_up_is_always_referential() -> None:
     )
 
 
+@pytest.mark.parametrize("question", [
+    "Můžeš tuto odpověď vysvětlit jednodušeji?",
+    "Prosím shrň tuhle odpověď do tří bodů.",
+    "Co souvisí s touto smlouvou?",
+    "K tomuto dokumentu potřebuji podrobnější vysvětlení.",
+    "Co souvisí s tímto předpisem?",
+    "Can you explain this answer more simply?",
+    "Please summarize the previous response.",
+])
+def test_inflected_source_and_answer_references_keep_authorized_lineage(question: str) -> None:
+    assert _assistant_query_has_referential_source(question)
+    assert _assistant_uses_authorized_follow_up_source(question, ["Jaké zdroje máš k tématu?"])
+    assert not _assistant_uses_authorized_follow_up_source(question, [])
+
+
+def test_explicit_new_identifier_overrides_answer_reference() -> None:
+    assert not _assistant_uses_authorized_follow_up_source(
+        "Porovnej tuto odpověď se zákonem č. 134/2016 Sb.",
+        ["Jaké zdroje máš k zákonu č. 89/1995 Sb.?"],
+    )
+
+
 def test_exact_parent_scope_cannot_fall_back_to_older_law() -> None:
     messages = [
         {

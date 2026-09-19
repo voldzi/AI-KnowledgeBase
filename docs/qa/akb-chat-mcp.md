@@ -19,6 +19,16 @@ The server exposes:
 
 ## Authentication
 
+For a follow-up, `akb_chat` accepts `parent_message_id`, `source_bound`,
+`source_scope_hash` and `turn_origin`, matching the browser contract. Read the
+freshly authorized conversation first and use the selected assistant message's
+ID and `metadata.current_context.evidence_frame.source_scope_hash`. A bound
+request requires all three IDs (conversation, parent and scope hash) and a
+non-typed origin such as `suggested_follow_up`; the tool rejects incomplete
+lineage rather than silently issuing an unbound question. Ordinary typed
+follow-ups may omit this binding and exercise the server's history resolution.
+Neither mode substitutes for fresh document authorization.
+
 The preferred setup uses a dedicated public OIDC client named
 `akb-chat-mcp-user`. It must use
 Authorization Code with PKCE, issue the same `akl-api` and

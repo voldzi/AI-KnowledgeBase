@@ -47,6 +47,21 @@ class AkbChatMcpTests(unittest.TestCase):
         self.assertTrue(result["results"][0]["passed"])
         self.assertEqual(client.calls[1][1], "/api/assistant/citations/chunk%3A1/open")
 
+    def test_source_bound_followup_preserves_browser_lineage(self):
+        client = FakeClient()
+        arguments = {"message": "Vysvětli to", "conversation_id": "conv_test",
+                     "parent_message_id": "msg_exact", "source_bound": True,
+                     "source_scope_hash": "sha256:" + "a" * 64,
+                     "turn_origin": "suggested_follow_up"}
+        mcp.call_tool(client, "akb_chat", arguments)
+        self.assertEqual(client.calls[0][2], {**arguments, "response_language": "cs"})
+
+    def test_incomplete_source_lineage_never_becomes_unbound_query(self):
+        client = FakeClient()
+        with self.assertRaises(mcp.McpFailure):
+            mcp.call_tool(client, "akb_chat", {"message": "Vysvětli to", "source_bound": True})
+        self.assertEqual(client.calls, [])
+
     def test_evaluation_fails_when_a_required_citation_is_missing(self):
         class NoCitationClient(FakeClient):
             def request(self, method, path, body=None, authenticated=True):

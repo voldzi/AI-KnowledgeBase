@@ -205,6 +205,10 @@ TOOLS = [
             "properties": {
                 "message": {"type": "string", "minLength": 1, "maxLength": 12000},
                 "conversation_id": {"type": "string", "minLength": 1, "maxLength": 160},
+                "parent_message_id": {"type": "string", "minLength": 1, "maxLength": 64},
+                "source_bound": {"type": "boolean"},
+                "source_scope_hash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+                "turn_origin": {"type": "string", "enum": ["typed", "suggested_follow_up", "clarification", "document_action"]},
                 "response_language": {"type": "string", "enum": ["cs", "en"], "default": "cs"},
                 "context": {"type": "object"},
             },
@@ -288,6 +292,18 @@ def call_tool(client: AkbClient, name: str, arguments: dict[str, Any]) -> dict[s
         }
         if "conversation_id" in arguments:
             payload["conversation_id"] = _required_string(arguments, "conversation_id", 160)
+        for key, limit in (("parent_message_id", 64), ("source_scope_hash", 71), ("turn_origin", 32)):
+            if key in arguments:
+                payload[key] = _required_string(arguments, key, limit)
+        if "source_bound" in arguments:
+            if type(arguments["source_bound"]) is not bool:
+                raise McpFailure("source_bound must be boolean")
+            payload["source_bound"] = arguments["source_bound"]
+        if payload.get("source_bound") and (
+            not all(payload.get(key) for key in ("conversation_id", "parent_message_id", "source_scope_hash"))
+            or payload.get("turn_origin") not in {"suggested_follow_up", "clarification", "document_action"}
+        ):
+            raise McpFailure("Source-bound chat requires its exact parent, scope hash and explicit origin")
         if isinstance(arguments.get("context"), dict):
             payload["context"] = arguments["context"]
         return client.request("POST", "/api/assistant/chat", payload)

@@ -148,6 +148,12 @@ Every document/version pair cited by it must also be represented in the final
 selected context after authorization and the context budget. Otherwise the
 previous answer is omitted. It is never evidence or a system instruction.
 
+Typed references recognize inflected Czech forms (for example, “tuto odpověď”
+and “touto smlouvou”) and English answer/response references. They inherit only
+the freshly authorized parent document/version scope. An explicit new document
+identifier overrides implicit inheritance; absent or revoked history cannot
+provide a source scope.
+
 The assistant preserves Unicode query text, numbers, negation, units, technical
 names and parenthetical conditions. Deduplication removes only identical text
 (with normalized whitespace) at the same document/version, page, section and source locator. Document-bound
