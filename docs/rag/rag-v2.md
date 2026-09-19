@@ -68,6 +68,14 @@ doslovnou citaci z textu zdroje; kontrola čísel a vybraných polaritních výr
 je další konzervativní ochrana, nikoli náhrada sémantického hodnocení.
 Model musí posoudit také jednotky, podmínky, výjimky a vztahy mezi subjekty.
 
+Nastavený externí verifier se použije jen tehdy, když souhrnná Information
+Policy všech použitých pasáží externí zpracování dovoluje. Pro `RESTRICTED`,
+`NO_EXTERNAL_AI`, `LOCAL_PROCESSING_ONLY` nebo neúplnou politiku AKB automaticky
+zvolí nakonfigurovaný interní high-quality/chat model a přidá diagnostiku
+`EVIDENCE_VERIFIER_LOCAL_POLICY_ROUTE`. Obsah ani při opravě neopustí povolenou
+hranici. Selhání interního verifieru v režimu `enforce`/`repair` zůstává
+fail-closed.
+
 Výpadek nebo neplatný výstup verifieru v `enforce` nebo `repair` končí no-answer.
 Nepodložené hlavní tvrzení končí bez citací a bez `used_chunks`.
 Ověřovací model přebírá stejné policy bindingy, handling class a kumulované

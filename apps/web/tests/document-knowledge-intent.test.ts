@@ -66,6 +66,10 @@ describe("document knowledge intent", () => {
       "extract_deadlines",
     );
     assert.equal(
+      resolveDocumentKnowledgeIntent("Kdy musí být smlouva uveřejněna v registru smluv?").answerMode,
+      "extract_deadlines",
+    );
+    assert.equal(
       resolveDocumentKnowledgeIntent("Jaké doklady potřebuji k žádosti?").answerMode,
       "extract_obligations",
     );

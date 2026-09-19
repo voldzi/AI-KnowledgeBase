@@ -11,7 +11,7 @@ from app.llm_client import ChatCompletionResult, LLMGatewayClient
 from app.schemas import RagAnswer, RetrievedChunk
 from app.security import AuthContext
 from policies.no_answer import NO_ANSWER_TEXT
-from policies.processing import policy_metadata
+from policies.processing import external_processing_allowed, policy_metadata
 from retrievers.scoring import normalize_text
 
 logger = logging.getLogger(__name__)
@@ -44,9 +44,23 @@ class EvidenceGate:
     ) -> RagAnswer:
         if self._settings.evidence_gate_mode == "off" or not answer.answer:
             return answer
-        model = self._settings.evidence_verifier_model
-        if not model or self._llm_client is None:
+        configured_model = self._settings.evidence_verifier_model
+        if not configured_model or self._llm_client is None:
             return self.verify(answer, chunks)
+        source_policy = policy_metadata(chunks)
+        model = configured_model
+        if not external_processing_allowed(source_policy):
+            model = self._settings.high_quality_chat_model or self._settings.chat_model
+            if model != configured_model:
+                answer = answer.model_copy(
+                    update={
+                        "warnings": list(
+                            dict.fromkeys(
+                                [*answer.warnings, "EVIDENCE_VERIFIER_LOCAL_POLICY_ROUTE"]
+                            )
+                        )
+                    }
+                )
         try:
             answer, raw = await self._model_call(
                 answer,

@@ -32,6 +32,16 @@ def _payload(claim=SOURCE, *, quote=SOURCE, supported=True):
                         "quoted_support": quote, "supported": supported}]}
 
 
+def _public_policy_chunk(chunk_id="a", document_id="doc_a", text=SOURCE):
+    chunk = _chunk(chunk_id, document_id, text)
+    chunk.metadata.update({
+        "policy_binding_id": "binding_public_test",
+        "policy_hash": "sha256:public-test",
+        "policy_summary": {"handlingClass": "PUBLIC", "obligations": []},
+    })
+    return chunk
+
+
 @pytest.mark.parametrize("suffix,number,expected", [
     ("[chunk_8f6154265d8b4fe7aa42960876f937b0]", "30", "supported"),
     ("[chunk_8f6154265d8b4fe7aa42960876f937b0]", "300", "unsupported"),
@@ -80,7 +90,7 @@ async def test_verification_usage_is_included_even_when_its_output_is_invalid(in
                                        "AKL_RAG_EVIDENCE_VERIFIER_MODEL": "verifier"}), Verifier())
     answer = RagAnswer(query_id="q", answer=SOURCE, confidence="high", citations=[], used_chunks=["a"],
                        llm_usage={"model": "composer", "total_tokens": 30, "estimated_cost_usd": 0.003})
-    result = await gate.verify_async(answer, [_chunk("a", "doc_a", SOURCE)])
+    result = await gate.verify_async(answer, [_public_policy_chunk()])
     assert result.llm_usage["total_tokens"] == 45
     assert result.llm_usage["estimated_cost_usd"] == pytest.approx(0.005)
     assert result.llm_usage["verification"]["model"] == "verifier"
@@ -114,7 +124,7 @@ async def test_repair_mode_rewrites_partial_answer_once_and_reverifies_it():
         llm_usage={"model": "composer", "prompt_tokens": 20, "completion_tokens": 10,
                    "total_tokens": 30, "cached_prompt_tokens": 0, "estimated_cost_usd": 0.003},
     )
-    result = await gate.verify_async(answer, [_chunk("a", "doc_a", SOURCE)])
+    result = await gate.verify_async(answer, [_public_policy_chunk()])
 
     assert [call["metadata"]["purpose"] for call in calls] == [
         "rag_claim_evidence_verification",
@@ -301,6 +311,7 @@ async def test_verifier_inherits_source_processing_restrictions():
     from answer_composer.composer import _policy_metadata
 
     captured = {}
+    captured_model = None
     chunk = _chunk("a", "doc_a", SOURCE)
     chunk.metadata.update({
         "policy_binding_id": "binding_test", "policy_hash": "sha256:test",
@@ -310,7 +321,9 @@ async def test_verifier_inherits_source_processing_restrictions():
 
     class Verifier:
         async def chat_completion(self, **kwargs):
+            nonlocal captured_model
             captured.update(kwargs["metadata"])
+            captured_model = kwargs["model"]
             return json.dumps(_payload())
 
     gate = EvidenceGate(load_settings({"AKL_RAG_EVIDENCE_GATE_MODE": "enforce",
@@ -323,5 +336,7 @@ async def test_verifier_inherits_source_processing_restrictions():
     assert all(captured[key] == value for key, value in _policy_metadata([chunk]).items())
     assert captured["handling_class"] == "RESTRICTED"
     assert captured["obligations"] == ["LOCAL_PROCESSING_ONLY", "NO_EXPORT", "NO_EXTERNAL_AI"]
+    assert captured_model == gate._settings.chat_model
+    assert "EVIDENCE_VERIFIER_LOCAL_POLICY_ROUTE" in result.warnings
     assert captured["content_logged"] is False
     assert SOURCE not in json.dumps(captured)

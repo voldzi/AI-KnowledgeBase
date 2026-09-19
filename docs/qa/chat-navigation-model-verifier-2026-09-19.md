@@ -159,3 +159,12 @@ oprava po autoritativním určení dokumentu odstraňuje z vnitrodokumentového
 dotazu pouze souvislou odlišující část známého názvu, včetně běžného českého
 skloňování. Otázka na zásady či povinnosti zůstane zachována; jednotlivé
 obecné slovo se za odkaz na dokument nepovažuje.
+
+Živá čtyřdotazová kontrola následně prokázala, že veřejná statistická povinnost
+prošla s přesnými citacemi, zatímco dotazy nad Budget smlouvou skončily po
+úspěšné lokální kompozici na HTTP 403 externího verifieru. Zdroj je správně
+`RESTRICTED` s politikou `AMBER+STRICT`; nejde o důvod tuto politiku oslabit.
+Verifier proto nově dědí stejný výběr interního modelu jako composer. Veřejné
+zdroje mohou dále používat OpenAI. Přirozená otázka „Kdy musí být…“ se zároveň
+klasifikuje jako hledání lhůty; dříve propadla do obecného IT režimu, přestože
+správná veřejná pasáž s třicetidenní lhůtou byla mezi vybranými zdroji.

@@ -33,3 +33,17 @@ def policy_metadata(chunks: list[RetrievedChunk]) -> dict[str, object]:
         "legal_classification": "NONE",
         "obligations": sorted(obligations),
     }
+
+
+def external_processing_allowed(policy: dict[str, object]) -> bool:
+    """Return whether source policy permits sending excerpts to an external LLM."""
+    if policy.get("policy_version") != "information-policy-2.0.0":
+        return False
+    if policy.get("legal_classification") != "NONE":
+        return False
+    if policy.get("handling_class") not in {"PUBLIC", "INTERNAL"}:
+        return False
+    obligations = policy.get("obligations")
+    if not isinstance(obligations, list):
+        return False
+    return not {"NO_EXTERNAL_AI", "LOCAL_PROCESSING_ONLY"}.intersection(obligations)

@@ -21,7 +21,10 @@ from app.schemas import (
 )
 from app.security import AuthContext
 from policies.no_answer import NO_ANSWER_TEXT, NO_ANSWER_TEXT_EN
-from policies.processing import policy_metadata as _policy_metadata
+from policies.processing import (
+    external_processing_allowed as _shared_external_processing_allowed,
+    policy_metadata as _policy_metadata,
+)
 
 
 HIGH_QUALITY_ANSWER_MODES: frozenset[AnswerMode] = frozenset(
@@ -470,16 +473,7 @@ class AnswerComposer:
 
 
 def _external_processing_allowed(policy: dict[str, object]) -> bool:
-    if policy.get("policy_version") != "information-policy-2.0.0":
-        return False
-    if policy.get("legal_classification") != "NONE":
-        return False
-    if policy.get("handling_class") not in {"PUBLIC", "INTERNAL"}:
-        return False
-    obligations = policy.get("obligations")
-    if not isinstance(obligations, list):
-        return False
-    return not {"NO_EXTERNAL_AI", "LOCAL_PROCESSING_ONLY"}.intersection(obligations)
+    return _shared_external_processing_allowed(policy)
 
 
 def _incomplete_answer(query_id: str, warnings: list[str], language: ResponseLanguage) -> RagAnswer:
