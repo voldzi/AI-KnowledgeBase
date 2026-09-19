@@ -956,7 +956,30 @@ def test_evidence_gate_removes_unsupported_secondary_claim() -> None:
 
     assert verified.evidence_status == "partial"
     assert "nákupy" not in verified.answer
+    assert "UNSUPPORTED_CLAIMS_REMOVED" in verified.warnings
     assert "UNSUPPORTED_SECONDARY_CLAIMS_REMOVED" in verified.warnings
+
+
+def test_evidence_gate_keeps_supported_facts_when_intro_is_unsupported() -> None:
+    settings = load_settings(
+        {"AKL_RAG_EVIDENCE_GATE_MODE": "enforce", "AKL_RAG_EVIDENCE_MIN_OVERLAP": "0.3"}
+    )
+    source = "Gestor dokumentu schvaluje výjimku ze směrnice."
+    chunk = _chunk("chunk_a", "doc_a", source)
+    answer = RagAnswer(
+        query_id="query_1",
+        answer="Zde je úplný přehled všech pravidel. " + source,
+        confidence="high",
+        citations=[],
+        used_chunks=[chunk.chunk_id],
+    )
+
+    verified = EvidenceGate(settings).verify(answer, [chunk])
+
+    assert verified.evidence_status == "partial"
+    assert verified.answer == source
+    assert verified.confidence == "medium"
+    assert "UNSUPPORTED_CLAIMS_REMOVED" in verified.warnings
 
 
 def test_model_evidence_contract_rejects_unknown_chunk_and_omitted_claim() -> None:

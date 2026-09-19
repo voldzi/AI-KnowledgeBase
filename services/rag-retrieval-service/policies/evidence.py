@@ -217,7 +217,7 @@ class EvidenceGate:
         if assessment.status != "supported":
             warnings.append("EVIDENCE_GATE_UNSUPPORTED_CLAIMS")
         enforcing = self._settings.evidence_gate_mode in {"enforce", "repair"}
-        if enforcing and assessment.unsupported_main_claim:
+        if enforcing and assessment.status == "unsupported":
             return answer.model_copy(
                 update={
                     **update,
@@ -226,7 +226,7 @@ class EvidenceGate:
                     "citations": [],
                     "used_chunks": [],
                     "warnings": warnings,
-                    "missing_information": "Hlavní tvrzení nebylo dostatečně podloženo autorizovanými zdroji.",
+                    "missing_information": "Žádné tvrzení nebylo dostatečně podloženo autorizovanými zdroji.",
                 }
             )
         if enforcing and assessment.status == "partial":
@@ -245,6 +245,7 @@ class EvidenceGate:
                 update={
                     **update,
                     "answer": "\n".join(supported_claims),
+                    "confidence": "medium" if answer.confidence == "high" else answer.confidence,
                     "citations": [
                         citation
                         for citation in answer.citations
@@ -253,7 +254,11 @@ class EvidenceGate:
                     "used_chunks": [
                         chunk_id for chunk_id in answer.used_chunks if chunk_id in supported_chunk_ids
                     ],
-                    "warnings": [*warnings, "UNSUPPORTED_SECONDARY_CLAIMS_REMOVED"],
+                    "warnings": [
+                        *warnings,
+                        "UNSUPPORTED_CLAIMS_REMOVED",
+                        "UNSUPPORTED_SECONDARY_CLAIMS_REMOVED",
+                    ],
                 }
             )
         if self._settings.evidence_gate_mode == "repair" and assessment.status == "supported":
