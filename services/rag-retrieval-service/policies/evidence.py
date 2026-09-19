@@ -548,7 +548,6 @@ def _verification_response_schema(
             "chunk_ids": {
                 "type": "array",
                 "items": {"type": "string", "enum": chunk_ids},
-                "uniqueItems": True,
                 "maxItems": min(2, len(chunk_ids)),
             },
             "supported": {"type": "boolean"},

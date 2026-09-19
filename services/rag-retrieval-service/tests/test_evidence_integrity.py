@@ -443,6 +443,7 @@ async def test_verifier_inherits_source_processing_restrictions():
     assert set(claim_schema["properties"]) == {"chunk_ids", "supported"}
     assert claim_schema["properties"]["chunk_ids"]["items"]["enum"] == ["a"]
     assert claim_schema["properties"]["chunk_ids"]["maxItems"] == 1
+    assert "uniqueItems" not in claim_schema["properties"]["chunk_ids"]
     assert "EVIDENCE_VERIFIER_LOCAL_POLICY_ROUTE" in result.warnings
     assert captured["content_logged"] is False
     assert SOURCE not in json.dumps(captured)
