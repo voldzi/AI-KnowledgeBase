@@ -154,6 +154,13 @@ the freshly authorized parent document/version scope. An explicit new document
 identifier overrides implicit inheritance; absent or revoked history cannot
 provide a source scope.
 
+Source discovery may use document aliases and task vocabulary. After resolving
+an exact authorized document/version, embedding, passage search and reranking
+use the employee's semantic question and conversational context without those
+automatic expansions. This prevents generic task hints from displacing the
+requested provision inside an already selected source. Unbound discovery keeps
+its expansions; all selected passages still pass Registry authorization.
+
 The assistant preserves Unicode query text, numbers, negation, units, technical
 names and parenthetical conditions. Deduplication removes only identical text
 (with normalized whitespace) at the same document/version, page, section and source locator. Document-bound

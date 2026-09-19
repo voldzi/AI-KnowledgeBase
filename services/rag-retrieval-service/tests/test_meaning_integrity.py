@@ -180,6 +180,56 @@ async def test_followup_keeps_full_evidence_budget_for_one_source():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("scope", ["unbound", "bound", "resolved"])
+async def test_source_resolution_hints_do_not_replace_question_inside_selected_document(scope):
+    from app.service import _assistant_query
+    seen = {}
+    evidence = _chunk("clause", "doc", "Podmínky vrácení jsou uvedeny v této části.")
+    question = "Jaké jsou podmínky vrácení zařízení?"
+    if scope == "resolved":
+        question = "Jaké jsou podmínky vrácení podle 1/2025 Sb.?"
+        evidence.citation.document_title = "1/2025 Sb. Testovací pravidla"
+    expanded = _assistant_query(question, {"document_retrieval_hints": ["správce", "historie nákupů"]})
+
+    class Retriever:
+        async def resolve_exact_candidates(self, *, query, **kwargs):
+            seen["resolver"] = query
+            return [evidence]
+
+        async def retrieve(self, **kwargs):
+            seen["retrieval"] = kwargs["query"]
+            return [evidence]
+
+    class Llm:
+        async def embeddings(self, queries, **kwargs):
+            seen["embedding"] = queries[0]
+            return [[0.1, 0.2]]
+
+    class Reranker:
+        async def rerank(self, *, query, chunks, limit):
+            seen["rerank"] = query
+            return chunks[:limit], []
+
+    settings = load_settings({"AKL_ENV": "test", "AKL_AUTH_MODE": "disabled", "AKL_RAG_DEPENDENCY_MODE": "mock", "AKL_RAG_AUTHZ_MODE": "dev", "AKL_RAG_ENABLE_RERANKING": "true"})
+    service = object.__new__(RagRetrievalService)
+    service._settings = settings
+    service._registry_client = MockRegistryClient(settings)
+    service._retriever, service._llm_client, service._reranker = Retriever(), Llm(), Reranker()
+    filters = RagQueryFilters(document_ids=["doc"]) if scope == "bound" else RagQueryFilters()
+    result = await service._retrieve_authorized(
+        payload=RetrieveRequest(subject_id="test", query=expanded, filters=filters, max_chunks=4),
+        semantic_query=question, query_id="semantic-priority", expand_parent=False,
+    )
+    assert result.response.chunks
+    expected = query_without_document_identifiers(question) if scope != "unbound" else expanded
+    assert seen["embedding"] == expected
+    assert seen["retrieval"] == expected
+    assert seen["rerank"] == expected
+    if scope == "resolved":
+        assert seen["resolver"] == expanded
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("missing_source", [False, True])
 async def test_previous_answer_only_reaches_model_when_all_its_sources_are_selected(missing_source):
     from answer_composer.composer import AnswerComposer

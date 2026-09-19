@@ -1380,6 +1380,13 @@ class RagRetrievalService:
             ),
             query_id=query_id,
             auth_context=auth_context,
+            semantic_query=_assistant_query(
+                payload.message,
+                query_context,
+                include_retrieval_hint=False,
+                history_max_length=min(2400, self._settings.assistant_history_max_chars),
+                max_query_length=4000,
+            ),
         )
         _set_current_span_attributes(
             {
@@ -2224,6 +2231,7 @@ class RagRetrievalService:
         auth_context: AuthContext | None = None,
         expand_parent: bool = True,
         authorization_action: str = "rag.query",
+        semantic_query: str | None = None,
     ) -> RetrievalRun:
         retrieval_started = time.perf_counter()
         stage_timings_ms: dict[str, float] = {}
@@ -2353,7 +2361,7 @@ class RagRetrievalService:
             stage_timings_ms["exact_resolution"] = 0.0
 
         ranking_query = (
-            query_without_document_identifiers(payload.query)
+            query_without_document_identifiers(semantic_query or payload.query)
             if exact_document_id
             or retrieval_filters.document_ids
             or retrieval_filters.document_version_ids
