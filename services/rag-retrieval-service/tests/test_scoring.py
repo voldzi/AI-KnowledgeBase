@@ -7,6 +7,7 @@ from retrievers.scoring import (
     extract_query_identifiers,
     payload_matches_filters,
     query_without_document_identifiers,
+    query_without_resolved_document_reference,
     sparse_score,
 )
 
@@ -61,6 +62,33 @@ def test_source_scoped_ranking_removes_document_identifier_but_keeps_coordinates
     assert "Jaké" in ranked
     assert "odst. 2" in ranked
     assert "povinnosti" in ranked
+
+
+def test_resolved_document_title_is_removed_from_within_document_question() -> None:
+    ranked = query_without_resolved_document_reference(
+        "Jaké základní zásady musí zadavatel dodržet podle zákona o zadávání veřejných zakázek?",
+        "134/2016 Sb. – Zákon o zadávání veřejných zakázek",
+    )
+
+    assert ranked == "Jaké základní zásady musí zadavatel dodržet"
+
+
+def test_resolved_document_reference_handles_contract_title_but_keeps_intent() -> None:
+    ranked = query_without_resolved_document_reference(
+        "Jaké povinnosti dodavatele vyplývají ze smlouvy o podpoře SIS?",
+        "Smlouva o podpoře SIS",
+    )
+
+    assert ranked == "Jaké povinnosti dodavatele vyplývají"
+
+
+def test_resolved_document_reference_does_not_remove_one_generic_word() -> None:
+    query = "Jaké povinnosti stanoví tento zákon pro zadavatele?"
+
+    assert query_without_resolved_document_reference(
+        query,
+        "134/2016 Sb. – Zákon o zadávání veřejných zakázek",
+    ) == query_without_document_identifiers(query)
 
 
 def test_reranker_prefers_exact_source_title_over_semantic_noise() -> None:

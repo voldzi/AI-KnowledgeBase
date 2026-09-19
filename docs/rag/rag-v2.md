@@ -98,6 +98,10 @@ Proto se jeho extraktivní výstup znovu neposílá modelovému verifieru.
   shodu s názvem dokumentu. Všechny kandidátní chunky už mají stejný název,
   takže pořadí určuje sekce, článek, odstavec a vlastní text pasáže. Tím se
   obecný lidský dotaz nepřesměruje na náhodnou část správného dokumentu.
+- Stejný princip platí pro embedding a cross-encoder: pokud se v otázce
+  nachází rozpoznaná souvislá a dostatečně odlišující část názvu již určeného
+  dokumentu, druhá fáze ji odstraní a hodnotí jen vlastní uživatelský záměr.
+  Jediné obecné slovo jako „zákon“ nebo „smlouva“ se nikdy neodstraňuje.
 - Opt-in pre-pilot profil dává současnému CPU až 90 sekund na osm kandidátů a
   webovému mostu 180 sekund na celý řízený průchod. Jde o horní provozní limit;
   cílový hardware musí být kalibrován měřením latence i kvality.

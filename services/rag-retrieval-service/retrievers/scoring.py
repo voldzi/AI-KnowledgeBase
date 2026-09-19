@@ -163,6 +163,78 @@ def query_without_document_identifiers(query: str) -> str:
     return semantic if tokenize(semantic) else query.strip()
 
 
+def query_without_resolved_document_reference(query: str, document_title: str) -> str:
+    """Keep the user's intent after an authoritative document is resolved.
+
+    A document title is useful while selecting the source, but it is repeated
+    in every indexed chunk of that source. Leaving the title in dense and
+    cross-encoder queries can therefore drown out the actual request and rank
+    arbitrary passages from the correct document. Remove only a contiguous,
+    distinctive title phrase that is visibly present in the user query. A
+    single shared word such as ``zákon`` or ``smlouva`` is never sufficient.
+    """
+    semantic = query_without_document_identifiers(query)
+    title_semantic = query_without_document_identifiers(document_title)
+    query_shadow, query_positions = _normalized_text_with_positions(semantic)
+    title_tokens = tokenize(title_semantic)
+    query_matches = list(TOKEN_RE.finditer(query_shadow))
+    if not query_matches or not title_tokens:
+        return semantic
+
+    query_tokens = [match.group(0) for match in query_matches]
+    best: tuple[int, int, int] | None = None
+    for query_start in range(len(query_tokens)):
+        for title_start in range(len(title_tokens)):
+            length = 0
+            significant = 0
+            while (
+                query_start + length < len(query_tokens)
+                and title_start + length < len(title_tokens)
+            ):
+                query_token = query_tokens[query_start + length]
+                title_token = title_tokens[title_start + length]
+                if not (
+                    query_token == title_token
+                    or _tokens_share_inflection_stem(query_token, title_token)
+                ):
+                    break
+                if max(len(query_token), len(title_token)) >= STEM_MIN_PREFIX:
+                    significant += 1
+                length += 1
+            if length < 2 or significant < 2:
+                continue
+            candidate = (length, significant, query_start)
+            if best is None or candidate[:2] > best[:2]:
+                best = candidate
+    if best is None:
+        return semantic
+
+    length, _significant, query_start = best
+    normalized_start = query_matches[query_start].start()
+    normalized_end = query_matches[query_start + length - 1].end()
+    original_start = query_positions[normalized_start]
+    original_end = query_positions[normalized_end - 1] + 1
+    without_title = semantic[:original_start] + " " + semantic[original_end:]
+    cleaned = re.sub(r"\s+", " ", without_title).strip(" \t\r\n,;:.-?!")
+    cleaned = re.sub(
+        r"\b(?:podle|dle|o|z|ze|v|ve|u|pro|k|ke|na)\s*$",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    ).strip(" \t\r\n,;:.-?!")
+    return cleaned if tokenize(cleaned) else semantic
+
+
+def _normalized_text_with_positions(value: str) -> tuple[str, list[int]]:
+    shadow: list[str] = []
+    positions: list[int] = []
+    for index, char in enumerate(value):
+        normalized = normalize_text(char)
+        shadow.extend(normalized)
+        positions.extend([index] * len(normalized))
+    return "".join(shadow), positions
+
+
 def _contains_normalized_term(normalized_text: str, term: str) -> bool:
     normalized_term = normalize_text(term).strip()
     if not normalized_term:

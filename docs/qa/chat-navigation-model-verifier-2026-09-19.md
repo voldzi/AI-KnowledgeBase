@@ -152,3 +152,10 @@ odpovědět. Navazující obecná oprava při přesném dokumentovém scope odst
 název dokumentu z hodnocených OpenSearch polí i identifikátorových klauzulí;
 sekce, článek, odstavec a obsah pasáže zůstávají hodnocené. Regrese ověřuje, že
 globální hledání si silné hledání názvu zachová a přesně scoped hledání nikoli.
+
+Následný živý test ukázal, že stejný název zůstal také v embeddingu a vstupu
+cross-encoderu, a osm nejvýše hodnocených pasáží se proto nezměnilo. Druhá
+oprava po autoritativním určení dokumentu odstraňuje z vnitrodokumentového
+dotazu pouze souvislou odlišující část známého názvu, včetně běžného českého
+skloňování. Otázka na zásady či povinnosti zůstane zachována; jednotlivé
+obecné slovo se za odkaz na dokument nepovažuje.

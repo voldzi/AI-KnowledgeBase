@@ -78,7 +78,10 @@ from policies.no_answer import NoAnswerPolicy, PolicyDecision
 from policies.evidence import EvidenceGate
 from retrievers.base import Retriever
 from retrievers.query_analysis import RetrievalPlan, analyze_query, extract_identifiers
-from retrievers.scoring import query_without_document_identifiers
+from retrievers.scoring import (
+    query_without_document_identifiers,
+    query_without_resolved_document_reference,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -2277,6 +2280,7 @@ class RagRetrievalService:
         if effective_on is not None:
             retrieval_filters = retrieval_filters.model_copy(update={"valid_on": effective_on})
         exact_document_id = None
+        exact_document_title = None
         exact_resolver_candidates = 0
         exact_resolver_authorized = 0
         historical_exact_source_applied = False
@@ -2345,6 +2349,15 @@ class RagRetrievalService:
                     exact_resolver_authorized = len(resolved_authorized)
                     denied_document_ids.update(resolved_denied)
                     exact_document_id = resolved_document_id
+                    exact_document_title = next(
+                        (
+                            chunk.citation.document_title
+                            for chunk in resolved_authorized
+                            if chunk.citation.document_id == resolved_document_id
+                            and chunk.citation.document_title
+                        ),
+                        None,
+                    )
                     resolved_version_ids = sorted(
                         {
                             chunk.citation.document_version_id
@@ -2368,13 +2381,16 @@ class RagRetrievalService:
         else:
             stage_timings_ms["exact_resolution"] = 0.0
 
-        ranking_query = (
-            query_without_document_identifiers(semantic_query or payload.query)
-            if exact_document_id
-            or retrieval_filters.document_ids
-            or retrieval_filters.document_version_ids
-            else payload.query
-        )
+        ranking_source = semantic_query or payload.query
+        if exact_document_id and exact_document_title:
+            ranking_query = query_without_resolved_document_reference(
+                ranking_source,
+                exact_document_title,
+            )
+        elif retrieval_filters.document_ids or retrieval_filters.document_version_ids:
+            ranking_query = query_without_document_identifiers(ranking_source)
+        else:
+            ranking_query = payload.query
         stage_started = time.perf_counter()
         query_vectors = await self._llm_client.embeddings(
             [ranking_query],
