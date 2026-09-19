@@ -3,6 +3,87 @@
 Scope: roadmap stage A and the source-bound conversation foundation of B.
 This is not completion of the full A–E quality programme or approval for pilot.
 
+## Current deployed checkpoint
+
+RAG is deployed on `docker.home.cz` at
+`366638048190a857a6ea68c74a8170511ee2b22d`, image
+`sha256:8c4d457ef7d1afa6b18d188aae2b59321876e6f74297145b2824f408d9dbe35e`.
+The earlier local-only statements below describe their dated checkpoint, not
+the current deployment state. Web/chat-web retain the tested `2b4a518` image
+trees. Registry, ingestion, document versions, policy bindings and indexes were
+not replaced by these Chat releases.
+After the diagnostic, a separate standard official-source sync added the
+current 90/1995 version; see the linked diagnostic report for the exact ID and
+successful live Chat/citation test. Historical versions were not rewritten.
+
+- Exact Linux/amd64 RAG image: 418 tests passed; same local suite passed.
+- Chat MCP: 11 tests passed, including exact parent/scope forwarding and
+  rejection of incomplete explicit binding.
+- `4d7c806` fixed Czech inflected and English answer references. A real typed
+  “Můžeš tuto odpověď vysvětlit jednodušeji?” returned HTTP 200, persisted,
+  retained the same immutable document version and opened its citation (200).
+- `f957ebe` separates source-discovery vocabulary from within-source semantic
+  ranking. The previously failing explicit procurement-principles question
+  now includes transparency, proportionality, equal treatment and prohibition
+  of discrimination, citing the actual indexed principles passage. Reply,
+  persistence and citation opening passed; response latency was 11.45 seconds.
+- `3666380` excludes earlier document identifiers when the user explicitly
+  selects a new source; referential comparison still retains both sources.
+  Live procurement → 89/1995 topic switch cited only its current immutable
+  version `ver_c1107c7717c84575b18a908a88c3d244`. Anonymous Chat/citation were
+  401, forged source binding clarified without citations. A new conversation
+  asking to simplify an absent answer requested the missing text with no
+  document citation (general-answer route, not structured clarification).
+  Procurement principles and exact citation opening passed again (12.3 s).
+- Deployment rebuilt only RAG on the MacBook, loaded that immutable image,
+  activated only RAG without dependencies/build, checked health/readiness and
+  authenticated smoke, and recorded completion. No full remote CI ran.
+- Deployment/rollback manifests are under
+  `/srv/akb/state/chat-integrity-3666380/` (previous RAG image `f957ebe`).
+  To revert, use the manifest's original Compose file chain and `old` image ID,
+  activate only RAG with `--no-build --no-deps --pull never`, then repeat health,
+  readiness and authenticated citation smoke. Preserve all volumes/configuration.
+
+Runtime findings: cross-encoder, parent expansion, adaptive and V2 retrieval
+remain off. The configured GTE endpoint is reachable but the existing batch 32
+and 15-second timeout failed the bounded model diagnostic. Batch 8 and a
+45-second per-batch timeout completed in about 99 seconds for 24 candidates;
+this was an isolated diagnostic, not a live configuration change. Enabling
+it alone did not establish complete evidence coverage. Deterministic shadow
+claim verification still marks many paraphrases unsupported/partial; an
+HTTP-200 answer is not proof of factual accuracy.
+
+The [200-real-turn diagnostic](chat-api-200-diagnostic-2026-09-19.md) completed
+on the preceding `f957ebe` image: 179 HTTP 200, 16 HTTP 502, five HTTP 503;
+83/100 pairs met all operational criteria. It is separate from factual
+quality acceptance. No reviewed 240+60 factual benchmark is claimed here.
+
+STRATOS found no matching policy audit for the earlier Registry 503. The
+underlying general authority failure remains under investigation; fixing the
+typed source scope avoids that particular failing path but does not prove
+all authorization dependencies healthy. A narrow read-only probe identified
+`document_profile_admission_unavailable`: STRATOS returned
+`OFFICIAL_SOURCE_APPROVED_EVIDENCE_CHANGED` for 90/1995 Sb. Its stored immutable
+version began 2026-01-15 with an open end; current official evidence closes it
+on 2026-09-14 and names a new text from 2026-09-15. This is not an Access V2 or
+grant failure. A governed refresh must preserve old snapshots and add current
+evidence; the handling of historically cited open-ended snapshots must be
+agreed before changing the admission contract.
+
+The official-source worker is enabled, but the inspected configuration checks
+every six hours with `MAX_NEW_PER_RUN=2` and a seven-day full-refresh interval.
+A complete 100-root sweep itself therefore takes up to 12.5 days. State at
+inspection: last full sweep 2026-09-11T02:11:45Z, last cycle
+2026-09-19T10:24:56Z, full cursor 8, 291 completed version keys, one failure.
+Metadata discovery freshness and expensive ingestion throughput need separate
+budgets; this configuration was not changed during the benchmark.
+
+STRATOS also confirmed there is no
+materialized delayed upload runner or manifest; no unidentified files were
+uploaded in response to that handoff.
+
+## Earlier local checkpoint
+
 Implemented:
 - Meaning-preserving deduplication, immutable explicit effective dates and
   exact source recognition without the optional Sb. suffix.
