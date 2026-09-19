@@ -48,7 +48,8 @@ class EvidenceGate:
         if not model or self._llm_client is None:
             return self.verify(answer, chunks)
         try:
-            raw = await self._llm_client.chat_completion(
+            completion_method = getattr(self._llm_client, "chat_completion_result", None)
+            completion = await (completion_method or self._llm_client.chat_completion)(
                 messages=_verification_messages(answer.answer, chunks),
                 metadata={
                     **policy_metadata(chunks),
@@ -59,6 +60,27 @@ class EvidenceGate:
                 model=model,
                 auth_context=auth_context,
             )
+            if completion_method is not None:
+                raw = completion.content
+                usage = dict(answer.llm_usage or {})
+                for key in ("prompt_tokens", "completion_tokens", "total_tokens", "cached_prompt_tokens"):
+                    usage[key] = int(usage.get(key) or 0) + getattr(completion, key)
+                old_cost = (answer.llm_usage or {}).get("estimated_cost_usd")
+                usage["estimated_cost_usd"] = (
+                    old_cost + completion.estimated_cost_usd
+                    if old_cost is not None and completion.estimated_cost_usd is not None
+                    else None
+                )
+                usage["verification"] = {
+                    "model": completion.model,
+                    "provider": completion.provider,
+                    "total_tokens": completion.total_tokens,
+                    "estimated_cost_usd": completion.estimated_cost_usd,
+                    "pricing_version": completion.pricing_version,
+                }
+                answer = answer.model_copy(update={"llm_usage": usage})
+            else:
+                raw = completion
             assessment = _model_assessment(
                 raw,
                 chunks,
@@ -226,6 +248,13 @@ def _closed_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
     return result
 
 
+def _quote_in_source(quote: str, source: str) -> bool:
+    # PDF layout may insert blank lines or nonbreaking spaces. Preserve every
+    # non-whitespace character (including digits, negation and punctuation).
+    normalized = " ".join(quote.split())
+    return bool(normalized) and normalized in " ".join(source.split())
+
+
 def _tokens(value: str) -> set[str]:
     return {
         token
@@ -332,12 +361,12 @@ def _model_assessment(
                 spans[source_id] = passage.strip()
             if set(spans) != set(chunk_ids):
                 raise ValueError("verifier quote coverage is invalid")
-            quotes_present = all(passage in by_id[source_id].text for source_id, passage in spans.items())
+            quotes_present = all(_quote_in_source(passage, by_id[source_id].text) for source_id, passage in spans.items())
             # Keep the public claim receipt compatible; individual chunk IDs remain attached.
             quote = "\n\n".join(spans[source_id] for source_id in chunk_ids)
         elif quote is None or isinstance(quote, str):
             quotes_present = isinstance(quote, str) and all(
-                quote.strip() in by_id[chunk_id].text for chunk_id in chunk_ids
+                _quote_in_source(quote, by_id[chunk_id].text) for chunk_id in chunk_ids
             )
         else:
             raise ValueError("verifier quote is invalid")

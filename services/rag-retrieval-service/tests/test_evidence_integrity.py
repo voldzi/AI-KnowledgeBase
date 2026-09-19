@@ -4,8 +4,24 @@ import pytest
 
 from app.config import load_settings
 from app.schemas import RagAnswer
-from policies.evidence import EvidenceGate, _model_assessment
+from policies.evidence import EvidenceGate, _model_assessment, _quote_in_source
 from tests.test_rag_v2 import _chunk
+
+
+def test_verifier_quote_accepts_pdf_layout_whitespace_only():
+    assert _quote_in_source("Lhůta činí 30 dnů.", "§ 1\nLhůta\u00a0činí\n\n30 dnů.\n§ 2")
+    assert not _quote_in_source("Lhůta činí 300 dnů.", "Lhůta činí 30 dnů.")
+    assert not _quote_in_source("Lhůta činí 30 dnů.", "Lhůta nečiní 30 dnů.")
+    assert not _quote_in_source("Lhůtačiní 30 dnů.", "Lhůta činí 30 dnů.")
+    assert not _quote_in_source(" ", "Lhůta činí 30 dnů.")
+
+
+@pytest.mark.parametrize("structured", [False, True])
+def test_model_assessment_accepts_quote_across_pdf_blank_lines(structured):
+    quote = [{"chunk_id": "a", "quote": SOURCE}] if structured else SOURCE
+    chunk = _chunk("a", "doc_a", SOURCE.replace(" ", "\n\n"))
+    result = _model_assessment(json.dumps(_payload(quote=quote)), [chunk], answer=SOURCE)
+    assert result.status == "supported"
 
 
 SOURCE = "Lhuta pro vyrizeni zadosti je 30 dnu."
@@ -14,6 +30,31 @@ SOURCE = "Lhuta pro vyrizeni zadosti je 30 dnu."
 def _payload(claim=SOURCE, *, quote=SOURCE, supported=True):
     return {"claims": [{"claim": claim, "claim_type": "main", "chunk_ids": ["a"],
                         "quoted_support": quote, "supported": supported}]}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("invalid", [False, True])
+async def test_verification_usage_is_included_even_when_its_output_is_invalid(invalid):
+    from app.llm_client import ChatCompletionResult
+
+    class Verifier:
+        async def chat_completion_result(self, **kwargs):
+            return ChatCompletionResult(
+                content="invalid" if invalid else json.dumps(_payload()),
+                model="verifier", provider="openai", prompt_tokens=10,
+                completion_tokens=5, total_tokens=15, estimated_cost_usd=0.002,
+            )
+
+    gate = EvidenceGate(load_settings({"AKL_RAG_EVIDENCE_GATE_MODE": "shadow",
+                                       "AKL_RAG_EVIDENCE_VERIFIER_MODEL": "verifier"}), Verifier())
+    answer = RagAnswer(query_id="q", answer=SOURCE, confidence="high", citations=[], used_chunks=["a"],
+                       llm_usage={"model": "composer", "total_tokens": 30, "estimated_cost_usd": 0.003})
+    result = await gate.verify_async(answer, [_chunk("a", "doc_a", SOURCE)])
+    assert result.llm_usage["total_tokens"] == 45
+    assert result.llm_usage["estimated_cost_usd"] == pytest.approx(0.005)
+    assert result.llm_usage["verification"]["model"] == "verifier"
+    assert answer.llm_usage["total_tokens"] == 30
+    assert ("EVIDENCE_VERIFIER_FALLBACK" in result.warnings) is invalid
 
 
 @pytest.mark.parametrize("claim", [

@@ -392,7 +392,9 @@ function AppShellContent({
   });
   const [commandCenterOpen, setCommandCenterOpen] = useState(false);
   const [navigationPending, startNavigation] = useTransition();
+  const [navigationTarget, setNavigationTarget] = useState<string | null>(null);
   const navigate = useCallback((href: string) => {
+    setNavigationTarget(href);
     startNavigation(() => router.push(href));
   }, [router]);
   const [commandCenterQuery, setCommandCenterQuery] = useState("");
@@ -809,6 +811,24 @@ function AppShellContent({
   const activeModuleLabel =
     railItems.find((item) => item.id === activeModule)?.label ??
     copy.workspaceTitle;
+  const navigationTargetLabel = navigation[language].find(
+    (item) => item.href === navigationTarget,
+  )?.label;
+  const selectModule = (itemId: string, mobile: boolean) => {
+    const item = railItems.find((candidate) => candidate.id === itemId);
+    if (!item) return;
+    // Keep the latest click actionable even while another route is loading.
+    // Selecting the current module still opens its secondary navigation.
+    if (navigationPending || item.id !== moduleForPath(pathname)) {
+      setActiveModule(item.id);
+      railSidebar.closeSidebarAfterNavigation();
+      navigate(item.href);
+    } else if (mobile) {
+      railSidebar.selectMobileRailItem(item.id);
+    } else {
+      railSidebar.selectRailItem(item.id);
+    }
+  };
   const activeModuleRoutes = moduleRouteGroups[activeModule];
   const activeSubmenuItem = accessibleNavigation
     .filter(
@@ -1111,24 +1131,8 @@ function AppShellContent({
             label: item.label,
             tooltip: item.label,
           }))}
-          onItemSelect={(itemId) => {
-            const item = railItems.find((candidate) => candidate.id === itemId);
-            if (!item) {
-              return;
-            }
-            const shouldNavigate =
-              !railSidebar.isOverlayViewport() && item.id !== activeModule;
-            railSidebar.selectRailItem(item.id);
-            if (shouldNavigate) {
-              navigate(item.href);
-            }
-          }}
-          onMobileItemSelect={(itemId) => {
-            const item = railItems.find((candidate) => candidate.id === itemId);
-            if (item) {
-              railSidebar.selectMobileRailItem(item.id);
-            }
-          }}
+          onItemSelect={(itemId) => selectModule(itemId, false)}
+          onMobileItemSelect={(itemId) => selectModule(itemId, true)}
         />
       }
       sidebar={
@@ -1236,7 +1240,9 @@ function AppShellContent({
     >
       {navigationPending ? <div className="workspace-navigation-status" role="status" aria-live="polite">
         <span className="dashboard-loading__indicator" aria-hidden="true" />
-        {language === "cs" ? "Načítám stránku..." : "Loading page..."}
+        {language === "cs"
+          ? `Otevírám ${navigationTargetLabel ?? "stránku"}…`
+          : `Opening ${navigationTargetLabel ?? "page"}…`}
       </div> : null}
       {children}
     </StratosUiAppShell>

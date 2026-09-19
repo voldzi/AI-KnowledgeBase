@@ -4833,6 +4833,12 @@ button {
 }
 
 .workspace-navigation-status {
+  position: fixed;
+  top: calc(var(--stratos-topbar-height, 64px) + 8px);
+  inset-inline-end: 16px;
+  z-index: 90;
+  max-width: calc(100vw - 32px);
+  pointer-events: none;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -4842,6 +4848,8 @@ button {
   color: var(--color-text-primary, #18272d);
   background: var(--color-surface-secondary, #eef5f6);
   border-inline-start: 3px solid var(--color-primary, #11788a);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 12%);
 }
 
 .workspace-navigation-status .dashboard-loading__indicator {

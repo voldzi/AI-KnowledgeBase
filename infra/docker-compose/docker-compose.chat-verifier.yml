@@ -1,0 +1,8 @@
+# Opt-in pre-pilot profile; append after the authoritative runtime Compose files.
+# Generation and document authorization are unchanged. The gateway applies the
+# same source-processing policy to this additional model call.
+services:
+  rag-retrieval-service:
+    environment:
+      AKL_RAG_EVIDENCE_GATE_MODE: shadow
+      AKL_RAG_EVIDENCE_VERIFIER_MODEL: ${AKB_CHAT_VERIFIER_MODEL:-gpt-5.6-luna}

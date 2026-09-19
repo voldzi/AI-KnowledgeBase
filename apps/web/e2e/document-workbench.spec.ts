@@ -789,15 +789,12 @@ test.describe("Document Workbench product paths", () => {
     const shell = page.locator(".stratos-app-shell");
     const mobileRail = page.getByRole("navigation", { name: "Moduly AKB" });
     await mobileRail.getByRole("button", { name: "Dokumenty" }).click();
-    await expect(shell).toHaveAttribute("data-sidebar-open", "true");
-    await expect(
-      page.locator(".stratos-workspace-sidebar-header").getByRole("heading", { name: "Dokumenty" }),
-    ).toBeVisible();
-
-    await page.getByLabel("Navigace pracovní plochy").getByRole("link", { name: "Dokumenty", exact: true }).click();
     await expect.poll(() => new URL(page.url()).pathname).toBe(appPath("/documents"));
     await expect(shell).toHaveAttribute("data-sidebar-open", "false");
     await expect(page.getByRole("heading", { name: "Registr dokumentů" }).first()).toBeVisible();
+    await mobileRail.getByRole("button", { name: "Dokumenty" }).click();
+    await expect(shell).toHaveAttribute("data-sidebar-open", "true");
+    await expect(page.getByLabel("Navigace pracovní plochy").getByRole("link", { name: "Řízené předpisy" })).toBeVisible();
   });
 
   test("DW-15B shared drawer closes by button, backdrop and Escape and restores focus", async ({ page }) => {
