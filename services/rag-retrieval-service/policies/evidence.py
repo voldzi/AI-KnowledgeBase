@@ -183,7 +183,7 @@ class EvidenceGate:
         )
 
     def _assess(self, text: str, chunks: list[RetrievedChunk]) -> EvidenceAssessment:
-        sentences = _sentences(text)
+        sentences = _answer_statements(text, chunks)
         claims: list[dict[str, object]] = []
         unsupported_main = False
         for index, sentence in enumerate(sentences):
@@ -223,6 +223,15 @@ class EvidenceGate:
 
 def _sentences(value: str) -> list[str]:
     return [part.strip() for part in re.split(r"(?<=[.!?])\s+|\n+", value) if part.strip()]
+
+
+def _answer_statements(value: str, chunks: list[RetrievedChunk]) -> list[str]:
+    # A citation on the line following a sentence is not a separate assertion.
+    # Only known source markers are removed; an unknown reference stays visible
+    # to verification. Citation authorization is enforced independently.
+    for chunk in chunks:
+        value = value.replace(f"[{chunk.chunk_id}]", "")
+    return _sentences(value)
 
 
 def _statement(value: str) -> str:
@@ -302,7 +311,7 @@ def _verification_messages(answer: str, chunks: list[RetrievedChunk]) -> list[di
         {
             "role": "user",
             "content": json.dumps(
-                {"answer_statements": _sentences(answer), "authorized_context": context},
+                {"answer_statements": _answer_statements(answer, chunks), "authorized_context": context},
                 ensure_ascii=False,
                 separators=(",", ":"),
             ),
@@ -329,7 +338,7 @@ def _model_assessment(
     by_id = {chunk.chunk_id: chunk for chunk in chunks}
     if len(by_id) != len(chunks):
         raise ValueError("duplicate evidence chunk identity")
-    sentences = _sentences(answer)
+    sentences = _answer_statements(answer, chunks)
     if len(items) != len(sentences):
         raise ValueError("verifier omitted answer statements")
     claims: list[dict[str, object]] = []
