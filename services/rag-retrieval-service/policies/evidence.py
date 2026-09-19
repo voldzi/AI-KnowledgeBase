@@ -66,7 +66,13 @@ class EvidenceGate:
                     }
                 )
         try:
-            async with asyncio.timeout(self._settings.evidence_verifier_timeout_seconds):
+            # Repair mode has three bounded model stages: verify, rewrite and
+            # reverify. Give each stage the configured budget while retaining
+            # one hard upper bound for the whole evidence pipeline.
+            stage_count = 3 if self._settings.evidence_gate_mode == "repair" else 1
+            async with asyncio.timeout(
+                self._settings.evidence_verifier_timeout_seconds * stage_count
+            ):
                 answer, raw = await self._model_call(
                     answer,
                     messages=_verification_messages(answer.answer, chunks),

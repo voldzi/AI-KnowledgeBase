@@ -147,7 +147,7 @@ class AkbClient:
         self.base_url = _safe_url(os.environ.get("AKB_CHAT_MCP_BASE_URL", DEFAULT_BASE_URL))
         session_file = Path(os.environ.get("AKB_CHAT_MCP_SESSION_FILE", DEFAULT_SESSION_FILE)).expanduser()
         self.credentials = CredentialProvider(session_file)
-        self.timeout = min(180.0, max(2.0, float(os.environ.get("AKB_CHAT_MCP_TIMEOUT_SECONDS", "90"))))
+        self.timeout = min(600.0, max(2.0, float(os.environ.get("AKB_CHAT_MCP_TIMEOUT_SECONDS", "90"))))
 
     def request(self, method: str, path: str, body: dict[str, Any] | None = None, *, authenticated: bool = True) -> dict[str, Any]:
         if not path.startswith("/") or ".." in path:
