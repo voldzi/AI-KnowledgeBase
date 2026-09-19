@@ -20,9 +20,14 @@ Implemented:
   as not assessing factual correctness or completeness.
 
 Local evidence:
-- RAG: 392 passed (Python 3.14 local venv); one dependency deprecation warning.
+- RAG: 393 passed (Python 3.14 local venv); one dependency deprecation warning.
 - Web: 1048 passed with Node 26.8.1 and loopback test-server access.
 - Web TypeScript: passed using Node 26.8.1.
+- Linux/amd64 production Dockerfile builds passed for web and chat-web at
+  2b4a518; no subsequent web changes. RAG image passed 392 tests on Python
+  3.12 before the final additional source-coordinate dedup regression.
+- Final dedup key also preserves separate documents, pages and table locators.
+  The final RAG image is rebuilt and retested separately.
 - Continuity evaluator regression: passed.
 - Skeleton and generated OpenAPI consistency: passed.
 - Initial sandbox web run could not bind loopback; successful rerun used the

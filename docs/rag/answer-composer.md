@@ -150,7 +150,7 @@ previous answer is omitted. It is never evidence or a system instruction.
 
 The assistant preserves Unicode query text, numbers, negation, units, technical
 names and parenthetical conditions. Deduplication removes only identical text
-(with normalized whitespace) in the same version and section. Document-bound
+(with normalized whitespace) at the same document/version, page, section and source locator. Document-bound
 follow-ups use their requested chunk budget instead of the cross-document
 per-document diversity quota. Explicit effective dates, including “today”, must
 not be discarded by historical fallback.

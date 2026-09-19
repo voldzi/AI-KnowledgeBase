@@ -2877,18 +2877,22 @@ def _query_id() -> str:
 
 def _deduplicate_chunks(chunks: list[RetrievedChunk]) -> tuple[list[RetrievedChunk], int]:
     selected: list[RetrievedChunk] = []
-    signatures: set[tuple[str, str, tuple[str, ...]]] = set()
+    signatures: set[tuple[object, ...]] = set()
     removed = 0
     for chunk in chunks:
         text_hash = hashlib.sha256(
             re.sub(r"\s+", " ", chunk.text).strip().encode("utf-8")
         ).hexdigest()
-        coordinate = (chunk.citation.document_version_id, text_hash, tuple(chunk.citation.section_path))
+        coordinate = (
+            chunk.citation.document_id, chunk.citation.document_version_id,
+            chunk.citation.page_number, tuple(chunk.citation.section_path),
+            json.dumps(chunk.metadata.get("source_locator"), sort_keys=True), text_hash,
+        )
         if coordinate in signatures:
             removed += 1
             continue
         # Near-equal provisions can differ only in a number, unit or negation.
-        # Only identical text in the same version/section is redundant evidence.
+        # Only identical text at the same source coordinates is redundant evidence.
         signatures.add(coordinate)
         selected.append(chunk)
     return selected, removed

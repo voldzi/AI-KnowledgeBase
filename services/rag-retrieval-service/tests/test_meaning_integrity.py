@@ -50,6 +50,18 @@ def test_exact_duplicate_dedup_keeps_other_sections_and_versions():
     assert removed == 1
 
 
+def test_identical_text_keeps_distinct_documents_pages_and_table_locators():
+    first = _chunk("first", "one", "Cena 30 Kč.")
+    other_document = _chunk("second", "two", first.text)
+    other_page = _chunk("third", "one", first.text)
+    other_page.citation.page_number = 2
+    other_table = _chunk("fourth", "one", first.text)
+    other_table.metadata["source_locator"] = {"table": "annual-prices"}
+    chunks, removed = _deduplicate_chunks([first, other_document, other_page, other_table])
+    assert len(chunks) == 4
+    assert removed == 0
+
+
 @pytest.mark.parametrize("question", [
     "Co upravuje zákon 134/2016?",
     "Jaké povinnosti podle 134/2016 Sb. platí dnes?",
