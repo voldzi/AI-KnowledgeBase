@@ -224,3 +224,40 @@ async def test_persistence_receipt_identifies_own_turn_not_concurrent_last_messa
     )
     assert persisted
     assert response.message_id == "own-answer"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("revoke_neighbor", [False, True])
+async def test_adjacent_page_keeps_own_citation_and_requires_fresh_authorization(revoke_neighbor):
+    from types import SimpleNamespace
+    from app.registry_client import AuthzFilterResult
+    first = _chunk("seed", "contract", "Podpora je poskytována každý den.")
+    first.citation.page_number = 1
+    first.citation.section_path = ["Čl. 2", "Odst. 1"]
+    first.metadata["source_mime_type"] = "application/pdf"
+    second = _chunk("exception", "contract", "Výjimkou jsou svátky.")
+    second.citation.page_number = 2
+    second.citation.section_path = ["Čl. 2", "Odst. 2"]
+    unrelated = _chunk("other-section", "contract", "Sankce je 30 Kč.")
+    unrelated.citation.page_number = 2
+    unrelated.citation.section_path = ["Čl. 3"]
+
+    class Retriever:
+        async def get_context_chunks(self, *args, **kwargs):
+            return [first, second, unrelated]
+
+    class Registry:
+        async def filter_allowed_documents(self, **kwargs):
+            return AuthzFilterResult(allowed_document_ids=set() if revoke_neighbor else {"contract"}, denied_document_ids={"contract"} if revoke_neighbor else set())
+
+    service = object.__new__(RagRetrievalService)
+    service._settings = SimpleNamespace(parent_window=2, max_context_chars=5000, parent_retrieval_mode="enforce", authz_mode="registry", registry_client_mode="mock")
+    service._retriever, service._registry_client = Retriever(), Registry()
+    result, _ = await service._expand_authorized_context(subject_id="employee", chunks=[first], auth_context=None)
+    if revoke_neighbor:
+        assert result == []
+    else:
+        assert [item.chunk_id for item in result] == ["seed", "exception"]
+        assert [item.citation.page_number for item in result] == [1, 2]
+        assert result[0].text == first.text
+        assert result[1].text == second.text

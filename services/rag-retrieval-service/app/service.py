@@ -2461,7 +2461,9 @@ class RagRetrievalService:
             stage_timings_ms["parent_expansion"] = _elapsed_stage_ms(stage_started)
             warnings.extend(expansion_warnings)
             if self._settings.parent_retrieval_mode == "enforce":
-                chunks = expanded
+                chunks = expanded[:payload.max_chunks]
+                if len(expanded) > payload.max_chunks:
+                    warnings.append("PARENT_CONTEXT_BUDGET_LIMITED")
             else:
                 # Shadow mode evaluates expansion text only. A fresh access
                 # revocation still removes the original source from the answer.
@@ -2616,6 +2618,25 @@ class RagRetrievalService:
                     }
                 )
             )
+            # Keep adjoining PDF pages as separate evidence. Merging their text
+            # into the seed would falsely attribute it to the seed's page.
+            if _str_or_none(seed.metadata.get("source_mime_type")) == "application/pdf":
+                for item in related:
+                    if (
+                        item.chunk_id in authorized_chunk_ids
+                        and item.citation.document_id == seed.citation.document_id
+                        and item.citation.document_version_id == seed.citation.document_version_id
+                        and type(item.citation.page_number) is int
+                        and type(seed.citation.page_number) is int
+                        and abs(item.citation.page_number - seed.citation.page_number) == 1
+                        and _context_section(seed) and _context_section(seed) == _context_section(item)
+                    ):
+                        expanded.append(item)
+        distinct: dict[str, RetrievedChunk] = {}
+        for item in expanded:
+            if item.chunk_id not in distinct or item.metadata.get("parent_context_applied"):
+                distinct[item.chunk_id] = item
+        expanded = list(distinct.values())
         return expanded, ["PARENT_RETRIEVAL_SHADOW"] if self._settings.parent_retrieval_mode == "shadow" else []
 
     async def _filter_authorized_chunks(
@@ -2861,6 +2882,14 @@ class RagRetrievalService:
                 resource_id,
                 exc.__class__.__name__,
             )
+
+
+def _context_section(chunk: RetrievedChunk) -> tuple[str, ...]:
+    path = chunk.citation.section_path
+    for index, label in enumerate(path):
+        if re.match(r"^(?:§|Čl\.|Cl\.|Article|Článek|Clanek)\s*", label, flags=re.I):
+            return tuple(path[:index + 1])
+    return tuple(path)
 
 
 def _metadata_string(metadata: dict[str, object], *keys: str) -> str | None:

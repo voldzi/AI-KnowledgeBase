@@ -41,11 +41,16 @@ odpovídají extrahovanému textu (`offset_basis=extracted_text`).
 ## Pravidla
 
 - Chunk se flushne při změně `section_path`.
-- U oficiálních právních předpisů s profilem
-  `official-public-reference` se Docling položky seskupují podle nadřazeného
-  `§` nebo článku až do cílové velikosti. Samostatný PDF lokátor každé věty ani
-  přechod stránky nevytváří nový krátký chunk. Metadata zachovávají počáteční
-  `page_number` a koncovou stránku v `metadata.page_end`.
+- Pro PDF a DOCX se běžný text seskupuje podle struktury, nikoli podle
+  jednotlivých interních lokátorů parseru. `legal_structured` používá nadřazený
+  paragraf/článek pro všechny typy dokumentů včetně smluv; nevyžaduje veřejný tag.
+- Stránky zůstávají oddělené, aby text nepřebíral citaci jiné stránky.
+  Tabulky se neslučují s odstavci ani s jinými tabulkami; souřadnice listů a
+  snímků se zachovávají. `metadata.source_spans` uchovává souřadnice všech
+  vstupních bloků, `chunking_revision` je `structural-2`.
+- Jde o změnu pro nově zpracovaný index. Existující index se automaticky
+  nepřepisuje; před reindexací je nutná oddělená generace a ověření historických
+  citací. Identita ani obsah dokumentové verze se touto změnou nemění.
 - Český marker `§ N` se rozpoznává jako právní strukturální jednotka; číslované
   odstavce zůstávají pod příslušným paragrafem.
 - Chunk se flushne při překročení `AKL_INGESTION_CHUNK_TARGET_CHARS`.

@@ -167,3 +167,15 @@ last-message lookup. Older servers remain readable through the web compatibility
 path; a new server's null receipt is not replaced with an unrelated history ID.
 The evidence status is persisted with the answer. Retrieval confidence alone
 must not be presented as verification of its factual claims.
+
+
+## Adjacent-page context
+
+With parent retrieval enabled, freshly authorized adjacent PDF pages in the
+same structural section can accompany the seed as separate chunks. Their own
+chunk IDs and page citations remain intact; their text is never attributed to
+the seed page. Different sections, versions and revoked sources cannot enter
+this expansion. The request chunk budget still applies and a limited expansion
+is reported with `PARENT_CONTEXT_BUDGET_LIMITED`. This is bounded context
+expansion, not proof of complete document coverage. Parent retrieval remains
+controlled by its existing off/shadow/enforce setting.

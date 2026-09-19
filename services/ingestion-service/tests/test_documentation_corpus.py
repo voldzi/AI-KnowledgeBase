@@ -115,7 +115,7 @@ def test_review_quality_tier_always_requires_human_review() -> None:
     assert quality.requires_review is True
 
 
-def test_official_law_chunks_group_docling_items_by_section_across_pages() -> None:
+def test_official_law_chunks_group_items_but_preserve_page_citations() -> None:
     texts = [
         ("§ 4 Účetní období", 1, ["§ 4"], "4", None),
         ("(1) Účetním obdobím je nepřetržitě po sobě jdoucích dvanáct měsíců.", 1, ["§ 4", "Odst. 1"], "4", "1"),
@@ -147,13 +147,14 @@ def test_official_law_chunks_group_docling_items_by_section_across_pages() -> No
         source=_source("law.pdf", "application/pdf", b"%PDF-1.7 fixture"),
     )
 
-    assert len(result.chunks) == 2
+    assert len(result.chunks) == 3
     assert result.chunks[0].section_path == ["§ 4"]
     assert result.chunks[0].page_number == 1
-    assert result.chunks[0].metadata["page_end"] == 2
+    assert result.chunks[0].metadata["page_end"] == 1
     assert "dvanáct měsíců" in result.chunks[0].text
-    assert "stanovených podmínek" in result.chunks[0].text
-    assert result.chunks[1].section_path == ["§ 5"]
+    assert "stanovených podmínek" in result.chunks[1].text
+    assert result.chunks[1].page_number == 2
+    assert result.chunks[2].section_path == ["§ 5"]
 
 
 def test_czech_section_marker_is_recognized_as_legal_structure() -> None:
@@ -167,3 +168,44 @@ def test_czech_section_marker_is_recognized_as_legal_structure() -> None:
     assert parsed.blocks[0].section_path == ["§ 4"]
     assert parsed.blocks[0].article_number == "4"
     assert parsed.blocks[1].section_path == ["§ 4", "Odst. 1"]
+
+
+@pytest.mark.parametrize("document_type,tags", [("contract", []), ("regulation", []), ("regulation", ["official-public-reference"])])
+def test_structural_pdf_chunks_preserve_complete_clause_and_every_locator(document_type, tags):
+    blocks = [
+        ParsedBlock("Čl. 2 Servis", 1, ["Čl. 2"], "Servis", "2", None, 0, 11, "heading", {"source_locator": {"kind": "pdf_item", "item": 1}}),
+        ParsedBlock("Podpora běží každý den.", 1, ["Čl. 2", "Odst. 1"], "Servis", "2", "1", 13, 36, metadata={"source_locator": {"kind": "pdf_item", "item": 2}}),
+        ParsedBlock("Výjimkou jsou svátky.", 2, ["Čl. 2", "Odst. 2"], "Servis", "2", "2", 38, 58, metadata={"source_locator": {"kind": "pdf_item", "item": 3}}),
+        ParsedBlock("Čl. 3 Sankce", 2, ["Čl. 3"], "Sankce", "3", None, 60, 72, "heading"),
+    ]
+    result = LogicalStructureChunker(_settings()).chunk(
+        ParserResult("docling", blocks, 2),
+        document_metadata=DocumentMetadata(document_id="contract", document_version_id="immutable-version", document_type=document_type, tags=tags),
+        extraction_profile="document_text_v1", parser_profile="controlled_document", chunking_strategy="legal_structured",
+        source=_source("contract.pdf", "application/pdf", b"fixture"),
+    )
+    assert len(result.chunks) == 3
+    first = result.chunks[0]
+    assert "Podpora běží" in first.text and "Výjimkou" not in first.text
+    assert "Výjimkou" in result.chunks[1].text and result.chunks[1].page_number == 2
+    assert first.page_number == 1 and first.metadata["page_end"] == 1
+    assert [s["source_locator"]["item"] for s in first.metadata["source_spans"]] == [1, 2]
+    assert first.document_version_id == "immutable-version"
+    assert first.metadata["chunking_revision"] == "structural-2"
+
+
+def test_unstructured_pages_and_distinct_pdf_tables_are_not_merged():
+    blocks = [
+        ParsedBlock("První stránka", 1, [], None, None, None, 0, 13),
+        ParsedBlock("Druhá stránka", 2, [], None, None, None, 15, 28),
+        ParsedBlock("Služba | Cena\nA | 30", 2, [], None, None, None, 30, 49, "table"),
+        ParsedBlock("Služba | Cena\nB | 60", 2, [], None, None, None, 51, 70, "table"),
+    ]
+    result = LogicalStructureChunker(_settings()).chunk(
+        ParserResult("docling", blocks, 2),
+        document_metadata=DocumentMetadata(document_id="manual", document_version_id="v1"),
+        extraction_profile="document_text_v1", parser_profile="default", chunking_strategy="logical",
+        source=_source("manual.pdf", "application/pdf", b"fixture"),
+    )
+    assert len(result.chunks) == 4
+    assert [c.text for c in result.chunks] == [b.text for b in blocks]

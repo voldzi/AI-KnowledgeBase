@@ -36,10 +36,6 @@ class LogicalStructureChunker:
         chunks: list[DocumentChunk] = []
         warnings: list[tuple[str, str]] = []
         pending: list[ParsedBlock] = []
-        official_legal_source = _is_official_legal_source(
-            document_metadata,
-            chunking_strategy=chunking_strategy,
-        )
 
         for block in parser_result.blocks:
             if len(block.text) > self.settings.max_chunk_chars:
@@ -75,16 +71,16 @@ class LogicalStructureChunker:
             section_changed = pending and pending[-1].section_path != block.section_path
             page_changed = pending and pending[-1].page_number != block.page_number
             locator_changed = pending and pending[-1].metadata.get("source_locator") != block.metadata.get("source_locator")
-            if official_legal_source and pending:
-                # Docling assigns a distinct source locator to virtually every PDF
-                # item. Treating that as a chunk boundary produced one-sentence
-                # legal evidence. Official statutes are grouped by their top-level
-                # section/article and the configured target size instead.
-                section_changed = _legal_unit(pending[-1]) != _legal_unit(block)
-                page_changed = False
+            table_boundary = pending and (pending[-1].block_type == "table" or block.block_type == "table")
+            if pending and _can_group_prose(pending[-1], block, source):
+                previous_unit = _structural_unit(pending[-1], chunking_strategy)
+                current_unit = _structural_unit(block, chunking_strategy)
+                section_changed = previous_unit != current_unit
+                # Retain page boundaries for exact citations. Retrieval may add
+                # adjacent pages as separately cited passages of this section.
                 locator_changed = False
-            would_exceed_target = _text_length(pending) + len(block.text) > self.settings.chunk_target_chars
-            if pending and (section_changed or page_changed or locator_changed or would_exceed_target):
+            would_exceed_target = _text_length(pending) + len(block.text) + (2 if pending else 0) > self.settings.chunk_target_chars
+            if pending and (section_changed or page_changed or locator_changed or table_boundary or would_exceed_target):
                 chunks.append(
                     self._make_chunk(
                         pending,
@@ -178,6 +174,13 @@ class LogicalStructureChunker:
             "block_type": first.block_type,
             "first_block_metadata": first.metadata,
             "source_locator": first.metadata.get("source_locator"),
+            "chunking_revision": "structural-2",
+            "source_spans": [
+                {"page_number": block.page_number, "char_start": block.char_start,
+                 "char_end": block.char_end, "section_path": block.section_path,
+                 "source_locator": block.metadata.get("source_locator")}
+                for block in blocks
+            ],
             "page_end": last.page_number,
             "parser_quality": {
                 "pages_processed": parser_result.pages_processed,
@@ -348,24 +351,24 @@ def _source_section_path(block: ParsedBlock) -> list[str]:
     return path
 
 
-def _is_official_legal_source(
-    metadata: DocumentMetadata,
-    *,
-    chunking_strategy: str,
-) -> bool:
-    return (
-        chunking_strategy == "legal_structured"
-        and metadata.document_type == "regulation"
-        and "official-public-reference" in metadata.tags
-    )
+def _can_group_prose(left: ParsedBlock, right: ParsedBlock, source: SourceObject) -> bool:
+    if source.mime_type not in {"application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}:
+        return False
+    for block in (left, right):
+        if block.block_type not in {"heading", "paragraph", "list_item", "text"}:
+            return False
+        locator = block.metadata.get("source_locator")
+        if isinstance(locator, dict) and locator.get("kind") in {"sheet", "slide", "table"}:
+            return False
+    return True
 
 
-def _legal_unit(block: ParsedBlock) -> str | None:
-    """Return the enclosing legal unit without splitting every numbered clause."""
-    for label in block.section_path:
-        if re.match(r"^(?:§|Čl\.|Cl\.|Article|Článek|Clanek)\s*", label, flags=re.I):
-            return normalize_text(label)
-    return None
+def _structural_unit(block: ParsedBlock, strategy: str) -> tuple[str, ...]:
+    if strategy == "legal_structured":
+        for index, label in enumerate(block.section_path):
+            if re.match(r"^(?:§|Čl\.|Cl\.|Article|Článek|Clanek)\s*", label, flags=re.I):
+                return tuple(block.section_path[:index + 1])
+    return tuple(block.section_path)
 
 
 def normalize_text(text: str) -> str:
