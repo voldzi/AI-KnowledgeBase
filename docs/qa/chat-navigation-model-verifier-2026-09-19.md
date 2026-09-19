@@ -203,3 +203,27 @@ explicitní subjekt a pokud možno terminologii i slovosled zdroje. Verifier sm�
 přijmout věrnou parafrázi, ale stále musí zachovat subjekt, modalitu, čísla,
 podmínky a výjimky. Konečný obsahový certifikát vyžaduje samostatnou kurátorovanou
 sadu 200 lidských dotazů; uvedené cílené průchody jej nenahrazují.
+
+## Obnovitelná sada 200 lidských právních dotazů
+
+`scripts/evaluate_assistant_human_questions.py` používá neměnný manifest
+`czech-law` revize 2. Pro každý ze 100 schválených zákonů položí dvě české
+otázky: úvodní dotaz na účel a oblast úpravy a navazující praktický dotaz ve
+stejném vlákně. Druhý dotaz je svázaný s přesným rodičovským message ID a
+otiskem zdrojového scope. Test proto nemůže tiše přeskočit k jinému zákonu.
+
+Každá odpověď musí uvést očekávaný zákon, zachovat neměnné `document_id` a
+`document_version_id`, znovu autorizovaně otevřít každou citaci a zobrazit jen
+výroky označené evidenční bránou jako podložené. Nezávislá kontrola porovnává
+citované pasáže s celým aktuálně autorizovaným oknem vieweru. Toleruje pouze
+malý sazečský rozdíl vzniklý extrakcí PDF; změněné číslo nebo významová negace
+zůstávají odmítnuté. Report neukládá dotazy, odpovědi, texty zdrojů, tokeny ani
+přihlašovací údaje. Uchovává pouze identifikátory testů, souhrnné metriky a
+dvojice dokument/verze použitých citací.
+
+Kontrolní dvouotáčkový běh před úplnou dávkou prošel 2/2. Zachoval jediný
+konkrétní dokument a verzi, otevřel všechny citace a nezobrazil nepodložený
+výrok. Jeden tah měl plnou a jeden částečnou evidenci; u částečné evidence byly
+nepodložené vedlejší výroky odstraněny před zobrazením. Průměrná odezva byla
+60,1 s a celkový odhad obou tahů 0,123746 USD. Jde o smoke validaci metriky;
+výsledek celé 200dotazové dávky se zaznamená samostatně po jejím dokončení.
