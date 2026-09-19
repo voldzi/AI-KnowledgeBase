@@ -578,14 +578,19 @@ def _model_assessment(
             "claim", "claim_type", "chunk_ids", "quoted_support", "supported"
         }:
             raise ValueError("verifier claim is invalid")
-        claim = item.get("claim")
+        returned_claim = item.get("claim")
         quote = item.get("quoted_support")
         chunk_ids = item.get("chunk_ids")
         claim_type = "main" if index == 0 else "supporting"
-        if item["claim_type"] != claim_type or type(item["supported"]) is not bool:
+        if not isinstance(returned_claim, str) or type(item["supported"]) is not bool:
             raise ValueError("verifier decision is invalid")
-        if not isinstance(claim, str) or claim != sentences[index]:
-            raise ValueError("verifier claim text is invalid")
+        # The model-returned copy is display metadata, not authority. Bind the
+        # verdict by array position to the original statement and evaluate all
+        # overlap, numbers and polarity against that immutable text. A local
+        # model may normalize whitespace or punctuation despite a JSON schema;
+        # that must not make the whole verifier unavailable or let it replace
+        # the statement being checked.
+        claim = sentences[index]
         if not isinstance(chunk_ids, list) or any(
             not isinstance(chunk_id, str) or chunk_id not in by_id for chunk_id in chunk_ids
         ) or len(chunk_ids) != len(set(chunk_ids)):

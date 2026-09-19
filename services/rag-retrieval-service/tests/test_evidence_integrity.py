@@ -216,8 +216,6 @@ def test_model_cannot_override_number_or_polarity_invariants(claim):
     lambda p: p["claims"][0].update(supported="true"),
     lambda p: p["claims"][0].update(chunk_ids=["unknown"]),
     lambda p: p["claims"][0].update(chunk_ids=["a", "a"]),
-    lambda p: p["claims"][0].update(claim_type="supporting"),
-    lambda p: p["claims"][0].update(claim=SOURCE.replace("30", "300")),
     lambda p: p.update(claims=[]),
 ])
 def test_model_contract_is_closed_and_preserves_original_claims(mutation):
@@ -225,6 +223,18 @@ def test_model_contract_is_closed_and_preserves_original_claims(mutation):
     mutation(payload)
     with pytest.raises(ValueError):
         _model_assessment(json.dumps(payload), [_chunk("a", "doc_a", SOURCE)], answer=SOURCE)
+
+
+def test_model_returned_claim_copy_cannot_replace_the_statement_being_verified():
+    payload = _payload(claim=SOURCE.replace("30", "300"))
+    payload["claims"][0]["claim_type"] = "supporting"
+    result = _model_assessment(
+        json.dumps(payload),
+        [_chunk("a", "doc_a", SOURCE)],
+        answer=SOURCE,
+    )
+    assert result.status == "supported"
+    assert result.claims[0]["claim"] == SOURCE
 
 
 def test_titles_are_not_factual_proof_and_denial_is_respected():
