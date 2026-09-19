@@ -582,8 +582,7 @@ def _model_assessment(
         quote = item.get("quoted_support")
         chunk_ids = item.get("chunk_ids")
         claim_type = "main" if index == 0 else "supporting"
-        if not isinstance(returned_claim, str) or type(item["supported"]) is not bool:
-            raise ValueError("verifier decision is invalid")
+        declared_supported = item.get("supported") is True
         # The model-returned copy is display metadata, not authority. Bind the
         # verdict by array position to the original statement and evaluate all
         # overlap, numbers and polarity against that immutable text. A local
@@ -591,34 +590,37 @@ def _model_assessment(
         # that must not make the whole verifier unavailable or let it replace
         # the statement being checked.
         claim = sentences[index]
-        if not isinstance(chunk_ids, list) or any(
+        identity_valid = isinstance(chunk_ids, list) and not any(
             not isinstance(chunk_id, str) or chunk_id not in by_id for chunk_id in chunk_ids
-        ) or len(chunk_ids) != len(set(chunk_ids)):
-            raise ValueError("verifier evidence identity is invalid")
+        ) and len(chunk_ids) == len(set(chunk_ids))
+        valid_ids = chunk_ids if identity_valid else []
+        quote_text: str | None = None
+        quotes_present = False
         if isinstance(quote, list):
-            if not quote or len(quote) > len(chunks):
-                raise ValueError("verifier quote list is invalid")
-            spans = {}
+            spans: dict[str, str] = {}
+            spans_valid = bool(quote) and len(quote) <= len(chunks)
             for span in quote:
                 if not isinstance(span, dict) or set(span) != {"chunk_id", "quote"}:
-                    raise ValueError("verifier quote span is invalid")
+                    spans_valid = False
+                    continue
                 source_id, passage = span["chunk_id"], span["quote"]
-                if (not isinstance(source_id, str) or source_id not in chunk_ids
+                if (not isinstance(source_id, str) or source_id not in valid_ids
                         or source_id in spans or not isinstance(passage, str) or not passage.strip()):
-                    raise ValueError("verifier quote identity is invalid")
+                    spans_valid = False
+                    continue
                 spans[source_id] = passage.strip()
-            if set(spans) != set(chunk_ids):
-                raise ValueError("verifier quote coverage is invalid")
-            quotes_present = all(_quote_in_source(passage, by_id[source_id].text) for source_id, passage in spans.items())
-            # Keep the public claim receipt compatible; individual chunk IDs remain attached.
-            quote = "\n\n".join(spans[source_id] for source_id in chunk_ids)
-        elif quote is None or isinstance(quote, str):
-            quotes_present = isinstance(quote, str) and all(
-                _quote_in_source(quote, by_id[chunk_id].text) for chunk_id in chunk_ids
+            spans_valid = spans_valid and set(spans) == set(valid_ids)
+            if spans_valid:
+                quote_text = "\n\n".join(spans[source_id] for source_id in valid_ids)
+                quotes_present = all(
+                    _quote_in_source(passage, by_id[source_id].text)
+                    for source_id, passage in spans.items()
+                )
+        elif isinstance(quote, str):
+            quote_text = quote.strip()
+            quotes_present = bool(quote_text) and all(
+                _quote_in_source(quote_text, by_id[chunk_id].text) for chunk_id in valid_ids
             )
-        else:
-            raise ValueError("verifier quote is invalid")
-        valid_ids = chunk_ids
         # Citation handles are routing metadata, not quantities asserted in the
         # answer. Strip only exact markers for supplied, authorized sources;
         # unknown references and all actual numbers remain subject to checks.
@@ -626,13 +628,13 @@ def _model_assessment(
         for source_id in by_id:
             semantic_claim = semantic_claim.replace(f"[{source_id}]", "")
         supported = (
-            item["supported"]
-            and isinstance(quote, str)
-            and bool(quote.strip())
+            declared_supported
+            and isinstance(returned_claim, str)
+            and bool(quote_text)
             and bool(valid_ids)
             and quotes_present
-            and _overlap(_tokens(semantic_claim), _tokens(quote)) >= min_overlap
-            and _critical_details_supported(semantic_claim, quote)
+            and _overlap(_tokens(semantic_claim), _tokens(quote_text)) >= min_overlap
+            and _critical_details_supported(semantic_claim, quote_text)
         )
         if claim_type == "main" and not supported:
             unsupported_main = True
@@ -641,7 +643,7 @@ def _model_assessment(
                 "claim": claim.strip(),
                 "claim_type": claim_type,
                 "chunk_ids": valid_ids if supported else [],
-                "quoted_support": quote.strip() if supported else None,
+                "quoted_support": quote_text if supported else None,
                 "supported": supported,
                 "support_score": 1.0 if supported else 0.0,
             }

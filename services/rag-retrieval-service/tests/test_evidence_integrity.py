@@ -213,9 +213,6 @@ def test_model_cannot_override_number_or_polarity_invariants(claim):
 @pytest.mark.parametrize("mutation", [
     lambda p: p.update(extra=True),
     lambda p: p["claims"][0].update(extra=True),
-    lambda p: p["claims"][0].update(supported="true"),
-    lambda p: p["claims"][0].update(chunk_ids=["unknown"]),
-    lambda p: p["claims"][0].update(chunk_ids=["a", "a"]),
     lambda p: p.update(claims=[]),
 ])
 def test_model_contract_is_closed_and_preserves_original_claims(mutation):
@@ -223,6 +220,25 @@ def test_model_contract_is_closed_and_preserves_original_claims(mutation):
     mutation(payload)
     with pytest.raises(ValueError):
         _model_assessment(json.dumps(payload), [_chunk("a", "doc_a", SOURCE)], answer=SOURCE)
+
+
+@pytest.mark.parametrize("mutation", [
+    lambda p: p["claims"][0].update(supported="true"),
+    lambda p: p["claims"][0].update(chunk_ids=["unknown"]),
+    lambda p: p["claims"][0].update(chunk_ids=["a", "a"]),
+    lambda p: p["claims"][0].update(quoted_support=[{"chunk_id": "unknown", "quote": SOURCE}]),
+])
+def test_invalid_model_evidence_is_normalized_to_unsupported(mutation):
+    payload = _payload()
+    mutation(payload)
+    result = _model_assessment(
+        json.dumps(payload),
+        [_chunk("a", "doc_a", SOURCE)],
+        answer=SOURCE,
+    )
+    assert result.status == "unsupported"
+    assert result.unsupported_main_claim
+    assert result.claims[0]["chunk_ids"] == []
 
 
 def test_model_returned_claim_copy_cannot_replace_the_statement_being_verified():
@@ -285,8 +301,10 @@ def test_model_can_support_rule_and_exception_from_separate_passages():
 def test_multi_passage_support_requires_exact_closed_source_mapping(mutation):
     claim, payload, chunks = _combined_evidence()
     mutation(payload)
-    with pytest.raises(ValueError):
-        _model_assessment(json.dumps(payload), chunks, answer=claim)
+    result = _model_assessment(json.dumps(payload), chunks, answer=claim)
+    assert result.status == "unsupported"
+    assert result.unsupported_main_claim
+    assert result.claims[0]["chunk_ids"] == []
 
 
 def test_combined_quote_cannot_borrow_text_from_another_source_or_forge_numbers():
