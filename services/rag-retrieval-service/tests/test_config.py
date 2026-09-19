@@ -70,6 +70,12 @@ def test_invalid_answer_max_tokens_is_rejected() -> None:
         load_settings({"AKL_RAG_ANSWER_MAX_TOKENS": "0"})
 
 
+def test_evidence_repair_mode_is_supported_and_unknown_mode_is_rejected() -> None:
+    assert load_settings({"AKL_RAG_EVIDENCE_GATE_MODE": "repair"}).evidence_gate_mode == "repair"
+    with pytest.raises(ConfigError, match="off, shadow, enforce, repair"):
+        load_settings({"AKL_RAG_EVIDENCE_GATE_MODE": "rewrite-everything"})
+
+
 def test_invalid_source_context_window_is_rejected() -> None:
     with pytest.raises(ConfigError, match="AKL_RAG_SOURCE_CONTEXT_WINDOW"):
         load_settings({"AKL_RAG_SOURCE_CONTEXT_WINDOW": "6"})

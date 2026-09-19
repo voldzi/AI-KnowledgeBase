@@ -1,8 +1,13 @@
-# Opt-in pre-pilot profile; append after the authoritative runtime Compose files.
-# Generation and document authorization are unchanged. The gateway applies the
-# same source-processing policy to this additional model call.
+# Opt-in pre-pilot quality profile; append after the authoritative runtime
+# Compose files. Every added passage is re-authorized before use. Generation,
+# repair and verification inherit the same source-processing policy.
 services:
   rag-retrieval-service:
     environment:
-      AKL_RAG_EVIDENCE_GATE_MODE: shadow
+      AKL_RAG_RERANKER_MODE: enforce
+      AKL_RAG_RERANKER_PROVIDER: tei
+      AKL_RAG_RERANKER_BASE_URLS: ${AKL_RAG_RERANKER_BASE_URLS:-http://gte-reranker:3000}
+      AKL_RAG_PARENT_RETRIEVAL_MODE: enforce
+      AKL_RAG_PARENT_WINDOW: ${AKL_RAG_PARENT_WINDOW:-1}
+      AKL_RAG_EVIDENCE_GATE_MODE: repair
       AKL_RAG_EVIDENCE_VERIFIER_MODEL: ${AKB_CHAT_VERIFIER_MODEL:-gpt-5.6-luna}

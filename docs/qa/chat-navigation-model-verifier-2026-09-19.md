@@ -131,3 +131,16 @@ multi-turn questions, separate source metadata from normative assertions,
 finish temporal-closure joint acceptance, and diagnose intermittent session
 probe failures. Do not describe the existing 200-turn diagnostic or this smoke
 as proof that all human questions are answered correctly.
+
+## Navazující kandidát kvality
+
+Následující pre-pilot kandidát mění opt-in profil z diagnostického `shadow` na
+fail-closed `repair`. Částečná odpověď dostane nejvýše jeden přepis pouze ze
+stejných autorizovaných výňatků a poté nové úplné ověření. Profil současně
+zapíná běžící GTE cross-encoder a rozšíření o bezprostředně sousední chunky;
+každý soused se před použitím znovu autorizuje na přesném dokumentu a verzi.
+
+Krátká nedostupnost session autority nyní okamžitě skryje chráněný obsah, ale
+na stejné stránce provede tři krátké kontrolní pokusy. Původní obsah se obnoví
+jen při shodném stabilním otisku identity a oprávnění. Odhlášení nebo změna
+přístupu se nikdy neobnoví na místě.

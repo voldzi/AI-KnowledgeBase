@@ -88,6 +88,79 @@ async def test_verification_usage_is_included_even_when_its_output_is_invalid(in
     assert ("EVIDENCE_VERIFIER_FALLBACK" in result.warnings) is invalid
 
 
+@pytest.mark.asyncio
+async def test_repair_mode_rewrites_partial_answer_once_and_reverifies_it():
+    from app.llm_client import ChatCompletionResult
+
+    wrong = SOURCE.replace("30", "300")
+    unsupported = _payload(wrong, quote=None, supported=False)
+    unsupported["claims"][0]["chunk_ids"] = []
+    responses = [json.dumps(unsupported), SOURCE, json.dumps(_payload())]
+    calls = []
+
+    class Verifier:
+        async def chat_completion_result(self, **kwargs):
+            calls.append(kwargs)
+            return ChatCompletionResult(
+                content=responses.pop(0), model="verifier", provider="openai",
+                prompt_tokens=10, completion_tokens=5, total_tokens=15,
+                estimated_cost_usd=0.002,
+            )
+
+    gate = EvidenceGate(load_settings({"AKL_RAG_EVIDENCE_GATE_MODE": "repair",
+                                       "AKL_RAG_EVIDENCE_VERIFIER_MODEL": "verifier"}), Verifier())
+    answer = RagAnswer(
+        query_id="q", answer=wrong, confidence="high", citations=[], used_chunks=["a"],
+        llm_usage={"model": "composer", "prompt_tokens": 20, "completion_tokens": 10,
+                   "total_tokens": 30, "cached_prompt_tokens": 0, "estimated_cost_usd": 0.003},
+    )
+    result = await gate.verify_async(answer, [_chunk("a", "doc_a", SOURCE)])
+
+    assert [call["metadata"]["purpose"] for call in calls] == [
+        "rag_claim_evidence_verification",
+        "rag_claim_evidence_repair",
+        "rag_claim_evidence_reverification",
+    ]
+    assert [call["max_tokens"] for call in calls] == [8192, 3072, 8192]
+    assert result.answer == SOURCE
+    assert result.evidence_status == "supported"
+    assert result.verification_model == "verifier"
+    assert "EVIDENCE_REPAIR_APPLIED" in result.warnings
+    assert result.llm_usage["total_tokens"] == 75
+    assert result.llm_usage["estimated_cost_usd"] == pytest.approx(0.009)
+    assert [item["stage"] for item in result.llm_usage["evidence_pipeline"]] == [
+        "verification", "repair", "verification_after_repair"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_repair_mode_fails_closed_when_reverification_is_invalid():
+    from app.llm_client import ChatCompletionResult
+
+    wrong = SOURCE.replace("30", "300")
+    unsupported = _payload(wrong, quote=None, supported=False)
+    unsupported["claims"][0]["chunk_ids"] = []
+    responses = [json.dumps(unsupported), SOURCE, "invalid"]
+
+    class Verifier:
+        async def chat_completion_result(self, **kwargs):
+            return ChatCompletionResult(
+                content=responses.pop(0), model="verifier", provider="openai",
+            )
+
+    result = await EvidenceGate(
+        load_settings({"AKL_RAG_EVIDENCE_GATE_MODE": "repair",
+                       "AKL_RAG_EVIDENCE_VERIFIER_MODEL": "verifier"}),
+        Verifier(),
+    ).verify_async(
+        RagAnswer(query_id="q", answer=wrong, confidence="high", citations=[], used_chunks=["a"]),
+        [_chunk("a", "doc_a", SOURCE)],
+    )
+    assert result.confidence == "insufficient_source"
+    assert result.citations == []
+    assert "EVIDENCE_VERIFIER_UNAVAILABLE" in result.warnings
+
+
 @pytest.mark.parametrize("claim", [
     "Lhuta pro vyrizeni zadosti je 300 dnu.",
     "Lhuta pro vyrizeni zadosti neni 30 dnu.",

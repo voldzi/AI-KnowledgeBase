@@ -28,6 +28,9 @@
    výsledek a pouze zvyšuje latenci.
 10. Evidence gate po generování mapuje tvrzení na chunk ID. V `enforce` odstraní
    nepodložená vedlejší tvrzení a nepodložené hlavní tvrzení změní na no-answer.
+   Režim `repair` provede při částečné nebo nepodložené odpovědi právě jeden
+   řízený přepis pouze z autorizovaných výňatků a celý výsledek znovu ověří.
+   Neplatný nebo stále nepodložený výsledek zůstává fail-closed.
 
 ## Režimy a konfigurace
 
@@ -42,10 +45,12 @@
 | ColBERT ingestion | `AKL_RAG_COLBERT_INDEX_MODE` | encoder URL, model, token, vector size |
 | ColBERT query | `AKL_RAG_COLBERT_MODE` | encoder URL, model, candidate limit |
 
-Všechny režimy mají hodnoty `off`, `shadow`, `enforce`. `shadow` nesmí změnit
-finální pořadí ani odpověď. Docker Home produkční profil používá pro evidence
-gate výchozí režim `enforce`; ostatní experimentální RAG V2 vrstvy zůstávají
-ve výchozím stavu `off`.
+Všechny režimy mají hodnoty `off`, `shadow`, `enforce`; evidence gate navíc
+podporuje `repair`. `shadow` nesmí změnit finální pořadí ani odpověď. Základní
+Docker Home profil používá pro evidence gate výchozí režim `enforce`. Volitelný
+pre-pilot profil `docker-compose.chat-verifier.yml` zapíná GTE reranking,
+autorizované rozšíření sousedního kontextu a evidence `repair`. Bez tohoto
+profilu zůstávají ostatní experimentální RAG V2 vrstvy ve stavu `off`.
 
 Evidence gate používá deterministický verifier, pokud není nastaven
 `AKL_RAG_EVIDENCE_VERIFIER_MODEL`. Deterministický režim
@@ -63,7 +68,7 @@ doslovnou citaci z textu zdroje; kontrola čísel a vybraných polaritních výr
 je další konzervativní ochrana, nikoli náhrada sémantického hodnocení.
 Model musí posoudit také jednotky, podmínky, výjimky a vztahy mezi subjekty.
 
-Výpadek nebo neplatný výstup verifieru v `enforce` končí no-answer.
+Výpadek nebo neplatný výstup verifieru v `enforce` nebo `repair` končí no-answer.
 Nepodložené hlavní tvrzení končí bez citací a bez `used_chunks`.
 Ověřovací model přebírá stejné policy bindingy, handling class a kumulované
 obligations jako model sestavující odpověď. Zákaz externího zpracování platí
@@ -73,6 +78,8 @@ Přechod z dřívějšího lexikálního verifieru mění akceptaci parafrází.
 nasazením je nutná nezávisle posouzená sada správných i chybných odpovědí a
 ověření zvoleného verifieru. Samotné `supported=true` není certifikací
 správnosti modelu. Neměnit režim na `off` jako řešení nedostatečné kvality.
+Opravný model nesmí do uživatelského textu vkládat interní ID; citace připojuje
+API samostatně a po opravě ponechá jen chunky potvrzené druhým ověřením.
 
 Evidence gate se uplatňuje také na běžný `/assistant/chat`. Copilot ředitele
 používá oddělenou deterministickou cestu: nejvýše tři autorizované smluvní

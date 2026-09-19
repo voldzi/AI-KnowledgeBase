@@ -397,12 +397,15 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         ("AKL_RAG_RERANKER_MODE", reranker_mode),
         ("AKL_RAG_ADAPTIVE_RETRIEVAL_MODE", adaptive_retrieval_mode),
         ("AKL_RAG_PARENT_RETRIEVAL_MODE", parent_retrieval_mode),
-        ("AKL_RAG_EVIDENCE_GATE_MODE", evidence_gate_mode),
         ("AKL_RAG_COLBERT_MODE", colbert_mode),
         ("AKL_RAG_V2_RETRIEVAL_MODE", v2_retrieval_mode),
     ):
         if mode not in RAG_LAYER_MODES:
             raise ConfigError(f"{key} must be one of: off, shadow, enforce")
+    if evidence_gate_mode not in {*RAG_LAYER_MODES, "repair"}:
+        raise ConfigError(
+            "AKL_RAG_EVIDENCE_GATE_MODE must be one of: off, shadow, enforce, repair"
+        )
     if reranker_provider not in RERANKER_PROVIDERS:
         raise ConfigError("AKL_RAG_RERANKER_PROVIDER must be one of: llama, tei")
     if reranker_strategy not in RERANKER_STRATEGIES:
