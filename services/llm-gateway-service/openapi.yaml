@@ -623,6 +623,12 @@ components:
           type:
             - boolean
             - "null"
+        response_schema:
+          description: Optional JSON Schema enforced by providers that support structured output.
+          type:
+            - object
+            - "null"
+          additionalProperties: true
         stream:
           type: boolean
           default: false

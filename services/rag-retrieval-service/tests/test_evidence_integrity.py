@@ -325,6 +325,7 @@ async def test_verifier_inherits_source_processing_restrictions():
             nonlocal captured_model
             captured.update(kwargs["metadata"])
             captured["max_tokens"] = kwargs["max_tokens"]
+            captured["response_schema"] = kwargs["response_schema"]
             captured_model = kwargs["model"]
             return json.dumps(_payload())
 
@@ -340,6 +341,12 @@ async def test_verifier_inherits_source_processing_restrictions():
     assert captured["obligations"] == ["LOCAL_PROCESSING_ONLY", "NO_EXPORT", "NO_EXTERNAL_AI"]
     assert captured_model == gate._settings.chat_model
     assert captured["max_tokens"] == 4096
+    schema = captured["response_schema"]
+    assert schema["additionalProperties"] is False
+    assert schema["properties"]["claims"]["minItems"] == 1
+    claim_schema = schema["properties"]["claims"]["items"]
+    assert claim_schema["additionalProperties"] is False
+    assert claim_schema["properties"]["chunk_ids"]["items"]["enum"] == ["a"]
     assert "EVIDENCE_VERIFIER_LOCAL_POLICY_ROUTE" in result.warnings
     assert captured["content_logged"] is False
     assert SOURCE not in json.dumps(captured)

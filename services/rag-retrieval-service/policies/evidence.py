@@ -81,6 +81,7 @@ class EvidenceGate:
                     # policy-bound models get a smaller, still bounded budget
                     # so verification cannot monopolize the inference queue.
                     max_tokens=verification_max_tokens,
+                    response_schema=_verification_response_schema(answer.answer, chunks),
                     auth_context=auth_context,
                     usage_stage="verification",
                 )
@@ -103,6 +104,7 @@ class EvidenceGate:
                         },
                         model=model,
                         max_tokens=min(max(self._settings.answer_max_tokens * 2, 2048), 4096),
+                        response_schema=None,
                         auth_context=auth_context,
                         usage_stage="repair",
                     )
@@ -127,6 +129,7 @@ class EvidenceGate:
                         },
                         model=model,
                         max_tokens=verification_max_tokens,
+                        response_schema=_verification_response_schema(answer.answer, chunks),
                         auth_context=auth_context,
                         usage_stage="verification_after_repair",
                     )
@@ -162,6 +165,7 @@ class EvidenceGate:
         metadata: dict[str, object],
         model: str,
         max_tokens: int,
+        response_schema: dict[str, object] | None,
         auth_context: AuthContext | None,
         usage_stage: str,
     ) -> tuple[RagAnswer, str]:
@@ -171,6 +175,7 @@ class EvidenceGate:
             metadata=metadata,
             model=model,
             max_tokens=max_tokens,
+            response_schema=response_schema,
             auth_context=auth_context,
         )
         if completion_method is None:
@@ -484,6 +489,64 @@ def _verification_messages(answer: str, chunks: list[RetrievedChunk]) -> list[di
             ),
         },
     ]
+
+
+def _verification_response_schema(
+    answer: str,
+    chunks: list[RetrievedChunk],
+) -> dict[str, object]:
+    """Constrain provider output before the closed-contract parser validates it."""
+    statements = _answer_statements(answer, chunks)
+    chunk_ids = [chunk.chunk_id for chunk in chunks]
+    quote_span = {
+        "type": "object",
+        "properties": {
+            "chunk_id": {"type": "string", "enum": chunk_ids},
+            "quote": {"type": "string", "minLength": 1},
+        },
+        "required": ["chunk_id", "quote"],
+        "additionalProperties": False,
+    }
+    claim = {
+        "type": "object",
+        "properties": {
+            "claim": {"type": "string"},
+            "claim_type": {"type": "string", "enum": ["main", "supporting"]},
+            "chunk_ids": {
+                "type": "array",
+                "items": {"type": "string", "enum": chunk_ids},
+                "uniqueItems": True,
+                "maxItems": len(chunk_ids),
+            },
+            "quoted_support": {
+                "anyOf": [
+                    {"type": "null"},
+                    {
+                        "type": "array",
+                        "items": quote_span,
+                        "minItems": 1,
+                        "maxItems": len(chunk_ids),
+                    },
+                ]
+            },
+            "supported": {"type": "boolean"},
+        },
+        "required": ["claim", "claim_type", "chunk_ids", "quoted_support", "supported"],
+        "additionalProperties": False,
+    }
+    return {
+        "type": "object",
+        "properties": {
+            "claims": {
+                "type": "array",
+                "items": claim,
+                "minItems": len(statements),
+                "maxItems": len(statements),
+            }
+        },
+        "required": ["claims"],
+        "additionalProperties": False,
+    }
 
 
 def _model_assessment(

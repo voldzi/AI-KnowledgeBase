@@ -34,3 +34,20 @@ def test_generic_compatible_model_keeps_legacy_generation_fields() -> None:
     assert "max_completion_tokens" not in payload
     assert payload["temperature"] == 0.2
     assert payload["top_p"] == 0.8
+
+
+def test_openai_structured_output_uses_strict_json_schema() -> None:
+    schema = {"type": "object", "properties": {"ok": {"type": "boolean"}},
+              "required": ["ok"], "additionalProperties": False}
+    request = ChatCompletionRequest(
+        model="gpt-5.6-luna",
+        messages=[{"role": "user", "content": "test"}],
+        response_schema=schema,
+    )
+
+    payload = _chat_payload(request, stream=False)
+
+    assert payload["response_format"] == {
+        "type": "json_schema",
+        "json_schema": {"name": "akb_structured_output", "strict": True, "schema": schema},
+    }

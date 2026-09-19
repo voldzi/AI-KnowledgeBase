@@ -133,6 +133,13 @@ Pro thinking-capable Ollama modely gateway podporuje:
 
 `think` i `max_tokens` jsou podporované také v `/api/v1/chat/completions`. Pro Ollama se `max_tokens` mapuje na `options.num_predict`; pokud request hodnotu neobsahuje, použije se `AKL_LLM_DEFAULT_MAX_TOKENS`.
 
+Ne-streamingové volání může přidat `response_schema` s JSON Schema. Gateway ji
+pro Ollama předá jako `format` a pro OpenAI jako striktní `json_schema`
+response format. RAG ji používá pro krátké důkazní verdikty; výsledný JSON se
+i poté znovu kontroluje uzavřeným aplikačním kontraktem, přesnými identitami
+chunků a doslovnými citacemi. Schéma tedy zvyšuje spolehlivost formátu, ale
+nenahrazuje bezpečnostní validaci odpovědi.
+
 Pokud Ollama vrátí pouze `message.thinking` a prázdné `message.content`, gateway vrátí chybu `EMPTY_CONTENT_THINKING_ONLY` místo úspěšné prázdné odpovědi.
 
 ## Streaming

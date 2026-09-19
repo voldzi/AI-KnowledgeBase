@@ -397,6 +397,8 @@ def _chat_payload(request: ChatCompletionRequest, settings: Settings, stream: bo
         "stream": stream,
         "think": effective_think,
     }
+    if request.response_schema is not None:
+        payload["format"] = request.response_schema
     if options:
         payload["options"] = options
     return payload

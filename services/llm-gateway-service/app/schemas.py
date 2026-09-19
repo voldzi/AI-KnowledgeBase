@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -48,6 +48,7 @@ class ChatCompletionRequest(BaseModel):
     top_p: float | None = Field(default=None, ge=0, le=1)
     max_tokens: int | None = Field(default=None, gt=0)
     think: bool | None = None
+    response_schema: dict[str, Any] | None = None
     stream: bool = False
     metadata: InformationPolicyMetadata = Field(default_factory=InformationPolicyMetadata)
 

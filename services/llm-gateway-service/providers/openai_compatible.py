@@ -225,6 +225,15 @@ def _chat_payload(request: ChatCompletionRequest, stream: bool) -> dict[str, Any
         payload[
             "max_completion_tokens" if modern_reasoning_model else "max_tokens"
         ] = request.max_tokens
+    if request.response_schema is not None:
+        payload["response_format"] = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "akb_structured_output",
+                "strict": True,
+                "schema": request.response_schema,
+            },
+        }
     return payload
 
 

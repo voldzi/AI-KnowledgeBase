@@ -311,3 +311,18 @@ async def test_ollama_provider_rejects_thinking_only_empty_content(monkeypatch: 
 
     assert exc_info.value.code == "EMPTY_CONTENT_THINKING_ONLY"
     assert exc_info.value.status_code == 502
+
+def test_ollama_structured_output_passes_json_schema_as_format() -> None:
+    schema = {"type": "object", "properties": {"ok": {"type": "boolean"}},
+              "required": ["ok"], "additionalProperties": False}
+    payload = ollama_module._chat_payload(
+        ChatCompletionRequest(
+            model="gemma4:12b-mlx",
+            messages=[{"role": "user", "content": "Test"}],
+            response_schema=schema,
+        ),
+        ollama_settings(),
+        stream=False,
+    )
+
+    assert payload["format"] == schema
