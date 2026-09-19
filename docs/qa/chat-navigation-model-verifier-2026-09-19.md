@@ -65,3 +65,9 @@ semantic correctness ([OpenAI documentation](https://developers.openai.com/api/d
 
 Temporal-closure issuance remains coordinated with STRATOS. Do not treat this
 UI/model change as deployment of the separate historical-admission contract.
+
+The live RAG answer limit is 1,536 output tokens. Verification repeats every
+claim and its supporting passages; reusing that limit truncated normal multi-
+claim JSON receipts (gateway HTTP 200 followed by incomplete-answer rejection).
+Verification now requests its own bounded 8,192-token output allowance. This is
+an upper bound, not a reservation or a fixed cost; actual usage remains recorded.

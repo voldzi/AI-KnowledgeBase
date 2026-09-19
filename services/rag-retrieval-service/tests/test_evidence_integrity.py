@@ -54,6 +54,7 @@ async def test_verification_usage_is_included_even_when_its_output_is_invalid(in
 
     class Verifier:
         async def chat_completion_result(self, **kwargs):
+            assert kwargs["max_tokens"] == 8192
             return ChatCompletionResult(
                 content="invalid" if invalid else json.dumps(_payload()),
                 model="verifier", provider="openai", prompt_tokens=10,

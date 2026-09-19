@@ -58,6 +58,10 @@ class EvidenceGate:
                     "content_logged": False,
                 },
                 model=model,
+                # The verification receipt repeats every claim plus its exact
+                # supporting passages. The user-answer limit (often 1536)
+                # truncates this JSON even for an ordinary six-point answer.
+                max_tokens=8192,
                 auth_context=auth_context,
             )
             if completion_method is not None:
