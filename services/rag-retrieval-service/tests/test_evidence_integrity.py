@@ -72,10 +72,49 @@ def test_standalone_authorized_citation_is_not_an_answer_statement():
     assert _answer_statements(SOURCE + "\n[chunk_999]", chunks) == [SOURCE, "[chunk_999]"]
 
 
-def test_list_claims_preserve_legal_abbreviations_and_every_sentence():
+def test_list_claims_preserve_legal_abbreviations_and_atomize_every_sentence():
     first = "- Zákon č. 134/2016 Sb. upravuje zakázky. Dodavatel nesmí diskriminovat."
     second = "- Lhůta činí 30 dnů."
-    assert _answer_statements(first + "\n" + second, []) == [first, second]
+    assert _answer_statements(first + "\n" + second, []) == [
+        "- Zákon č. 134/2016 Sb. upravuje zakázky.",
+        "Dodavatel nesmí diskriminovat.",
+        second,
+    ]
+
+
+def test_pdf_line_breaks_do_not_split_one_evidence_sentence():
+    source = "Ve vztahu k dodavatelům musí zadavatel dodržovat zásadu rovného\n\nzacházení a zákazu diskriminace."
+    assert _answer_statements(source, []) == [
+        "Ve vztahu k dodavatelům musí zadavatel dodržovat zásadu rovného zacházení a zákazu diskriminace."
+    ]
+
+
+def test_dotted_czech_date_is_one_statement():
+    assert _answer_statements("Platí od 1. 1. 2026. Další pravidlo platí později.", []) == [
+        "Platí od 1. 1. 2026.",
+        "Další pravidlo platí později.",
+    ]
+
+
+def test_compound_list_item_keeps_supported_sentence_independent():
+    answer = f"- {SOURCE} Dalsi tvrzeni nema oporu."
+    payload = {
+        "claims": [
+            {"chunk_ids": ["a"], "supported": True},
+            {"chunk_ids": [], "supported": False},
+        ]
+    }
+    assessment = _model_assessment(
+        json.dumps(payload),
+        [_chunk("a", "doc_a", SOURCE)],
+        answer=answer,
+    )
+    assert assessment.status == "partial"
+    assert [item["claim"] for item in assessment.claims] == [
+        f"- {SOURCE}",
+        "Dalsi tvrzeni nema oporu.",
+    ]
+    assert [item["supported"] for item in assessment.claims] == [True, False]
 
 
 @pytest.mark.asyncio

@@ -341,8 +341,35 @@ class EvidenceGate:
         return EvidenceAssessment(claims, status, unsupported_main)
 
 
+_PERIOD_SENTINEL = "\uf000"
+_LEGAL_ABBREVIATION = re.compile(
+    r"\b(?:č|sb|odst|písm|čl|např|tj|tzn|resp|popř|str|čj|sp|zn|tzv|apod|atd)\.",
+    re.IGNORECASE,
+)
+
+
 def _sentences(value: str) -> list[str]:
-    return [part.strip() for part in re.split(r"(?<=[.!?])\s+|\n+", value) if part.strip()]
+    # PDF extraction commonly inserts hard line breaks inside one sentence.
+    # Normalize those breaks before splitting, while protecting Czech legal
+    # abbreviations and dotted dates from being mistaken for claim boundaries.
+    normalized = " ".join(value.split())
+    if not normalized:
+        return []
+    protected = _LEGAL_ABBREVIATION.sub(
+        lambda match: match.group(0).replace(".", _PERIOD_SENTINEL),
+        normalized,
+    )
+    protected = re.sub(r"(?<=\d)\.(?=\s+\d)", _PERIOD_SENTINEL, protected)
+    protected = re.sub(
+        r"\b(?:[A-Za-zÁ-Žá-ž]\.){2,}",
+        lambda match: match.group(0).replace(".", _PERIOD_SENTINEL),
+        protected,
+    )
+    return [
+        part.replace(_PERIOD_SENTINEL, ".").strip()
+        for part in re.split(r"(?<=[.!?])\s+", protected)
+        if part.strip()
+    ]
 
 
 def _assessment_rank(assessment: EvidenceAssessment) -> tuple[int, int, int]:
@@ -368,13 +395,12 @@ def _answer_statements(value: str, chunks: list[RetrievedChunk]) -> list[str]:
     # to verification. Citation authorization is enforced independently.
     for chunk in chunks:
         value = value.replace(f"[{chunk.chunk_id}]", "")
-    # Keep complete list items together. Splitting their text at every period
-    # cuts legal abbreviations (e.g. "č." / "Sb.") and creates fragments the
-    # verifier naturally merges again. Every sentence in an item must still be
-    # supported; no text is dropped from the receipt.
+    # Verify every sentence independently. This keeps a supported sentence when
+    # another sentence in the same list item is unsupported. _sentences protects
+    # legal abbreviations, so atomization does not split "č. 134/2016 Sb.".
     lines = [line.strip() for line in value.splitlines() if line.strip()]
     if any(re.match(r"^(?:[-*+]\s|\d+[.)]\s)", line) for line in lines):
-        return lines
+        return [statement for line in lines for statement in _sentences(line)]
     return _sentences(value)
 
 

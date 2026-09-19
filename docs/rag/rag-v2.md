@@ -59,14 +59,18 @@ výroky (s normalizací velikosti písmen a mezer), nikoli slovní podobnost.
 Název dokumentu a cesta sekce pomáhají orientaci, ale neprokazují věcný výrok.
 
 Pro syntézu a parafráze je potřeba kvalifikovaný interní modelový verifier.
-Jeho uzavřený JSON obsahuje pouze `claims`; každá položka má přesně `claim`,
-`claim_type`, `chunk_ids`, `quoted_support` a booleovské `supported`.
-Musí beze změny a ve stejném pořadí posoudit všechny výroky odpovědi, včetně
-krátkých. Server odmítá vynechané/přepsané výroky, neznámá pole, duplicitní
-JSON klíče a neznámá nebo duplicitní chunk ID. Kladné rozhodnutí vyžaduje
-doslovnou citaci z textu zdroje; kontrola čísel a vybraných polaritních výrazů
-je další konzervativní ochrana, nikoli náhrada sémantického hodnocení.
-Model musí posoudit také jednotky, podmínky, výjimky a vztahy mezi subjekty.
+Jeho uzavřený JSON obsahuje pouze `claims`; každá položka má přesně
+`chunk_ids` a booleovské `supported`. Tvrzení se vážou podle pořadí k původním
+neměnným větám odpovědi. AKB následně z potvrzených neměnných chunků samo
+vybere krátkou doslovnou oporu, takže model nemůže přepsat tvrzení ani podvrhnout
+citaci. Server odmítá vynechané výroky, neznámá pole, duplicitní JSON klíče a
+neznámá nebo duplicitní chunk ID; duplicity kontroluje i tehdy, když je externí
+Structured Outputs schema neumí vyjádřit. Každá věta odrážky se ověřuje
+samostatně, právní zkratky a tečkovaná data přitom zůstávají celistvá a tvrdé
+zalomení řádku z PDF se nepovažuje za hranici tvrzení. Kontrola čísel a vybraných
+polaritních výrazů je další konzervativní ochrana, nikoli náhrada sémantického
+hodnocení. Model musí posoudit také jednotky, podmínky, výjimky a vztahy mezi
+subjekty.
 
 Nastavený externí verifier se použije jen tehdy, když souhrnná Information
 Policy všech použitých pasáží externí zpracování dovoluje. Pro `RESTRICTED`,
@@ -79,9 +83,10 @@ fail-closed.
 Generativní volání používají vlastní limit `AKL_RAG_LLM_REQUEST_TIMEOUT_SECONDS`
 a výchozí `AKL_RAG_LLM_RETRY_ATTEMPTS=0`. Pozdní inferenci nelze bezpečně
 opakovat jako běžné idempotentní čtení: původní výpočet může pokračovat a jeho
-kopie by zahltila stejnou frontu nebo vytvořila další externí náklad. Celá
-ověřovací a případná opravná sekvence má společný strop
-`AKL_RAG_EVIDENCE_VERIFIER_TIMEOUT_SECONDS`. Interní policy-bound verifier má
+kopie by zahltila stejnou frontu nebo vytvořila další externí náklad. Každá
+fáze ověření, případné opravy a opakovaného ověření má strop
+`AKL_RAG_EVIDENCE_VERIFIER_TIMEOUT_SECONDS`; celý repair průchod je omezen
+součtem nejvýše tří takových fází. Interní policy-bound verifier má
 samostatný výstupní rozpočet `AKL_RAG_EVIDENCE_VERIFIER_LOCAL_MAX_TOKENS`;
 výchozích 4096 stačí pro uzavřený claim receipt bez monopolizace lokálního
 modelu. Překročení kteréhokoli limitu končí v `enforce`/`repair` fail-closed.
