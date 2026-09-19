@@ -144,3 +144,11 @@ Krátká nedostupnost session autority nyní okamžitě skryje chráněný obsah
 na stejné stránce provede tři krátké kontrolní pokusy. Původní obsah se obnoví
 jen při shodném stabilním otisku identity a oprávnění. Odhlášení nebo změna
 přístupu se nikdy neobnoví na místě.
+
+První živý průchod tohoto kandidáta bezpečně určil správnou verzi zákona, ale
+lexikální hledání uvnitř verze zvýhodnilo název dokumentu společný všem jeho
+chunkům. Do odpovědi se proto dostaly jiné paragrafy a composer správně odmítl
+odpovědět. Navazující obecná oprava při přesném dokumentovém scope odstraní
+název dokumentu z hodnocených OpenSearch polí i identifikátorových klauzulí;
+sekce, článek, odstavec a obsah pasáže zůstávají hodnocené. Regrese ověřuje, že
+globální hledání si silné hledání názvu zachová a přesně scoped hledání nikoli.

@@ -467,6 +467,31 @@ def test_opensearch_query_contains_weighted_fields_and_filters() -> None:
     assert {"term": {"status": "valid"}} in bool_query["filter"]
 
 
+def test_opensearch_query_ranks_passages_without_document_title_when_document_is_fixed() -> None:
+    query = _opensearch_query(
+        query="Jaké základní zásady musí zadavatel dodržet podle zákona o zadávání veřejných zakázek?",
+        filters=RagQueryFilters(
+            document_ids=["doc_procurement"],
+            document_version_ids=["ver_current"],
+            only_valid=True,
+        ),
+        limit=20,
+    )
+
+    bool_query = query["query"]["bool"]
+    multi_matches = [clause["multi_match"] for clause in bool_query["should"] if "multi_match" in clause]
+    assert multi_matches
+    assert all(
+        all(not field.startswith("document_title") for field in clause["fields"])
+        for clause in multi_matches
+    )
+    assert not any("wildcard" in clause for clause in bool_query["should"])
+    assert any("section_title^4" in clause["fields"] for clause in multi_matches)
+    assert any("search_text^2" in clause["fields"] for clause in multi_matches)
+    assert {"terms": {"document_id": ["doc_procurement"]}} in bool_query["filter"]
+    assert {"terms": {"document_version_id": ["ver_current"]}} in bool_query["filter"]
+
+
 def test_opensearch_filter_limits_classification() -> None:
     filters = _opensearch_filter(RagQueryFilters(classification_max="restricted"))
 

@@ -804,20 +804,37 @@ def _opensearch_query(
     collapse_by_version: bool = False,
 ) -> dict[str, Any]:
     expanded_query = expand_query_text(query)
+    within_document_scope = bool(filters.document_ids or filters.document_version_ids)
+    primary_fields = [
+        "section_title^4",
+        "section_path^3",
+        "article_number^4",
+        "paragraph_number^3",
+        "search_text^2",
+        "text",
+        "normalized_text",
+    ]
+    expanded_fields = [
+        "section_title^3",
+        "section_path^2",
+        "article_number^3",
+        "paragraph_number^2",
+        "search_text^3",
+        "text^2",
+        "normalized_text",
+    ]
+    phrase_fields = ["section_title^5", "search_text^4", "text^3"]
+    fuzzy_fields = ["section_title^1.5", "search_text"]
+    if not within_document_scope:
+        primary_fields.insert(0, "document_title^6")
+        expanded_fields.insert(0, "document_title^4")
+        phrase_fields.insert(0, "document_title^8")
+        fuzzy_fields.insert(0, "document_title^2")
     should = [
         {
             "multi_match": {
                 "query": query,
-                "fields": [
-                    "document_title^6",
-                    "section_title^4",
-                    "section_path^3",
-                    "article_number^4",
-                    "paragraph_number^3",
-                    "search_text^2",
-                    "text",
-                    "normalized_text",
-                ],
+                "fields": primary_fields,
                 "type": "best_fields",
                 "operator": "or",
             }
@@ -825,16 +842,7 @@ def _opensearch_query(
         {
             "multi_match": {
                 "query": expanded_query,
-                "fields": [
-                    "document_title^4",
-                    "section_title^3",
-                    "section_path^2",
-                    "article_number^3",
-                    "paragraph_number^2",
-                    "search_text^3",
-                    "text^2",
-                    "normalized_text",
-                ],
+                "fields": expanded_fields,
                 "type": "best_fields",
                 "operator": "or",
                 "boost": 1.4,
@@ -843,12 +851,12 @@ def _opensearch_query(
         {
             "multi_match": {
                 "query": query,
-                "fields": ["document_title^8", "section_title^5", "search_text^4", "text^3"],
+                "fields": phrase_fields,
                 "type": "phrase",
                 "boost": 3,
             }
         },
-        *_opensearch_identifier_clauses(query),
+        *([] if within_document_scope else _opensearch_identifier_clauses(query)),
     ]
     fuzzy_query = _bounded_fuzzy_query(query)
     if fuzzy_query:
@@ -856,11 +864,7 @@ def _opensearch_query(
             {
                 "multi_match": {
                     "query": fuzzy_query,
-                    "fields": [
-                        "document_title^2",
-                        "section_title^1.5",
-                        "search_text",
-                    ],
+                    "fields": fuzzy_fields,
                     "type": "best_fields",
                     "operator": "or",
                     "fuzziness": "AUTO",

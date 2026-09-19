@@ -2,15 +2,21 @@
 # Compose files. Every added passage is re-authorized before use. Generation,
 # repair and verification inherit the same source-processing policy.
 services:
+  web:
+    environment:
+      AKL_WEB_RAG_ASSISTANT_TIMEOUT_MS: "180000"
+  chat-web:
+    environment:
+      AKL_WEB_RAG_ASSISTANT_TIMEOUT_MS: "180000"
   rag-retrieval-service:
     environment:
       AKL_RAG_RERANKER_MODE: enforce
       AKL_RAG_RERANKER_PROVIDER: tei
       AKL_RAG_RERANKER_BASE_URLS: ${AKL_RAG_RERANKER_BASE_URLS:-http://gte-reranker:3000}
-      AKL_RAG_RERANKER_TIMEOUT_SECONDS: ${AKL_RAG_RERANKER_TIMEOUT_SECONDS:-90}
-      AKL_RAG_RERANKER_CANDIDATE_LIMIT: ${AKL_RAG_RERANKER_CANDIDATE_LIMIT:-8}
-      AKL_RAG_RERANKER_BATCH_SIZE: ${AKL_RAG_RERANKER_BATCH_SIZE:-8}
+      AKL_RAG_RERANKER_TIMEOUT_SECONDS: "90"
+      AKL_RAG_RERANKER_CANDIDATE_LIMIT: "8"
+      AKL_RAG_RERANKER_BATCH_SIZE: "8"
       AKL_RAG_PARENT_RETRIEVAL_MODE: enforce
-      AKL_RAG_PARENT_WINDOW: ${AKL_RAG_PARENT_WINDOW:-1}
+      AKL_RAG_PARENT_WINDOW: "1"
       AKL_RAG_EVIDENCE_GATE_MODE: repair
       AKL_RAG_EVIDENCE_VERIFIER_MODEL: ${AKB_CHAT_VERIFIER_MODEL:-gpt-5.6-luna}

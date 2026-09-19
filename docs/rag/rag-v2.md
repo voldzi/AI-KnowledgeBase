@@ -94,6 +94,13 @@ Proto se jeho extraktivní výstup znovu neposílá modelovému verifieru.
   Jde o latencí omezený shortlist, nikoli o snížení recall rozpočtu Qdrantu a
   OpenSearch. Pre-pilot profil na současném CPU používá osm kandidátů; silnější
   cílový hardware může limit zvýšit až po měření kvality a odezvy.
+- Po bezpečném určení konkrétního dokumentu nebo verze OpenSearch nehodnotí
+  shodu s názvem dokumentu. Všechny kandidátní chunky už mají stejný název,
+  takže pořadí určuje sekce, článek, odstavec a vlastní text pasáže. Tím se
+  obecný lidský dotaz nepřesměruje na náhodnou část správného dokumentu.
+- Opt-in pre-pilot profil dává současnému CPU až 90 sekund na osm kandidátů a
+  webovému mostu 180 sekund na celý řízený průchod. Jde o horní provozní limit;
+  cílový hardware musí být kalibrován měřením latence i kvality.
 - Llama/Qwen kontrakt: `POST /v1/rerank` s `model`, `query`, `documents`, `top_n`.
 - `AKL_RAG_RERANKER_BASE_URLS` obsahuje alternativní interní cesty ke stejnému
   runtime. AKB je nepoužívá jako load-balancing pool: vybere zdravou cestu,
