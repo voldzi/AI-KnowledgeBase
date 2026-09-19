@@ -49,7 +49,7 @@ class QdrantHybridRetriever:
             }
             if offset is not None:
                 body["offset"] = offset
-            payload = await _request_qdrant_json_allow_missing(
+            payload = await _request_qdrant_index_json(
                 settings=self._settings,
                 method="POST",
                 url=(
@@ -219,7 +219,7 @@ class QdrantHybridRetriever:
             "with_vector": False,
             "filter": _qdrant_filter(filters),
         }
-        payload = await _request_qdrant_json_allow_missing(
+        payload = await _request_qdrant_index_json(
             settings=self._settings,
             method="POST",
             url=(
@@ -237,7 +237,7 @@ class QdrantHybridRetriever:
         )
 
     async def get_chunk(self, chunk_id: str) -> RetrievedChunk | None:
-        payload = await _request_qdrant_json_allow_missing(
+        payload = await _request_qdrant_index_json(
             settings=self._settings,
             method="POST",
             url=f"{self._settings.qdrant_base_url}/collections/{self._settings.qdrant_collection}/points/scroll",
@@ -278,7 +278,7 @@ class QdrantHybridRetriever:
                 "range": {"gte": max(0, chunk_index - window), "lte": chunk_index + window},
             },
         ]
-        payload = await _request_qdrant_json_allow_missing(
+        payload = await _request_qdrant_index_json(
             settings=self._settings,
             method="POST",
             url=f"{self._settings.qdrant_base_url}/collections/{self._settings.qdrant_collection}/points/scroll",
@@ -301,7 +301,7 @@ class QdrantHybridRetriever:
     async def list_document_titles(self, *, limit: int = 64) -> list[dict[str, str]]:
         """Return distinct documents present in the index as
         [{"document_title": ..., "document_type": ...}], newest-first by scroll order."""
-        payload = await _request_qdrant_json_allow_missing(
+        payload = await _request_qdrant_index_json(
             settings=self._settings,
             method="POST",
             url=f"{self._settings.qdrant_base_url}/collections/{self._settings.qdrant_collection}/points/scroll",
@@ -336,7 +336,7 @@ class QdrantHybridRetriever:
 
     async def readiness(self) -> str:
         try:
-            await _request_qdrant_json_allow_missing(
+            await _request_qdrant_index_json(
                 settings=self._settings,
                 method="GET",
                 url=f"{self._settings.qdrant_base_url}/collections/{self._settings.qdrant_collection}",
@@ -377,7 +377,7 @@ class QdrantHybridRetriever:
             "must": base_must,
             "should": text_conditions,
         }
-        payload = await _request_qdrant_json_allow_missing(
+        payload = await _request_qdrant_index_json(
             settings=self._settings,
             method="POST",
             url=f"{self._settings.qdrant_base_url}/collections/{self._settings.qdrant_collection}/points/scroll",
@@ -406,8 +406,7 @@ class OpenSearchFullTextClient:
                 )
         except (httpx.HTTPError, OSError):
             return "not_ready"
-        allowed_statuses = {200, 404} if self._settings.env != "production" else {200}
-        return "ready" if response.status_code in allowed_statuses else "not_ready"
+        return "ready" if response.status_code == 200 else "not_ready"
 
     async def retrieve(
         self,
@@ -430,7 +429,12 @@ class OpenSearchFullTextClient:
                 json=body,
             )
         if response.status_code == 404:
-            return []
+            raise RetrievalError(
+                "RETRIEVAL_INDEX_UNAVAILABLE",
+                "The document search index is not available.",
+                status_code=503,
+                details={"dependency": "opensearch"},
+            )
         if response.status_code >= 400:
             raise RetrievalError(
                 "UPSTREAM_ERROR",
@@ -463,14 +467,14 @@ def _opensearch_tls_verifier(ca_file: Any) -> ssl.SSLContext | bool:
     return ssl.create_default_context(cafile=str(ca_file))
 
 
-async def _request_qdrant_json_allow_missing(
+async def _request_qdrant_index_json(
     *,
     settings: Settings,
     method: str,
     url: str,
     json_body: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Treat an absent post-reset collection as an empty retrieval index."""
+    """Distinguish missing infrastructure from a valid search with no matches."""
     try:
         return await request_json_with_retry(
             dependency="qdrant",
@@ -483,7 +487,12 @@ async def _request_qdrant_json_allow_missing(
         )
     except RetrievalError as exc:
         if (exc.details or {}).get("status_code") == 404:
-            return {}
+            raise RetrievalError(
+                "RETRIEVAL_INDEX_UNAVAILABLE",
+                "The document search index is not available.",
+                status_code=503,
+                details={"dependency": "qdrant"},
+            ) from exc
         raise
 
 

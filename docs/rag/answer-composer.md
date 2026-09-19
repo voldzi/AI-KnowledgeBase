@@ -192,3 +192,13 @@ Number and polarity checks also apply to combined support. The verifier still
 must assess semantic entailment; matching quotations alone does not establish
 factual correctness. This change does not enable a verifier model or change
 the configured enforcement mode.
+
+## Missing search infrastructure
+
+A missing configured Qdrant collection or OpenSearch index is an operational
+failure, not an empty result set. Retrieval raises HTTP 503 with
+`RETRIEVAL_INDEX_UNAVAILABLE` in the standard error envelope (including
+`trace_id`). Readiness reports `not_ready`, including in local environments.
+A successfully queried existing index with no matching passages remains a
+normal no-answer case. This prevents a broken or unprovisioned search backend
+from being presented to an employee as a lack of documentary evidence.

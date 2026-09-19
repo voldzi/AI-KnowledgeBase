@@ -53,3 +53,40 @@ Remaining acceptance, in order:
    runtime/index manifest, factual and completeness scores, then selective
    release and authenticated smoke. Do not call 200 continuity requests a
    completed factual quality evaluation.
+
+## Continued local candidate verification
+
+Commits `1aa6cbe` and `f8866bd` add general structural prose grouping with
+exact page boundaries, separately cited adjacent-page context, and closed
+multi-passage model-verifier support. These are incremental C/D foundations,
+not completion of the remaining acceptance above.
+
+- Ingestion: 238 local tests passed, including general contract/regulation
+  grouping, page boundaries, source spans and separate tables.
+- RAG: 401 tests passed locally and in the exact Linux/amd64 Docker image
+  `akb/rag-retrieval-service:multi-evidence-local-check` (Python 3.12).
+- Skeleton and generated OpenAPI consistency passed.
+- Isolated candidate `akb-chat-candidate-f8866bd` listens only on
+  `127.0.0.1:18082`; readiness returned HTTP 200. Parent context is enabled
+  only in that candidate. Existing shared RAG services remain unchanged.
+- STRATOS repaired shared-local readiness by deactivating two stale synthetic
+  C06 writer grants with organization-wide scope, retaining their records
+  and recording audit events. Shared STRATOS readiness now returns 200.
+- STRATOS restored the existing synthetic reader identity from the local
+  suite credential record. Standard OIDC PKCE login and token exchange passed.
+  The shared Registry still pointed at V1; an isolated instance using V2
+  returned six authorized C06 fixture documents (HTTP 200). No permissions
+  were broadened to work around this configuration error.
+- Authenticated candidate Chat returned HTTP 200 but no answer: both configured
+  search backends returned 404 for the missing index. The old implementation
+  incorrectly treated this as an empty match and readiness as healthy. This
+  is now corrected to HTTP 503 RETRIEVAL_INDEX_UNAVAILABLE and not-ready.
+- Conversation persistence and audit writes returned 403 with the local RAG
+  service identity. The local index and scoped service grants must be
+  provisioned before meaningful multi-turn quality acceptance.
+- Anonymous Chat and citation opening correctly returned HTTP 401.
+
+No production deployment or document-index replacement is represented by
+these results. The exact Linux/amd64 Docling-enabled ingestion image built successfully;
+35 targeted parser and structural corpus tests also passed inside that image.
+No successful real-model answer or 200-question quality run is claimed.

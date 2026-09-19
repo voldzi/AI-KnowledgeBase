@@ -83,6 +83,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '503':
+          description: Search index unavailable (RETRIEVAL_INDEX_UNAVAILABLE); standard
+            error envelope with trace_id.
   /api/v1/rag/query-stream:
     post:
       tags:
@@ -256,6 +259,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '503':
+          description: Search index unavailable (RETRIEVAL_INDEX_UNAVAILABLE); standard
+            error envelope with trace_id.
   /api/v1/assistant/clarify:
     post:
       tags:
@@ -281,6 +287,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+        '503':
+          description: Search index unavailable (RETRIEVAL_INDEX_UNAVAILABLE); standard
+            error envelope with trace_id.
   /api/v1/assistant/suggestions:
     get:
       tags:

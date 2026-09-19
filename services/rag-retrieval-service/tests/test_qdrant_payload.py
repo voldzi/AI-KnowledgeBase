@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 
 import httpx
+import pytest
 
 from app.config import load_settings
 from app.errors import RetrievalError
@@ -57,7 +58,7 @@ def test_exact_opensearch_resolution_collapses_chunks_by_immutable_version() -> 
     assert body["size"] == 32
 
 
-def test_missing_qdrant_collection_is_an_empty_retrieval_result(monkeypatch) -> None:
+def test_missing_qdrant_collection_is_unavailable(monkeypatch) -> None:
     settings = load_settings({"AKL_RAG_DEPENDENCY_MODE": "http"})
     retriever = QdrantHybridRetriever(settings)
 
@@ -73,16 +74,17 @@ def test_missing_qdrant_collection_is_an_empty_retrieval_result(monkeypatch) -> 
 
     monkeypatch.setattr(qdrant_module, "request_json_with_retry", fake_request)
 
-    chunks = asyncio.run(
-        retriever.retrieve(
-            query="old document",
-            filters=RagQueryFilters(document_ids=["doc_removed"]),
-            limit=5,
+    with pytest.raises(RetrievalError) as failure:
+        asyncio.run(
+            retriever.retrieve(
+                query="old document",
+                filters=RagQueryFilters(document_ids=["doc_removed"]),
+                limit=5,
+            )
         )
-    )
-
-    assert chunks == []
-    assert asyncio.run(retriever.readiness()) == "ready"
+    assert failure.value.code == "RETRIEVAL_INDEX_UNAVAILABLE"
+    assert failure.value.status_code == 503
+    assert asyncio.run(retriever.readiness()) == "not_ready"
 
 
 def test_list_chunks_scrolls_complete_exact_source(monkeypatch) -> None:
@@ -143,7 +145,7 @@ def test_list_chunks_scrolls_complete_exact_source(monkeypatch) -> None:
     } in requests[0]["filter"]["must"]
 
 
-def test_missing_opensearch_index_is_an_empty_retrieval_result(monkeypatch) -> None:
+def test_missing_opensearch_index_is_unavailable(monkeypatch) -> None:
     settings = load_settings(
         {
             "AKL_RAG_DEPENDENCY_MODE": "http",
@@ -173,16 +175,17 @@ def test_missing_opensearch_index_is_an_empty_retrieval_result(monkeypatch) -> N
 
     monkeypatch.setattr(qdrant_module.httpx, "AsyncClient", FakeAsyncClient)
 
-    chunks = asyncio.run(
-        client.retrieve(
-            query="old document",
-            filters=RagQueryFilters(document_ids=["doc_removed"]),
-            limit=5,
+    with pytest.raises(RetrievalError) as failure:
+        asyncio.run(
+            client.retrieve(
+                query="old document",
+                filters=RagQueryFilters(document_ids=["doc_removed"]),
+                limit=5,
+            )
         )
-    )
-
-    assert chunks == []
-    assert asyncio.run(client.readiness()) == "ready"
+    assert failure.value.code == "RETRIEVAL_INDEX_UNAVAILABLE"
+    assert failure.value.status_code == 503
+    assert asyncio.run(client.readiness()) == "not_ready"
 
 
 def test_opensearch_server_error_is_not_treated_as_empty(monkeypatch) -> None:

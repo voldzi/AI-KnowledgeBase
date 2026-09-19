@@ -9501,6 +9501,9 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Search index unavailable (RETRIEVAL_INDEX_UNAVAILABLE); standard error envelope with trace_id."
           }
         }
       },
@@ -9844,6 +9847,9 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Search index unavailable (RETRIEVAL_INDEX_UNAVAILABLE); standard error envelope with trace_id."
           }
         }
       },
@@ -9896,6 +9902,9 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Search index unavailable (RETRIEVAL_INDEX_UNAVAILABLE); standard error envelope with trace_id."
           }
         }
       },

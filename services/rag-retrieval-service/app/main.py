@@ -157,7 +157,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         return await _service(request).retrieve(payload, auth_context=auth_context)
 
-    @app.post("/api/v1/rag/query", response_model=RagAnswer, tags=["rag"])
+    @app.post("/api/v1/rag/query", response_model=RagAnswer, tags=["rag"], responses={503: {"description": "Search index unavailable (RETRIEVAL_INDEX_UNAVAILABLE); standard error envelope with trace_id."}})
     async def query(payload: RagQueryRequest, request: Request) -> RagAnswer:
         auth_context = _guard_subject_request(request, payload.subject_id)
         logger.info(
@@ -239,7 +239,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             auth_context=auth_context,
         )
 
-    @app.post("/api/v1/assistant/chat", response_model=AssistantChatResponse, tags=["assistant"])
+    @app.post("/api/v1/assistant/chat", response_model=AssistantChatResponse, tags=["assistant"], responses={503: {"description": "Search index unavailable (RETRIEVAL_INDEX_UNAVAILABLE); standard error envelope with trace_id."}})
     async def assistant_chat(payload: AssistantChatRequest, request: Request) -> AssistantChatResponse:
         auth_context = _guard_request(request)
         logger.info(
@@ -250,7 +250,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         return await _service(request).assistant_chat(payload, auth_context=auth_context)
 
-    @app.post("/api/v1/assistant/clarify", response_model=AssistantChatResponse, tags=["assistant"])
+    @app.post("/api/v1/assistant/clarify", response_model=AssistantChatResponse, tags=["assistant"], responses={503: {"description": "Search index unavailable (RETRIEVAL_INDEX_UNAVAILABLE); standard error envelope with trace_id."}})
     async def assistant_clarify(payload: AssistantChatRequest, request: Request) -> AssistantChatResponse:
         auth_context = _guard_request(request)
         logger.info(
