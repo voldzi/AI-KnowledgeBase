@@ -33,6 +33,11 @@ def _payload(claim=SOURCE, *, quote=SOURCE, supported=True):
                         "quoted_support": quote, "supported": supported}]}
 
 
+def _compact_payload(*, chunk_ids=None, supported=True):
+    return {"claims": [{"chunk_ids": ["a"] if chunk_ids is None else chunk_ids,
+                        "supported": supported}]}
+
+
 def _public_policy_chunk(chunk_id="a", document_id="doc_a", text=SOURCE):
     chunk = _chunk(chunk_id, document_id, text)
     chunk.metadata.update({
@@ -305,6 +310,29 @@ def test_model_can_verify_a_grounded_paraphrase_without_rewriting_the_answer():
     assert assessment.claims[0]["claim"] == claim
 
 
+def test_compact_model_decision_extracts_bounded_immutable_support():
+    claim = "Zadost je nutne vyridit ve lhute 30 dnu."
+    source = "Uvodni text. " + SOURCE + " Dalsi text."
+    assessment = _model_assessment(
+        json.dumps(_compact_payload()),
+        [_chunk("a", "doc_a", source)],
+        answer=claim,
+    )
+    assert assessment.status == "supported"
+    assert assessment.claims[0]["claim"] == claim
+    assert assessment.claims[0]["quoted_support"] == SOURCE
+
+
+def test_compact_model_decision_cannot_bypass_number_invariant():
+    claim = SOURCE.replace("30", "300")
+    assessment = _model_assessment(
+        json.dumps(_compact_payload()),
+        [_chunk("a", "doc_a", SOURCE)],
+        answer=claim,
+    )
+    assert assessment.status == "unsupported"
+
+
 def test_duplicate_json_decision_is_rejected():
     payload = json.dumps(_payload()).replace('"supported": true', '"supported": false, "supported": true')
     with pytest.raises(ValueError, match="duplicate verifier field"):
@@ -411,11 +439,10 @@ async def test_verifier_inherits_source_processing_restrictions():
     assert schema["properties"]["claims"]["minItems"] == 1
     claim_schema = schema["properties"]["claims"]["items"]
     assert claim_schema["additionalProperties"] is False
+    assert claim_schema["required"] == ["chunk_ids", "supported"]
+    assert set(claim_schema["properties"]) == {"chunk_ids", "supported"}
     assert claim_schema["properties"]["chunk_ids"]["items"]["enum"] == ["a"]
     assert claim_schema["properties"]["chunk_ids"]["maxItems"] == 1
-    quote_schema = claim_schema["properties"]["quoted_support"]["anyOf"][1]
-    assert quote_schema["maxItems"] == 1
-    assert quote_schema["items"]["properties"]["quote"]["maxLength"] == 600
     assert "EVIDENCE_VERIFIER_LOCAL_POLICY_ROUTE" in result.warnings
     assert captured["content_logged"] is False
     assert SOURCE not in json.dumps(captured)
