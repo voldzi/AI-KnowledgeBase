@@ -143,7 +143,7 @@ async def test_verification_usage_is_included_even_when_its_output_is_invalid(in
 
     class Verifier:
         async def chat_completion_result(self, **kwargs):
-            assert kwargs["max_tokens"] == 16384
+            assert kwargs["max_tokens"] == 32768
             assert kwargs["reasoning_effort"] == "low"
             return ChatCompletionResult(
                 content="invalid" if invalid else json.dumps(_payload()),
@@ -196,7 +196,7 @@ async def test_repair_mode_rewrites_partial_answer_once_and_reverifies_it():
         "rag_claim_evidence_repair",
         "rag_claim_evidence_reverification",
     ]
-    assert [call["max_tokens"] for call in calls] == [16384, 3072, 16384]
+    assert [call["max_tokens"] for call in calls] == [32768, 3072, 32768]
     assert result.answer == SOURCE
     assert result.evidence_status == "supported"
     assert result.verification_model == "verifier"
