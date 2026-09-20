@@ -540,6 +540,35 @@ async def test_cost_optimized_local_answer_keeps_evidence_verification_local():
 
 
 @pytest.mark.asyncio
+async def test_economy_answer_keeps_evidence_verification_on_economy_model():
+    captured_model = None
+
+    class Verifier:
+        async def chat_completion(self, **kwargs):
+            nonlocal captured_model
+            captured_model = kwargs["model"]
+            assert kwargs["max_tokens"] == 32768
+            return json.dumps(_payload())
+
+    gate = EvidenceGate(load_settings({
+        "AKL_RAG_EVIDENCE_GATE_MODE": "enforce",
+        "AKL_RAG_EVIDENCE_VERIFIER_MODEL": "quality-verifier",
+        "AKL_RAG_EXTERNAL_ECONOMY_CHAT_MODEL": "gpt-5-mini",
+    }), Verifier())
+    answer = RagAnswer(
+        query_id="q", answer=SOURCE, confidence="high", citations=[], used_chunks=["a"],
+        llm_usage={
+            "model": "gpt-5-mini",
+            "routing": {"tier": "external_economy", "external_processing": True},
+        },
+    )
+    result = await gate.verify_async(answer, [_public_policy_chunk()])
+
+    assert result.evidence_status == "supported"
+    assert captured_model == "gpt-5-mini"
+
+
+@pytest.mark.asyncio
 async def test_verifier_pipeline_timeout_fails_closed_without_retrying_content():
     calls = 0
 

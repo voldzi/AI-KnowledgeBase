@@ -25,6 +25,7 @@ def test_load_settings_defaults_to_mock_clients_for_development() -> None:
     assert settings.model_routing_mode == "cost_optimized"
     assert settings.external_complexity_threshold == 3
     assert settings.external_premium_complexity_threshold == 8
+    assert settings.external_economy_chat_model is None
 
 
 def test_production_rejects_mock_clients() -> None:
@@ -214,13 +215,23 @@ def test_invalid_model_routing_mode_is_rejected() -> None:
 
 @pytest.mark.parametrize("local_key", ["AKL_RAG_CHAT_MODEL", "AKL_RAG_HIGH_QUALITY_CHAT_MODEL"])
 def test_external_model_cannot_replace_policy_safe_local_model(local_key: str) -> None:
-    with pytest.raises(ConfigError, match="AKL_RAG_EXTERNAL_CHAT_MODEL"):
+    with pytest.raises(ConfigError, match="AKL_RAG_EXTERNAL_"):
         load_settings(
             {
                 "AKL_RAG_CHAT_MODEL": "gemma4:12b-mlx",
                 "AKL_RAG_HIGH_QUALITY_CHAT_MODEL": "gemma4:12b-mlx",
                 local_key: "gpt-5.6-luna",
                 "AKL_RAG_EXTERNAL_CHAT_MODEL": "gpt-5.6-luna",
+            }
+        )
+
+
+def test_external_economy_model_cannot_replace_policy_safe_local_model() -> None:
+    with pytest.raises(ConfigError, match="AKL_RAG_EXTERNAL_ECONOMY_CHAT_MODEL"):
+        load_settings(
+            {
+                "AKL_RAG_CHAT_MODEL": "gemma4:12b-mlx",
+                "AKL_RAG_EXTERNAL_ECONOMY_CHAT_MODEL": "gemma4:12b-mlx",
             }
         )
 

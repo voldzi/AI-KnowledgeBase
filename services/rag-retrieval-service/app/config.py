@@ -230,6 +230,7 @@ class Settings:
     embedding_dimensions: int | None
     chat_model: str
     high_quality_chat_model: str | None
+    external_economy_chat_model: str | None
     external_chat_model: str | None
     external_premium_chat_model: str | None
     model_routing_mode: str
@@ -533,6 +534,9 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     high_quality_chat_model = _parse_optional_str(
         _get(source, "AKL_RAG_HIGH_QUALITY_CHAT_MODEL", "")
     )
+    external_economy_chat_model = _parse_optional_str(
+        _get(source, "AKL_RAG_EXTERNAL_ECONOMY_CHAT_MODEL", "")
+    )
     external_chat_model = _parse_optional_str(
         _get(source, "AKL_RAG_EXTERNAL_CHAT_MODEL", "")
     )
@@ -540,11 +544,18 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         _get(source, "AKL_RAG_EXTERNAL_PREMIUM_CHAT_MODEL", "")
     )
     external_models = {
-        model for model in (external_chat_model, external_premium_chat_model) if model
+        model
+        for model in (
+            external_economy_chat_model,
+            external_chat_model,
+            external_premium_chat_model,
+        )
+        if model
     }
     if external_models.intersection({chat_model, high_quality_chat_model}):
         raise ConfigError(
-            "AKL_RAG_EXTERNAL_CHAT_MODEL and AKL_RAG_EXTERNAL_PREMIUM_CHAT_MODEL "
+            "AKL_RAG_EXTERNAL_ECONOMY_CHAT_MODEL, AKL_RAG_EXTERNAL_CHAT_MODEL and "
+            "AKL_RAG_EXTERNAL_PREMIUM_CHAT_MODEL "
             "must differ from the local chat models so "
             "RESTRICTED and NO_EXTERNAL_AI content retains a policy-safe answer path"
         )
@@ -707,6 +718,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         embedding_dimensions=embedding_dimensions,
         chat_model=chat_model,
         high_quality_chat_model=high_quality_chat_model,
+        external_economy_chat_model=external_economy_chat_model,
         external_chat_model=external_chat_model,
         external_premium_chat_model=external_premium_chat_model,
         model_routing_mode=model_routing_mode,

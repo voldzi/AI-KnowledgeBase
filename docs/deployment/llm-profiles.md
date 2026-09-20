@@ -103,7 +103,7 @@ FAQ, manager brief, audit and large-context answers. Keep both chat models in
 
 For cost-aware hybrid operation, set `AKL_RAG_MODEL_ROUTING_MODE=cost_optimized`,
 keep both local models mapped to `ollama`, and map
-`AKL_RAG_EXTERNAL_CHAT_MODEL` plus the optional
+`AKL_RAG_EXTERNAL_ECONOMY_CHAT_MODEL`, `AKL_RAG_EXTERNAL_CHAT_MODEL`, plus the optional
 `AKL_RAG_EXTERNAL_PREMIUM_CHAT_MODEL` to the `openai` compatibility provider.
 The compatibility endpoint may be direct OpenAI or a DIA/enterprise model
 router configured with `AKL_EXTERNAL_AI_BASE_URL` and

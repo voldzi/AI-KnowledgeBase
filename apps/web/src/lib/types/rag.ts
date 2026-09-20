@@ -287,7 +287,7 @@ export interface AssistantLlmUsage {
   pricing_version?: string | null;
   routing?: {
     mode?: string | null;
-    tier?: "local_standard" | "local_high_quality" | "external_standard" | "external_premium" | string;
+    tier?: "local_standard" | "local_high_quality" | "external_economy" | "external_standard" | "external_premium" | string;
     complexity_score?: number | null;
     reason_codes?: string[];
     external_processing?: boolean;

@@ -11,6 +11,7 @@ RoutingMode = Literal["cost_optimized", "external_preferred", "local_only"]
 ModelTier = Literal[
     "local_standard",
     "local_high_quality",
+    "external_economy",
     "external_standard",
     "external_premium",
 ]
@@ -60,6 +61,7 @@ def select_model_route(
     external_processing_allowed: bool,
     local_model: str,
     local_high_quality_model: str | None,
+    external_economy_model: str | None,
     external_model: str | None,
     external_premium_model: str | None,
     external_complexity_threshold: int,
@@ -83,7 +85,7 @@ def select_model_route(
     external_allowed = (
         routing_mode != "local_only"
         and external_processing_allowed
-        and bool(external_model or external_premium_model)
+        and bool(external_economy_model or external_model or external_premium_model)
     )
     external_requested = (
         routing_mode == "external_preferred"
@@ -103,14 +105,34 @@ def select_model_route(
                 reason_codes=(*reasons, "EXTERNAL_PREMIUM_THRESHOLD"),
                 external_processing=True,
             )
-        selected_external = external_model or external_premium_model
+        selected_external = external_model or external_premium_model or external_economy_model
         assert selected_external is not None
+        selected_tier: ModelTier = (
+            "external_economy"
+            if selected_external == external_economy_model
+            else "external_standard"
+        )
         return ModelRoute(
             model=selected_external,
             effective_model=selected_external,
-            tier="external_standard",
+            tier=selected_tier,
             complexity_score=score,
-            reason_codes=(*reasons, "EXTERNAL_QUALITY_THRESHOLD"),
+            reason_codes=(
+                *reasons,
+                "EXTERNAL_ECONOMY_FALLBACK"
+                if selected_tier == "external_economy"
+                else "EXTERNAL_QUALITY_THRESHOLD",
+            ),
+            external_processing=True,
+        )
+
+    if external_allowed and external_economy_model:
+        return ModelRoute(
+            model=external_economy_model,
+            effective_model=external_economy_model,
+            tier="external_economy",
+            complexity_score=score,
+            reason_codes=(*reasons, "EXTERNAL_ECONOMY_ROUTE"),
             external_processing=True,
         )
 

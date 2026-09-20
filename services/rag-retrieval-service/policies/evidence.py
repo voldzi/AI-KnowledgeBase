@@ -64,7 +64,9 @@ class EvidenceGate:
         # of room. The provider stops as soon as the schema is complete, so the
         # higher ceiling does not inflate ordinary successful verification.
         verification_max_tokens = 32768
-        if composer_used_local_route:
+        if routing_tier == "external_economy" and self._settings.external_economy_chat_model:
+            model = self._settings.external_economy_chat_model
+        elif composer_used_local_route:
             model = (
                 self._settings.high_quality_chat_model
                 if routing_tier == "local_high_quality"

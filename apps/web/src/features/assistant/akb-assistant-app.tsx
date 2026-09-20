@@ -3399,6 +3399,7 @@ function modelRoutingTierLabel(tier: string, language: AklLanguage): string {
   const labels: Record<string, { cs: string; en: string }> = {
     local_standard: { cs: "Lokální · úsporné", en: "Local · cost-efficient" },
     local_high_quality: { cs: "Lokální · rozšířené", en: "Local · high quality" },
+    external_economy: { cs: "Externí API · úsporné", en: "External API · cost-efficient" },
     external_standard: { cs: "Externí API · kvalitní", en: "External API · quality" },
     external_premium: { cs: "Externí API · prémiové", en: "External API · premium" },
   };

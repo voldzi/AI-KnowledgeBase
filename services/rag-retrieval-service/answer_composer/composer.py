@@ -448,6 +448,7 @@ class AnswerComposer:
             external_processing_allowed=_external_processing_allowed(policy),
             local_model=self._settings.chat_model,
             local_high_quality_model=self._settings.high_quality_chat_model,
+            external_economy_model=self._settings.external_economy_chat_model,
             external_model=self._settings.external_chat_model,
             external_premium_model=self._settings.external_premium_chat_model,
             external_complexity_threshold=self._settings.external_complexity_threshold,

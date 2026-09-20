@@ -133,6 +133,62 @@ def test_simple_legal_or_contract_lookup_does_not_trigger_external_cost() -> Non
         assert llm.metadata[0]["chat_model_tier"] == "local_standard"
 
 
+def test_simple_governed_public_context_uses_configured_external_economy_model() -> None:
+    llm = CaptureLLMClient()
+    settings = replace(
+        _settings(),
+        external_economy_chat_model="gpt-5-mini",
+        external_chat_model="gpt-5.6-luna",
+    )
+    composer = AnswerComposer(settings, llm)
+    chunk = _chunk("public").model_copy(update={"metadata": {
+        "policy_binding_id": "pb_public",
+        "policy_hash": "sha256:public",
+        "policy_summary": {"handlingClass": "PUBLIC", "obligations": []},
+    }})
+
+    answer = asyncio.run(composer.compose(
+        query_id="query-public-economy",
+        query="Kdo je gestorem dokumentu?",
+        chunks=[chunk], confidence="high", warnings=[], max_chunks=4,
+    ))
+
+    assert llm.models == ["gpt-5-mini"]
+    assert llm.metadata[0]["chat_model_tier"] == "external_economy"
+    assert answer.llm_usage["routing"]["external_processing"] is True
+    assert answer.llm_usage["routing"]["reason_codes"] == [
+        "SIMPLE_BOUNDED_QUERY",
+        "EXTERNAL_ECONOMY_ROUTE",
+    ]
+
+
+def test_external_economy_model_never_overrides_document_processing_policy() -> None:
+    llm = CaptureLLMClient()
+    settings = replace(
+        _settings(),
+        external_economy_chat_model="gpt-5-mini",
+        external_chat_model="gpt-5.6-luna",
+    )
+    composer = AnswerComposer(settings, llm)
+    chunk = _chunk("restricted").model_copy(update={"metadata": {
+        "policy_binding_id": "pb_restricted",
+        "policy_hash": "sha256:restricted",
+        "policy_summary": {
+            "handlingClass": "RESTRICTED",
+            "obligations": ["NO_EXTERNAL_AI"],
+        },
+    }})
+
+    asyncio.run(composer.compose(
+        query_id="query-restricted-economy",
+        query="Kdo je gestorem dokumentu?",
+        chunks=[chunk], confidence="high", warnings=[], max_chunks=4,
+    ))
+
+    assert llm.models == ["gemma4:12b-mlx"]
+    assert llm.metadata[0]["chat_model_tier"] == "local_standard"
+
+
 def test_retrieval_breadth_alone_does_not_externalize_a_simple_question() -> None:
     llm = CaptureLLMClient()
     settings = replace(

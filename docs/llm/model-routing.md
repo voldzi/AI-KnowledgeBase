@@ -96,7 +96,9 @@ The production-safe default is `AKL_RAG_MODEL_ROUTING_MODE=cost_optimized`.
 Routing is deterministic and runs locally before any document excerpt reaches
 an external endpoint:
 
-1. a short, bounded, single-document lookup uses `AKL_RAG_CHAT_MODEL`;
+1. a short, bounded, policy-permitted lookup uses
+   `AKL_RAG_EXTERNAL_ECONOMY_CHAT_MODEL` when configured, otherwise
+   `AKL_RAG_CHAT_MODEL`;
 2. a complex request that cannot leave the organization uses
    `AKL_RAG_HIGH_QUALITY_CHAT_MODEL`;
 3. an externally permitted complex request uses `AKL_RAG_EXTERNAL_CHAT_MODEL`;
@@ -106,11 +108,11 @@ Complexity is raised by analytical/extractive answer modes, legal and contract
 analysis signals, multiple document versions, large or truncated context, and
 multi-facet questions. The chosen tier, score and non-content reason codes are
 stored in the safe `llm_usage.routing` metadata. The same route applies to the
-evidence verifier: an inexpensive local answer does not silently incur a
-second external verification call.
+evidence verifier: an economy answer is verified by the economy model and a
+local answer does not silently incur an external verification call.
 
 Retrieval breadth alone is capped below the external threshold. A simple
-factual question therefore remains on the local model even when search returns
+factual question therefore remains in the economy tier even when search returns
 several documents or trims surplus candidates; those context signals increase
 the tier only together with a genuinely complex request or answer mode.
 
@@ -120,6 +122,7 @@ AKL_RAG_EXTERNAL_COMPLEXITY_THRESHOLD=3
 AKL_RAG_EXTERNAL_PREMIUM_COMPLEXITY_THRESHOLD=8
 AKL_RAG_CHAT_MODEL=gemma4:12b-mlx
 AKL_RAG_HIGH_QUALITY_CHAT_MODEL=gemma4:31b-mlx
+AKL_RAG_EXTERNAL_ECONOMY_CHAT_MODEL=gpt-5-mini
 AKL_RAG_EXTERNAL_CHAT_MODEL=gpt-5.6-luna
 AKL_RAG_EXTERNAL_PREMIUM_CHAT_MODEL=
 ```
@@ -140,7 +143,8 @@ direct endpoint through neutral aliases:
 AKL_EXTERNAL_AI_BASE_URL=https://router.example
 AKL_EXTERNAL_AI_API_KEY_FILE=/run/secrets/akb-external-ai-api-key
 AKL_LLM_ENABLED_PROVIDERS=ollama,openai
-AKL_LLM_MODEL_PROVIDER_MAP={"gemma4:12b-mlx":"ollama","dia-balanced":"openai","dia-premium":"openai","bge-m3":"ollama"}
+AKL_LLM_MODEL_PROVIDER_MAP={"gemma4:12b-mlx":"ollama","dia-economy":"openai","dia-balanced":"openai","dia-premium":"openai","bge-m3":"ollama"}
+AKL_RAG_EXTERNAL_ECONOMY_CHAT_MODEL=dia-economy
 AKL_RAG_EXTERNAL_CHAT_MODEL=dia-balanced
 AKL_RAG_EXTERNAL_PREMIUM_CHAT_MODEL=dia-premium
 ```
@@ -252,12 +256,12 @@ STRATOS must attach an explicit policy binding that reflects the sanitized
 published version.
 
 Keep `AKL_RAG_CHAT_MODEL` and `AKL_RAG_HIGH_QUALITY_CHAT_MODEL` mapped to a
-local provider whenever `AKL_RAG_EXTERNAL_CHAT_MODEL` is enabled. The external
-model is selected only for policy-approved `PUBLIC` or `INTERNAL` context; the
-local models are the mandatory answer path for `RESTRICTED`, `NO_EXTERNAL_AI`
-and `LOCAL_PROCESSING_ONLY` context. RAG rejects startup if the external model
-replaces either local role, because that configuration would turn a valid
-restricted-document question into an avoidable HTTP 403/502 response.
+local provider whenever any external tier is enabled. External models are
+selected only for policy-approved `PUBLIC` or `INTERNAL` context; the local
+models are the mandatory answer path for `RESTRICTED`, `NO_EXTERNAL_AI` and
+`LOCAL_PROCESSING_ONLY` context. RAG rejects startup if an external model
+replaces either local role. If the local provider is unavailable, protected
+content fails closed instead of falling back to an external model.
 
 The gateway records provider-reported input, output, cached and total token
 counts for every completed answer. For models in the reviewed pricing table it
