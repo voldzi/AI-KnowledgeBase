@@ -604,6 +604,8 @@ def _system_prompt(answer_mode: AnswerMode, response_language: ResponseLanguage 
     )
     source_qualification = (
         "Preserve the source's environment, application version, units, conditions and uncertainty. "
+        "The document title and immutable version metadata shown with each excerpt are governed source metadata: "
+        "you may paraphrase a purpose stated explicitly in the title, but must not infer a broader purpose from it. "
         "Distinguish a design proposal, pilot sizing estimate or unfilled template from an observed deployment setting. "
         "Never present proposed capacity, example values, RPO or RTO as measured minima or contractual guarantees. "
         "A manual describes behavior, not proof of a user's permissions or current live business data. "

@@ -176,6 +176,11 @@ labels, uploader identity and service credentials cannot replace central proof.
 See the [document profile contract](CONTRACTS/AKB_DOCUMENT_PROFILE_PROPOSAL.md).
 The required STRATOS registration/decision extensions are coordinated dependencies;
 unsupported, stale, denied or conflicting confirmation fails closed.
+During candidate filtering, an upstream `409` conflicts only the exact immutable
+document version that produced it. Registry denies that candidate and continues
+evaluating the remaining candidates; it does not misreport a deterministic
+coordinate conflict as an authority outage or make the conflicting content
+available. Direct operations on that resource still return a conflict.
 An exact document-admission decision that receives a transient upstream
 `502`, `503`, `504`, or transport failure is retried at most twice with the
 same nonce-bound request before Registry returns unavailable. Denials and

@@ -133,6 +133,82 @@ def test_filter_preserves_governance_outage_instead_of_false_denial(
     assert response.status_code == 503
 
 
+def test_filter_denies_only_the_exact_version_with_governance_conflict(
+    client,
+    verified_profile_authority,
+    db_session,
+    monkeypatch,
+) -> None:
+    documents: list[dict] = []
+    versions: list[dict] = []
+    for ordinal, digest in enumerate(("7", "8"), start=1):
+        binding = policy(binding_id=f"pol_filter_conflict_{ordinal}")
+        document = create_document(client, information_policy=binding).json()
+        version = client.post(
+            f"/api/v1/documents/{document['document_id']}/versions",
+            headers=v2_headers(
+                subject="user_owner",
+                capabilities="akb:upload,akb:manage_document",
+                scopes="organization:org_stratos",
+            ),
+            json=profiled_version_request(document, {
+                "version_label": "1.0",
+                "source_file_uri": f"s3://akl-documents/policy-v2/conflict-{ordinal}.pdf",
+                "file_hash": f"sha256:{digest * 64}",
+            }),
+        ).json()
+        db_session.get(Document, document["document_id"]).status = "valid"
+        db_session.get(DocumentVersion, version["document_version_id"]).status = "valid"
+        documents.append(document)
+        versions.append(version)
+    db_session.commit()
+
+    conflicting_version_id = versions[0]["document_version_id"]
+
+    def selectively_conflicting(_document, *, version=None, actor_id):
+        del actor_id
+        if version is not None and version.document_version_id == conflicting_version_id:
+            raise HTTPException(status_code=409, detail="exact governance conflict")
+
+    monkeypatch.setattr(
+        "app.api.require_fresh_document_profile",
+        selectively_conflicting,
+    )
+    payload = {
+        "subject_id": "user_owner",
+        "action": "rag.query",
+        "candidate_document_ids": [item["document_id"] for item in documents],
+        "candidate_policy_hashes": {
+            item["document_id"]: [item["policy_hash"]] for item in documents
+        },
+        "candidate_document_versions": {
+            document["document_id"]: [version["document_version_id"]]
+            for document, version in zip(documents, versions, strict=True)
+        },
+    }
+
+    response = client.post(
+        "/api/v1/authz/filter-documents",
+        headers=v2_headers(
+            subject="user_owner",
+            capabilities="akb:chat,akb:read_document",
+            scopes="organization:org_stratos",
+        ),
+        json=payload,
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["allowed_document_ids"] == [documents[1]["document_id"]]
+    assert body["denied_document_ids"] == [documents[0]["document_id"]]
+    assert body["allowed_document_version_ids"] == {
+        documents[1]["document_id"]: [versions[1]["document_version_id"]]
+    }
+    assert body["denied_document_version_ids"] == {
+        documents[0]["document_id"]: [versions[0]["document_version_id"]]
+    }
+
+
 def test_policy_binding_id_accepts_registry_and_central_namespaces() -> None:
     assert InformationPolicyBinding.model_validate(policy(binding_id="pol_registrybinding01")).policy_binding_id == "pol_registrybinding01"
     assert InformationPolicyBinding.model_validate(policy(binding_id="pb_budget_projectflow_12345678")).policy_binding_id == "pb_budget_projectflow_12345678"

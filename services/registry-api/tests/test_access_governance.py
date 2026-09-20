@@ -2212,3 +2212,30 @@ def test_document_admission_decision_retries_transient_upstream_failure(monkeypa
 
     assert response == {"decision": "ALLOW"}
     assert calls == [503, 502, 200]
+
+
+def test_document_admission_conflict_is_not_reported_as_an_outage(monkeypatch) -> None:
+    from app.access_governance import GovernanceConflict
+
+    client = StratosGovernanceClient(_settings())
+    calls: list[int] = []
+
+    def request(*_args, **_kwargs):
+        calls.append(409)
+        return SimpleNamespace(
+            status_code=409,
+            json=lambda: {"code": "DOCUMENT_ADMISSION_COORDINATES_CONFLICT"},
+        )
+
+    monkeypatch.setattr(client._http_client, "request", request)
+
+    with pytest.raises(GovernanceConflict) as failure:
+        client._request(
+            "POST",
+            "https://stratos.example/api/v1/information/resources/akb/document_version/ver_1/document-admission/decisions",
+            "runtime-token",
+            {"requestNonce": "nonce"},
+        )
+
+    assert failure.value.upstream_code == "DOCUMENT_ADMISSION_COORDINATES_CONFLICT"
+    assert calls == [409]

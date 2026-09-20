@@ -384,6 +384,9 @@ resolver candidates does not grant access or replace version authorization.
 For Czech statutory identifiers such as `106/1999 Sb.`, the identifier must be
 anchored at the start of the governed document title. A later amendment whose
 title merely mentions that statute cannot become a second exact match.
+If an explicit identifier cannot be resolved to exactly one governed document,
+the result is a controlled no-answer. Corpus-wide chunks from another document
+must never become fallback evidence for the named source.
 
 When a user explicitly names a statutory identifier and no currently effective
 exact source exists, retrieval performs one bounded historical retry without a
@@ -414,6 +417,10 @@ an additional title signal only when the query strongly matches the governed
 document title. This preserves no-answer behavior for weak partial matches
 while making exact legal titles and identifiers deterministic release-gate
 queries.
+The answer composer may paraphrase a purpose stated literally by the governed
+document title attached to an authorized immutable version. It must not infer a
+broader purpose from the title; substantive claims still require cited source
+chunks.
 
 ## Conversation Persistence
 

@@ -192,6 +192,7 @@ def test_exact_candidate_filter_cannot_bypass_version_tlp(mode):
 
 def test_v2_candidate_filter_authorizes_the_exact_historical_version_policy_not_the_document_root():
     from app.permissions import Decision, SubjectContext
+    from app.information_policy import InformationPolicyBinding, canonical_policy_hash
 
     root_policy = admitted_policy()
     historical_policy = admitted_policy(tlp="TLP:CLEAR")
@@ -213,7 +214,9 @@ def test_v2_candidate_filter_authorizes_the_exact_historical_version_policy_not_
         source_file_uri="s3://test/historical.pdf",
         status=api.DocumentStatus.valid.value,
         policy_summary=historical_policy,
-        policy_hash="sha256:historical-version",
+        policy_hash=canonical_policy_hash(
+            InformationPolicyBinding.model_validate(historical_policy)
+        ),
     )
     context = SubjectContext(
         subject_id="employee",

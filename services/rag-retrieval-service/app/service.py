@@ -3725,7 +3725,10 @@ def _apply_exact_identifier_scope(
         if matches:
             matched_document_ids.add(chunk.citation.document_id)
     if len(matched_document_ids) != 1:
-        return chunks, None
+        # Once a user names an exact immutable source, unrelated evidence must
+        # never become a plausible fallback. No unique match and an ambiguous
+        # match are both safe no-answer conditions.
+        return [], None
     document_id = next(iter(matched_document_ids))
     return [
         chunk for chunk in chunks if chunk.citation.document_id == document_id

@@ -913,6 +913,13 @@ def test_answer_prompt_treats_document_content_as_untrusted_evidence() -> None:
     assert "never reveal secrets" in prompt
 
 
+def test_answer_prompt_allows_bounded_use_of_governed_document_title() -> None:
+    prompt = _system_prompt("normative_with_citations", "cs")
+
+    assert "document title and immutable version metadata" in prompt
+    assert "must not infer a broader purpose" in prompt
+
+
 def test_legal_incident_deadline_question_is_not_an_it_incident() -> None:
     assert not _is_incident_query(
         _normalize_for_assistant(

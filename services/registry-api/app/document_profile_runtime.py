@@ -2,7 +2,12 @@
 from datetime import timezone
 from uuid import uuid4
 
-from app.access_governance import GovernanceDenied, GovernanceUnavailable, governance_client
+from app.access_governance import (
+    GovernanceConflict,
+    GovernanceDenied,
+    GovernanceUnavailable,
+    governance_client,
+)
 from app.config import get_settings
 from app.document_profile import (
     DocumentAdmissionExpectation, DocumentRootSnapshot, DocumentSourceLineage,
@@ -122,6 +127,12 @@ def require_fresh_document_profile(document, *, version=None, actor_id):
         )
     except GovernanceDenied as exc:
         raise problem(403, "document_profile_admission_denied", "STRATOS denied the current document profile") from exc
+    except GovernanceConflict as exc:
+        raise problem(
+            409,
+            "document_profile_conflict",
+            "The exact immutable resource conflicts with current STRATOS governance",
+        ) from exc
     except GovernanceUnavailable as exc:
         raise problem(503, "document_profile_admission_unavailable", "Fresh atomic document profile confirmation is unavailable") from exc
     except ValueError as exc:

@@ -9868,7 +9868,21 @@ def _allowed_candidate_document_versions(
         # to the root policy hash incorrectly rejects still-valid historical
         # evidence and can make retrieval disagree with citation opening.
         and version.policy_hash in candidate_hashes
+        # The immutable version coordinate must still be internally coherent.
+        # This rejects a stale/tampered hash without requiring it to equal the
+        # current document-root policy after a later publication.
+        and _version_policy_hash_is_coherent(version)
     }
+
+
+def _version_policy_hash_is_coherent(version: DocumentVersion) -> bool:
+    if not version.policy_hash or not isinstance(version.policy_summary, dict):
+        return False
+    try:
+        binding = InformationPolicyBinding.model_validate(version.policy_summary)
+    except ValueError:
+        return False
+    return version.policy_hash == canonical_policy_hash(binding)
 
 
 def _candidate_document_policy_allowed(

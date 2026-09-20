@@ -254,6 +254,19 @@ def test_exact_czech_law_scope_ignores_amendment_title_that_only_mentions_law() 
     assert [chunk.citation.document_id for chunk in scoped] == ["doc_law"]
 
 
+def test_unresolved_exact_czech_law_never_falls_back_to_another_document() -> None:
+    unrelated = _chunk("other", "doc_other", "Jiný právní předpis.")
+    unrelated.citation.document_title = "189/2023 Sb. – Jiná vyhláška"
+
+    scoped, document_id = _apply_exact_identifier_scope(
+        "Co upravuje 190/2023 Sb.?",
+        [unrelated],
+    )
+
+    assert document_id is None
+    assert scoped == []
+
+
 def test_profile_budgets_bound_expensive_retrieval_stages() -> None:
     assert _exact_resolver_limit(50) == 32
     assert _candidate_budget("exact", requested_chunks=50, planned_limit=50) == 50

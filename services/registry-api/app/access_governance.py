@@ -267,6 +267,20 @@ class GovernanceInvalidResponse(GovernanceUnavailable):
     pass
 
 
+class GovernanceConflict(GovernanceUnavailable):
+    """The authority rejected one exact immutable governance coordinate.
+
+    A conflict is fail-closed, but it is not an availability failure. Runtime
+    candidate filtering can therefore deny only the conflicting document
+    version instead of turning an otherwise healthy multi-document query into
+    a service outage.
+    """
+
+    def __init__(self, message: str, *, upstream_code: str | None = None) -> None:
+        super().__init__(message)
+        self.upstream_code = upstream_code
+
+
 class GovernanceDenied(RuntimeError):
     def __init__(self, message: str, *, upstream_code: str | None = None) -> None:
         super().__init__(message)
@@ -955,6 +969,25 @@ class StratosGovernanceClient:
             )
             raise GovernanceDenied(
                 "STRATOS access governance rejected the runtime credential",
+                upstream_code=upstream_code,
+            )
+        if admission_decision and response.status_code == 409:
+            upstream_code = "unknown"
+            try:
+                response_body = response.json()
+                if isinstance(response_body, dict):
+                    candidate = response_body.get("code") or response_body.get("message")
+                    if isinstance(candidate, str) and candidate.replace("_", "").isalnum():
+                        upstream_code = candidate[:120]
+            except ValueError:
+                pass
+            logger.warning(
+                "stratos_document_admission_conflict code=%s correlation_id=%s",
+                upstream_code,
+                (extra_headers or {}).get("X-Correlation-ID", "missing"),
+            )
+            raise GovernanceConflict(
+                "STRATOS document admission conflicts with the exact immutable resource",
                 upstream_code=upstream_code,
             )
         if response.status_code >= 400:
