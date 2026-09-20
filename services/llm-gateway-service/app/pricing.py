@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
-PRICING_VERSION = "openai-2026-09-16"
+PRICING_VERSION = "openai-2026-09-20"
 
 
 @dataclass(frozen=True)
@@ -21,6 +21,8 @@ OPENAI_TOKEN_PRICES: dict[str, TokenPrice] = {
     "gpt-5.6": TokenPrice(4.0, 20.0),
     "gpt-5.6-terra": TokenPrice(2.0, 12.0),
     "gpt-5.6-luna": TokenPrice(0.20, 1.20),
+    "gpt-5-mini": TokenPrice(0.25, 2.00, 0.025),
+    "gpt-5-mini-2025-08-07": TokenPrice(0.25, 2.00, 0.025),
 }
 
 
