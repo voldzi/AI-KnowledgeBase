@@ -109,6 +109,11 @@ stored in the safe `llm_usage.routing` metadata. The same route applies to the
 evidence verifier: an inexpensive local answer does not silently incur a
 second external verification call.
 
+Retrieval breadth alone is capped below the external threshold. A simple
+factual question therefore remains on the local model even when search returns
+several documents or trims surplus candidates; those context signals increase
+the tier only together with a genuinely complex request or answer mode.
+
 ```text
 AKL_RAG_MODEL_ROUTING_MODE=cost_optimized
 AKL_RAG_EXTERNAL_COMPLEXITY_THRESHOLD=3
