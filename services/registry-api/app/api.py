@@ -3195,11 +3195,30 @@ def _budget_replay_source_lineage(
     if source_location is None:
         return None
     ephemeral_fields = {"uri", "storage_ref", "captured_at"}
-    return {
+    stable = {
         key: value
         for key, value in source_location.items()
         if key not in ephemeral_fields
     }
+    budget = stable.get("stratos_budget_upload")
+    if not isinstance(budget, dict):
+        return stable
+    batch_lineage = budget.get("batch_lineage")
+    if not isinstance(batch_lineage, dict):
+        return stable
+    # A later immutable STRATOS release may safely finish the same approved
+    # batch after transport or ingestion recovery. The manifest and entries
+    # digests remain replay identity; the release records which runner first
+    # persisted the version and must not be rewritten by the recovery replay.
+    stable["stratos_budget_upload"] = {
+        **budget,
+        "batch_lineage": {
+            key: value
+            for key, value in batch_lineage.items()
+            if key != "release_revision"
+        },
+    }
+    return stable
 
 
 def _assert_budget_document_matches(

@@ -365,6 +365,33 @@ def _create_document_and_version(client) -> tuple[dict, dict]:
     return created.json(), version.json()
 
 
+def test_budget_batch_replay_allows_forward_fix_release_without_rewriting_provenance(
+    client, db_session, verified_profile_authority
+) -> None:
+    created, first = _create_document_and_version(client)
+    document = created["document"]
+    version = first["version"]
+    replay_payload = _version_payload(document=document)
+    replay_payload["batch_lineage"]["release_revision"] = "e" * 40
+    replay_payload["file"]["intake_receipt"] = _intake_receipt(
+        document["document_id"], replay_payload, session="forward-fix"
+    )
+
+    replay = client.put(
+        "/api/v1/integrations/stratos-budget-upload/documents/"
+        f"{document['document_id']}/versions",
+        json=replay_payload,
+        headers=_service_headers(),
+    )
+
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["created"] is False
+    assert replay.json()["version"]["document_version_id"] == version["document_version_id"]
+    stored = db_session.get(DocumentVersion, version["document_version_id"])
+    assert stored.source_location["stratos_budget_upload"]["batch_lineage"]["release_revision"] == "d" * 40
+    assert db_session.query(DocumentVersion).count() == 1
+
+
 def _select_current_version(client, created: dict, version_created: dict) -> None:
     document = created["document"]
     external = created["external_document"]
