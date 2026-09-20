@@ -160,6 +160,9 @@ It does not forward inbound service bearer tokens to LLM runtimes. OpenAI-compat
 - Ollama capability discovery is inferred from model names because Ollama `/api/tags` does not expose a stable capability contract.
 - Ollama `max_tokens` maps to `options.num_predict`; omitted request values use `AKL_LLM_DEFAULT_MAX_TOKENS`.
 - For thinking-capable Ollama models such as Gemma, the gateway sends `think:false` by default. If Ollama returns only `message.thinking` with empty `message.content`, the gateway returns `EMPTY_CONTENT_THINKING_ONLY`.
+- `reasoning_effort` is accepted as a closed set and forwarded only to supported
+  OpenAI reasoning models. Generic OpenAI-compatible and Ollama models do not
+  receive this provider-specific field.
 - The gateway does not verify document permissions. RAG Retrieval Service must filter context before calling this service.
 
 ## Tests

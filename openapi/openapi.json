@@ -37000,6 +37000,23 @@
               "null"
             ]
           },
+          "reasoning_effort": {
+            "description": "Optional reasoning effort for supported OpenAI reasoning models.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "none",
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max",
+              null
+            ]
+          },
           "response_schema": {
             "description": "Optional JSON Schema enforced by providers that support structured output.",
             "type": [

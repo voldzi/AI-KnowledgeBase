@@ -427,6 +427,11 @@ ceiling. Current reasoning models may consume most of the former 8,192-token
 limit before emitting their small schema-bound verdict. Successful verdicts
 stop as soon as the schema is complete; a response that still ends by length
 remains rejected fail-closed and no unverified answer is shown.
+Evidence verification and bounded repair request `reasoning_effort=low` through
+the LLM Gateway. These stages are extraction, classification and routine
+rewriting workloads; the lower effort prevents hidden reasoning from exhausting
+the ceiling while the strict output schema and fail-closed policy remain
+authoritative.
 
 ## Conversation Persistence
 

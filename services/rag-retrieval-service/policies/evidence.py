@@ -204,6 +204,11 @@ class EvidenceGate:
             metadata=metadata,
             model=model,
             max_tokens=max_tokens,
+            # Evidence checking is an extraction/classification task and the
+            # bounded repair is a routine rewrite. Low effort prevents hidden
+            # reasoning from exhausting the completion ceiling while the
+            # strict schema and fail-closed gate remain authoritative.
+            reasoning_effort="low",
             response_schema=response_schema,
             auth_context=auth_context,
         )

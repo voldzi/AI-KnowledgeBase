@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 MessageRole = Literal["system", "user", "assistant", "tool"]
 ProviderName = Literal["mock", "ollama", "openai"]
 ModelKind = Literal["chat", "embedding"]
+ReasoningEffort = Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"]
 
 
 class Usage(BaseModel):
@@ -48,6 +49,7 @@ class ChatCompletionRequest(BaseModel):
     top_p: float | None = Field(default=None, ge=0, le=1)
     max_tokens: int | None = Field(default=None, gt=0)
     think: bool | None = None
+    reasoning_effort: ReasoningEffort | None = None
     response_schema: dict[str, Any] | None = None
     stream: bool = False
     metadata: InformationPolicyMetadata = Field(default_factory=InformationPolicyMetadata)

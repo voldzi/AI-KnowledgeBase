@@ -225,6 +225,8 @@ def _chat_payload(request: ChatCompletionRequest, stream: bool) -> dict[str, Any
         payload[
             "max_completion_tokens" if modern_reasoning_model else "max_tokens"
         ] = request.max_tokens
+    if request.reasoning_effort is not None and modern_reasoning_model:
+        payload["reasoning_effort"] = request.reasoning_effort
     if request.response_schema is not None:
         payload["response_format"] = {
             "type": "json_schema",

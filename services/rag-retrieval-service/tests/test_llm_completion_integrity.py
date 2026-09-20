@@ -119,8 +119,10 @@ def test_http_client_honors_bounded_retry_token_override(monkeypatch):
     monkeypatch.setattr(llm_client, "request_json_with_retry", request)
     asyncio.run(HttpLLMGatewayClient(settings()).chat_completion_result(
         messages=[], metadata={"incomplete_answer_retry": True}, max_tokens=3072,
+        reasoning_effort="low",
     ))
     assert request.call_args.kwargs["json_body"]["max_tokens"] == 3072
+    assert request.call_args.kwargs["json_body"]["reasoning_effort"] == "low"
 
 def test_composer_replaces_partial_prose_and_never_certifies_it():
     chunk = RetrievedChunk(
