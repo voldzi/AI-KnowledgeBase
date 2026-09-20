@@ -15,7 +15,7 @@ EXPECTED = {
     "access-governance/v1/capability-catalog.json": "05f90a80ed69a6041547dc17e83de021b58021df99578e0a2740e1359db16ef1",
     "access-governance/v1/keycloak-baseline.json": "6a8da6af4d1ceea573830a28d46343594e0e31fd148aa64d1daca7a01cb043c5",
     "access-governance/v2/access-projection.schema.json": "2ae99547645d266daa20b23a6e13232babc9a89b5045d12fd5068c0b769d5f1f",
-    "access-governance/v2/access-projection.metadata.json": "029addd00568a504e6ea7488bee327ef65f5fa9ade48d0b4fcebaf28d891f8e2",
+    "access-governance/v2/access-projection.metadata.json": "cf40243b6eff4886afd863ba270aeea7fbdc639c637bfae150cebead36013df3",
     "information-policy/v2/information-policy.schema.json": "d408aa5758d7375f307086a6e05dbe49d3c1f3ce348367ee80fac7b5968e553c",
     "information-policy/v2/policy-bundle.json": "f1b15294712323faea5605336847d9434c54ea7a8540e59578dd42cd6e49cf2f",
     "information-policy/v2/policy-registry.openapi.json": "c9f75099f43dd26f497c69e079b77655b09f7b0870f0e1e2a9ef9b6cdf3b8287",

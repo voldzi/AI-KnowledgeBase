@@ -5,6 +5,6 @@
   "schemaPath": "contracts/access-governance/v2/access-projection.schema.json",
   "digestAlgorithm": "sha256-canonical-json",
   "schemaSha256": "16509ccbdc3e49e7a9918a29c833a8ae1aa7c78777b0a8693a2477acc2f0dafa",
-  "catalogVersion": "capabilities-1.12.3",
+  "catalogVersion": "capabilities-1.12.4",
   "consumerCutover": true
 }

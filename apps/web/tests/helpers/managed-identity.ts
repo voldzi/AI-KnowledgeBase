@@ -104,7 +104,7 @@ export function accessProjectionV2(
     contractRevision: "2.1.0",
     contractStatus: "active",
     contractDigest: "sha256:16509ccbdc3e49e7a9918a29c833a8ae1aa7c78777b0a8693a2477acc2f0dafa",
-    catalogVersion: "capabilities-1.12.3",
+    catalogVersion: "capabilities-1.12.4",
     generatedAt: new Date(nowMs - 1_000).toISOString(),
     expiresAt: new Date(nowMs + 10 * 60_000).toISOString(),
     organizationId: "org_stratos",
@@ -114,7 +114,7 @@ export function accessProjectionV2(
       applicationId: "akb",
       entitlements: [{
         entitlementId: "system:akb:employee-baseline",
-        definitionVersion: "capabilities-1.12.3",
+        definitionVersion: "capabilities-1.12.4",
         profileId: "stratos-user",
         source: "SYSTEM",
         sourceRef: "employee-baseline",
