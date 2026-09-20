@@ -51,7 +51,13 @@ class EvidenceGate:
         source_policy = policy_metadata(chunks)
         model = configured_model
         allows_external = external_processing_allowed(source_policy)
-        verification_max_tokens = 8192
+        # Current reasoning models may spend most of an 8k completion budget on
+        # hidden reasoning before emitting the small structured verdict. A
+        # truncated verdict must fail closed, but it should not turn a valid
+        # answer into a transient no-answer merely because the verifier ran out
+        # of room. The provider stops as soon as the schema is complete, so the
+        # higher ceiling does not inflate ordinary successful verification.
+        verification_max_tokens = 16384
         if not allows_external:
             model = self._settings.high_quality_chat_model or self._settings.chat_model
             verification_max_tokens = self._settings.evidence_verifier_local_max_tokens

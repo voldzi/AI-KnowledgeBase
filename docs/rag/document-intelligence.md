@@ -422,6 +422,12 @@ document title attached to an authorized immutable version. It must not infer a
 broader purpose from the title; substantive claims still require cited source
 chunks.
 
+The external structured evidence verifier has a 16,384-token completion
+ceiling. Current reasoning models may consume most of the former 8,192-token
+limit before emitting their small schema-bound verdict. Successful verdicts
+stop as soon as the schema is complete; a response that still ends by length
+remains rejected fail-closed and no unverified answer is shown.
+
 ## Conversation Persistence
 
 Assistant conversations are persisted in Registry API
