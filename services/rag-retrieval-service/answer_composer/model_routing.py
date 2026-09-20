@@ -186,10 +186,14 @@ def _complexity(
         score += 3
         reasons.append("MULTI_DOCUMENT_CONTEXT")
     if len(selected_chunks) >= high_quality_min_context_chunks:
-        score += 3
+        # Retrieval commonly returns eight chunks even for a simple lookup.
+        # Cardinality alone must not turn an inexpensive lookup into an
+        # external request; it becomes decisive only together with another
+        # complexity signal.
+        score += 1
         reasons.append("LARGE_CONTEXT_SET")
     if sum(len(chunk.text) for chunk in selected_chunks) > 6000:
-        score += 2
+        score += 1
         reasons.append("LARGE_CONTEXT_TEXT")
     if len(query) > 280:
         score += 1

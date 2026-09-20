@@ -223,7 +223,7 @@ def test_director_findings_are_bounded_cited_and_do_not_call_llm() -> None:
     assert [citation.chunk_id for citation in answer.citations] == ["chunk_director"]
 
 
-def test_large_context_uses_high_quality_chat_model() -> None:
+def test_simple_single_document_context_stays_on_local_model() -> None:
     llm = CaptureLLMClient()
     settings = _settings()
     composer = AnswerComposer(settings, llm)
@@ -240,8 +240,8 @@ def test_large_context_uses_high_quality_chat_model() -> None:
         )
     )
 
-    assert llm.models == ["gemma4:31b-mlx"]
-    assert llm.metadata[0]["chat_model_tier"] == "local_high_quality"
+    assert llm.models == ["gemma4:12b-mlx"]
+    assert llm.metadata[0]["chat_model_tier"] == "local_standard"
 
 
 def test_very_complex_query_uses_external_premium_tier() -> None:
