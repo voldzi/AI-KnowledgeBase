@@ -101,6 +101,14 @@ is used by the RAG answer composer for complex extraction, comparison, checklist
 FAQ, manager brief, audit and large-context answers. Keep both chat models in
 `AKL_LLM_MODEL_PROVIDER_MAP`; otherwise high-quality requests cannot be routed.
 
+For cost-aware hybrid operation, set `AKL_RAG_MODEL_ROUTING_MODE=cost_optimized`,
+keep both local models mapped to `ollama`, and map
+`AKL_RAG_EXTERNAL_CHAT_MODEL` plus the optional
+`AKL_RAG_EXTERNAL_PREMIUM_CHAT_MODEL` to the `openai` compatibility provider.
+The compatibility endpoint may be direct OpenAI or a DIA/enterprise model
+router configured with `AKL_EXTERNAL_AI_BASE_URL` and
+`AKL_EXTERNAL_AI_API_KEY_FILE`. Information Policy V2 remains authoritative.
+
 ## Qwen3 Enterprise Embedding Profile
 
 `qwen3-embedding:8b` is available as a controlled enterprise retrieval candidate. Ollama returns 4096-dimensional vectors by default, but the AKB production profile constrains it to 1024 dimensions so it can be evaluated with the same Qdrant vector size as `bge-m3`.

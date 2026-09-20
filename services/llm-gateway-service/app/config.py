@@ -291,12 +291,22 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         ollama_base_urls=ollama_base_urls,
         ollama_endpoint_timeout_seconds=ollama_endpoint_timeout_seconds,
         ollama_think=_parse_bool(_get(source, "AKL_OLLAMA_THINK", "false")),
-        openai_base_url=_get(source, "AKL_OPENAI_COMPAT_BASE_URL", "http://localhost:8000").rstrip("/"),
+        # Neutral aliases let an operator replace direct OpenAI with a
+        # government or enterprise OpenAI-compatible router (for example DIA)
+        # without changing the RAG contract or model-selection code. Legacy
+        # AKL_OPENAI_COMPAT_* names remain authoritative fallbacks.
+        openai_base_url=_get(
+            source,
+            "AKL_EXTERNAL_AI_BASE_URL",
+            _get(source, "AKL_OPENAI_COMPAT_BASE_URL", "http://localhost:8000"),
+        ).rstrip("/"),
         # A file takes precedence so a production service key does not appear
         # in the container environment or a Compose inspection.  The direct
         # value remains only as a backwards-compatible development fallback.
         openai_api_key=(
-            _read_optional_secret_file(source, "AKL_OPENAI_COMPAT_API_KEY_FILE")
+            _read_optional_secret_file(source, "AKL_EXTERNAL_AI_API_KEY_FILE")
+            or source.get("AKL_EXTERNAL_AI_API_KEY")
+            or _read_optional_secret_file(source, "AKL_OPENAI_COMPAT_API_KEY_FILE")
             or source.get("AKL_OPENAI_COMPAT_API_KEY")
             or None
         ),

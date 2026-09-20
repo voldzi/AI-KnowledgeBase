@@ -90,6 +90,62 @@ AKL_RAG_HIGH_QUALITY_MIN_CONTEXT_CHUNKS=6
 Model uvedeny v `AKL_RAG_HIGH_QUALITY_CHAT_MODEL` musi byt zaroven v
 `AKL_LLM_MODEL_PROVIDER_MAP`, jinak LLM Gateway request odmítne.
 
+## Cost-optimized quality routing
+
+The production-safe default is `AKL_RAG_MODEL_ROUTING_MODE=cost_optimized`.
+Routing is deterministic and runs locally before any document excerpt reaches
+an external endpoint:
+
+1. a short, bounded, single-document lookup uses `AKL_RAG_CHAT_MODEL`;
+2. a complex request that cannot leave the organization uses
+   `AKL_RAG_HIGH_QUALITY_CHAT_MODEL`;
+3. an externally permitted complex request uses `AKL_RAG_EXTERNAL_CHAT_MODEL`;
+4. a very complex request can use `AKL_RAG_EXTERNAL_PREMIUM_CHAT_MODEL`.
+
+Complexity is raised by analytical/extractive answer modes, legal and contract
+analysis signals, multiple document versions, large or truncated context, and
+multi-facet questions. The chosen tier, score and non-content reason codes are
+stored in the safe `llm_usage.routing` metadata. The same route applies to the
+evidence verifier: an inexpensive local answer does not silently incur a
+second external verification call.
+
+```text
+AKL_RAG_MODEL_ROUTING_MODE=cost_optimized
+AKL_RAG_EXTERNAL_COMPLEXITY_THRESHOLD=3
+AKL_RAG_EXTERNAL_PREMIUM_COMPLEXITY_THRESHOLD=8
+AKL_RAG_CHAT_MODEL=gemma4:12b-mlx
+AKL_RAG_HIGH_QUALITY_CHAT_MODEL=gemma4:31b-mlx
+AKL_RAG_EXTERNAL_CHAT_MODEL=gpt-5.6-luna
+AKL_RAG_EXTERNAL_PREMIUM_CHAT_MODEL=
+```
+
+`external_preferred` retains the former behavior for a controlled comparison:
+every policy-permitted answer uses an external model. `local_only` disables
+external composition without weakening document authorization or the evidence
+gate. Model routing never overrides Information Policy V2; `RESTRICTED`,
+`NO_EXTERNAL_AI`, `LOCAL_PROCESSING_ONLY` and classified content stay local.
+
+## DIA and multi-model API routers
+
+The RAG service selects logical model ids and does not depend on OpenAI host
+names. An OpenAI-compatible government or enterprise router can replace the
+direct endpoint through neutral aliases:
+
+```text
+AKL_EXTERNAL_AI_BASE_URL=https://router.example
+AKL_EXTERNAL_AI_API_KEY_FILE=/run/secrets/akb-external-ai-api-key
+AKL_LLM_ENABLED_PROVIDERS=ollama,openai
+AKL_LLM_MODEL_PROVIDER_MAP={"gemma4:12b-mlx":"ollama","dia-balanced":"openai","dia-premium":"openai","bge-m3":"ollama"}
+AKL_RAG_EXTERNAL_CHAT_MODEL=dia-balanced
+AKL_RAG_EXTERNAL_PREMIUM_CHAT_MODEL=dia-premium
+```
+
+The existing `AKL_OPENAI_COMPAT_*` variables remain backward compatible. The
+neutral aliases take precedence, allowing the future DIA router to be enabled
+by runtime configuration rather than an application code change. The external
+endpoint must implement `/v1/models`, `/v1/chat/completions` and compatible
+usage metadata before activation.
+
 ## Qwen3 Enterprise Embedding Profile
 
 `qwen3-embedding:8b` is supported as an enterprise retrieval candidate. It

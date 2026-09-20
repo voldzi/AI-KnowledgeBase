@@ -3351,6 +3351,12 @@ function AssistantResponseTools({
               <strong>{language === "cs" ? "Model" : "Model"}</strong>
               <span>{response.llm_usage.model ?? response.llm_usage.provider ?? "—"}</span>
             </p>
+            {response.llm_usage.routing?.tier ? (
+              <p className="technical-details__line">
+                <strong>{language === "cs" ? "Zpracování" : "Processing"}</strong>
+                <span>{modelRoutingTierLabel(response.llm_usage.routing.tier, language)}</span>
+              </p>
+            ) : null}
             <p className="technical-details__line">
               <strong>{language === "cs" ? "Tokeny" : "Tokens"}</strong>
               <span>{response.llm_usage.total_tokens.toLocaleString(language === "cs" ? "cs-CZ" : "en-US")} ({response.llm_usage.prompt_tokens.toLocaleString()} + {response.llm_usage.completion_tokens.toLocaleString()})</span>
@@ -3387,6 +3393,16 @@ function AssistantResponseTools({
       ) : null}
     </div>
   );
+}
+
+function modelRoutingTierLabel(tier: string, language: AklLanguage): string {
+  const labels: Record<string, { cs: string; en: string }> = {
+    local_standard: { cs: "Lokální · úsporné", en: "Local · cost-efficient" },
+    local_high_quality: { cs: "Lokální · rozšířené", en: "Local · high quality" },
+    external_standard: { cs: "Externí API · kvalitní", en: "External API · quality" },
+    external_premium: { cs: "Externí API · prémiové", en: "External API · premium" },
+  };
+  return labels[tier]?.[language] ?? tier;
 }
 
 function AssistantReportPanel({ report, copy }: { report: AssistantReportArtifact; copy: AssistantAppLabels }) {

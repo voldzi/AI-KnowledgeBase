@@ -190,6 +190,10 @@ Profile and tooling details: `docs/integration/STRATOS_OKF_PROFILE.md`.
   Production query processing never calls the public SSP endpoint. See
   `docs/OPERATIONS/semantic-registry.md`.
 - LLM Gateway does not own retrieval, authorization, document storage, or UI.
+- RAG selects a logical cost/quality model tier after authorization; LLM
+  Gateway maps the selected model id to a local runtime, direct OpenAI, or a
+  compatible external router such as the planned DIA service. Runtime endpoint
+  replacement does not change document authorization or citation contracts.
 - Web/API bridge mediates browser access; browser clients do not call internal
   storage, Registry, Ingestion, Qdrant, or LLM services directly unless the
   route is an approved AKB public bridge.

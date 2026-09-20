@@ -51,6 +51,12 @@ class EvidenceGate:
         source_policy = policy_metadata(chunks)
         model = configured_model
         allows_external = external_processing_allowed(source_policy)
+        routing = (answer.llm_usage or {}).get("routing")
+        routing_tier = routing.get("tier") if isinstance(routing, dict) else None
+        composer_used_local_route = routing_tier in {
+            "local_standard",
+            "local_high_quality",
+        }
         # Current reasoning models may spend most of an 8k completion budget on
         # hidden reasoning before emitting the small structured verdict. A
         # truncated verdict must fail closed, but it should not turn a valid
@@ -58,7 +64,24 @@ class EvidenceGate:
         # of room. The provider stops as soon as the schema is complete, so the
         # higher ceiling does not inflate ordinary successful verification.
         verification_max_tokens = 32768
-        if not allows_external:
+        if composer_used_local_route:
+            model = (
+                self._settings.high_quality_chat_model
+                if routing_tier == "local_high_quality"
+                else self._settings.chat_model
+            ) or self._settings.chat_model
+            verification_max_tokens = self._settings.evidence_verifier_local_max_tokens
+            if model != configured_model:
+                answer = answer.model_copy(
+                    update={
+                        "warnings": list(
+                            dict.fromkeys(
+                                [*answer.warnings, "EVIDENCE_VERIFIER_LOCAL_MODEL_ROUTE"]
+                            )
+                        )
+                    }
+                )
+        elif not allows_external:
             model = self._settings.high_quality_chat_model or self._settings.chat_model
             verification_max_tokens = self._settings.evidence_verifier_local_max_tokens
             if model != configured_model:

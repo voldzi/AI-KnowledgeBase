@@ -51,6 +51,27 @@ def test_openai_key_file_must_be_readable_and_non_empty(tmp_path: Path) -> None:
         )
 
 
+def test_external_ai_router_aliases_override_legacy_openai_settings(tmp_path: Path) -> None:
+    legacy_key = tmp_path / "legacy-key"
+    legacy_key.write_text("legacy\n", encoding="utf-8")
+    router_key = tmp_path / "router-key"
+    router_key.write_text("router\n", encoding="utf-8")
+
+    settings = load_settings(
+        {
+            "AKL_ENV": "test",
+            "AKL_AUTH_MODE": "disabled",
+            "AKL_EXTERNAL_AI_BASE_URL": "https://router.example/v1-root/",
+            "AKL_EXTERNAL_AI_API_KEY_FILE": str(router_key),
+            "AKL_OPENAI_COMPAT_BASE_URL": "https://api.openai.com",
+            "AKL_OPENAI_COMPAT_API_KEY_FILE": str(legacy_key),
+        }
+    )
+
+    assert settings.openai_base_url == "https://router.example/v1-root"
+    assert settings.openai_api_key == "router"
+
+
 def test_chat_model_fallbacks_are_parsed() -> None:
     settings = load_settings(
         {

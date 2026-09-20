@@ -22,6 +22,9 @@ def test_load_settings_defaults_to_mock_clients_for_development() -> None:
     assert settings.llm_retry_attempts == 0
     assert settings.evidence_verifier_timeout_seconds == 120
     assert settings.evidence_verifier_local_max_tokens == 4096
+    assert settings.model_routing_mode == "cost_optimized"
+    assert settings.external_complexity_threshold == 3
+    assert settings.external_premium_complexity_threshold == 8
 
 
 def test_production_rejects_mock_clients() -> None:
@@ -190,6 +193,23 @@ def test_llm_follow_ups_are_disabled_by_default() -> None:
 def test_invalid_high_quality_min_context_chunks_is_rejected() -> None:
     with pytest.raises(ConfigError, match="AKL_RAG_HIGH_QUALITY_MIN_CONTEXT_CHUNKS"):
         load_settings({"AKL_RAG_HIGH_QUALITY_MIN_CONTEXT_CHUNKS": "0"})
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("AKL_RAG_EXTERNAL_COMPLEXITY_THRESHOLD", "0"),
+        ("AKL_RAG_EXTERNAL_PREMIUM_COMPLEXITY_THRESHOLD", "31"),
+    ],
+)
+def test_invalid_model_routing_threshold_is_rejected(key: str, value: str) -> None:
+    with pytest.raises(ConfigError, match=key):
+        load_settings({key: value})
+
+
+def test_invalid_model_routing_mode_is_rejected() -> None:
+    with pytest.raises(ConfigError, match="AKL_RAG_MODEL_ROUTING_MODE"):
+        load_settings({"AKL_RAG_MODEL_ROUTING_MODE": "automatic-magic"})
 
 
 @pytest.mark.parametrize("local_key", ["AKL_RAG_CHAT_MODEL", "AKL_RAG_HIGH_QUALITY_CHAT_MODEL"])

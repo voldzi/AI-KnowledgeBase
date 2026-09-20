@@ -218,6 +218,14 @@ context; cited or revoked assistant text is never admitted to this branch. Its
 UI state states that the answer has no internal source. Direct RAG callers
 without that explicit plan remain on the governed retrieval path.
 
+Cost-aware model routing is evaluated only after Registry authorization and
+context selection. Its local complexity score may choose a small local model,
+a larger local model, or an external standard/premium model, but it cannot
+weaken Information Policy V2. The evidence verifier follows the same route, so
+a locally routed answer does not disclose its excerpts through a separate
+external verification call. Routing audit metadata contains tiers and reason
+codes, never the user question or document text.
+
 The default active employee projection is deliberately narrower than general
 organization access. STRATOS grants `akb:access`, `akb:chat`, and
 `akb:read_document` in scopes `public` and

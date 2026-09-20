@@ -509,6 +509,37 @@ async def test_verifier_inherits_source_processing_restrictions():
 
 
 @pytest.mark.asyncio
+async def test_cost_optimized_local_answer_keeps_evidence_verification_local():
+    captured_model = None
+
+    class Verifier:
+        async def chat_completion(self, **kwargs):
+            nonlocal captured_model
+            captured_model = kwargs["model"]
+            assert kwargs["max_tokens"] == 4096
+            return json.dumps(_payload())
+
+    gate = EvidenceGate(load_settings({
+        "AKL_RAG_EVIDENCE_GATE_MODE": "enforce",
+        "AKL_RAG_EVIDENCE_VERIFIER_MODEL": "external-verifier",
+        "AKL_RAG_CHAT_MODEL": "small-local",
+        "AKL_RAG_HIGH_QUALITY_CHAT_MODEL": "large-local",
+    }), Verifier())
+    answer = RagAnswer(
+        query_id="q", answer=SOURCE, confidence="high", citations=[], used_chunks=["a"],
+        llm_usage={
+            "model": "small-local",
+            "routing": {"tier": "local_standard", "external_processing": False},
+        },
+    )
+    result = await gate.verify_async(answer, [_public_policy_chunk()])
+
+    assert result.evidence_status == "supported"
+    assert captured_model == "small-local"
+    assert "EVIDENCE_VERIFIER_LOCAL_MODEL_ROUTE" in result.warnings
+
+
+@pytest.mark.asyncio
 async def test_verifier_pipeline_timeout_fails_closed_without_retrying_content():
     calls = 0
 

@@ -20,6 +20,7 @@ AUTHZ_MODES = {"dev", "registry"}
 RAG_LAYER_MODES = {"off", "shadow", "enforce"}
 RERANKER_PROVIDERS = {"llama", "tei"}
 RERANKER_STRATEGIES = {"cross_encoder", "colbert", "cascade"}
+MODEL_ROUTING_MODES = {"cost_optimized", "external_preferred", "local_only"}
 
 
 def _get(env: Mapping[str, str], key: str, default: str) -> str:
@@ -230,6 +231,10 @@ class Settings:
     chat_model: str
     high_quality_chat_model: str | None
     external_chat_model: str | None
+    external_premium_chat_model: str | None
+    model_routing_mode: str
+    external_complexity_threshold: int
+    external_premium_complexity_threshold: int
     high_quality_min_context_chunks: int
     mock_chat_response: str | None
     mock_registry_denied_document_ids: tuple[str, ...]
@@ -306,6 +311,12 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         confidence_medium_threshold = float(_get(source, "AKL_RAG_CONFIDENCE_MEDIUM_THRESHOLD", "0.5"))
         embedding_dimensions = _parse_optional_int(_get(source, "AKL_RAG_EMBEDDING_DIMENSIONS", ""))
         high_quality_min_context_chunks = int(_get(source, "AKL_RAG_HIGH_QUALITY_MIN_CONTEXT_CHUNKS", "6"))
+        external_complexity_threshold = int(
+            _get(source, "AKL_RAG_EXTERNAL_COMPLEXITY_THRESHOLD", "3")
+        )
+        external_premium_complexity_threshold = int(
+            _get(source, "AKL_RAG_EXTERNAL_PREMIUM_COMPLEXITY_THRESHOLD", "8")
+        )
         reranker_timeout_seconds = float(_get(source, "AKL_RAG_RERANKER_TIMEOUT_SECONDS", "8"))
         reranker_health_timeout_seconds = float(
             _get(source, "AKL_RAG_RERANKER_HEALTH_TIMEOUT_SECONDS", "1.5")
@@ -374,6 +385,13 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         raise ConfigError("AKL_RAG_EMBEDDING_DIMENSIONS must be greater than zero")
     if high_quality_min_context_chunks <= 0:
         raise ConfigError("AKL_RAG_HIGH_QUALITY_MIN_CONTEXT_CHUNKS must be greater than zero")
+    if not 1 <= external_complexity_threshold <= 20:
+        raise ConfigError("AKL_RAG_EXTERNAL_COMPLEXITY_THRESHOLD must be between 1 and 20")
+    if not external_complexity_threshold <= external_premium_complexity_threshold <= 30:
+        raise ConfigError(
+            "AKL_RAG_EXTERNAL_PREMIUM_COMPLEXITY_THRESHOLD must be between "
+            "AKL_RAG_EXTERNAL_COMPLEXITY_THRESHOLD and 30"
+        )
     if reranker_timeout_seconds <= 0:
         raise ConfigError("AKL_RAG_RERANKER_TIMEOUT_SECONDS must be greater than zero")
     if reranker_health_timeout_seconds <= 0 or reranker_health_timeout_seconds > 10:
@@ -425,6 +443,9 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     evidence_gate_mode = _get(source, "AKL_RAG_EVIDENCE_GATE_MODE", "off").strip().lower()
     colbert_mode = _get(source, "AKL_RAG_COLBERT_MODE", "off").strip().lower()
     v2_retrieval_mode = _get(source, "AKL_RAG_V2_RETRIEVAL_MODE", "off").strip().lower()
+    model_routing_mode = _get(
+        source, "AKL_RAG_MODEL_ROUTING_MODE", "cost_optimized"
+    ).strip().lower()
     for key, mode in (
         ("AKL_RAG_RERANKER_MODE", reranker_mode),
         ("AKL_RAG_ADAPTIVE_RETRIEVAL_MODE", adaptive_retrieval_mode),
@@ -437,6 +458,11 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     if evidence_gate_mode not in {*RAG_LAYER_MODES, "repair"}:
         raise ConfigError(
             "AKL_RAG_EVIDENCE_GATE_MODE must be one of: off, shadow, enforce, repair"
+        )
+    if model_routing_mode not in MODEL_ROUTING_MODES:
+        raise ConfigError(
+            "AKL_RAG_MODEL_ROUTING_MODE must be one of: "
+            "cost_optimized, external_preferred, local_only"
         )
     if reranker_provider not in RERANKER_PROVIDERS:
         raise ConfigError("AKL_RAG_RERANKER_PROVIDER must be one of: llama, tei")
@@ -510,9 +536,16 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     external_chat_model = _parse_optional_str(
         _get(source, "AKL_RAG_EXTERNAL_CHAT_MODEL", "")
     )
-    if external_chat_model and external_chat_model in {chat_model, high_quality_chat_model}:
+    external_premium_chat_model = _parse_optional_str(
+        _get(source, "AKL_RAG_EXTERNAL_PREMIUM_CHAT_MODEL", "")
+    )
+    external_models = {
+        model for model in (external_chat_model, external_premium_chat_model) if model
+    }
+    if external_models.intersection({chat_model, high_quality_chat_model}):
         raise ConfigError(
-            "AKL_RAG_EXTERNAL_CHAT_MODEL must differ from the local chat models so "
+            "AKL_RAG_EXTERNAL_CHAT_MODEL and AKL_RAG_EXTERNAL_PREMIUM_CHAT_MODEL "
+            "must differ from the local chat models so "
             "RESTRICTED and NO_EXTERNAL_AI content retains a policy-safe answer path"
         )
 
@@ -675,6 +708,10 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         chat_model=chat_model,
         high_quality_chat_model=high_quality_chat_model,
         external_chat_model=external_chat_model,
+        external_premium_chat_model=external_premium_chat_model,
+        model_routing_mode=model_routing_mode,
+        external_complexity_threshold=external_complexity_threshold,
+        external_premium_complexity_threshold=external_premium_complexity_threshold,
         high_quality_min_context_chunks=high_quality_min_context_chunks,
         mock_chat_response=source.get("AKL_RAG_MOCK_CHAT_RESPONSE") or None,
         mock_registry_denied_document_ids=denied,

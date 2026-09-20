@@ -63,6 +63,9 @@ Real local RAG používá:
 - `AKL_RAG_LLM_CLIENT_MODE=http`
 - `AKL_RAG_CHAT_MODEL=gemma4:12b-mlx`
 - `AKL_RAG_HIGH_QUALITY_CHAT_MODEL=gemma4:31b-mlx`
+- `AKL_RAG_MODEL_ROUTING_MODE=cost_optimized`
+- `AKL_RAG_EXTERNAL_CHAT_MODEL=`
+- `AKL_RAG_EXTERNAL_PREMIUM_CHAT_MODEL=`
 - `AKL_RAG_HIGH_QUALITY_MIN_CONTEXT_CHUNKS=6`
 - `AKL_RAG_EMBEDDING_MODEL=bge-m3`
 - `AKL_RAG_MAX_CONTEXT_CHARS=20000`
@@ -82,6 +85,11 @@ Mock/dev-test profil používá `mock-embedding` s výchozí dimenzí 8. Tento p
 odpovědi. Standardní zaměstnanecké dotazy zůstávají na `AKL_RAG_CHAT_MODEL`,
 zatímco extrakce, porovnání, checklisty, manažerské/auditní odpovědi a velký
 kontext používají high-quality model, pokud je nastavený.
+
+Při `cost_optimized` routingu zůstává jednoduchý jednosouborový dotaz na malém
+lokálním modelu. Složitý dotaz se eskaluje na externí standardní nebo prémiový
+model pouze tehdy, když Information Policy V2 povoluje externí zpracování.
+Audit odpovědi nese vybranou úroveň, skóre složitosti a důvody bez textu dotazu.
 
 Navazující otázky jsou ve výchozím stavu vytvářené deterministicky z tématu
 dotazu. Tím se citovaná odpověď nezdržuje druhým blokujícím voláním modelu a

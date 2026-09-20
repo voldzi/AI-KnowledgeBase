@@ -103,6 +103,9 @@ Important settings:
 | `AKL_OPENAI_COMPAT_BASE_URL` | vLLM/OpenAI-compatible base URL. |
 | `AKL_OPENAI_COMPAT_API_KEY` | Legacy development-only API-key value. |
 | `AKL_OPENAI_COMPAT_API_KEY_FILE` | Preferred path to an operator-managed API-key file; takes precedence over the legacy value. |
+| `AKL_EXTERNAL_AI_BASE_URL` | Provider-neutral override for a DIA or enterprise OpenAI-compatible router. |
+| `AKL_EXTERNAL_AI_API_KEY` | Development-only neutral key override. |
+| `AKL_EXTERNAL_AI_API_KEY_FILE` | Preferred neutral router key file; takes precedence over `AKL_OPENAI_COMPAT_*`. |
 
 ## Security and Logging
 

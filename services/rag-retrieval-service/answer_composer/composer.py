@@ -25,27 +25,7 @@ from policies.processing import (
     external_processing_allowed as _shared_external_processing_allowed,
     policy_metadata as _policy_metadata,
 )
-
-
-HIGH_QUALITY_ANSWER_MODES: frozenset[AnswerMode] = frozenset(
-    {
-        "compare",
-        "compare_documents",
-        "summary",
-        "extract_obligations",
-        "extract_roles",
-        "extract_deadlines",
-        "extract_risks",
-        "create_checklist",
-        "create_faq",
-        "create_kb_article",
-        "find_conflicts",
-        "find_missing_metadata",
-        "explain_process",
-        "manager_brief",
-        "audit_question",
-    }
-)
+from answer_composer.model_routing import ModelRoute, select_model_route
 
 
 @dataclass
@@ -77,11 +57,13 @@ class AnswerComposer:
         selected, truncated = self._select_context(chunks[:max_chunks])
         if not selected:
             return _empty_context_answer(query_id, warnings, truncated, response_language)
-        selected_chat_model = self._select_chat_model(
+        model_route = self._select_chat_model(
+            query=query,
             answer_mode=answer_mode,
             selected_chunks=selected,
             truncated=truncated,
         )
+        selected_chat_model = model_route.model
         if conversation_reference:
             prior_text, prior_pairs = conversation_reference
             selected_pairs = {(chunk.citation.document_id, chunk.citation.document_version_id) for chunk in selected}
@@ -109,8 +91,9 @@ class AnswerComposer:
             "query_id": query_id,
             "chunk_count": len(selected),
             "used_chunk_ids": [chunk.chunk_id for chunk in selected],
-            "chat_model": selected_chat_model or self._settings.chat_model,
-            "chat_model_tier": "high_quality" if selected_chat_model else "standard",
+            "chat_model": model_route.effective_model,
+            "chat_model_tier": model_route.tier,
+            "model_route": model_route.metadata(self._settings.model_routing_mode),
             **_policy_metadata(selected),
         }
         retried_incomplete_answer = False
@@ -228,6 +211,7 @@ class AnswerComposer:
                 "cached_prompt_tokens": completion.cached_prompt_tokens,
                 "estimated_cost_usd": completion.estimated_cost_usd,
                 "pricing_version": completion.pricing_version,
+                "routing": model_route.metadata(self._settings.model_routing_mode),
             },
         )
 
@@ -320,11 +304,13 @@ class AnswerComposer:
         if not selected:
             yield StreamEvent(kind="done", answer=_empty_context_answer(query_id, warnings, truncated, response_language))
             return
-        selected_chat_model = self._select_chat_model(
+        model_route = self._select_chat_model(
+            query=query,
             answer_mode=answer_mode,
             selected_chunks=selected,
             truncated=truncated,
         )
+        selected_chat_model = model_route.model
         response_warnings = _merge_warnings(warnings, _source_quality_warnings(selected))
         if truncated:
             response_warnings = _merge_warnings(response_warnings, ["CONTEXT_TRUNCATED"])
@@ -365,8 +351,9 @@ class AnswerComposer:
                     "query_id": query_id,
                     "chunk_count": len(selected),
                     "used_chunk_ids": [chunk.chunk_id for chunk in selected],
-                    "chat_model": selected_chat_model or self._settings.chat_model,
-                    "chat_model_tier": "high_quality" if selected_chat_model else "standard",
+                    "chat_model": model_route.effective_model,
+                    "chat_model_tier": model_route.tier,
+                    "model_route": model_route.metadata(self._settings.model_routing_mode),
                     **_policy_metadata(selected),
                 },
                 model=selected_chat_model,
@@ -446,30 +433,29 @@ class AnswerComposer:
     def _select_chat_model(
         self,
         *,
+        query: str,
         answer_mode: AnswerMode,
         selected_chunks: list[RetrievedChunk],
         truncated: bool,
-    ) -> str | None:
+    ) -> ModelRoute:
         policy = _policy_metadata(selected_chunks)
-        external_model = self._settings.external_chat_model
-        if external_model and _external_processing_allowed(policy):
-            return external_model
-        high_quality_model = self._settings.high_quality_chat_model
-        if not high_quality_model:
-            return None
-        # Director Copilot already supplies verified structured facts and asks
-        # RAG only for a short cited contract finding.  With a deliberately
-        # bounded context the standard model is both sufficient and materially
-        # faster for the synchronous management workflow.
-        if answer_mode == "manager_brief" and not truncated and len(selected_chunks) <= 3:
-            return None
-        if answer_mode in HIGH_QUALITY_ANSWER_MODES:
-            return high_quality_model
-        if truncated:
-            return high_quality_model
-        if len(selected_chunks) >= self._settings.high_quality_min_context_chunks:
-            return high_quality_model
-        return None
+        return select_model_route(
+            query=query,
+            answer_mode=answer_mode,
+            selected_chunks=selected_chunks,
+            truncated=truncated,
+            routing_mode=self._settings.model_routing_mode,
+            external_processing_allowed=_external_processing_allowed(policy),
+            local_model=self._settings.chat_model,
+            local_high_quality_model=self._settings.high_quality_chat_model,
+            external_model=self._settings.external_chat_model,
+            external_premium_model=self._settings.external_premium_chat_model,
+            external_complexity_threshold=self._settings.external_complexity_threshold,
+            external_premium_complexity_threshold=(
+                self._settings.external_premium_complexity_threshold
+            ),
+            high_quality_min_context_chunks=self._settings.high_quality_min_context_chunks,
+        )
 
 
 def _external_processing_allowed(policy: dict[str, object]) -> bool:

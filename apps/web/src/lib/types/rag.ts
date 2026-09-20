@@ -285,6 +285,13 @@ export interface AssistantLlmUsage {
   cached_prompt_tokens?: number;
   estimated_cost_usd?: number | null;
   pricing_version?: string | null;
+  routing?: {
+    mode?: string | null;
+    tier?: "local_standard" | "local_high_quality" | "external_standard" | "external_premium" | string;
+    complexity_score?: number | null;
+    reason_codes?: string[];
+    external_processing?: boolean;
+  } | null;
 }
 
 export interface AssistantSuggestion {

@@ -59,9 +59,9 @@ def test_standard_employee_answer_uses_default_chat_model() -> None:
         )
     )
 
-    assert llm.models == [None]
+    assert llm.models == ["gemma4:12b-mlx"]
     assert llm.metadata[0]["chat_model"] == "gemma4:12b-mlx"
-    assert llm.metadata[0]["chat_model_tier"] == "standard"
+    assert llm.metadata[0]["chat_model_tier"] == "local_standard"
 
 
 def test_complex_answer_mode_uses_high_quality_chat_model() -> None:
@@ -83,10 +83,10 @@ def test_complex_answer_mode_uses_high_quality_chat_model() -> None:
 
     assert llm.models == ["gemma4:31b-mlx"]
     assert llm.metadata[0]["chat_model"] == "gemma4:31b-mlx"
-    assert llm.metadata[0]["chat_model_tier"] == "high_quality"
+    assert llm.metadata[0]["chat_model_tier"] == "local_high_quality"
 
 
-def test_governed_public_context_uses_configured_external_model() -> None:
+def test_simple_governed_public_context_stays_on_cost_optimized_local_model() -> None:
     llm = CaptureLLMClient()
     settings = replace(_settings(), external_chat_model="gpt-5.6-luna")
     composer = AnswerComposer(settings, llm)
@@ -97,11 +97,62 @@ def test_governed_public_context_uses_configured_external_model() -> None:
     }})
 
     asyncio.run(composer.compose(
-        query_id="query-public", query="Shrň veřejný předpis.", chunks=[chunk],
+        query_id="query-public", query="Kdo je gestorem dokumentu?", chunks=[chunk],
         confidence="high", warnings=[], max_chunks=4,
     ))
 
+    assert llm.models == ["gemma4:12b-mlx"]
+    assert llm.metadata[0]["chat_model_tier"] == "local_standard"
+    assert llm.metadata[0]["model_route"]["reason_codes"] == [
+        "SIMPLE_BOUNDED_QUERY",
+        "LOCAL_COST_OPTIMIZED",
+    ]
+
+
+def test_simple_legal_or_contract_lookup_does_not_trigger_external_cost() -> None:
+    for query in (
+        "Kdo je dodavatelem této smlouvy?",
+        "Jakou povinnost má zaměstnanec podle tohoto zákona?",
+        "Kdy je dokument účinný?",
+    ):
+        llm = CaptureLLMClient()
+        settings = replace(_settings(), external_chat_model="gpt-5.6-luna")
+        composer = AnswerComposer(settings, llm)
+        chunk = _chunk("public").model_copy(update={"metadata": {
+            "policy_binding_id": "pb_public",
+            "policy_hash": "sha256:public",
+            "policy_summary": {"handlingClass": "PUBLIC", "obligations": []},
+        }})
+
+        asyncio.run(composer.compose(
+            query_id="query-simple-domain", query=query, chunks=[chunk],
+            confidence="high", warnings=[], max_chunks=4,
+        ))
+
+        assert llm.models == ["gemma4:12b-mlx"]
+        assert llm.metadata[0]["chat_model_tier"] == "local_standard"
+
+
+def test_complex_governed_public_context_uses_configured_external_model() -> None:
+    llm = CaptureLLMClient()
+    settings = replace(_settings(), external_chat_model="gpt-5.6-luna")
+    composer = AnswerComposer(settings, llm)
+    chunk = _chunk("public").model_copy(update={"metadata": {
+        "policy_binding_id": "pb_public",
+        "policy_hash": "sha256:public",
+        "policy_summary": {"handlingClass": "PUBLIC", "obligations": []},
+    }})
+
+    answer = asyncio.run(composer.compose(
+        query_id="query-public-complex",
+        query="Jaké povinnosti a výjimky vyplývají z tohoto zákona?",
+        chunks=[chunk], confidence="high", warnings=[], max_chunks=4,
+    ))
+
     assert llm.models == ["gpt-5.6-luna"]
+    assert llm.metadata[0]["chat_model_tier"] == "external_standard"
+    assert llm.metadata[0]["model_route"]["external_processing"] is True
+    assert answer.llm_usage["routing"]["tier"] == "external_standard"
 
 
 def test_restricted_context_stays_on_local_model() -> None:
@@ -126,10 +177,10 @@ def test_restricted_context_stays_on_local_model() -> None:
         confidence="high", warnings=[], max_chunks=4,
     ))
 
-    assert llm.models == [None]
+    assert llm.models == ["gemma4:12b-mlx"]
 
 
-def test_bounded_manager_brief_uses_standard_chat_model() -> None:
+def test_manager_brief_uses_high_quality_chat_model() -> None:
     llm = CaptureLLMClient()
     settings = _settings()
     composer = AnswerComposer(settings, llm)
@@ -146,9 +197,9 @@ def test_bounded_manager_brief_uses_standard_chat_model() -> None:
         )
     )
 
-    assert llm.models == [None]
-    assert llm.metadata[0]["chat_model"] == "gemma4:12b-mlx"
-    assert llm.metadata[0]["chat_model_tier"] == "standard"
+    assert llm.models == ["gemma4:31b-mlx"]
+    assert llm.metadata[0]["chat_model"] == "gemma4:31b-mlx"
+    assert llm.metadata[0]["chat_model_tier"] == "local_high_quality"
 
 
 def test_director_findings_are_bounded_cited_and_do_not_call_llm() -> None:
@@ -190,7 +241,69 @@ def test_large_context_uses_high_quality_chat_model() -> None:
     )
 
     assert llm.models == ["gemma4:31b-mlx"]
-    assert llm.metadata[0]["chat_model_tier"] == "high_quality"
+    assert llm.metadata[0]["chat_model_tier"] == "local_high_quality"
+
+
+def test_very_complex_query_uses_external_premium_tier() -> None:
+    llm = CaptureLLMClient()
+    settings = replace(
+        _settings(),
+        external_chat_model="dia-balanced",
+        external_premium_chat_model="dia-premium",
+        external_premium_complexity_threshold=6,
+    )
+    composer = AnswerComposer(settings, llm)
+    chunks = [
+        _chunk("contract").model_copy(update={"metadata": {
+            "policy_binding_id": "pb_internal",
+            "policy_hash": "sha256:internal",
+            "policy_summary": {"handlingClass": "INTERNAL", "obligations": []},
+        }}),
+        _chunk("law").model_copy(update={
+            "citation": _chunk("law").citation.model_copy(update={
+                "document_id": "doc_2", "document_version_id": "ver_2"
+            }),
+            "metadata": {
+                "policy_binding_id": "pb_public",
+                "policy_hash": "sha256:public",
+                "policy_summary": {"handlingClass": "PUBLIC", "obligations": []},
+            },
+        }),
+    ]
+
+    asyncio.run(composer.compose(
+        query_id="query-premium",
+        query="Porovnej smluvní povinnosti, výjimky a rizika s požadavky zákona.",
+        chunks=chunks, confidence="high", warnings=[], max_chunks=4,
+        answer_mode="compare_documents",
+    ))
+
+    assert llm.models == ["dia-premium"]
+    assert llm.metadata[0]["chat_model_tier"] == "external_premium"
+
+
+def test_local_only_mode_never_uses_external_model() -> None:
+    llm = CaptureLLMClient()
+    settings = replace(
+        _settings(),
+        model_routing_mode="local_only",
+        external_chat_model="gpt-5.6-luna",
+    )
+    composer = AnswerComposer(settings, llm)
+    chunk = _chunk("public").model_copy(update={"metadata": {
+        "policy_binding_id": "pb_public",
+        "policy_hash": "sha256:public",
+        "policy_summary": {"handlingClass": "PUBLIC", "obligations": []},
+    }})
+
+    asyncio.run(composer.compose(
+        query_id="query-local-only",
+        query="Analyzuj povinnosti, výjimky a rizika tohoto zákona.",
+        chunks=[chunk], confidence="high", warnings=[], max_chunks=4,
+    ))
+
+    assert llm.models == ["gemma4:31b-mlx"]
+    assert llm.metadata[0]["chat_model_tier"] == "local_high_quality"
 
 
 def test_source_quality_metadata_is_promoted_to_answer_warnings() -> None:
