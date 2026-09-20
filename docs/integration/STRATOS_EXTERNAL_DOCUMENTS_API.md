@@ -115,6 +115,13 @@ ingestion attempt je ve stavu `FAILED`. Retry čte profil z Registry projekce,
 nevyžaduje obecné uživatelské `document.read` a po úspěšném indexování už nové
 potvrzení nevydá.
 
+Stejný schválený serverový `historical_batch` může po přerušení dokončit
+novější immutable STRATOS release. Exact replay vyžaduje shodný
+`batch_manifest_id`, `batch_entries_sha256`, soubor, politiku i ostatní lineage;
+lišící se `release_revision` je pouze provenance runneru. AKB při replayi
+ponechá původní hodnotu uložené verze a nevytvoří nový dokument, verzi ani
+soubor.
+
 Povinná contract-level lineage obsahuje `external_ref`, `contractId`, finanční
 scope `budget-global` nebo `budget:<key>` a nadřazený governed resource
 smlouvy. Každá immutable verze navíc nese svůj hash souboru, Information

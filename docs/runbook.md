@@ -149,6 +149,10 @@ terminal `FAILED` job. Po retry ověřte nejen webový status, ale také Registr
 `current_ingestion_job_id` a `current_ingestion_status`; ingestion je nyní
 synchronizuje auditovaně přes autoritativní Registry attempt/CAS ve stavech
 `QUEUED`, `INGESTING`, `INDEXED` a `FAILED`.
+Stejný schválený historický manifest může po přerušení dokončit novější
+immutable STRATOS release. Musí zůstat shodný manifest ID, entries digest,
+soubor, policy i ostatní lineage; AKB zachová původní `release_revision`
+uložené verze a exact replay nevytvoří nový dokument, verzi ani soubor.
 Interaktivní retry vyžaduje čerstvý actor bearer. Retry verze vytvořené
 serverovým `historical_batch` naopak zůstává service-only a je povolen jen po
 opětovném ověření uloženého režimu, immutable lineage a vyhrazené Registry
