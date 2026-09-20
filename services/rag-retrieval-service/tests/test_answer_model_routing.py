@@ -133,6 +133,42 @@ def test_simple_legal_or_contract_lookup_does_not_trigger_external_cost() -> Non
         assert llm.metadata[0]["chat_model_tier"] == "local_standard"
 
 
+def test_retrieval_breadth_alone_does_not_externalize_a_simple_question() -> None:
+    llm = CaptureLLMClient()
+    settings = replace(
+        _settings(),
+        external_chat_model="gpt-5.6-luna",
+        max_context_chars=170,
+    )
+    composer = AnswerComposer(settings, llm)
+    public = {
+        "policy_binding_id": "pb_public",
+        "policy_hash": "sha256:public",
+        "policy_summary": {"handlingClass": "PUBLIC", "obligations": []},
+    }
+    first = _chunk("first").model_copy(update={"metadata": public})
+    second_seed = _chunk("second")
+    second = second_seed.model_copy(update={
+        "citation": second_seed.citation.model_copy(update={
+            "document_id": "doc_2", "document_version_id": "ver_2",
+        }),
+        "metadata": public,
+    })
+    surplus = _chunk("surplus").model_copy(update={"text": "X" * 171, "metadata": public})
+
+    asyncio.run(composer.compose(
+        query_id="query-simple-broad-retrieval",
+        query="Jaké je číslo tohoto dokumentu?",
+        chunks=[first, second, surplus], confidence="high", warnings=[], max_chunks=3,
+    ))
+
+    route = llm.metadata[0]["model_route"]
+    assert llm.models == ["gemma4:12b-mlx"]
+    assert route["tier"] == "local_standard"
+    assert route["complexity_score"] < settings.external_complexity_threshold
+    assert "CONTEXT_ONLY_COST_CAP" in route["reason_codes"]
+
+
 def test_complex_governed_public_context_uses_configured_external_model() -> None:
     llm = CaptureLLMClient()
     settings = replace(_settings(), external_chat_model="gpt-5.6-luna")

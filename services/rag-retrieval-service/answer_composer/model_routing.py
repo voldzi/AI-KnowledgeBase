@@ -77,6 +77,7 @@ def select_model_route(
         selected_chunks=selected_chunks,
         truncated=truncated,
         high_quality_min_context_chunks=high_quality_min_context_chunks,
+        context_only_cap=max(0, external_complexity_threshold - 1),
     )
 
     external_allowed = (
@@ -151,8 +152,10 @@ def _complexity(
     selected_chunks: list[RetrievedChunk],
     truncated: bool,
     high_quality_min_context_chunks: int,
+    context_only_cap: int,
 ) -> tuple[int, tuple[str, ...]]:
-    score = 0
+    request_score = 0
+    context_score = 0
     reasons: list[str] = []
 
     if answer_mode in {
@@ -172,10 +175,10 @@ def _complexity(
         "manager_brief",
         "audit_question",
     }:
-        score += 3
+        request_score += 3
         reasons.append("COMPLEX_ANSWER_MODE")
     if truncated:
-        score += 4
+        context_score += 4
         reasons.append("TRUNCATED_CONTEXT")
 
     document_versions = {
@@ -183,28 +186,37 @@ def _complexity(
         for chunk in selected_chunks
     }
     if len(document_versions) > 1:
-        score += 3
+        context_score += 3
         reasons.append("MULTI_DOCUMENT_CONTEXT")
     if len(selected_chunks) >= high_quality_min_context_chunks:
         # Retrieval commonly returns eight chunks even for a simple lookup.
         # Cardinality alone must not turn an inexpensive lookup into an
         # external request; it becomes decisive only together with another
         # complexity signal.
-        score += 1
+        context_score += 1
         reasons.append("LARGE_CONTEXT_SET")
     if sum(len(chunk.text) for chunk in selected_chunks) > 6000:
-        score += 1
+        context_score += 1
         reasons.append("LARGE_CONTEXT_TEXT")
     if len(query) > 280:
-        score += 1
+        request_score += 1
         reasons.append("LONG_QUERY")
     if _COMPLEX_QUERY_RE.search(query):
-        score += 3
+        request_score += 3
         reasons.append("COMPLEX_DOMAIN_SIGNAL")
     if len(_MULTI_FACET_RE.findall(query)) > 1:
-        score += 2
+        request_score += 2
         reasons.append("MULTI_FACET_QUERY")
 
     if not reasons:
         reasons.append("SIMPLE_BOUNDED_QUERY")
+    if request_score == 0 and context_score > context_only_cap:
+        # Retrieval breadth describes the search result, not necessarily the
+        # user's reasoning need. A simple factual question must stay on the
+        # internal model even when retrieval finds several documents or trims
+        # surplus candidates. Complex wording/modes still unlock the full
+        # context contribution.
+        context_score = context_only_cap
+        reasons.append("CONTEXT_ONLY_COST_CAP")
+    score = request_score + context_score
     return score, tuple(reasons)
