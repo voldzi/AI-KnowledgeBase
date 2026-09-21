@@ -242,6 +242,8 @@ class Settings:
     embedding_profile_dimensions_map: dict[str, int]
     embedding_batch_size: int
     embedding_concurrency: int
+    embedding_retry_attempts: int
+    embedding_retry_backoff_seconds: float
     mock_embedding_dimensions: int
 
     indexer_mode: str
@@ -343,6 +345,12 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         max_chunks_per_job = int(_get(source, "AKL_INGESTION_MAX_CHUNKS_PER_JOB", "5000"))
         embedding_batch_size = int(_get(source, "AKL_INGESTION_EMBEDDING_BATCH_SIZE", "32"))
         embedding_concurrency = int(_get(source, "AKL_INGESTION_EMBEDDING_CONCURRENCY", "2"))
+        embedding_retry_attempts = int(
+            _get(source, "AKL_INGESTION_EMBEDDING_RETRY_ATTEMPTS", "2")
+        )
+        embedding_retry_backoff_seconds = float(
+            _get(source, "AKL_INGESTION_EMBEDDING_RETRY_BACKOFF_SECONDS", "0.5")
+        )
         mock_embedding_dimensions = int(_get(source, "AKL_MOCK_EMBEDDING_DIMENSIONS", "8"))
         default_embedding_dimensions = _parse_optional_int(
             _get(source, "AKL_INGESTION_DEFAULT_EMBEDDING_DIMENSIONS", "")
@@ -409,6 +417,12 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         raise ConfigError("AKL_INGESTION_EMBEDDING_BATCH_SIZE must be greater than zero")
     if embedding_concurrency <= 0 or embedding_concurrency > 16:
         raise ConfigError("AKL_INGESTION_EMBEDDING_CONCURRENCY must be between 1 and 16")
+    if embedding_retry_attempts < 0 or embedding_retry_attempts > 5:
+        raise ConfigError("AKL_INGESTION_EMBEDDING_RETRY_ATTEMPTS must be between 0 and 5")
+    if embedding_retry_backoff_seconds < 0 or embedding_retry_backoff_seconds > 30:
+        raise ConfigError(
+            "AKL_INGESTION_EMBEDDING_RETRY_BACKOFF_SECONDS must be between 0 and 30"
+        )
     if mock_embedding_dimensions <= 0:
         raise ConfigError("AKL_MOCK_EMBEDDING_DIMENSIONS must be greater than zero")
     if default_embedding_dimensions is not None and default_embedding_dimensions <= 0:
@@ -796,6 +810,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         ),
         embedding_batch_size=embedding_batch_size,
         embedding_concurrency=embedding_concurrency,
+        embedding_retry_attempts=embedding_retry_attempts,
+        embedding_retry_backoff_seconds=embedding_retry_backoff_seconds,
         mock_embedding_dimensions=mock_embedding_dimensions,
         indexer_mode=indexer_mode,
         indexer_targets=indexer_targets,

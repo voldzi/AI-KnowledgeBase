@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import logging
 from dataclasses import dataclass
 from typing import Any
 
@@ -11,6 +12,9 @@ from app.config import Settings
 from app.context import get_correlation_id, get_request_id
 from app.errors import IngestionError
 from app.security import AuthContext
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -98,24 +102,61 @@ class EmbeddingClient:
         }
         if dimensions is not None:
             payload["dimensions"] = dimensions
-        try:
-            async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
-                response = await client.post(
-                    f"{self._api_base_url()}/embeddings",
-                    headers=self._headers(auth_context),
-                    json=payload,
-                )
-                response.raise_for_status()
-                body = response.json()
-        except httpx.HTTPStatusError as exc:
+        body: dict[str, Any] | None = None
+        last_transport_error: httpx.HTTPError | None = None
+        for attempt in range(self.settings.embedding_retry_attempts + 1):
+            try:
+                async with httpx.AsyncClient(
+                    timeout=self.settings.request_timeout_seconds
+                ) as client:
+                    response = await client.post(
+                        f"{self._api_base_url()}/embeddings",
+                        headers=self._headers(auth_context),
+                        json=payload,
+                    )
+                    response.raise_for_status()
+                    body = response.json()
+                break
+            except httpx.HTTPStatusError as exc:
+                status_code = exc.response.status_code
+                if (
+                    _is_transient_embedding_status(status_code)
+                    and attempt < self.settings.embedding_retry_attempts
+                ):
+                    logger.warning(
+                        "embedding_request_retry attempt=%s status_code=%s",
+                        attempt + 1,
+                        status_code,
+                    )
+                    await asyncio.sleep(
+                        self.settings.embedding_retry_backoff_seconds * (attempt + 1)
+                    )
+                    continue
+                raise IngestionError(
+                    "EMBEDDING_REQUEST_FAILED",
+                    "LLM Gateway rejected embedding request",
+                    status_code=502,
+                    details={"status_code": status_code},
+                ) from exc
+            except (httpx.TimeoutException, httpx.TransportError) as exc:
+                last_transport_error = exc
+                if attempt < self.settings.embedding_retry_attempts:
+                    logger.warning(
+                        "embedding_request_retry attempt=%s reason=%s",
+                        attempt + 1,
+                        exc.__class__.__name__,
+                    )
+                    await asyncio.sleep(
+                        self.settings.embedding_retry_backoff_seconds * (attempt + 1)
+                    )
+                    continue
+
+        if body is None:
             raise IngestionError(
-                "EMBEDDING_REQUEST_FAILED",
-                "LLM Gateway rejected embedding request",
+                "LLM_GATEWAY_UNAVAILABLE",
+                "LLM Gateway is unavailable",
                 status_code=502,
-                details={"status_code": exc.response.status_code},
-            ) from exc
-        except httpx.HTTPError as exc:
-            raise IngestionError("LLM_GATEWAY_UNAVAILABLE", "LLM Gateway is unavailable", status_code=502) from exc
+            ) from last_transport_error
 
         items = sorted(body.get("data", []), key=lambda item: item.get("index", 0))
         vectors = [item.get("embedding") for item in items]
@@ -177,3 +218,7 @@ def _deterministic_embedding(text: str, model: str, dimensions: int) -> list[flo
 
 def _is_vector(value: Any) -> bool:
     return isinstance(value, list) and bool(value) and all(isinstance(item, (int, float)) for item in value)
+
+
+def _is_transient_embedding_status(status_code: int) -> bool:
+    return status_code in {408, 429} or status_code >= 500
