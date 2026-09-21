@@ -94,7 +94,7 @@ AKB profilem.
 | `AKL_AUTH_MODE` | `disabled` | `disabled`, `mock`, `bearer`, nebo produkcni `oidc`. |
 | `AKL_SERVICE_TOKEN` | prazdne | Token pro prichozi bearer auth. |
 | `AKL_UPSTREAM_BEARER_TOKEN` | prazdne | Token pro volani RAG a Registry API. |
-| `AKL_STRATOS_AUTH_ME_URL` | prazdne | Autoritativni STRATOS access projection; povinne pro OIDC. |
+| `AKL_STRATOS_AUTH_ME_URL` | prazdne | Autoritativni aktivni STRATOS Access Projection V2; pro OIDC musi cesta byt presne `/api/v2/auth/me`. V1 je odmitnuta. |
 | `AKL_STRATOS_ACCESS_TIMEOUT_SECONDS` | `3` | Timeout projekce; chyba nebo timeout znamena fail-closed. |
 | `AKL_EVAL_DEPENDENCY_MODE` | `mock` | Vychozi mod klientu: `mock` nebo `http`. |
 | `AKL_EVAL_RAG_CLIENT_MODE` | podle dependency mode | RAG klient. |

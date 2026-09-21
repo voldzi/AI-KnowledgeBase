@@ -75,7 +75,7 @@ def _production_settings(**overrides):
             "svc-akb-director-copilot=audit"
         ),
         "AKL_SERVICE_CLIENT_DELEGATIONS": "",
-        "AKL_STRATOS_AUTH_ME_URL": "https://stratos.example/api/v1/auth/me",
+        "AKL_STRATOS_AUTH_ME_URL": "https://stratos.example/api/v2/auth/me",
         "AKL_STRATOS_POLICY_BINDINGS_URL": "https://stratos.example/api/v1/policy/bindings",
         "AKL_STRATOS_POLICY_DECISIONS_URL": "https://stratos.example/api/v1/policy/decisions",
         "AKL_STRATOS_SERVICE_POLICY_BINDING_ID": "pol_akb_internal_source_v1",

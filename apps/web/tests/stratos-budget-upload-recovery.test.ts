@@ -160,7 +160,7 @@ beforeEach(async () => {
     AKL_WEB_OIDC_ISSUER: "https://login.example/realms/stratos",
     AKL_WEB_OIDC_CLIENT_ID: "akl-web", AKL_WEB_OIDC_CLIENT_SECRET: "test-only-secret",
     AKL_WEB_SESSION_SECRET: "test-only-session-secret-that-is-long-enough",
-    AKL_WEB_STRATOS_AUTH_ME_URL: "http://stratos.test/api/v1/auth/me",
+    AKL_WEB_STRATOS_AUTH_ME_URL: "http://stratos.test/api/v2/auth/me",
     AKL_WEB_INGESTION_TOKEN_URL: "https://login.example/ingestion-token",
     AKL_WEB_INGESTION_CLIENT_ID: "svc-akb-web-ingestion",
     AKL_WEB_INGESTION_CLIENT_SECRET: "test-only-ingestion-secret",

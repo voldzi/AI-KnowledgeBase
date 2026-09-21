@@ -24,6 +24,7 @@ from app.archflow_extraction import (
     archflow_goal_extraction_profiles,
     extract_archflow_goal_proposals,
     extract_archflow_handover_proposals,
+    extract_archflow_inventory_candidates,
 )
 from app.config import Settings
 from app.source_locator import office_source_locator, same_source_locator
@@ -47,6 +48,7 @@ from app.schemas import (
     AssistantSuggestionsResponse,
     AssistantSuggestedAction,
     ArchflowArchitectureFieldProposal,
+    ArchflowArchitectureCandidateResponse,
     ArchflowArchitectureExtractionProposeRequest,
     ArchflowArchitectureExtractionResponse,
     ArchflowGoalExtractionProposeRequest,
@@ -974,6 +976,86 @@ class RagRetrievalService:
             auth_context=auth_context,
         )
 
+    async def propose_archflow_architecture_candidates(
+        self,
+        payload: ArchflowArchitectureExtractionProposeRequest,
+        *,
+        auth_context: AuthContext | None = None,
+    ) -> ArchflowArchitectureCandidateResponse:
+        query_id = _query_id()
+        run = await self._retrieve_authorized(
+            payload=RetrieveRequest(
+                subject_id=payload.subject_id,
+                query=_archflow_inventory_query(payload),
+                filters=RagQueryFilters(
+                    document_types=["project_documentation", "manual", "contract", "attachment", "other"],
+                    only_valid=True,
+                    classification_max=payload.classification_max,
+                    tags=payload.context_tags,
+                ),
+                max_chunks=payload.max_chunks,
+            ),
+            query_id=query_id,
+            auth_context=auth_context,
+        )
+        target_pairs = _archflow_target_document_pairs(payload)
+        denied_targets = sorted({document_id for document_id, _ in target_pairs}.intersection(run.denied_document_ids))
+        if denied_targets:
+            raise RetrievalError(
+                "DOCUMENT_ACCESS_DENIED",
+                "The subject is not authorized to extract architecture candidates from one or more documents.",
+                status_code=403,
+                details={"document_ids": denied_targets},
+            )
+        chunks = [
+            chunk for chunk in run.response.chunks
+            if not target_pairs or (chunk.citation.document_id, chunk.citation.document_version_id) in target_pairs
+        ]
+        candidates, missing_information, extraction_warnings = extract_archflow_inventory_candidates(chunks=chunks)
+        warnings = [*run.response.warnings, *extraction_warnings]
+        primary_document_id, primary_document_version_id = _archflow_primary_document(payload, chunks)
+        source_documents = [document.model_dump(mode="json") for document in payload.documents]
+        status = "PROPOSED" if candidates and not missing_information else "PARTIAL"
+        result = {
+            "profile": payload.profile,
+            "profile_version": payload.profile_version,
+            "candidates": [candidate.model_dump(mode="json") for candidate in candidates],
+            "source_chunk_ids": [chunk.chunk_id for chunk in chunks],
+            "query_id": query_id,
+            "source_documents": source_documents,
+        }
+        stored = await self._registry_client.store_document_extraction(
+            payload={
+                "tenant_id": payload.tenant_id,
+                "external_system": payload.external_system,
+                "external_ref": payload.external_ref,
+                "entity_type": payload.entity_type,
+                "entity_id": payload.entity_id,
+                "document_id": primary_document_id,
+                "document_version_id": primary_document_version_id,
+                "profile": payload.profile,
+                "profile_version": payload.profile_version,
+                "status": status,
+                "classification": payload.classification_max,
+                "requested_by": payload.subject_id,
+                "correlation_id": payload.correlation_id,
+                "result": result,
+                "missing_information": missing_information,
+                "warnings": warnings,
+                "metadata": {
+                    "query_id": query_id,
+                    "candidate_schema_version": "1.0.0",
+                    "canonical_owner": "STRATOS_ARCHFLOW",
+                    "owner_confirmation_required": True,
+                    "content_exported": False,
+                    "source_documents": source_documents,
+                    **payload.metadata,
+                },
+            },
+            auth_context=auth_context,
+        )
+        return _archflow_candidate_response_from_registry(stored.get("extraction", stored))
+
     async def _propose_archflow_architecture_extraction(
         self,
         payload: ArchflowArchitectureExtractionProposeRequest,
@@ -1162,6 +1244,32 @@ class RagRetrievalService:
                 details={"extraction_id": extraction_id},
             )
         return _stratos_extraction_response_from_registry(stored)
+
+    async def architecture_candidate_export(
+        self,
+        extraction_id: str,
+        *,
+        auth_context: AuthContext | None = None,
+    ) -> ArchflowArchitectureCandidateResponse:
+        stored = await self._registry_client.fetch_document_extraction(
+            extraction_id=extraction_id,
+            auth_context=auth_context,
+        )
+        if stored is None:
+            raise RetrievalError(
+                "DOCUMENT_EXTRACTION_NOT_FOUND",
+                "Document extraction was not found.",
+                status_code=404,
+                details={"extraction_id": extraction_id},
+            )
+        if stored.get("profile") != "architecture_inventory_candidate_v1":
+            raise RetrievalError(
+                "INVALID_EXTRACTION_PROFILE",
+                "The extraction is not an architecture inventory candidate export.",
+                status_code=409,
+                details={"extraction_id": extraction_id},
+            )
+        return _archflow_candidate_response_from_registry(stored)
 
     async def record_document_extraction_feedback(
         self,
@@ -3171,6 +3279,16 @@ def _archflow_handover_query(payload: ArchflowArchitectureExtractionProposeReque
     )
 
 
+def _archflow_inventory_query(payload: ArchflowArchitectureExtractionProposeRequest) -> str:
+    return (
+        "ArchFlow architecture inventory candidate extraction: application service API interface data asset "
+        "database platform server container network cloud security identity vendor SLA RTO RPO lifecycle owner. "
+        "Return only evidence-backed machine candidates for later owner confirmation; do not create canonical records. "
+        f"External ref: {payload.external_ref}. Entity: {payload.entity_type} {payload.entity_id}. "
+        f"Need: {payload.need_id or 'n/a'}. Artifact type: {payload.artifact_type}."
+    )
+
+
 def _archflow_target_document_pairs(
     payload: ArchflowGoalExtractionProposeRequest | ArchflowArchitectureExtractionProposeRequest,
 ) -> set[tuple[str, str]]:
@@ -3312,6 +3430,37 @@ def _archflow_architecture_extraction_response_from_registry(payload: dict[str, 
         requested_by=str(payload.get("requested_by", "")),
         proposals=proposals if isinstance(proposals, list) else [],
         missing_information=payload.get("missing_information", []) if isinstance(payload.get("missing_information"), list) else [],
+        warnings=payload.get("warnings", []) if isinstance(payload.get("warnings"), list) else [],
+        source_chunk_ids=source_chunk_ids if isinstance(source_chunk_ids, list) else [],
+        metadata=payload.get("metadata", {}) if isinstance(payload.get("metadata"), dict) else {},
+    )
+
+
+def _archflow_candidate_response_from_registry(
+    payload: dict[str, object],
+) -> ArchflowArchitectureCandidateResponse:
+    result = payload.get("result")
+    result_map = result if isinstance(result, dict) else {}
+    candidates = result_map.get("candidates", [])
+    source_chunk_ids = result_map.get("source_chunk_ids", [])
+    return ArchflowArchitectureCandidateResponse(
+        extraction_id=str(payload.get("extraction_id", "")),
+        tenant_id=str(payload.get("tenant_id", "")),
+        external_system="STRATOS_ARCHFLOW",
+        external_ref=str(payload.get("external_ref", "")),
+        entity_type=str(payload.get("entity_type", "")),
+        entity_id=str(payload.get("entity_id", "")),
+        profile="architecture_inventory_candidate_v1",
+        profile_version="1",
+        status=str(payload.get("status", "FAILED")),  # type: ignore[arg-type]
+        classification=str(payload.get("classification", "internal")),  # type: ignore[arg-type]
+        requested_by=str(payload.get("requested_by", "")),
+        candidates=candidates if isinstance(candidates, list) else [],
+        missing_information=(
+            payload.get("missing_information", [])
+            if isinstance(payload.get("missing_information"), list)
+            else []
+        ),
         warnings=payload.get("warnings", []) if isinstance(payload.get("warnings"), list) else [],
         source_chunk_ids=source_chunk_ids if isinstance(source_chunk_ids, list) else [],
         metadata=payload.get("metadata", {}) if isinstance(payload.get("metadata"), dict) else {},

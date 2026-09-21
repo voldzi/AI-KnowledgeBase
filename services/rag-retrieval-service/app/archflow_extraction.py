@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from hashlib import sha256
 from typing import Literal
 
 from app.schemas import (
     ArchflowArchitectureFieldProposal,
+    ArchflowArchitectureCandidate,
     ArchflowCandidateRequirement,
     ArchflowGoalFieldProposal,
     ArchflowGoalProposalValue,
@@ -20,6 +23,7 @@ from app.schemas import (
 PROFILE_NAME = "archflow_goal_extraction_v1"
 ARCHITECTURE_PACKAGE_PROFILE_NAME = "architecture_package_review_v1"
 ARCHITECTURE_HANDOVER_PROFILE_NAME = "architecture_handover_v1"
+ARCHITECTURE_INVENTORY_PROFILE_NAME = "architecture_inventory_candidate_v1"
 PROFILE_VERSION = "1"
 
 ARCHFLOW_GOAL_FIELDS = [
@@ -94,8 +98,152 @@ def archflow_goal_extraction_profiles() -> list[ContractExtractionProfile]:
                 "acceptance_evidence",
                 "open_risk",
             ],
-        )
+        ),
+        ContractExtractionProfile(
+            profile=ARCHITECTURE_INVENTORY_PROFILE_NAME,
+            profile_version=PROFILE_VERSION,
+            title="ArchFlow architecture inventory candidates",
+            description=(
+                "Exports versioned, cited machine candidates for owner confirmation. "
+                "ArchFlow remains the canonical owner and AKB never writes architecture truth."
+            ),
+            supported_external_systems=["STRATOS_ARCHFLOW"],
+            fields=[
+                "application", "service", "api", "data_asset", "database", "platform",
+                "server", "container", "network", "cloud_resource", "security_control",
+                "identity_component", "vendor", "sla", "rto", "rpo", "lifecycle", "owner",
+            ],
+        ),
     ]
+
+
+def extract_archflow_inventory_candidates(
+    *,
+    chunks: list[RetrievedChunk],
+    extracted_at: datetime | None = None,
+) -> tuple[list[ArchflowArchitectureCandidate], list[str], list[str]]:
+    timestamp = extracted_at or datetime.now(timezone.utc)
+    candidates: list[ArchflowArchitectureCandidate] = []
+    seen: set[str] = set()
+    lineage_missing = False
+    for chunk in chunks:
+        policy_hash = chunk.metadata.get("policy_hash")
+        if not isinstance(policy_hash, str) or not re.fullmatch(r"sha256:[a-f0-9]{64}", policy_hash):
+            lineage_missing = True
+            continue
+        for candidate_type, pattern in _inventory_pattern_specs():
+            for match in pattern.finditer(chunk.text):
+                evidence_text = _sentence_around(chunk.text, match.start(), match.end())
+                stable_material = "\u0000".join(
+                    [
+                        "architecture-inventory-candidate-1.0.0",
+                        chunk.citation.document_id,
+                        chunk.citation.document_version_id,
+                        policy_hash,
+                        chunk.chunk_id,
+                        candidate_type,
+                        evidence_text.casefold(),
+                    ]
+                )
+                candidate_id = f"archcand_{sha256(stable_material.encode('utf-8')).hexdigest()[:40]}"
+                if candidate_id in seen:
+                    continue
+                seen.add(candidate_id)
+                question_field = "owner" if candidate_type != "owner" else "canonical_owner_id"
+                candidates.append(
+                    ArchflowArchitectureCandidate(
+                        candidate_id=candidate_id,
+                        candidate_type=candidate_type,  # type: ignore[arg-type]
+                        proposed_fields={
+                            "name": _title_from_text(evidence_text, candidate_type.replace("_", " ").title()),
+                            "description": evidence_text,
+                            "source_section": _section(chunk),
+                        },
+                        confidence="medium",
+                        document_id=chunk.citation.document_id,
+                        document_version_id=chunk.citation.document_version_id,
+                        policy_hash=policy_hash,
+                        ingestion_job_id=_bounded_metadata_string(chunk, "ingestion_job_id", 128),
+                        model={
+                            "provider": "akb",
+                            "model_id": "deterministic-architecture-candidate-extractor",
+                            "model_version": "1",
+                        },
+                        extracted_at=timestamp,
+                        evidence=[{
+                            "document_id": chunk.citation.document_id,
+                            "document_version_id": chunk.citation.document_version_id,
+                            "policy_hash": policy_hash,
+                            "chunk_id": chunk.chunk_id,
+                            "page_number": chunk.citation.page_number,
+                            "block_hash": f"sha256:{sha256(evidence_text.encode('utf-8')).hexdigest()}",
+                            "locator": {
+                                "page_number": chunk.citation.page_number,
+                                "section_path": chunk.citation.section_path,
+                                "paragraph_number": chunk.citation.paragraph_number,
+                                "char_start": chunk.metadata.get("char_start"),
+                                "char_end": chunk.metadata.get("char_end"),
+                                "source_locator": chunk.metadata.get("source_locator"),
+                            },
+                            "viewer_url": _viewer_url(chunk),
+                        }],
+                        relationships=[],
+                        owner_questions=[{
+                            "question_id": f"q_{candidate_id}_{question_field}",
+                            "field": question_field,
+                            "question": (
+                                "Který vlastník ArchFlow má tento kandidát potvrdit a spravovat?"
+                                if candidate_type != "owner"
+                                else "Jaké je kanonické ID vlastníka v ArchFlow?"
+                            ),
+                            "required": True,
+                        }],
+                        requires_owner_confirmation=True,
+                    )
+                )
+    missing_information: list[str] = []
+    warnings: list[str] = []
+    if lineage_missing:
+        missing_information.append("exact_policy_hash")
+        warnings.append("ARCHITECTURE_CANDIDATE_LINEAGE_INCOMPLETE")
+    if not candidates:
+        warnings.append("INSUFFICIENT_CITABLE_ARCHITECTURE_INVENTORY_EVIDENCE")
+    return candidates, missing_information, warnings
+
+
+def _inventory_pattern_specs() -> list[tuple[str, re.Pattern[str]]]:
+    terms = {
+        "application": r"aplikace|aplika[cč]n[íi]\s+syst[eé]m|application",
+        "service": r"slu[zž]ba|service",
+        "api": r"API|OpenAPI|AsyncAPI|rozhran[íi]|endpoint",
+        "data_asset": r"datov[ýy]\s+objekt|datov[áa]\s+sada|data\s+asset",
+        "database": r"datab[aá]ze|PostgreSQL|Oracle|SQL\s+Server",
+        "platform": r"platforma|platform",
+        "server": r"server|virtu[aá]ln[íi]\s+stroj|VM\b",
+        "container": r"kontejner|container|Docker|Kubernetes|K8s",
+        "network": r"s[ií][tť]|VLAN|firewall|proxy|load\s+balancer",
+        "cloud_resource": r"cloud|Azure|AWS|GCP|SaaS|PaaS|IaaS",
+        "security_control": r"bezpe[cč]nost|[sš]ifrov[aá]n[íi]|auditn[íi]\s+stopa|security\s+control",
+        "identity_component": r"identita|SSO|OIDC|OAuth|Keycloak|identity",
+        "vendor": r"dodavatel|vendor|supplier",
+        "sla": r"SLA|dostupnost",
+        "rto": r"RTO|doba\s+obnovy",
+        "rpo": r"RPO|bod\s+obnovy",
+        "lifecycle": r"[zž]ivotn[íi]\s+cyklus|lifecycle|ukon[cč]en[íi]\s+podpory",
+        "owner": r"vlastn[íi]k|spr[aá]vce|garant|owner",
+    }
+    return [
+        (
+            candidate_type,
+            re.compile(rf"((?:{term})[^.\n]{{4,300}})", re.IGNORECASE),
+        )
+        for candidate_type, term in terms.items()
+    ]
+
+
+def _bounded_metadata_string(chunk: RetrievedChunk, key: str, limit: int) -> str | None:
+    value = chunk.metadata.get(key)
+    return value if isinstance(value, str) and 0 < len(value) <= limit else None
 
 
 def extract_archflow_goal_proposals(

@@ -33,7 +33,7 @@ const config: AklConfig = {
     sessionAbsoluteTtlMs: 90 * 86_400_000,
     sessionIdleTtlMs: 30 * 86_400_000,
     identityValidationIntervalMs: 15 * 60_000,
-    stratosAuthMeUrl: "https://stratos.example/api/v1/auth/me",
+    stratosAuthMeUrl: "https://stratos.example/api/v2/auth/me",
     accessProjectionTimeoutMs: 3_000,
     accessProjectionCacheTtlMs: 0,
   },

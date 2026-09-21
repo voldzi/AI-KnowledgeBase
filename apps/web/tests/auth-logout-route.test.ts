@@ -23,7 +23,7 @@ describe("STRATOS logout", () => {
       AKL_WEB_SESSION_SECRET: "test-session-secret",
       AKL_WEB_SESSION_ENCRYPTION_KEY: "test-session-encryption-key-that-is-long-enough",
       AKL_WEB_SESSION_STORE_SECRET: "test-session-store-secret-that-is-long-enough",
-      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.example/api/v1/auth/me",
+      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.example/api/v2/auth/me",
     });
 
     const response = await POST(
@@ -57,7 +57,7 @@ describe("STRATOS logout", () => {
       AKL_WEB_SESSION_SECRET: "test-session-secret",
       AKL_WEB_SESSION_ENCRYPTION_KEY: "test-session-encryption-key-that-is-long-enough",
       AKL_WEB_SESSION_STORE_SECRET: "test-session-store-secret-that-is-long-enough",
-      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.example/api/v1/auth/me",
+      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.example/api/v2/auth/me",
     });
 
     const response = await POST(
@@ -86,7 +86,7 @@ describe("STRATOS logout", () => {
       AKL_WEB_SESSION_SECRET: "test-session-secret",
       AKL_WEB_SESSION_ENCRYPTION_KEY: "test-session-encryption-key-that-is-long-enough",
       AKL_WEB_SESSION_STORE_SECRET: "test-session-store-secret-that-is-long-enough",
-      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.example/api/v1/auth/me",
+      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.example/api/v2/auth/me",
     });
 
     const response = await GET();

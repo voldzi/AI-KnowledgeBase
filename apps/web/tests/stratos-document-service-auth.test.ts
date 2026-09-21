@@ -54,7 +54,7 @@ beforeEach(() => {
     AKL_WEB_OIDC_CLIENT_ID: "akl-web",
     AKL_WEB_OIDC_CLIENT_SECRET: "test-only-secret",
     AKL_WEB_SESSION_SECRET: "test-only-session-secret-that-is-long-enough",
-    AKL_WEB_STRATOS_AUTH_ME_URL: "http://stratos.test/api/v1/auth/me",
+    AKL_WEB_STRATOS_AUTH_ME_URL: "http://stratos.test/api/v2/auth/me",
   });
   state = {
     roles: ["service_ingestion"],

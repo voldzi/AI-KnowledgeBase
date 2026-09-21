@@ -27,11 +27,11 @@ async function login(username,password,contextOptions={}){
  if(!(await page.locator('#username').count())) await page.getByRole('button',{name:'Pokračovat přes STRATOS'}).click();
  await page.locator('#username').waitFor({timeout:30000});await page.locator('#username').fill(username);await page.locator('#password').fill(password);await page.locator('#kc-login').click();
  await page.waitForURL(u=>u.origin==='http://localhost:3240',{timeout:30000});
- await expect.poll(async()=> (await page.request.get('http://localhost:3240/api/v1/auth/me')).status(),{timeout:20000}).toBe(200);
+ await expect.poll(async()=> (await page.request.get('http://localhost:3240/api/v2/auth/me')).status(),{timeout:20000}).toBe(200);
  await page.waitForLoadState('networkidle');return page;
 }
 
-const targets={stratos:['http://localhost:3240','Budget & Contract','http://localhost:3240/api/v1/auth/me'],projectflow:['http://localhost:3231','ProjectFlow','http://localhost:3231/api/auth/session'],archflow:['http://localhost:3232','ArchFlow','http://localhost:14001/api/v1/auth/me'],akb:['http://localhost:3220/akb','AI KnowledgeBase','http://localhost:3220/akb/api/auth/session'],chat:['http://localhost:3221','Chat','http://localhost:3221/api/auth/session']};
+const targets={stratos:['http://localhost:3240','Budget & Contract','http://localhost:3240/api/v2/auth/me'],projectflow:['http://localhost:3231','ProjectFlow','http://localhost:3231/api/auth/session'],archflow:['http://localhost:3232','ArchFlow','http://localhost:14001/api/v2/auth/me'],akb:['http://localhost:3220/akb','AI KnowledgeBase','http://localhost:3220/akb/api/auth/session'],chat:['http://localhost:3221','Chat','http://localhost:3221/api/auth/session']};
 const results={};let admin,reader,member;
 const status=async(p,url)=>(await p.request.get(url,{headers:{'X-STRATOS-Session-Probe':'1'}})).status();
 async function patch(data){const r=await admin.request.patch('http://localhost:3240/api/v1/access/members/'+member.membershipId,{headers:{Origin:'http://localhost:3240'},data:{reason:'AKB suite 0.5.1 local acceptance; synthetic reader only',...data}});assert.equal(r.status(),200);}

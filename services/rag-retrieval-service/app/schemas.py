@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -97,6 +97,26 @@ ArchflowArtifactType = Literal[
     "ARCHITECTURE_DECISION",
     "AS_BUILT_ARCHITECTURE",
     "HANDOVER_PACKAGE",
+]
+ArchflowArchitectureCandidateType = Literal[
+    "application",
+    "service",
+    "api",
+    "data_asset",
+    "database",
+    "platform",
+    "server",
+    "container",
+    "network",
+    "cloud_resource",
+    "security_control",
+    "identity_component",
+    "vendor",
+    "sla",
+    "rto",
+    "rpo",
+    "lifecycle",
+    "owner",
 ]
 
 
@@ -578,7 +598,11 @@ class ArchflowArchitectureExtractionProposeRequest(BaseModel):
     document_version_id: str | None = Field(default=None, min_length=1, max_length=64)
     documents: list[ArchflowSourceDocument] = Field(default_factory=list, max_length=50)
     subject_id: str = Field(min_length=1, max_length=128)
-    profile: Literal["architecture_package_review_v1", "architecture_handover_v1"]
+    profile: Literal[
+        "architecture_package_review_v1",
+        "architecture_handover_v1",
+        "architecture_inventory_candidate_v1",
+    ]
     profile_version: str = Field(default="1", min_length=1, max_length=40)
     classification_max: Classification = "internal"
     context_tags: list[str] = Field(default_factory=list)
@@ -883,6 +907,70 @@ class ArchflowArchitectureFieldProposal(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class ArchflowArchitectureCandidateEvidence(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document_id: str = Field(min_length=1, max_length=64)
+    document_version_id: str = Field(min_length=1, max_length=64)
+    policy_hash: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    chunk_id: str = Field(min_length=1, max_length=128)
+    page_number: int | None = Field(default=None, ge=1)
+    block_hash: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    locator: dict[str, Any] = Field(default_factory=dict)
+    viewer_url: str = Field(min_length=1, max_length=1000)
+
+
+class ArchflowArchitectureCandidateRelationship(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    relationship_type: str = Field(min_length=1, max_length=80)
+    target_candidate_id: str | None = Field(default=None, min_length=1, max_length=128)
+    target_ref: str | None = Field(default=None, min_length=1, max_length=240)
+
+    @model_validator(mode="after")
+    def require_target(self) -> "ArchflowArchitectureCandidateRelationship":
+        if not self.target_candidate_id and not self.target_ref:
+            raise ValueError("A candidate relationship requires a target.")
+        return self
+
+
+class ArchflowArchitectureOwnerQuestion(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    question_id: str = Field(min_length=1, max_length=128)
+    field: str = Field(min_length=1, max_length=120)
+    question: str = Field(min_length=1, max_length=1000)
+    required: bool = True
+
+
+class ArchflowArchitectureModelLineage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str = Field(min_length=1, max_length=120)
+    model_id: str = Field(min_length=1, max_length=200)
+    model_version: str = Field(min_length=1, max_length=120)
+
+
+class ArchflowArchitectureCandidate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    candidate_id: str = Field(min_length=1, max_length=128)
+    schema_version: Literal["1.0.0"] = "1.0.0"
+    candidate_type: ArchflowArchitectureCandidateType
+    proposed_fields: dict[str, Any] = Field(default_factory=dict)
+    confidence: Confidence
+    document_id: str = Field(min_length=1, max_length=64)
+    document_version_id: str = Field(min_length=1, max_length=64)
+    policy_hash: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    ingestion_job_id: str | None = Field(default=None, min_length=1, max_length=128)
+    model: ArchflowArchitectureModelLineage
+    extracted_at: datetime
+    evidence: list[ArchflowArchitectureCandidateEvidence] = Field(min_length=1, max_length=20)
+    relationships: list[ArchflowArchitectureCandidateRelationship] = Field(default_factory=list, max_length=30)
+    owner_questions: list[ArchflowArchitectureOwnerQuestion] = Field(default_factory=list, max_length=20)
+    requires_owner_confirmation: Literal[True] = True
+
+
 class ContractExtractionResponse(BaseModel):
     extraction_id: str
     tenant_id: str
@@ -940,6 +1028,27 @@ class ArchflowArchitectureExtractionResponse(BaseModel):
     classification: Classification
     requested_by: str
     proposals: list[ArchflowArchitectureFieldProposal] = Field(default_factory=list)
+    missing_information: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    source_chunk_ids: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ArchflowArchitectureCandidateResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    extraction_id: str
+    tenant_id: str
+    external_system: Literal["STRATOS_ARCHFLOW"]
+    external_ref: str
+    entity_type: str
+    entity_id: str
+    profile: Literal["architecture_inventory_candidate_v1"]
+    profile_version: Literal["1"]
+    status: ExtractionStatus
+    classification: Classification
+    requested_by: str
+    candidates: list[ArchflowArchitectureCandidate] = Field(default_factory=list)
     missing_information: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     source_chunk_ids: list[str] = Field(default_factory=list)

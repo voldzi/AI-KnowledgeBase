@@ -82,7 +82,7 @@ function config(tokenUrl: string): AklConfig {
       redirectUri: "https://stratos.example/akb/api/auth/callback",
       scopes: "openid profile email",
       sessionSecret: "test-secret",
-      stratosAuthMeUrl: "https://stratos.example/api/v1/auth/me",
+      stratosAuthMeUrl: "https://stratos.example/api/v2/auth/me",
       accessProjectionTimeoutMs: 3_000,
       accessProjectionCacheTtlMs: 0,
     },

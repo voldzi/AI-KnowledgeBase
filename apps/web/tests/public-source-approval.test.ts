@@ -61,7 +61,7 @@ test("automation obtains only the exact dedicated OAuth client identity", async 
     AKL_ENV: "test", AKL_API_CLIENT_MODE: "mock", AKL_AUTH_MODE: "oidc",
     AKL_WEB_OIDC_ISSUER: "https://login.example/realms/stratos",
     AKL_WEB_PUBLIC_BASE_URL: "https://akb.example", AKL_WEB_SESSION_SECRET: "test-session-secret",
-    AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.example/api/v1/auth/me",
+    AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.example/api/v2/auth/me",
     AKB_OFFICIAL_SOURCE_AUTOMATION_ENABLED: "true",
     AKB_OFFICIAL_SOURCE_TOKEN_URL: "https://login.example/token",
     AKB_OFFICIAL_SOURCE_CLIENT_ID: "svc-akb-official-source-sync",

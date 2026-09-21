@@ -35,7 +35,7 @@ describe("AKL web config", () => {
       AKL_WEB_SESSION_SECRET: "separate-chat-session-secret",
       AKL_WEB_SESSION_ENCRYPTION_KEY_FILE: "/run/secrets/web-session-encryption-key",
       AKL_WEB_SESSION_STORE_SECRET_FILE: "/run/secrets/web-session-store-secret",
-      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.local/api/v1/auth/me",
+      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.local/api/v2/auth/me",
       AKB_OFFICIAL_SOURCE_AUTOMATION_ENABLED: "true",
       AKB_OFFICIAL_SOURCE_TOKEN_URL: "https://login.local/token",
       AKB_OFFICIAL_SOURCE_CLIENT_ID: "svc-akb-official-source-sync",
@@ -103,7 +103,7 @@ describe("AKL web config", () => {
       AKL_WEB_OIDC_ISSUER: "https://login.local/realms/stratos/",
       AKL_WEB_PUBLIC_BASE_URL: "https://akl.local/",
       AKL_WEB_SESSION_SECRET: "test-session-secret",
-      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.local/api/v1/auth/me"
+      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.local/api/v2/auth/me"
     });
 
     assert.equal(config.serviceBaseUrls.registry, "https://registry.local/api/v1");
@@ -130,7 +130,7 @@ describe("AKL web config", () => {
       AKL_WEB_PUBLIC_BASE_URL: "https://akl.local/",
       AKL_WEB_OIDC_SCOPES: '"openid   profile email"',
       AKL_WEB_SESSION_SECRET: "test-session-secret",
-      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.local/api/v1/auth/me"
+      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.local/api/v2/auth/me"
     });
 
     assert.equal(config.oidc?.scopes, "openid profile email");
@@ -163,7 +163,7 @@ describe("AKL web config", () => {
       AKL_WEB_SESSION_SECRET: "separate-chat-session-secret",
       AKL_WEB_SESSION_ENCRYPTION_KEY_FILE: "/run/secrets/web-session-encryption-key",
       AKL_WEB_SESSION_STORE_SECRET_FILE: "/run/secrets/web-session-store-secret",
-      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.local/api/v1/auth/me",
+      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.local/api/v2/auth/me",
     });
 
     assert.equal(config.webProfile, "chat");
@@ -190,7 +190,7 @@ describe("AKL web config", () => {
       AKL_WEB_SESSION_SECRET: "separate-chat-session-secret",
       AKL_WEB_SESSION_ENCRYPTION_KEY_FILE: "/run/secrets/web-session-encryption-key",
       AKL_WEB_SESSION_STORE_SECRET_FILE: "/run/secrets/web-session-store-secret",
-      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.local/api/v1/auth/me",
+      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.local/api/v2/auth/me",
     };
 
     assert.throws(
@@ -223,7 +223,7 @@ describe("AKL web config", () => {
       AKL_WEB_SESSION_SECRET: "test-session-secret",
       AKL_WEB_SESSION_ENCRYPTION_KEY_FILE: "/run/secrets/web-session-encryption-key",
       AKL_WEB_SESSION_STORE_SECRET_FILE: "/run/secrets/web-session-store-secret",
-      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.local/api/v1/auth/me",
+      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.local/api/v2/auth/me",
       AKL_WEB_INGESTION_TOKEN_URL: "https://login.local/token",
       AKL_WEB_INGESTION_CLIENT_ID: "svc-akb-web-ingestion",
       AKL_WEB_INGESTION_CLIENT_SECRET: "test-only-ingestion-secret",
@@ -248,7 +248,7 @@ describe("AKL web config", () => {
       AKL_WEB_SESSION_SECRET: "test-session-secret",
       AKL_WEB_SESSION_ENCRYPTION_KEY_FILE: "/run/secrets/web-session-encryption-key",
       AKL_WEB_SESSION_STORE_SECRET_FILE: "/run/secrets/web-session-store-secret",
-      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.local/api/v1/auth/me",
+      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.local/api/v2/auth/me",
         AKL_DIRECTOR_COPILOT_ENABLED: "true",
       }),
       /AKL_DIRECTOR_COPILOT_TOKEN_URL is required/,
@@ -265,7 +265,7 @@ describe("AKL web config", () => {
       AKL_WEB_SESSION_SECRET: "test-session-secret",
       AKL_WEB_SESSION_ENCRYPTION_KEY_FILE: "/run/secrets/web-session-encryption-key",
       AKL_WEB_SESSION_STORE_SECRET_FILE: "/run/secrets/web-session-store-secret",
-      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.local/api/v1/auth/me",
+      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.local/api/v2/auth/me",
       AKL_DIRECTOR_COPILOT_ENABLED: "true",
       AKL_DIRECTOR_COPILOT_TOKEN_URL: "https://login.local/realms/stratos/protocol/openid-connect/token",
       AKL_DIRECTOR_COPILOT_CLIENT_SECRET: "test-only-secret",
@@ -314,7 +314,7 @@ describe("AKL web config", () => {
       AKL_WEB_SESSION_SECRET: "test-session-secret",
       AKL_WEB_SESSION_ENCRYPTION_KEY_FILE: "/run/secrets/web-session-encryption-key",
       AKL_WEB_SESSION_STORE_SECRET_FILE: "/run/secrets/web-session-store-secret",
-      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.local/api/v1/auth/me",
+      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.local/api/v2/auth/me",
       AKL_REGISTRY_API_BASE_URL: "http://registry-api:8000/api/v1",
       AKL_INGESTION_API_BASE_URL: "http://ingestion-service:8090/api/v1",
       AKL_RAG_API_BASE_URL: "http://rag-retrieval-service:8080/api/v1",
@@ -342,7 +342,7 @@ describe("AKL web config", () => {
       AKL_WEB_SESSION_SECRET: "test-session-secret",
       AKL_WEB_SESSION_ENCRYPTION_KEY_FILE: "/run/secrets/web-session-encryption-key",
       AKL_WEB_SESSION_STORE_SECRET_FILE: "/run/secrets/web-session-store-secret",
-      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.local/api/v1/auth/me",
+      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.local/api/v2/auth/me",
       AKL_REGISTRY_API_BASE_URL: "http://registry-api:8000/api/v1",
       AKL_INGESTION_API_BASE_URL: "http://ingestion-service:8090/api/v1",
       AKL_RAG_API_BASE_URL: "http://rag-retrieval-service:8080/api/v1",

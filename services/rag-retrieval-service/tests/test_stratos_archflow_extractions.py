@@ -39,9 +39,11 @@ def test_archflow_goal_extraction_profile_is_available() -> None:
     assert "archflow_goal_extraction_v1" in profiles
     assert "architecture_package_review_v1" in profiles
     assert "architecture_handover_v1" in profiles
+    assert "architecture_inventory_candidate_v1" in profiles
     assert "metric" in profiles["archflow_goal_extraction_v1"]["fields"]
     assert "integration_requirement" in profiles["architecture_package_review_v1"]["fields"]
     assert "operational_runbook" in profiles["architecture_handover_v1"]["fields"]
+    assert "identity_component" in profiles["architecture_inventory_candidate_v1"]["fields"]
     assert profiles["archflow_goal_extraction_v1"]["supported_external_systems"] == ["STRATOS_ARCHFLOW"]
 
 
@@ -288,3 +290,63 @@ def test_archflow_architecture_extraction_permission_denied_when_target_document
         )
 
     assert response.status_code == 403
+
+
+def test_archflow_architecture_candidate_export_preserves_exact_lineage() -> None:
+    payload = _architecture_payload(
+        profile="architecture_inventory_candidate_v1",
+        metadata={"requested_contract_version": "1.0.0"},
+    )
+    with make_client() as client:
+        created = client.post(
+            "/api/v1/stratos/extractions/architecture-candidates/propose",
+            json=payload,
+        )
+        assert created.status_code == 200, created.text
+        extraction_id = created.json()["extraction_id"]
+        exported = client.get(
+            f"/api/v1/stratos/extractions/{extraction_id}/architecture-candidates/export"
+        )
+
+    assert exported.status_code == 200, exported.text
+    body = exported.json()
+    assert body["profile"] == "architecture_inventory_candidate_v1"
+    assert body["metadata"]["canonical_owner"] == "STRATOS_ARCHFLOW"
+    assert body["metadata"]["owner_confirmation_required"] is True
+    assert body["metadata"]["content_exported"] is False
+    assert body["candidates"]
+    candidate = body["candidates"][0]
+    assert candidate["candidate_id"].startswith("archcand_")
+    assert candidate["schema_version"] == "1.0.0"
+    assert candidate["document_id"] == "doc_archflow_package"
+    assert candidate["document_version_id"] == "ver_archflow_package_1"
+    assert candidate["policy_hash"] == "sha256:" + "a" * 64
+    assert candidate["ingestion_job_id"] == "ing_archflow_package_1"
+    assert candidate["model"]["model_version"] == "1"
+    assert candidate["requires_owner_confirmation"] is True
+    assert candidate["owner_questions"]
+    evidence = candidate["evidence"][0]
+    assert evidence["document_version_id"] == candidate["document_version_id"]
+    assert evidence["policy_hash"] == candidate["policy_hash"]
+    assert evidence["block_hash"].startswith("sha256:")
+    assert evidence["viewer_url"].startswith("/akb/documents/doc_archflow_package")
+
+
+def test_archflow_architecture_candidate_ids_are_stable_for_same_version() -> None:
+    payload = _architecture_payload(profile="architecture_inventory_candidate_v1")
+    with make_client() as client:
+        first = client.post(
+            "/api/v1/stratos/extractions/architecture-candidates/propose",
+            json=payload,
+        )
+        second = client.post(
+            "/api/v1/stratos/extractions/architecture-candidates/propose",
+            json=payload,
+        )
+
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    assert second.json()["extraction_id"] == first.json()["extraction_id"]
+    assert [item["candidate_id"] for item in second.json()["candidates"]] == [
+        item["candidate_id"] for item in first.json()["candidates"]
+    ]

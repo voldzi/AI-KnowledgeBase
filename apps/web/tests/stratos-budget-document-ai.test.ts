@@ -558,7 +558,7 @@ describe("Budget profile actual route boundary", () => {
       AKL_ENV: "development", AKL_AUTH_MODE: "oidc", AKL_IDENTITY_MODE: "external_oidc", AKL_API_CLIENT_MODE: "production",
       AKL_WEB_OIDC_ISSUER: "https://identity.test", AKL_WEB_OIDC_CLIENT_ID: "test-web", AKL_WEB_OIDC_CLIENT_SECRET: "test-secret",
       AKL_WEB_PUBLIC_BASE_URL: "https://akb.test", AKL_WEB_SESSION_SECRET: "test-session-secret",
-      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.test/api/v1/auth/me", AKL_WEB_UPLOAD_SIGNING_SECRET: uploadSettings.signingSecret,
+      AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.test/api/v2/auth/me", AKL_WEB_UPLOAD_SIGNING_SECRET: uploadSettings.signingSecret,
       AKL_WEB_OBJECT_STORAGE_ROOT: "/tmp/akb-budget-profile-no-file", STRATOS_CONTENT_SECURITY_REQUIRED: "false",
       ...Object.fromEntries(["REGISTRY", "INGESTION", "RAG", "GOVERNANCE", "EVALUATION"].map(name => [`AKL_${name}_API_BASE_URL`, `https://${name.toLowerCase()}.test/api/v1`])),
     });

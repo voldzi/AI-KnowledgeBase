@@ -31,6 +31,7 @@ from app.schemas import (
     AssistantSuggestionsResponse,
     ArchflowArchitectureExtractionProposeRequest,
     ArchflowArchitectureExtractionResponse,
+    ArchflowArchitectureCandidateResponse,
     ArchflowGoalExtractionProposeRequest,
     ArchflowGoalExtractionResponse,
     ContractExtractionProfilesResponse,
@@ -418,6 +419,43 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             payload.profile,
         )
         return await _service(request).propose_archflow_handover_extraction(payload, auth_context=auth_context)
+
+    @app.post(
+        "/api/v1/stratos/extractions/architecture-candidates/propose",
+        response_model=ArchflowArchitectureCandidateResponse,
+        tags=["stratos-extractions"],
+    )
+    async def propose_archflow_architecture_candidates(
+        payload: ArchflowArchitectureExtractionProposeRequest,
+        request: Request,
+    ) -> ArchflowArchitectureCandidateResponse:
+        auth_context = _guard_request(request)
+        if payload.profile != "architecture_inventory_candidate_v1":
+            raise RetrievalError(
+                "INVALID_EXTRACTION_PROFILE",
+                "architecture-candidates endpoint requires profile architecture_inventory_candidate_v1.",
+                status_code=422,
+                details={"profile": payload.profile},
+            )
+        return await _service(request).propose_archflow_architecture_candidates(
+            payload,
+            auth_context=auth_context,
+        )
+
+    @app.get(
+        "/api/v1/stratos/extractions/{extraction_id}/architecture-candidates/export",
+        response_model=ArchflowArchitectureCandidateResponse,
+        tags=["stratos-extractions"],
+    )
+    async def export_archflow_architecture_candidates(
+        extraction_id: str,
+        request: Request,
+    ) -> ArchflowArchitectureCandidateResponse:
+        auth_context = _guard_request(request)
+        return await _service(request).architecture_candidate_export(
+            extraction_id,
+            auth_context=auth_context,
+        )
 
     @app.get(
         "/api/v1/stratos/extractions/{extraction_id}",

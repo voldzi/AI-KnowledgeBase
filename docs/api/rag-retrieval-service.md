@@ -141,6 +141,17 @@ review findings for architecture packages. The supported profile is
 handover and as-built evidence. The supported profile is
 `architecture_handover_v1`.
 
+`POST /api/v1/stratos/extractions/architecture-candidates/propose` creates
+versioned `architecture_inventory_candidate_v1` machine candidates. Each
+candidate has a stable `candidate_id`, candidate schema `1.0.0`, exact
+`document_id`, `document_version_id` and `policy_hash`, ingestion/model
+lineage, hashed evidence locator, relationships and owner questions. The
+result always requires owner confirmation; AKB does not write canonical
+ArchFlow records. The safe metadata export is available at
+`GET /api/v1/stratos/extractions/{extraction_id}/architecture-candidates/export`.
+It exports candidate fields and evidence coordinates, never the source file,
+full extracted text, chunks or embeddings.
+
 The endpoint is deliberately proposal-only:
 
 - it retrieves only authorized chunks through Registry API authorization,

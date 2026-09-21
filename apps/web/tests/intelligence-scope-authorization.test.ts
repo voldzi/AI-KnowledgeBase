@@ -20,7 +20,7 @@ const productionEnv = {
   AKL_WEB_OIDC_ISSUER: "https://login.local/realms/stratos",
   AKL_WEB_PUBLIC_BASE_URL: "https://akl.local",
   AKL_WEB_SESSION_SECRET: "test-session-secret",
-  AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.local/api/v1/auth/me",
+  AKL_WEB_STRATOS_AUTH_ME_URL: "https://stratos.local/api/v2/auth/me",
 };
 
 const actorContext = createMockContext({

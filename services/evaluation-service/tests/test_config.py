@@ -33,3 +33,14 @@ def test_invalid_pass_threshold_is_rejected() -> None:
 def test_invalid_minimum_run_token_ttl_is_rejected() -> None:
     with pytest.raises(ConfigError, match="AKL_EVAL_MIN_RUN_TOKEN_TTL_SECONDS"):
         load_settings({"AKL_EVAL_MIN_RUN_TOKEN_TTL_SECONDS": "3601"})
+
+
+def test_oidc_rejects_legacy_access_projection_endpoint() -> None:
+    with pytest.raises(ConfigError, match="/api/v2/auth/me"):
+        load_settings({
+            "AKL_AUTH_MODE": "oidc",
+            "AKL_OIDC_ISSUER": "https://login.test/realms/stratos",
+            "AKL_OIDC_AUDIENCE": "akl-api",
+            "AKL_OIDC_JWKS_URL": "https://login.test/jwks",
+            "AKL_STRATOS_AUTH_ME_URL": "https://stratos.test/api/v1/auth/me",
+        })

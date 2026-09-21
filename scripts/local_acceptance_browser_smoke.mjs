@@ -33,7 +33,7 @@ try {
   await page.locator('#kc-login').click();
   await page.waitForURL(url => url.origin === 'http://localhost:3240', { timeout: 30_000 });
   await page.getByRole('heading', { name: 'Přehled správy', exact: true }).waitFor();
-  const stratos = await page.request.get('http://localhost:3240/api/v1/auth/me');
+  const stratos = await page.request.get('http://localhost:3240/api/v2/auth/me');
   assert.equal(stratos.status(), 200, 'STRATOS browser session must be accepted');
   results.stratos = { authenticated: true, accessCenterVisible: true };
   await page.screenshot({ path: path.join(state, 'stratos-authenticated.png') });
@@ -42,7 +42,7 @@ try {
   // Bootstrap administration does not grant application/data capabilities.
   for (const [name, origin, endpoint] of [
     ['projectflow', 'http://localhost:3231', '/api/auth/session'],
-    ['archflow', 'http://localhost:3232', '/api/v1/auth/me'],
+    ['archflow', 'http://localhost:3232', '/api/v2/auth/me'],
   ]) {
     await page.goto(origin, { waitUntil: 'networkidle' });
     const sessionUrl = name === 'archflow' ? 'http://localhost:14001' + endpoint : origin + endpoint;
@@ -67,7 +67,7 @@ try {
     await page.screenshot({ path: path.join(state, name + '-authenticated.png') });
   }
   await page.goto('http://localhost:3240', { waitUntil: 'networkidle' });
-  assert.equal((await page.request.get('http://localhost:3240/api/v1/auth/me')).status(), 200);
+  assert.equal((await page.request.get('http://localhost:3240/api/v2/auth/me')).status(), 200);
   assert.equal(await page.locator('#password').count(), 0);
   results.returnToStratos = { authenticated: true, repeatedCredentialEntry: false };
   console.log(JSON.stringify(results, null, 2));

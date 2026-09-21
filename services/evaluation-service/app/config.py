@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from typing import Mapping
+from urllib.parse import urlparse
 
 
 class ConfigError(ValueError):
@@ -182,6 +183,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
             "AKL_AUTH_MODE=oidc requires AKL_OIDC_ISSUER, AKL_OIDC_AUDIENCE, "
             "AKL_OIDC_JWKS_URL, and AKL_STRATOS_AUTH_ME_URL"
         )
+    if auth_mode == "oidc" and urlparse(stratos_auth_me_url or "").path != "/api/v2/auth/me":
+        raise ConfigError("AKL_STRATOS_AUTH_ME_URL must use /api/v2/auth/me")
 
     if env_name == "production":
         if auth_mode not in {"bearer", "oidc"}:

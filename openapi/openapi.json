@@ -9492,6 +9492,9 @@
               }
             }
           },
+          "503": {
+            "description": "Search index unavailable (RETRIEVAL_INDEX_UNAVAILABLE); standard error envelope with trace_id."
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -9501,9 +9504,6 @@
                 }
               }
             }
-          },
-          "503": {
-            "description": "Search index unavailable (RETRIEVAL_INDEX_UNAVAILABLE); standard error envelope with trace_id."
           }
         }
       },
@@ -9838,6 +9838,9 @@
               }
             }
           },
+          "503": {
+            "description": "Search index unavailable (RETRIEVAL_INDEX_UNAVAILABLE); standard error envelope with trace_id."
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -9847,9 +9850,6 @@
                 }
               }
             }
-          },
-          "503": {
-            "description": "Search index unavailable (RETRIEVAL_INDEX_UNAVAILABLE); standard error envelope with trace_id."
           }
         }
       },
@@ -9893,6 +9893,9 @@
               }
             }
           },
+          "503": {
+            "description": "Search index unavailable (RETRIEVAL_INDEX_UNAVAILABLE); standard error envelope with trace_id."
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -9902,9 +9905,6 @@
                 }
               }
             }
-          },
-          "503": {
-            "description": "Search index unavailable (RETRIEVAL_INDEX_UNAVAILABLE); standard error envelope with trace_id."
           }
         }
       },
@@ -10295,6 +10295,111 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RagRetrievalServiceArchflowArchitectureExtractionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RagRetrievalServiceHTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8082",
+          "description": "Local direct RAG Retrieval Service"
+        },
+        {
+          "url": "http://localhost:8080/rag",
+          "description": "Local reverse proxy RAG Retrieval Service"
+        }
+      ]
+    },
+    "/api/v1/stratos/extractions/architecture-candidates/propose": {
+      "post": {
+        "tags": [
+          "RAG Retrieval Service",
+          "stratos-extractions"
+        ],
+        "summary": "Propose Archflow Architecture Candidates",
+        "operationId": "rag_retrieval_service_propose_archflow_architecture_candidates_api_v1_stratos_extractions_architecture_candidates_propose_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RagRetrievalServiceArchflowArchitectureExtractionProposeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RagRetrievalServiceArchflowArchitectureCandidateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RagRetrievalServiceHTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "servers": [
+        {
+          "url": "http://localhost:8082",
+          "description": "Local direct RAG Retrieval Service"
+        },
+        {
+          "url": "http://localhost:8080/rag",
+          "description": "Local reverse proxy RAG Retrieval Service"
+        }
+      ]
+    },
+    "/api/v1/stratos/extractions/{extraction_id}/architecture-candidates/export": {
+      "get": {
+        "tags": [
+          "RAG Retrieval Service",
+          "stratos-extractions"
+        ],
+        "summary": "Export Archflow Architecture Candidates",
+        "operationId": "rag_retrieval_service_export_archflow_architecture_candidates_api_v1_stratos_extractions__extraction_id__architecture_candidates_export_get",
+        "parameters": [
+          {
+            "name": "extraction_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Extraction Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RagRetrievalServiceArchflowArchitectureCandidateResponse"
                 }
               }
             }
@@ -31989,6 +32094,369 @@
         ],
         "title": "AnswerRequest"
       },
+      "RagRetrievalServiceArchflowArchitectureCandidate": {
+        "properties": {
+          "candidate_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Candidate Id"
+          },
+          "schema_version": {
+            "type": "string",
+            "const": "1.0.0",
+            "title": "Schema Version",
+            "default": "1.0.0"
+          },
+          "candidate_type": {
+            "type": "string",
+            "enum": [
+              "application",
+              "service",
+              "api",
+              "data_asset",
+              "database",
+              "platform",
+              "server",
+              "container",
+              "network",
+              "cloud_resource",
+              "security_control",
+              "identity_component",
+              "vendor",
+              "sla",
+              "rto",
+              "rpo",
+              "lifecycle",
+              "owner"
+            ],
+            "title": "Candidate Type"
+          },
+          "proposed_fields": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Proposed Fields"
+          },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "high",
+              "medium",
+              "low",
+              "insufficient_source",
+              "conflicting_sources"
+            ],
+            "title": "Confidence"
+          },
+          "document_id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Document Id"
+          },
+          "document_version_id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Document Version Id"
+          },
+          "policy_hash": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$",
+            "title": "Policy Hash"
+          },
+          "ingestion_job_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ingestion Job Id"
+          },
+          "model": {
+            "$ref": "#/components/schemas/RagRetrievalServiceArchflowArchitectureModelLineage"
+          },
+          "extracted_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Extracted At"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/RagRetrievalServiceArchflowArchitectureCandidateEvidence"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Evidence"
+          },
+          "relationships": {
+            "items": {
+              "$ref": "#/components/schemas/RagRetrievalServiceArchflowArchitectureCandidateRelationship"
+            },
+            "type": "array",
+            "maxItems": 30,
+            "title": "Relationships"
+          },
+          "owner_questions": {
+            "items": {
+              "$ref": "#/components/schemas/RagRetrievalServiceArchflowArchitectureOwnerQuestion"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Owner Questions"
+          },
+          "requires_owner_confirmation": {
+            "type": "boolean",
+            "const": true,
+            "title": "Requires Owner Confirmation",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "candidate_id",
+          "candidate_type",
+          "confidence",
+          "document_id",
+          "document_version_id",
+          "policy_hash",
+          "model",
+          "extracted_at",
+          "evidence"
+        ],
+        "title": "ArchflowArchitectureCandidate"
+      },
+      "RagRetrievalServiceArchflowArchitectureCandidateEvidence": {
+        "properties": {
+          "document_id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Document Id"
+          },
+          "document_version_id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Document Version Id"
+          },
+          "policy_hash": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$",
+            "title": "Policy Hash"
+          },
+          "chunk_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Chunk Id"
+          },
+          "page_number": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Number"
+          },
+          "block_hash": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$",
+            "title": "Block Hash"
+          },
+          "locator": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Locator"
+          },
+          "viewer_url": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Viewer Url"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "document_id",
+          "document_version_id",
+          "policy_hash",
+          "chunk_id",
+          "block_hash",
+          "viewer_url"
+        ],
+        "title": "ArchflowArchitectureCandidateEvidence"
+      },
+      "RagRetrievalServiceArchflowArchitectureCandidateRelationship": {
+        "properties": {
+          "relationship_type": {
+            "type": "string",
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Relationship Type"
+          },
+          "target_candidate_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Candidate Id"
+          },
+          "target_ref": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 240,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Ref"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "relationship_type"
+        ],
+        "title": "ArchflowArchitectureCandidateRelationship"
+      },
+      "RagRetrievalServiceArchflowArchitectureCandidateResponse": {
+        "properties": {
+          "extraction_id": {
+            "type": "string",
+            "title": "Extraction Id"
+          },
+          "tenant_id": {
+            "type": "string",
+            "title": "Tenant Id"
+          },
+          "external_system": {
+            "type": "string",
+            "const": "STRATOS_ARCHFLOW",
+            "title": "External System"
+          },
+          "external_ref": {
+            "type": "string",
+            "title": "External Ref"
+          },
+          "entity_type": {
+            "type": "string",
+            "title": "Entity Type"
+          },
+          "entity_id": {
+            "type": "string",
+            "title": "Entity Id"
+          },
+          "profile": {
+            "type": "string",
+            "const": "architecture_inventory_candidate_v1",
+            "title": "Profile"
+          },
+          "profile_version": {
+            "type": "string",
+            "const": "1",
+            "title": "Profile Version"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "RUNNING",
+              "PROPOSED",
+              "PARTIAL",
+              "FAILED",
+              "SUPERSEDED",
+              "ACCEPTED_IN_SOURCE_APP",
+              "REJECTED_IN_SOURCE_APP"
+            ],
+            "title": "Status"
+          },
+          "classification": {
+            "type": "string",
+            "enum": [
+              "public",
+              "internal",
+              "restricted",
+              "confidential"
+            ],
+            "title": "Classification"
+          },
+          "requested_by": {
+            "type": "string",
+            "title": "Requested By"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/RagRetrievalServiceArchflowArchitectureCandidate"
+            },
+            "type": "array",
+            "title": "Candidates"
+          },
+          "missing_information": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Information"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "source_chunk_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Chunk Ids"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "extraction_id",
+          "tenant_id",
+          "external_system",
+          "external_ref",
+          "entity_type",
+          "entity_id",
+          "profile",
+          "profile_version",
+          "status",
+          "classification",
+          "requested_by"
+        ],
+        "title": "ArchflowArchitectureCandidateResponse"
+      },
       "RagRetrievalServiceArchflowArchitectureExtractionProposeRequest": {
         "properties": {
           "tenant_id": {
@@ -32121,7 +32589,8 @@
             "type": "string",
             "enum": [
               "architecture_package_review_v1",
-              "architecture_handover_v1"
+              "architecture_handover_v1",
+              "architecture_inventory_candidate_v1"
             ],
             "title": "Profile"
           },
@@ -32366,6 +32835,71 @@
           "citation"
         ],
         "title": "ArchflowArchitectureFieldProposal"
+      },
+      "RagRetrievalServiceArchflowArchitectureModelLineage": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Provider"
+          },
+          "model_id": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Model Id"
+          },
+          "model_version": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Model Version"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "provider",
+          "model_id",
+          "model_version"
+        ],
+        "title": "ArchflowArchitectureModelLineage"
+      },
+      "RagRetrievalServiceArchflowArchitectureOwnerQuestion": {
+        "properties": {
+          "question_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Question Id"
+          },
+          "field": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Field"
+          },
+          "question": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Question"
+          },
+          "required": {
+            "type": "boolean",
+            "title": "Required",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "question_id",
+          "field",
+          "question"
+        ],
+        "title": "ArchflowArchitectureOwnerQuestion"
       },
       "RagRetrievalServiceArchflowCandidateRequirement": {
         "properties": {
@@ -33061,61 +33595,6 @@
       },
       "RagRetrievalServiceAssistantChatResponse": {
         "properties": {
-          "message_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "Exact persisted assistant message returned by the append operation; never inferred from the latest conversation message.",
-            "title": "Message Id"
-          },
-          "claims": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Claims",
-            "type": "array"
-          },
-          "evidence_status": {
-            "default": "not_checked",
-            "enum": [
-              "supported",
-              "partial",
-              "unsupported",
-              "not_checked"
-            ],
-            "title": "Evidence Status",
-            "type": "string"
-          },
-          "verification_model": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Verification Model"
-          },
-          "llm_usage": {
-            "anyOf": [
-              {
-                "type": "object",
-                "additionalProperties": true
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "response_type": {
             "type": "string",
             "enum": [
@@ -33130,6 +33609,48 @@
           "conversation_id": {
             "type": "string",
             "title": "Conversation Id"
+          },
+          "message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message Id",
+            "description": "Exact persisted assistant message returned by the append operation; never inferred from the latest conversation message."
+          },
+          "claims": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Claims"
+          },
+          "evidence_status": {
+            "type": "string",
+            "enum": [
+              "supported",
+              "partial",
+              "unsupported",
+              "not_checked"
+            ],
+            "title": "Evidence Status",
+            "default": "not_checked"
+          },
+          "verification_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verification Model"
           },
           "answer": {
             "anyOf": [
@@ -33250,6 +33771,18 @@
               }
             ],
             "title": "Recommended Action"
+          },
+          "llm_usage": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llm Usage"
           }
         },
         "type": "object",
@@ -35479,6 +36012,18 @@
             },
             "type": "array",
             "title": "Conflicts"
+          },
+          "llm_usage": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llm Usage"
           }
         },
         "type": "object",
@@ -35986,7 +36531,6 @@
       "RagRetrievalServiceSourceLocation": {
         "properties": {
           "page_number": {
-            "description": "Verified physical source page. Native worksheet and slide coordinates never imply a PDF rendition page.",
             "anyOf": [
               {
                 "type": "integer",
@@ -35996,10 +36540,10 @@
                 "type": "null"
               }
             ],
-            "title": "Page Number"
+            "title": "Page Number",
+            "description": "Verified physical source page. Native worksheet and slide coordinates never imply a PDF rendition page."
           },
           "slide_number": {
-            "description": "One-based slide in the immutable original presentation; independent of rendered PDF pagination.",
             "anyOf": [
               {
                 "type": "integer",
@@ -36009,10 +36553,10 @@
                 "type": "null"
               }
             ],
-            "title": "Slide Number"
+            "title": "Slide Number",
+            "description": "One-based slide in the immutable original presentation; independent of rendered PDF pagination."
           },
           "sheet_name": {
-            "description": "Exact original worksheet name.",
             "anyOf": [
               {
                 "type": "string"
@@ -36021,10 +36565,10 @@
                 "type": "null"
               }
             ],
-            "title": "Sheet Name"
+            "title": "Sheet Name",
+            "description": "Exact original worksheet name."
           },
           "row_number": {
-            "description": "First cited original row, including a repeated source header. section_path carries the complete possibly non-contiguous row ranges.",
             "anyOf": [
               {
                 "type": "integer",
@@ -36034,10 +36578,10 @@
                 "type": "null"
               }
             ],
-            "title": "Row Number"
+            "title": "Row Number",
+            "description": "First cited original row, including a repeated source header. section_path carries the complete possibly non-contiguous row ranges."
           },
           "column_name": {
-            "description": "First original worksheet column in the cited rectangular row rendering.",
             "anyOf": [
               {
                 "type": "string"
@@ -36046,15 +36590,16 @@
                 "type": "null"
               }
             ],
-            "title": "Column Name"
+            "title": "Column Name",
+            "description": "First original worksheet column in the cited rectangular row rendering."
           },
           "section_path": {
-            "description": "Source section labels; native Office citations include the exact sheet/slide, table and row ranges where applicable.",
             "items": {
               "type": "string"
             },
             "type": "array",
-            "title": "Section Path"
+            "title": "Section Path",
+            "description": "Source section labels; native Office citations include the exact sheet/slide, table and row ranges where applicable."
           },
           "section_title": {
             "anyOf": [
