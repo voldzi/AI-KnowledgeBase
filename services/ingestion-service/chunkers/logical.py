@@ -307,7 +307,26 @@ class LogicalStructureChunker:
         for row_index, line in enumerate(lines[header_count:], start=header_count):
             row = line.rstrip("\r\n")
             if len(header) + 1 + len(row) > self.settings.max_chunk_chars:
-                raise ParserError("TABLE_ROW_EXCEEDS_CHUNK_LIMIT", "A table row and its header exceed the safe extraction limit.")
+                flush(offset)
+                rows = []
+                selected_rows = []
+                row_number = source_rows[row_index] if source_rows is not None else None
+                pieces.extend(
+                    self._split_oversized_table_row(
+                        block,
+                        header=header,
+                        header_count=header_count,
+                        row=row,
+                        row_start=offset,
+                        row_end=offset + len(line),
+                        locator=locator,
+                        source_rows=source_rows,
+                        row_number=row_number,
+                    )
+                )
+                offset += len(line)
+                row_start = offset
+                continue
             if rows and len(header) + 1 + sum(len(value) + 1 for value in rows) + len(row) > self.settings.chunk_target_chars:
                 flush(offset)
                 rows = []
@@ -321,6 +340,61 @@ class LogicalStructureChunker:
         if not pieces:
             raise ParserError("TABLE_ROW_EXCEEDS_CHUNK_LIMIT", "A table header exceeds the safe extraction limit.")
         return pieces
+
+    def _split_oversized_table_row(
+        self,
+        block: ParsedBlock,
+        *,
+        header: str,
+        header_count: int,
+        row: str,
+        row_start: int,
+        row_end: int,
+        locator: object,
+        source_rows: list[int] | None,
+        row_number: int | None,
+    ) -> list[ParsedBlock]:
+        max_payload = self.settings.max_chunk_chars - len(header) - 1
+        if max_payload <= 0:
+            raise ParserError(
+                "TABLE_ROW_EXCEEDS_CHUNK_LIMIT",
+                "A table header exceeds the safe extraction limit.",
+            )
+        target_payload = self.settings.chunk_target_chars - len(header) - 1
+        payload_limit = min(max_payload, target_payload if target_payload > 0 else max_payload)
+        spans = _lossless_text_spans(row, payload_limit)
+        row_hash = f"sha256:{hashlib.sha256(row.encode('utf-8')).hexdigest()}"
+        fragments: list[ParsedBlock] = []
+        for fragment_index, (start, end) in enumerate(spans):
+            piece_metadata = {
+                **block.metadata,
+                "table_header_repeated": True,
+                "table_header_char_start": block.char_start,
+                "table_row_char_start": block.char_start + row_start,
+                "table_row_char_end": block.char_start + row_end,
+                "table_row_fragmented": True,
+                "table_row_fragment_revision": "lossless-row-1",
+                "table_row_fragment_index": fragment_index,
+                "table_row_fragment_count": len(spans),
+                "table_row_fragment_char_start": block.char_start + row_start + start,
+                "table_row_fragment_char_end": block.char_start + row_start + end,
+                "table_row_sha256": row_hash,
+            }
+            if source_rows is not None and isinstance(locator, dict):
+                piece_metadata["source_locator"] = {
+                    **locator,
+                    "row_numbers": [*source_rows[:header_count], row_number],
+                }
+            fragments.append(
+                replace(
+                    block,
+                    text=header + "\n" + row[start:end],
+                    char_start=block.char_start + row_start + start,
+                    char_end=block.char_start + row_start + end,
+                    metadata=piece_metadata,
+                )
+            )
+        return fragments
 
 
 def _source_section_path(block: ParsedBlock) -> list[str]:
@@ -349,6 +423,24 @@ def _source_section_path(block: ParsedBlock) -> list[str]:
     if labels:
         path.append(" · ".join(labels))
     return path
+
+
+def _lossless_text_spans(text: str, limit: int) -> list[tuple[int, int]]:
+    spans: list[tuple[int, int]] = []
+    start = 0
+    while start < len(text):
+        end = min(start + limit, len(text))
+        if end < len(text):
+            boundary = max(
+                text.rfind(" ", start, end),
+                text.rfind("\t", start, end),
+                text.rfind("|", start, end),
+            )
+            if boundary >= start + (limit // 2):
+                end = boundary + 1
+        spans.append((start, end))
+        start = end
+    return spans
 
 
 def _can_group_prose(left: ParsedBlock, right: ParsedBlock, source: SourceObject) -> bool:

@@ -58,8 +58,11 @@ odpovídají extrahovanému textu (`offset_basis=extracted_text`).
 - Výjimkou jsou tabulky s rozpoznanou hlavičkou: dělí se pouze mezi řádky,
   s opakováním hlavičky a bez duplicitního překryvu řádků. Rozsah pokračování
   odkazuje na jeho původní řádky, samostatná metadata na původní hlavičku.
-  Pokud se hlavička s jediným řádkem nevejde do maxima, zpracování skončí
-  `TABLE_ROW_EXCEEDS_CHUNK_LIMIT`; hodnoty se potichu nekrátí ani nepřesouvají.
+  Jednotlivý nadměrný řádek se rozdělí bezeztrátově na pokračování bez
+  překryvu; každý fragment opakuje hlavičku, nese stejné přesné číslo zdrojového
+  řádku, pořadí a počet fragmentů, znakový rozsah a hash celého řádku. Spojením
+  fragmentů v pořadí vznikne přesně původní řádek. Pokud se do maxima nevejde
+  samotná hlavička, zpracování nadále skončí `TABLE_ROW_EXCEEDS_CHUNK_LIMIT`.
 - `chunk_id` je deterministický hash z `document_version_id`, indexu chunku a `text_hash`.
 - `text_hash` je `sha256` normalizovaného textu.
 - Qdrant point id je UUID odvozené z `chunk_id`; kontraktové `chunk_id` zůstává v payloadu.

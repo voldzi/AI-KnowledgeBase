@@ -156,14 +156,21 @@ def test_presentation_processing_limits_reject_the_entire_result(limit):
 
 
 @pytest.mark.parametrize("kind", ["xlsx", "pptx"])
-def test_oversized_table_row_is_rejected_instead_of_split_between_columns(kind):
+def test_oversized_table_row_is_split_losslessly_with_source_row(kind):
     original = workbook_source() if kind == "xlsx" else presentation_source(long=True)
     parsed = (XlsxParser() if kind == "xlsx" else PptxParser()).parse(original, parser_profile="default")
     block = next(block for block in parsed.blocks if block.block_type == "table")
-    oversized = replace(block, text=block.text.splitlines()[0] + "\n" + "x" * 1000,
+    header = block.text.splitlines()[0]
+    row = "x" * 1000
+    oversized = replace(block, text=header + "\n" + row,
                         metadata={**block.metadata, "source_locator": {**block.metadata["source_locator"], "row_numbers": [1, 2]}})
-    with pytest.raises(ParserError, match="row and its header"):
-        chunks(replace(parsed, blocks=[oversized]), original, small=True)
+    result = chunks(replace(parsed, blocks=[oversized]), original, small=True)
+    assert len(result) > 1
+    assert "".join(item.text.removeprefix(header + "\n") for item in result) == row
+    assert all(len(item.text) <= 320 for item in result)
+    assert all(item.metadata["source_locator"]["row_numbers"] == [1, 2] for item in result)
+    assert [item.metadata["first_block_metadata"]["table_row_fragment_index"] for item in result] == list(range(len(result)))
+    assert all(item.metadata["first_block_metadata"]["table_row_fragment_count"] == len(result) for item in result)
 
 
 @pytest.mark.parametrize("kind", ["xlsx", "pptx"])

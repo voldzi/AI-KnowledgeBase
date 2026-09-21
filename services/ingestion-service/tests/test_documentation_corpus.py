@@ -70,13 +70,20 @@ def test_long_markdown_table_keeps_headers_and_each_complete_row() -> None:
     assert rows == text.splitlines()[4:]
 
 
-def test_table_row_is_not_silently_truncated_to_fit_a_chunk() -> None:
+def test_oversized_table_row_is_split_losslessly_with_exact_lineage() -> None:
     text = "| Name | Description |\n| --- | --- |\n| A | " + "x" * 400 + " |\n"
     parsed = TextParser().parse(_source("wide.md", "text/markdown", text.encode()), parser_profile="default")
     chunker = LogicalStructureChunker(replace(_settings(), chunk_target_chars=200, max_chunk_chars=300))
-    with pytest.raises(ParserError) as failure:
-        chunker._split_large_block(parsed.blocks[0])
-    assert failure.value.code == "TABLE_ROW_EXCEEDS_CHUNK_LIMIT"
+    pieces = chunker._split_large_block(parsed.blocks[0])
+    assert len(pieces) > 1
+    header = "| Name | Description |\n| --- | --- |"
+    row = "| A | " + "x" * 400 + " |"
+    assert "".join(piece.text.removeprefix(header + "\n") for piece in pieces) == row
+    assert all(len(piece.text) <= 300 for piece in pieces)
+    assert [piece.metadata["table_row_fragment_index"] for piece in pieces] == list(range(len(pieces)))
+    assert all(piece.metadata["table_row_fragment_count"] == len(pieces) for piece in pieces)
+    assert len({piece.metadata["table_row_sha256"] for piece in pieces}) == 1
+    assert [piece.char_start for piece in pieces[1:]] == [piece.char_end for piece in pieces[:-1]]
 
 
 def test_empty_non_paginated_document_is_not_rated_as_good() -> None:
