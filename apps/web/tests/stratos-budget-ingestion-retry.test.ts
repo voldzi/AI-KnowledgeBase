@@ -6,21 +6,20 @@ import { isCompletedIdempotentRetry } from "../src/lib/stratos/budget-ingestion-
 const coordinate = {
   documentId: "doc_budget_123",
   documentVersionId: "ver_budget_123",
-  ingestionJobId: "ing_budget_retry_123",
 };
 
 function completedRetry() {
   return {
     ...coordinate,
-    currentJobId: coordinate.ingestionJobId,
+    currentJobId: "ing_budget_retry_123",
     currentAttempt: {
-      ingestion_job_id: coordinate.ingestionJobId,
+      ingestion_job_id: "ing_budget_retry_123",
       document_id: coordinate.documentId,
       document_version_id: coordinate.documentVersionId,
       ingestion_status: "INDEXED",
     },
     currentJob: {
-      job_id: coordinate.ingestionJobId,
+      job_id: "ing_budget_retry_123",
       document_id: coordinate.documentId,
       document_version_id: coordinate.documentVersionId,
       status: "completed",
@@ -31,6 +30,14 @@ function completedRetry() {
 describe("STRATOS Budget ingestion retry idempotence", () => {
   it("reuses the exact indexed retry coordinate", () => {
     assert.equal(isCompletedIdempotentRetry(completedRetry()), true);
+  });
+
+  it("reuses an exact completed current retry created under an earlier operation id", () => {
+    const value = completedRetry();
+    value.currentJobId = "ing_earlier_operation";
+    value.currentAttempt.ingestion_job_id = "ing_earlier_operation";
+    value.currentJob.job_id = "ing_earlier_operation";
+    assert.equal(isCompletedIdempotentRetry(value), true);
   });
 
   for (const mutation of [

@@ -150,7 +150,6 @@ export async function POST(request: Request, context: RouteContext) {
     if (isCompletedIdempotentRetry({
       documentId,
       documentVersionId: currentVersionId,
-      ingestionJobId,
       currentJobId,
       currentAttempt,
       currentJob,
@@ -159,7 +158,7 @@ export async function POST(request: Request, context: RouteContext) {
         {
           document_id: documentId,
           document_version_id: currentVersionId,
-          ingestion_job_id: ingestionJobId,
+          ingestion_job_id: currentJobId,
           ingestion_status: "INDEXED",
         },
         { status: 200 },

@@ -115,10 +115,12 @@ ingestion attempt je ve stavu `FAILED`. Retry čte profil z Registry projekce,
 nevyžaduje obecné uživatelské `document.read` a po úspěšném indexování už nové
 potvrzení nevydá.
 
-Pokud obnovovaný orchestrátor zopakuje stejný retry až poté, co jeho přesný
-deterministický job dosáhl `INDEXED`, BFF vrátí existující dokument, verzi a job
-s HTTP `200`. Před návratem znovu ověří všechny tři souřadnice a stav Registry;
-nevydá další autorizaci a nevytvoří druhý job.
+Pokud obnovovaný orchestrátor zopakuje retry až poté, co aktuální přesná verze
+a její aktuální job dosáhly `INDEXED`/`completed`, BFF vrátí existující
+dokument, verzi a job s HTTP `200`. Platí to i po obnovení dávky s jiným
+operation id. Před návratem znovu ověří všechny tři souřadnice, aktuální
+ukazatel i stav Registry a ingestion služby; nevydá další autorizaci a
+nevytvoří druhý job.
 
 Stejný schválený serverový `historical_batch` může po přerušení dokončit
 novější immutable STRATOS release. Exact replay vyžaduje shodný
