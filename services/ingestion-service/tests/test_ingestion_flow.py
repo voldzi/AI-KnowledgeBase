@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 import subprocess
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
+from chunkers.logical import ChunkingResult
+from parsers.docling import result_with_metadata
 from tests.conftest import actor_proof_headers, make_client, web_transport_headers
 
 
@@ -156,6 +160,88 @@ def test_document_parsing_runs_outside_the_web_event_loop(
     assert response.status_code == 201
     assert response.json()["status"] == "completed"
     assert calls == ["ParserRouter.parse"]
+
+
+def test_empty_chunk_result_retries_with_governed_parser_fallback(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source = tmp_path / "fallback.md"
+    source.write_text(
+        "# Fallback\nA governed fallback must preserve this citable content.",
+        encoding="utf-8",
+    )
+
+    with make_client(tmp_path) as client:
+        pipeline = client.app.state.pipeline
+        original_parse = pipeline.parser_router.parse
+        original_chunk = pipeline.chunker.chunk
+        parsed = original_parse(
+            asyncio.run(pipeline.object_storage.read(str(source))),
+            parser_profile="controlled_document",
+            ocr_enabled=False,
+        )
+        recovered = result_with_metadata(
+            replace(parsed),
+            metadata={"empty_chunk_recovery": {"status": "recovered"}},
+            warning=(
+                "EMPTY_CHUNK_NATIVE_FALLBACK",
+                "The governed parser fallback was used.",
+            ),
+        )
+        chunk_calls = 0
+        recovery_calls = 0
+
+        def flaky_chunk(*args, **kwargs):  # type: ignore[no-untyped-def]
+            nonlocal chunk_calls
+            chunk_calls += 1
+            if chunk_calls == 1:
+                return ChunkingResult(chunks=[], warnings=[])
+            return original_chunk(*args, **kwargs)
+
+        def recover(*args, **kwargs):  # type: ignore[no-untyped-def]
+            nonlocal recovery_calls
+            recovery_calls += 1
+            return recovered
+
+        monkeypatch.setattr(pipeline.chunker, "chunk", flaky_chunk)
+        monkeypatch.setattr(
+            pipeline.parser_router,
+            "recover_after_empty_chunks",
+            recover,
+        )
+
+        response = client.post(
+            "/api/v1/ingestion/jobs",
+            headers=web_transport_headers(
+                actor_subject_id="user_dev",
+                authorization_proof=True,
+            ),
+            json={
+                "idempotency_key": "test:empty-chunk-fallback",
+                "document_id": "doc_empty_chunk_fallback",
+                "document_version_id": "ver_empty_chunk_fallback",
+                "source_file_uri": str(source),
+                "parser_profile": "controlled_document",
+                "ocr_enabled": False,
+                "chunking_strategy": "legal_structured",
+                "embedding_profile": "default",
+                "expected_current_ingestion_job_id": None,
+            },
+        )
+        report = client.get(
+            f"/api/v1/ingestion/jobs/{response.json()['job_id']}/report",
+            headers=actor_proof_headers(),
+        )
+
+    assert response.status_code == 201
+    assert response.json()["status"] == "completed_with_warnings"
+    assert chunk_calls == 2
+    assert recovery_calls == 1
+    assert report.json()["chunks_created"] >= 1
+    assert "EMPTY_CHUNK_NATIVE_FALLBACK" in {
+        warning["code"] for warning in report.json()["warnings"]
+    }
 
 
 def test_ingestion_fails_closed_without_clean_document_intake_attestation(

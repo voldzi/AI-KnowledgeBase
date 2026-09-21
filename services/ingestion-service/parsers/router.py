@@ -125,6 +125,65 @@ class ParserRouter:
     def readiness(self) -> str:
         return self.docling_parser.readiness()
 
+    def recover_after_empty_chunks(
+        self,
+        source: SourceObject,
+        *,
+        parser_profile: str,
+        ocr_enabled: bool,
+        previous_result: ParserResult,
+    ) -> ParserResult:
+        """Retry with the governed native path when an extraction cannot be chunked.
+
+        A preferred parser can occasionally return a structurally valid result
+        that produces no usable chunks.  The native path includes the existing
+        PDF OCR policy and processing limits, so this recovery does not bypass
+        intake, format, size, or OCR controls.
+        """
+        try:
+            fallback = self._parse_native(
+                source,
+                parser_profile=parser_profile,
+                ocr_enabled=ocr_enabled,
+            )
+        except ParserError as exc:
+            return result_with_metadata(
+                previous_result,
+                metadata={
+                    "empty_chunk_recovery": {
+                        "status": "failed",
+                        "error_code": exc.code,
+                    }
+                },
+            )
+
+        if not fallback.blocks:
+            return result_with_metadata(
+                previous_result,
+                metadata={
+                    "empty_chunk_recovery": {
+                        "status": "no_usable_blocks",
+                        "fallback_parser": fallback.parser_name,
+                    }
+                },
+            )
+
+        return result_with_metadata(
+            fallback,
+            metadata={
+                "empty_chunk_recovery": {
+                    "status": "recovered",
+                    "preferred_parser": previous_result.parser_name,
+                    "fallback_parser": fallback.parser_name,
+                }
+            },
+            warning=(
+                "EMPTY_CHUNK_NATIVE_FALLBACK",
+                "The preferred extraction produced no usable chunks; "
+                "the governed native/OCR fallback was used.",
+            ),
+        )
+
     def _parse_native(
         self,
         source: SourceObject,

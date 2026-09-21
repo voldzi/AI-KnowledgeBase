@@ -179,6 +179,45 @@ class IngestionPipeline:
             )
             warnings.extend(_messages(chunking_result.warnings))
             chunks = chunking_result.chunks
+
+            if not chunks:
+                recovered_result = await asyncio.to_thread(
+                    self.parser_router.recover_after_empty_chunks,
+                    source,
+                    parser_profile=request.parser_profile,
+                    ocr_enabled=request.ocr_enabled,
+                    previous_result=parser_result,
+                )
+                if recovered_result is not parser_result and recovered_result.blocks:
+                    parser_result = recovered_result
+                    pages_processed = parser_result.pages_processed
+                    tables_detected = parser_result.tables_detected
+                    ocr_used = parser_result.ocr_used
+                    warnings.extend(_messages(parser_result.warnings))
+                    quality = _quality_report(
+                        parser_result,
+                        extraction_profile=extraction_profile,
+                    )
+                    parser_result.metadata.update(
+                        {
+                            "quality_score": quality.quality_score,
+                            "quality_tier": quality.quality_tier,
+                            "requires_review": quality.requires_review,
+                        }
+                    )
+                    warnings.extend(
+                        _quality_warnings(quality, source_mime_type=source.mime_type)
+                    )
+                    chunking_result = self.chunker.chunk(
+                        parser_result,
+                        document_metadata=document_metadata,
+                        extraction_profile=extraction_profile,
+                        parser_profile=request.parser_profile,
+                        chunking_strategy=request.chunking_strategy,
+                        source=source,
+                    )
+                    warnings.extend(_messages(chunking_result.warnings))
+                    chunks = chunking_result.chunks
             chunks_created = len(chunks)
 
             if not chunks:
