@@ -115,6 +115,11 @@ ingestion attempt je ve stavu `FAILED`. Retry čte profil z Registry projekce,
 nevyžaduje obecné uživatelské `document.read` a po úspěšném indexování už nové
 potvrzení nevydá.
 
+Pokud obnovovaný orchestrátor zopakuje stejný retry až poté, co jeho přesný
+deterministický job dosáhl `INDEXED`, BFF vrátí existující dokument, verzi a job
+s HTTP `200`. Před návratem znovu ověří všechny tři souřadnice a stav Registry;
+nevydá další autorizaci a nevytvoří druhý job.
+
 Stejný schválený serverový `historical_batch` může po přerušení dokončit
 novější immutable STRATOS release. Exact replay vyžaduje shodný
 `batch_manifest_id`, `batch_entries_sha256`, soubor, politiku i ostatní lineage;
@@ -702,6 +707,27 @@ je `architecture_handover_v1` a `artifact_type` typicky
 `AS_BUILT_ARCHITECTURE` nebo `HANDOVER_PACKAGE`. Endpoint vrací citované návrhy
 pro as-built stav, předávací položky, provozní runbooky, vlastníky,
 akceptační evidenci a otevřená rizika.
+
+#### Verzované kandidáty architektonického inventáře
+
+```http
+POST /api/v1/stratos/extractions/architecture-candidates/propose
+GET /api/v1/stratos/extractions/{extraction_id}/architecture-candidates/export
+```
+
+Profil `architecture_inventory_candidate_v1`, verze `1`, vrací kandidáty se
+schématem `1.0.0` pro aplikace, služby, API, data, databáze, platformy,
+servery, kontejnery, sítě, cloud, bezpečnost, identity, dodavatele, SLA,
+RTO/RPO, životní cyklus a vlastníky. `candidate_id` je stabilní pro stejnou
+neměnnou verzi a stejný důkaz. Každý kandidát obsahuje přesné
+`document_id`, `document_version_id`, `policy_hash`, identitu ingestního jobu,
+verzi extraktoru, čas extrakce, hash důkazního bloku, locator, vazby a otázky
+pro vlastníka. Chybějící přesný `policy_hash` kandidáta zablokuje.
+
+Export je pouze návrh pro workflow „důkaz AKB → strojový kandidát → potvrzení
+vlastníkem → kanonický ArchFlow“. Neobsahuje zdrojový soubor, plný extrahovaný
+text, chunky ani embeddingy a sám nevytváří ani nemění kanonické záznamy
+ArchFlow.
 
 Všechny ArchFlow extraction workflow používají společné:
 

@@ -28,6 +28,7 @@ import {
   stratosBudgetLineageFromVersion,
   updateStratosBudgetExternalDocumentCurrent,
 } from "@/lib/stratos/document-ai";
+import { isCompletedIdempotentRetry } from "@/lib/stratos/budget-ingestion-retry";
 import { ApiClientError, type ApiRequestContext } from "@/lib/types";
 
 import { stratosBridgeError } from "../../../../errors";
@@ -145,6 +146,25 @@ export async function POST(request: Request, context: RouteContext) {
     }
 
     const idempotencyKey = `retry:${documentId}:${currentVersionId}:${operationId}`;
+    const ingestionJobId = ingestionJobIdForIdempotencyKey(idempotencyKey);
+    if (isCompletedIdempotentRetry({
+      documentId,
+      documentVersionId: currentVersionId,
+      ingestionJobId,
+      currentJobId,
+      currentAttempt,
+      currentJob,
+    })) {
+      return NextResponse.json(
+        {
+          document_id: documentId,
+          document_version_id: currentVersionId,
+          ingestion_job_id: ingestionJobId,
+          ingestion_status: "INDEXED",
+        },
+        { status: 200 },
+      );
+    }
     const authorizationRequest = {
       action: "document.ingest" as const,
       correlation_id: correlationId,
@@ -178,7 +198,6 @@ export async function POST(request: Request, context: RouteContext) {
       );
     }
 
-    const ingestionJobId = ingestionJobIdForIdempotencyKey(idempotencyKey);
     const attachStatus = status.ingestion_attempt?.ingestion_job_id === ingestionJobId
       ? status.ingestion_attempt.ingestion_status === "INDEXED"
         ? "INDEXED"

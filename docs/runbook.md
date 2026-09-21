@@ -157,6 +157,9 @@ Interaktivní retry vyžaduje čerstvý actor bearer. Retry verze vytvořené
 serverovým `historical_batch` naopak zůstává service-only a je povolen jen po
 opětovném ověření uloženého režimu, immutable lineage a vyhrazené Registry
 autorizace.
+Při obnově dávky může STRATOS bezpečně zopakovat identický retry: pokud je jeho
+deterministický job již `INDEXED`, BFF vrátí existující souřadnice s HTTP `200`
+bez nové autorizace nebo dalšího ingestion jobu.
 
 ### `REGISTRY_SERVICE_AUTH_UNAVAILABLE` Or Ingestion Registry `not_ready`
 
