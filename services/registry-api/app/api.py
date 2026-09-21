@@ -2962,10 +2962,21 @@ def _budget_root_source_version(
 def _lock_budget_upload_identity(db: Session, key: str) -> None:
     bind = db.get_bind()
     if bind.dialect.name == "postgresql":
-        db.execute(
-            text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+        # A transport timeout can cause the caller to retry while the original
+        # transaction is still running. Never let those retries accumulate on
+        # a blocking advisory lock: enough waiters would consume the SQLAlchemy
+        # pool and make unrelated operations, including login sessions and
+        # health checks, unavailable.
+        acquired = db.execute(
+            text("SELECT pg_try_advisory_xact_lock(hashtextextended(:key, 0))"),
             {"key": f"akb-stratos-budget-upload:{key}"},
-        )
+        ).scalar_one()
+        if not acquired:
+            raise problem(
+                status.HTTP_409_CONFLICT,
+                "stratos_budget_upload_in_progress",
+                "The same governed Budget document is already being processed",
+            )
 
 
 def _register_budget_akb_authoritatively(

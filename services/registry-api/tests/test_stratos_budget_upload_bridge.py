@@ -21,6 +21,28 @@ from app.models import (
 from app.permissions import SubjectContext, evaluate_document_access
 
 
+class _BudgetLockResult:
+    def __init__(self, acquired: bool):
+        self.acquired = acquired
+
+    def scalar_one(self) -> bool:
+        return self.acquired
+
+
+class _BudgetLockSession:
+    def __init__(self, dialect: str, acquired: bool = True):
+        self.bind = SimpleNamespace(dialect=SimpleNamespace(name=dialect))
+        self.acquired = acquired
+        self.calls: list[tuple[object, dict[str, str]]] = []
+
+    def get_bind(self):
+        return self.bind
+
+    def execute(self, statement, parameters):
+        self.calls.append((statement, parameters))
+        return _BudgetLockResult(self.acquired)
+
+
 ACTOR = "actor-budget-owner-123"
 SECOND_ACTOR = "actor-budget-manager-456"
 CONTRACT_ID = "contract-budget-123"
@@ -29,6 +51,30 @@ PARENT_RESOURCE = "gres-budget-contract-123"
 EXTERNAL_REF = f"contract:{CONTRACT_ID}:document:signed"
 FILE_HASH = f"sha256:{'a' * 64}"
 FILE_HASH_2 = f"sha256:{'b' * 64}"
+
+
+def test_budget_identity_lock_is_non_blocking_and_retryable() -> None:
+    from fastapi import HTTPException
+    from app.api import _lock_budget_upload_identity
+
+    session = _BudgetLockSession("postgresql", acquired=False)
+    with pytest.raises(HTTPException) as exc_info:
+        _lock_budget_upload_identity(session, "document:org_stratos:STRATOS_BUDGET:contract-1")  # type: ignore[arg-type]
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail["error"]["code"] == "stratos_budget_upload_in_progress"
+    assert len(session.calls) == 1
+    statement, parameters = session.calls[0]
+    assert "pg_try_advisory_xact_lock" in str(statement)
+    assert parameters["key"].startswith("akb-stratos-budget-upload:")
+
+
+def test_budget_identity_lock_does_not_query_non_postgres() -> None:
+    from app.api import _lock_budget_upload_identity
+
+    session = _BudgetLockSession("sqlite")
+    _lock_budget_upload_identity(session, "document:local")  # type: ignore[arg-type]
+    assert session.calls == []
 
 def _create_attested_budget_version(client, monkeypatch):
     from app import api
