@@ -105,6 +105,27 @@ def test_oversized_table_header_is_split_losslessly_and_rows_keep_lineage() -> N
     assert len({piece.metadata["table_header_sha256"] for piece in pieces}) == 1
 
 
+def test_maximal_table_header_is_fragmented_before_adding_a_row() -> None:
+    header = "H" * 300
+    row = "value"
+    block = ParsedBlock(
+        text=header + "\n" + row,
+        page_number=None,
+        section_path=[],
+        section_title=None,
+        article_number=None,
+        paragraph_number=None,
+        char_start=0,
+        char_end=len(header) + 1 + len(row),
+        block_type="table",
+        metadata={"table_header": header, "table_header_line_count": 1},
+    )
+    pieces = LogicalStructureChunker(replace(_settings(), chunk_target_chars=200, max_chunk_chars=300))._split_large_block(block)
+    assert "".join(piece.text for piece in pieces if "table_header_fragment_index" in piece.metadata) == header
+    assert "".join(piece.text for piece in pieces if "table_header_fragment_index" not in piece.metadata) == row
+    assert all(len(piece.text) <= 300 for piece in pieces)
+
+
 def test_empty_non_paginated_document_is_not_rated_as_good() -> None:
     parsed = TextParser().parse(_source("empty.md", "text/markdown", b"---\nstatus: valid\n---\n"), parser_profile="default")
     quality = _quality_report(parsed, extraction_profile="document_text_v1")

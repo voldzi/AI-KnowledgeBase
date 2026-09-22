@@ -296,7 +296,9 @@ class LogicalStructureChunker:
         # limit, though.  Preserve it as separately citable, lossless chunks
         # and link the row chunks to those fragments instead of failing the
         # complete document.
-        header_is_fragmented = len(header) > self.settings.max_chunk_chars
+        # An exactly-maximal header also cannot share a chunk with the required
+        # row separator, so it needs the same lossless representation.
+        header_is_fragmented = len(header) >= self.settings.max_chunk_chars
         header_hash = f"sha256:{hashlib.sha256(header.encode('utf-8')).hexdigest()}"
         if header_is_fragmented:
             pieces.extend(
