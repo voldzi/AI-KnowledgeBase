@@ -86,6 +86,25 @@ def test_oversized_table_row_is_split_losslessly_with_exact_lineage() -> None:
     assert [piece.char_start for piece in pieces[1:]] == [piece.char_end for piece in pieces[:-1]]
 
 
+def test_oversized_table_header_is_split_losslessly_and_rows_keep_lineage() -> None:
+    header = "| " + "Header " * 80 + "|\n| " + "--- |" * 40
+    row = "| value |\n"
+    text = header + "\n" + row
+    parsed = TextParser().parse(_source("wide-header.md", "text/markdown", text.encode()), parser_profile="default")
+    chunker = LogicalStructureChunker(replace(_settings(), chunk_target_chars=200, max_chunk_chars=300))
+    pieces = chunker._split_large_block(parsed.blocks[0])
+
+    header_pieces = [piece for piece in pieces if "table_header_fragment_index" in piece.metadata]
+    row_pieces = [piece for piece in pieces if "table_header_fragment_index" not in piece.metadata]
+    assert "".join(piece.text for piece in header_pieces) == header
+    assert "".join(piece.text for piece in row_pieces) == row.rstrip("\n")
+    assert all(len(piece.text) <= 300 for piece in pieces)
+    assert all(piece.metadata["table_header_fragmented"] is True for piece in pieces)
+    assert [piece.metadata["table_header_fragment_index"] for piece in header_pieces] == list(range(len(header_pieces)))
+    assert all(piece.metadata["table_header_fragment_count"] == len(header_pieces) for piece in header_pieces)
+    assert len({piece.metadata["table_header_sha256"] for piece in pieces}) == 1
+
+
 def test_empty_non_paginated_document_is_not_rated_as_good() -> None:
     parsed = TextParser().parse(_source("empty.md", "text/markdown", b"---\nstatus: valid\n---\n"), parser_profile="default")
     quality = _quality_report(parsed, extraction_profile="document_text_v1")

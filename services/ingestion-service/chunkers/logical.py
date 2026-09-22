@@ -291,14 +291,45 @@ class LogicalStructureChunker:
             raise ParserError("TABLE_SOURCE_MAPPING_INVALID", "Table rows do not match the exact source locator.")
         selected_rows: list[int] = []
 
+        # Repeating a table header beside every data row makes ordinary tables
+        # readable in isolation.  A header may itself exceed the hard chunk
+        # limit, though.  Preserve it as separately citable, lossless chunks
+        # and link the row chunks to those fragments instead of failing the
+        # complete document.
+        header_is_fragmented = len(header) > self.settings.max_chunk_chars
+        header_hash = f"sha256:{hashlib.sha256(header.encode('utf-8')).hexdigest()}"
+        if header_is_fragmented:
+            pieces.extend(
+                self._split_oversized_table_header(
+                    block,
+                    header=header,
+                    header_count=header_count,
+                    locator=locator,
+                    source_rows=source_rows,
+                    header_hash=header_hash,
+                )
+            )
+            block = replace(
+                block,
+                metadata={
+                    **block.metadata,
+                    "table_header_fragmented": True,
+                    "table_header_fragment_revision": "lossless-header-1",
+                    "table_header_sha256": header_hash,
+                },
+            )
+            header = ""
+
         def flush(end: int) -> None:
             if rows:
-                piece_metadata = {**block.metadata, "table_header_repeated": True,
+                piece_metadata = {**block.metadata, "table_header_repeated": bool(header),
                                   "table_header_char_start": block.char_start, "table_row_char_end": block.char_start + end}
                 if source_rows is not None:
-                    piece_metadata["source_locator"] = {**locator, "row_numbers": [*source_rows[:header_count], *selected_rows]}
+                    header_rows = source_rows[:header_count] if header else []
+                    piece_metadata["source_locator"] = {**locator, "row_numbers": [*header_rows, *selected_rows]}
+                text = f"{header}\n" if header else ""
                 pieces.append(replace(
-                    block, text=header + "\n" + "\n".join(rows),
+                    block, text=text + "\n".join(rows),
                     char_start=block.char_start + row_start,
                     char_end=block.char_start + end,
                     metadata=piece_metadata,
@@ -341,6 +372,45 @@ class LogicalStructureChunker:
             raise ParserError("TABLE_ROW_EXCEEDS_CHUNK_LIMIT", "A table header exceeds the safe extraction limit.")
         return pieces
 
+    def _split_oversized_table_header(
+        self,
+        block: ParsedBlock,
+        *,
+        header: str,
+        header_count: int,
+        locator: object,
+        source_rows: list[int] | None,
+        header_hash: str,
+    ) -> list[ParsedBlock]:
+        target = min(self.settings.chunk_target_chars, self.settings.max_chunk_chars)
+        payload_limit = target if target > 0 else self.settings.max_chunk_chars
+        spans = _lossless_text_spans(header, payload_limit)
+        fragments: list[ParsedBlock] = []
+        for fragment_index, (start, end) in enumerate(spans):
+            piece_metadata = {
+                **block.metadata,
+                "table_header_repeated": False,
+                "table_header_fragmented": True,
+                "table_header_fragment_revision": "lossless-header-1",
+                "table_header_fragment_index": fragment_index,
+                "table_header_fragment_count": len(spans),
+                "table_header_fragment_char_start": block.char_start + start,
+                "table_header_fragment_char_end": block.char_start + end,
+                "table_header_sha256": header_hash,
+            }
+            if source_rows is not None and isinstance(locator, dict):
+                piece_metadata["source_locator"] = {**locator, "row_numbers": source_rows[:header_count]}
+            fragments.append(
+                replace(
+                    block,
+                    text=header[start:end],
+                    char_start=block.char_start + start,
+                    char_end=block.char_start + end,
+                    metadata=piece_metadata,
+                )
+            )
+        return fragments
+
     def _split_oversized_table_row(
         self,
         block: ParsedBlock,
@@ -354,13 +424,14 @@ class LogicalStructureChunker:
         source_rows: list[int] | None,
         row_number: int | None,
     ) -> list[ParsedBlock]:
-        max_payload = self.settings.max_chunk_chars - len(header) - 1
+        separator_length = 1 if header else 0
+        max_payload = self.settings.max_chunk_chars - len(header) - separator_length
         if max_payload <= 0:
             raise ParserError(
                 "TABLE_ROW_EXCEEDS_CHUNK_LIMIT",
                 "A table header exceeds the safe extraction limit.",
             )
-        target_payload = self.settings.chunk_target_chars - len(header) - 1
+        target_payload = self.settings.chunk_target_chars - len(header) - separator_length
         payload_limit = min(max_payload, target_payload if target_payload > 0 else max_payload)
         spans = _lossless_text_spans(row, payload_limit)
         row_hash = f"sha256:{hashlib.sha256(row.encode('utf-8')).hexdigest()}"
@@ -368,7 +439,7 @@ class LogicalStructureChunker:
         for fragment_index, (start, end) in enumerate(spans):
             piece_metadata = {
                 **block.metadata,
-                "table_header_repeated": True,
+                "table_header_repeated": bool(header),
                 "table_header_char_start": block.char_start,
                 "table_row_char_start": block.char_start + row_start,
                 "table_row_char_end": block.char_start + row_end,
@@ -381,14 +452,16 @@ class LogicalStructureChunker:
                 "table_row_sha256": row_hash,
             }
             if source_rows is not None and isinstance(locator, dict):
+                header_rows = source_rows[:header_count] if header else []
                 piece_metadata["source_locator"] = {
                     **locator,
-                    "row_numbers": [*source_rows[:header_count], row_number],
+                    "row_numbers": [*header_rows, row_number],
                 }
+            text = f"{header}\n" if header else ""
             fragments.append(
                 replace(
                     block,
-                    text=header + "\n" + row[start:end],
+                    text=text + row[start:end],
                     char_start=block.char_start + row_start + start,
                     char_end=block.char_start + row_start + end,
                     metadata=piece_metadata,
