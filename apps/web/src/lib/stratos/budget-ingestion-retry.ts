@@ -45,5 +45,12 @@ export function idempotencyKeyForBudgetRetry(input: {
     && input.currentAttempt.document_version_id === input.documentVersionId
     && input.currentAttempt.ingestion_status === "FAILED";
 
-  return failedCurrentAttempt ? `${base}:after:${input.currentJobId}` : base;
+  if (!failedCurrentAttempt || input.currentJobId === null) return base;
+
+  const predecessorDigest = createHash("sha256")
+    .update(input.currentJobId)
+    .digest("hex")
+    .slice(0, 16);
+  return `${base}:after:${predecessorDigest}`;
 }
+import { createHash } from "node:crypto";

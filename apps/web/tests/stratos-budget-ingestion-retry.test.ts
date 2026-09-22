@@ -43,8 +43,24 @@ describe("STRATOS Budget ingestion retry idempotence", () => {
         currentJobId: failed.currentJobId,
         currentAttempt: failed.currentAttempt,
       }),
-      "retry:doc_budget_123:ver_budget_123:batch-retry-0123456789abcdef:after:ing_budget_retry_123",
+      "retry:doc_budget_123:ver_budget_123:batch-retry-0123456789abcdef:after:5be1f9011c13d85d",
     );
+  });
+
+  it("keeps a successor key within the ingestion contract limit", () => {
+    const key = idempotencyKeyForBudgetRetry({
+      documentId: "doc_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      documentVersionId: "ver_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      operationId: "batch-retry-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      currentJobId: "ing_dddddddddddddddddddddddddddddddd",
+      currentAttempt: {
+        ingestion_job_id: "ing_dddddddddddddddddddddddddddddddd",
+        document_id: "doc_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        document_version_id: "ver_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        ingestion_status: "FAILED",
+      },
+    });
+    assert.ok(key.length <= 200);
   });
 
   it("keeps the original key unless the exact current attempt failed", () => {
