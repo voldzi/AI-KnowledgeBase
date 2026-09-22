@@ -8,13 +8,22 @@ from starlette import status
 from app.middleware import get_correlation_id
 
 
+ERROR_ENVELOPE_SCHEMA = "akb.registry.error.v1"
+_MAX_FIELD_PATHS = 8
+_MAX_FIELD_PATH_SEGMENTS = 12
+
+
 def error_payload(code: str, message: str, details: dict[str, Any] | None = None) -> dict[str, Any]:
+    correlation_id = get_correlation_id()
     return {
         "error": {
+            "schema_version": ERROR_ENVELOPE_SCHEMA,
             "code": code,
             "message": message,
             "details": details or {},
-            "trace_id": get_correlation_id(),
+            # Keep trace_id while clients migrate to the explicit correlation_id.
+            "correlation_id": correlation_id,
+            "trace_id": correlation_id,
         }
     }
 
@@ -33,6 +42,25 @@ def problem(status_code: int, code: str, message: str, details: dict[str, Any] |
     return HTTPException(status_code=status_code, detail=error_payload(code, message, details))
 
 
+def _safe_validation_field_paths(errors: list[dict[str, Any]]) -> list[str]:
+    """Expose schema locations only; never echo request values or validator messages."""
+    paths: list[str] = []
+    for item in errors[:_MAX_FIELD_PATHS]:
+        location = item.get("loc")
+        if not isinstance(location, (list, tuple)):
+            continue
+        parts = [str(part) for part in location[:_MAX_FIELD_PATH_SEGMENTS]
+                 if isinstance(part, (str, int))]
+        if parts and parts[0] == "body":
+            parts = parts[1:]
+        if not parts:
+            continue
+        path = ".".join(parts)
+        if path and len(path) <= 512 and path not in paths:
+            paths.append(path)
+    return paths
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(HTTPException)
     async def http_exception_handler(_: Request, exc: HTTPException) -> JSONResponse:
@@ -44,12 +72,16 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+        # Validation errors can contain an ``input`` echo.  The integration
+        # boundary exposes only bounded field paths, never submitted values.
         errors = exc.errors()
-        if request.url.path.startswith("/api/v1/internal/"):
-            errors = [{"type": item["type"], "loc": item["loc"], "msg": "Invalid internal request field"} for item in errors]
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            content=error_payload("validation_error", "Request validation failed", {"errors": json_safe(errors)}),
+            content=error_payload(
+                "validation_error",
+                "Request validation failed",
+                {"field_paths": _safe_validation_field_paths(errors)},
+            ),
         )
 
     @app.exception_handler(Exception)

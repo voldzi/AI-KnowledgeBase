@@ -44,4 +44,25 @@ describe("safe registry transport failures", () => {
       return Response.json({ error: { code: "forbidden", message: "Denied", trace_id: "fixture-trace" } }, { status: 403 });
     } }), (error: unknown) => error instanceof ApiClientError && error.status === 403 && error.code === "forbidden");
   });
+
+  it("preserves only bounded Registry validation paths for an upstream bridge", async (t) => {
+    t.mock.method(console, "error", () => {});
+    await assert.rejects(
+      () => requestJson({ ...options, fetcher: async () => Response.json({
+        error: {
+          schema_version: "akb.registry.error.v1",
+          code: "validation_error",
+          message: "Request validation failed",
+          details: { field_paths: ["metadata.batch_approved_at"], input: "must-not-cross-bridge" },
+          correlation_id: "corr-registry-validation",
+          trace_id: "legacy-trace",
+        },
+      }, { status: 422 }) }),
+      (error: unknown) => error instanceof ApiClientError
+        && error.status === 422
+        && error.code === "validation_error"
+        && error.traceId === "corr-registry-validation"
+        && JSON.stringify(error.details) === JSON.stringify({ field_paths: ["metadata.batch_approved_at"] }),
+    );
+  });
 });

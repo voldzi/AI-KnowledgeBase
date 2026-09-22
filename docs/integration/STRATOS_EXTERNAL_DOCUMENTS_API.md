@@ -102,6 +102,16 @@ Transportní identita je přesně `client_id=stratos-akb-service`, audience
 `stratos-budget-upload`. Hlavičky dodané volajícím jako `X-AKL-*` nejsou zdroj
 identity. Povolený source system je pouze `STRATOS_BUDGET`.
 
+Chyba validace Registry má od verze `akb.registry.error.v1` vždy obálku
+`error.schema_version`, `error.code`, `error.details.field_paths` a
+`error.correlation_id` (zachovaný `trace_id` je stejná korelační hodnota).
+`field_paths` obsahuje nejvýše osm názvů cest, nikdy hodnoty dokumentu,
+souboru, metadat ani tokenů. AKB BFF předá pouze tyto bezpečné cesty ve své
+obálce `akb.stratos.bridge.error.v1`. Historická dávka přijímá úplnou a přesně
+trojici `batch_manifest_id`, `batch_entries_sha256` a `release_revision` v
+`metadata`; `batch_approved_at` patří pouze do interního auditu STRATOS a do
+AKB upload požadavku se neposílá.
+
 Vyhrazené čtení `lineage` vrací pouze přesnou verzi, která je v Budget
 external reference právě vedena jako aktuální. Je dostupné jen stejnému
 transportnímu účtu s grantem `stratos-budget-upload`; účet kvůli retry

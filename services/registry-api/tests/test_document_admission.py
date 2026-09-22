@@ -82,6 +82,27 @@ def test_budget_service_cannot_admit_null_tlp_even_with_matching_envelope(client
     assert snapshot(db_session) == before
 
 
+def test_budget_validation_error_is_versioned_and_exposes_only_safe_field_paths(client, db_session):
+    payload = _preflight_payload()
+    # This is intentionally not part of the Registry contract.  The response
+    # must identify the field path without reflecting its value or the payload.
+    payload["metadata"]["batch_approved_at"] = "private-fixture-value"
+    before = snapshot(db_session)
+    response = client.post(
+        "/api/v1/integrations/stratos-budget-upload/external-documents/upsert",
+        json=payload,
+        headers=_service_headers(),
+    )
+    assert response.status_code == 422, response.text
+    error = response.json()["error"]
+    assert error["schema_version"] == "akb.registry.error.v1"
+    assert error["code"] == "validation_error"
+    assert error["correlation_id"] == error["trace_id"]
+    assert error["details"] == {"field_paths": ["metadata.batch_approved_at"]}
+    assert "private-fixture-value" not in response.text
+    assert snapshot(db_session) == before
+
+
 @pytest.mark.parametrize("replacement", [None, admitted_policy(tlp=None)])
 def test_patch_cannot_clear_or_replace_tlp_with_null(client, db_session, admin_headers, replacement):
     created = client.post("/api/v1/documents", json=document_request(), headers=admin_headers).json()

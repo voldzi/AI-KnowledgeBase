@@ -178,9 +178,11 @@ export interface ApiRequestContext {
 
 export interface ApiErrorBody {
   error: {
+    schema_version?: string;
     code: string;
     message: string;
     details: Record<string, unknown>;
+    correlation_id?: string;
     trace_id: string;
   };
 }
@@ -560,12 +562,14 @@ export class ApiClientError extends Error {
   readonly status: number;
   readonly code: string;
   readonly traceId: string;
+  readonly details: Record<string, unknown>;
 
-  constructor(message: string, status: number, code: string, traceId: string) {
+  constructor(message: string, status: number, code: string, traceId: string, details: Record<string, unknown> = {}) {
     super(message);
     this.name = "ApiClientError";
     this.status = status;
     this.code = code;
     this.traceId = traceId;
+    this.details = details;
   }
 }

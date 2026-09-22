@@ -18,9 +18,11 @@ export function stratosBridgeError(error: unknown) {
     return NextResponse.json(
       {
         error: {
+          schema_version: "akb.stratos.bridge.error.v1",
           code: error.code,
           message: error.message,
           details: "details" in error ? error.details : {},
+          correlation_id: error instanceof ApiClientError ? error.traceId : "web-stratos-bridge",
           trace_id: error instanceof ApiClientError ? error.traceId : "web-stratos-bridge"
         }
       },

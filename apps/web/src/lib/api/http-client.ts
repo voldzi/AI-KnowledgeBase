@@ -28,6 +28,18 @@ function isApiErrorBody(value: unknown): value is ApiErrorBody {
   );
 }
 
+function safeUpstreamErrorDetails(payload: unknown): Record<string, unknown> {
+  if (!isApiErrorBody(payload)) return {};
+  const details = payload.error.details;
+  if (!details || typeof details !== "object" || Array.isArray(details)) return {};
+  const fieldPaths = details.field_paths;
+  if (!Array.isArray(fieldPaths)) return {};
+  const safePaths = fieldPaths
+    .filter((value): value is string => typeof value === "string" && value.length > 0 && value.length <= 512)
+    .slice(0, 8);
+  return safePaths.length ? { field_paths: safePaths } : {};
+}
+
 export async function requestJson<T>(options: JsonRequestOptions): Promise<T> {
   const context = withCorrelationDefaults(options.context);
   const url = `${options.baseUrl}${options.path}`;
@@ -95,7 +107,9 @@ export async function requestJson<T>(options: JsonRequestOptions): Promise<T> {
   if (!response.ok) {
     const code = isApiErrorBody(payload) ? payload.error.code : "UPSTREAM_ERROR";
     const message = isApiErrorBody(payload) ? payload.error.message : "Upstream request failed";
-    const traceId = isApiErrorBody(payload) ? payload.error.trace_id : context.correlationId;
+    const traceId = isApiErrorBody(payload)
+      ? (payload.error.correlation_id ?? payload.error.trace_id)
+      : context.correlationId;
     logIntegrationEvent({
       level: "error",
       service: options.service,
@@ -106,7 +120,7 @@ export async function requestJson<T>(options: JsonRequestOptions): Promise<T> {
       correlationId: context.correlationId,
       errorCode: code
     });
-    throw new ApiClientError(message, response.status, code, traceId);
+    throw new ApiClientError(message, response.status, code, traceId, safeUpstreamErrorDetails(payload));
   }
 
   logIntegrationEvent({

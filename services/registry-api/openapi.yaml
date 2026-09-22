@@ -12019,11 +12019,16 @@ components:
         error:
           type: object
           required:
+          - schema_version
           - code
           - message
           - details
+          - correlation_id
           - trace_id
           properties:
+            schema_version:
+              type: string
+              const: akb.registry.error.v1
             code:
               type: string
             message:
@@ -12031,6 +12036,8 @@ components:
             details:
               type: object
               additionalProperties: true
+            correlation_id:
+              type: string
             trace_id:
               type: string
     DocumentIntakeReadinessResponse:
