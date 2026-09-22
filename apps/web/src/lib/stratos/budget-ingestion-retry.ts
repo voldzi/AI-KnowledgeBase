@@ -47,10 +47,15 @@ export function idempotencyKeyForBudgetRetry(input: {
 
   if (!failedCurrentAttempt || input.currentJobId === null) return base;
 
-  const predecessorDigest = createHash("sha256")
-    .update(input.currentJobId)
+  // Registry accepts historical retries only when the operation component is
+  // exactly `batch-retry-<sha256>`.  Derive a successor operation from both
+  // the original operation and its failed predecessor instead of appending an
+  // extra suffix to the full key.  That changes the idempotency identity while
+  // preserving the narrow Registry contract and its length bound.
+  const successorOperationId = `batch-retry-${createHash("sha256")
+    .update(`${input.operationId}\u0000${input.currentJobId}`)
     .digest("hex")
-    .slice(0, 16);
-  return `${base}:after:${predecessorDigest}`;
+  }`;
+  return `retry:${input.documentId}:${input.documentVersionId}:${successorOperationId}`;
 }
 import { createHash } from "node:crypto";

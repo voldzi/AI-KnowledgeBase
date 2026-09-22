@@ -43,7 +43,7 @@ describe("STRATOS Budget ingestion retry idempotence", () => {
         currentJobId: failed.currentJobId,
         currentAttempt: failed.currentAttempt,
       }),
-      "retry:doc_budget_123:ver_budget_123:batch-retry-0123456789abcdef:after:5be1f9011c13d85d",
+      "retry:doc_budget_123:ver_budget_123:batch-retry-cf5051fc2d0befdc8d25da87a29c0a5129e922c456046a4d116e1791d37c2504",
     );
   });
 
