@@ -28,7 +28,10 @@ import {
   stratosBudgetLineageFromVersion,
   updateStratosBudgetExternalDocumentCurrent,
 } from "@/lib/stratos/document-ai";
-import { isCompletedIdempotentRetry } from "@/lib/stratos/budget-ingestion-retry";
+import {
+  idempotencyKeyForBudgetRetry,
+  isCompletedIdempotentRetry,
+} from "@/lib/stratos/budget-ingestion-retry";
 import { ApiClientError, type ApiRequestContext } from "@/lib/types";
 
 import { stratosBridgeError } from "../../../../errors";
@@ -145,7 +148,13 @@ export async function POST(request: Request, context: RouteContext) {
           });
     }
 
-    const idempotencyKey = `retry:${documentId}:${currentVersionId}:${operationId}`;
+    const idempotencyKey = idempotencyKeyForBudgetRetry({
+      documentId,
+      documentVersionId: currentVersionId,
+      operationId,
+      currentJobId,
+      currentAttempt,
+    });
     const ingestionJobId = ingestionJobIdForIdempotencyKey(idempotencyKey);
     if (isCompletedIdempotentRetry({
       documentId,

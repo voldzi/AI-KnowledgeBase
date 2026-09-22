@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { isCompletedIdempotentRetry } from "../src/lib/stratos/budget-ingestion-retry";
+import {
+  idempotencyKeyForBudgetRetry,
+  isCompletedIdempotentRetry,
+} from "../src/lib/stratos/budget-ingestion-retry";
 
 const coordinate = {
   documentId: "doc_budget_123",
@@ -28,6 +31,36 @@ function completedRetry() {
 }
 
 describe("STRATOS Budget ingestion retry idempotence", () => {
+  it("creates one deterministic successor key after an exact failed attempt", () => {
+    const failed = completedRetry();
+    failed.currentAttempt.ingestion_status = "FAILED";
+    failed.currentJob.status = "failed";
+    assert.equal(
+      idempotencyKeyForBudgetRetry({
+        documentId: coordinate.documentId,
+        documentVersionId: coordinate.documentVersionId,
+        operationId: "batch-retry-0123456789abcdef",
+        currentJobId: failed.currentJobId,
+        currentAttempt: failed.currentAttempt,
+      }),
+      "retry:doc_budget_123:ver_budget_123:batch-retry-0123456789abcdef:after:ing_budget_retry_123",
+    );
+  });
+
+  it("keeps the original key unless the exact current attempt failed", () => {
+    const completed = completedRetry();
+    assert.equal(
+      idempotencyKeyForBudgetRetry({
+        documentId: coordinate.documentId,
+        documentVersionId: coordinate.documentVersionId,
+        operationId: "batch-retry-0123456789abcdef",
+        currentJobId: completed.currentJobId,
+        currentAttempt: completed.currentAttempt,
+      }),
+      "retry:doc_budget_123:ver_budget_123:batch-retry-0123456789abcdef",
+    );
+  });
+
   it("reuses the exact indexed retry coordinate", () => {
     assert.equal(isCompletedIdempotentRetry(completedRetry()), true);
   });

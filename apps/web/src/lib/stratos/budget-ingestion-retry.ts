@@ -25,3 +25,25 @@ export function isCompletedIdempotentRetry(input: {
     && input.currentJob.document_version_id === input.documentVersionId
     && input.currentJob.status === "completed";
 }
+
+export function idempotencyKeyForBudgetRetry(input: {
+  documentId: string;
+  documentVersionId: string;
+  operationId: string;
+  currentJobId: string | null;
+  currentAttempt: {
+    ingestion_job_id: string;
+    document_id: string;
+    document_version_id: string;
+    ingestion_status: string;
+  } | null;
+}): string {
+  const base = `retry:${input.documentId}:${input.documentVersionId}:${input.operationId}`;
+  const failedCurrentAttempt = input.currentJobId !== null
+    && input.currentAttempt?.ingestion_job_id === input.currentJobId
+    && input.currentAttempt.document_id === input.documentId
+    && input.currentAttempt.document_version_id === input.documentVersionId
+    && input.currentAttempt.ingestion_status === "FAILED";
+
+  return failedCurrentAttempt ? `${base}:after:${input.currentJobId}` : base;
+}
