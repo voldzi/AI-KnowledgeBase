@@ -15,6 +15,7 @@ from app.service import (
     _assistant_filters,
     _assistant_query,
     _assistant_query_has_referential_source,
+    _assistant_requires_official_legal_identity,
     _assistant_uses_authorized_follow_up_source,
     _apply_answer_facet_completeness,
     _bounded_conversation_questions,
@@ -1565,6 +1566,97 @@ def test_assistant_filters_include_pdf_corpus_document_types() -> None:
 
     assert "regulation" in filters.document_types
     assert "other" in filters.document_types
+
+
+@pytest.mark.parametrize(
+    ("question", "expected"),
+    [
+        ("Jaké je číslo a název zákona o státní statistické službě?", True),
+        ("Jaký je název zákona č. 42/2020 Sb.?", True),
+        ("What is the title and number of this law?", True),
+        ("Řekni mi číslo smlouvy o provozu systému.", False),
+        ("Co podle této smlouvy stanoví zákon?", False),
+    ],
+)
+def test_official_legal_identity_is_limited_to_statute_identity_questions(
+    question: str, expected: bool,
+) -> None:
+    assert _assistant_requires_official_legal_identity(question) is expected
+
+
+def test_statute_identity_cannot_cite_an_incidental_contract_mention() -> None:
+    with make_client({"AKL_RAG_NO_ANSWER_MIN_SCORE": "0"}) as client:
+        service = client.app.state.rag_service
+        service._retriever._chunks.append({
+            "chunk_id": "chunk_contract_wrong_statute_number",
+            "text": "Smlouva zmiňuje zákon o ukázkové službě č. 12/2020 Sb.",
+            "payload": {
+                "document_id": "doc_contract_wrong_statute_number",
+                "document_version_id": "ver_contract_wrong_statute_number",
+                "document_title": "Smlouva o ukázkové službě",
+                "version_label": "1.0",
+                "document_type": "contract",
+                "classification": "internal",
+                "status": "valid",
+                "tags": ["contract"],
+            },
+        })
+        response = client.post("/api/v1/assistant/chat", json={
+            "user_id": "employee_1",
+            "message": "Jaké je číslo zákona o ukázkové službě?",
+            "persist_conversation": False,
+        })
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["citations"] == []
+    assert "12/2020" not in str(body)
+
+
+def test_statute_identity_uses_an_authorized_official_regulation() -> None:
+    with make_client({"AKL_RAG_NO_ANSWER_MIN_SCORE": "0"}) as client:
+        service = client.app.state.rag_service
+        service._retriever._chunks.extend([
+            {
+                "chunk_id": "chunk_contract_wrong_statute",
+                "text": "Smlouva zmiňuje zákon o ukázkové službě č. 12/2020 Sb.",
+                "payload": {
+                    "document_id": "doc_contract_wrong_statute",
+                    "document_version_id": "ver_contract_wrong_statute",
+                    "document_title": "Smlouva o ukázkové službě",
+                    "version_label": "1.0",
+                    "document_type": "contract",
+                    "classification": "internal",
+                    "status": "valid",
+                    "tags": ["contract"],
+                },
+            },
+            {
+                "chunk_id": "chunk_official_statute",
+                "text": "Zákon o ukázkové službě je zákon č. 13/2020 Sb.",
+                "payload": {
+                    "document_id": "doc_official_statute",
+                    "document_version_id": "ver_official_statute",
+                    "document_title": "Zákon o ukázkové službě",
+                    "version_label": "1.0",
+                    "document_type": "regulation",
+                    "classification": "public",
+                    "status": "valid",
+                    "tags": ["official-public-reference"],
+                },
+            },
+        ])
+        response = client.post("/api/v1/assistant/chat", json={
+            "user_id": "employee_1",
+            "message": "Jaké je číslo zákona o ukázkové službě?",
+            "persist_conversation": False,
+        })
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["response_type"] == "answer"
+    assert {citation["document_id"] for citation in body["citations"]} == {"doc_official_statute"}
+    assert "12/2020" not in str(body)
 
 
 def test_assistant_filters_preserve_explicit_document_and_version_scope() -> None:

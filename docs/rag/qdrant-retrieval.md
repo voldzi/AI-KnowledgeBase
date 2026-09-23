@@ -90,6 +90,16 @@ The retriever preserves these fields in `RetrievedChunk.citation`; answer citati
 6. Lexical reranking is applied inside the RAG service.
 7. Answer composer receives only authorized chunks above `AKL_RAG_NO_ANSWER_MIN_SCORE`.
 
+For a general request for a statute's number or title, assistant candidate
+discovery is limited to currently authorized `regulation` documents carrying
+the governed `official-public-reference` tag. The assistant checks the returned
+chunk metadata again before composing an answer. An incidental mention in a
+contract or manual cannot establish a statute's identity, even if the mention
+would pass a quotation-based evidence check. If no qualifying official source
+is indexed and authorized, the assistant returns its normal insufficient-source
+response. An explicit question about a particular document or a source-bound
+follow-up retains that document's scope.
+
 ## Text Normalization and Czech Recall
 
 Ingestion stores `normalized_text` with whitespace collapsed, lowercased, and

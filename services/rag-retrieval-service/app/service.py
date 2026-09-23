@@ -1475,6 +1475,20 @@ class RagRetrievalService:
                     "only_valid": False,
                 }
             )
+        official_legal_identity = (
+            _assistant_requires_official_legal_identity(payload.message)
+            and not inherit_authorized_source
+            and not payload.source_bound
+            and not retrieval_filters.document_ids
+            and not retrieval_filters.document_version_ids
+        )
+        if official_legal_identity:
+            retrieval_filters = retrieval_filters.model_copy(
+                update={
+                    "document_types": ["regulation"],
+                    "tags": list(dict.fromkeys([*retrieval_filters.tags, "official-public-reference"])),
+                }
+            )
         director_copilot_request = _director_copilot_evidence_context(
             payload.context.get("director_copilot_evidence")
         ) is not None
@@ -1527,6 +1541,16 @@ class RagRetrievalService:
             }
         )
         assistant_chunks = list(run.response.chunks)
+        if official_legal_identity:
+            # The index filter is only candidate discovery. A contract's incidental
+            # mention of a law is not authority for the law's identity, even when
+            # that mention can be quoted and passes claim-support verification.
+            assistant_chunks = [
+                chunk for chunk in assistant_chunks
+                if chunk.metadata.get("document_type") == "regulation"
+                and isinstance(chunk.metadata.get("tags"), list)
+                and "official-public-reference" in chunk.metadata["tags"]
+            ]
         logger.info(
             "assistant_context_selected query_id=%s chunk_ids=%s version_ids=%s content_logged=false",
             query_id,
@@ -1573,7 +1597,7 @@ class RagRetrievalService:
         elif director_copilot_request:
             rag_answer = self._answer_composer.compose_director_findings(
                 query_id=query_id,
-                chunks=run.response.chunks,
+                chunks=assistant_chunks,
                 confidence=decision.confidence,
                 warnings=decision.warnings,
                 max_chunks=max_chunks,
@@ -4494,6 +4518,18 @@ def _assistant_legal_retrieval_hint(message: str) -> str | None:
         if re.search(pattern, normalized):
             return hint
     return None
+
+
+def _assistant_requires_official_legal_identity(message: str) -> bool:
+    """Reserve statute number/title answers for governed official legal sources."""
+    normalized = _normalize_for_assistant(message)
+    return bool(
+        re.search(r"\b(zakon\w*|predpis\w*|statut\w*|law|act)\b", normalized)
+        and re.search(
+            r"\b(cisl\w*|nazev|nazv\w*|oznacen\w*|number|title)\b",
+            normalized,
+        )
+    )
 
 
 def _assistant_legal_history_retrieval_hint(earlier_questions: object) -> str | None:
