@@ -7327,6 +7327,9 @@
               }
             }
           },
+          "503": {
+            "description": "Session store is temporarily busy; retry after two seconds."
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -7489,6 +7492,9 @@
               }
             }
           },
+          "503": {
+            "description": "Session store is temporarily busy; retry after two seconds."
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -7547,6 +7553,9 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Session store is temporarily busy; retry after two seconds."
           },
           "422": {
             "description": "Validation Error",
@@ -7713,6 +7722,9 @@
           "204": {
             "description": "Successful Response"
           },
+          "503": {
+            "description": "Session store is temporarily busy; retry after two seconds."
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -7788,6 +7800,9 @@
               }
             }
           },
+          "503": {
+            "description": "Session store is temporarily busy; retry after two seconds."
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -7851,6 +7866,9 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "503": {
+            "description": "Session store is temporarily busy; retry after two seconds."
           },
           "422": {
             "description": "Validation Error",
@@ -7924,6 +7942,9 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "503": {
+            "description": "Session store is temporarily busy; retry after two seconds."
           },
           "422": {
             "description": "Validation Error",
@@ -29155,12 +29176,18 @@
           "error": {
             "type": "object",
             "required": [
+              "schema_version",
               "code",
               "message",
               "details",
+              "correlation_id",
               "trace_id"
             ],
             "properties": {
+              "schema_version": {
+                "type": "string",
+                "const": "akb.registry.error.v1"
+              },
               "code": {
                 "type": "string"
               },
@@ -29170,6 +29197,9 @@
               "details": {
                 "type": "object",
                 "additionalProperties": true
+              },
+              "correlation_id": {
+                "type": "string"
               },
               "trace_id": {
                 "type": "string"

@@ -162,6 +162,31 @@ def test_simple_governed_public_context_uses_configured_external_economy_model()
     ]
 
 
+def test_same_external_model_keeps_distinct_economy_and_standard_tiers() -> None:
+    llm = CaptureLLMClient()
+    settings = replace(
+        _settings(),
+        external_economy_chat_model="gpt-6-luna",
+        external_chat_model="gpt-6-luna",
+    )
+    composer = AnswerComposer(settings, llm)
+    chunk = _chunk("public").model_copy(update={"metadata": {
+        "policy_binding_id": "pb_public",
+        "policy_hash": "sha256:public",
+        "policy_summary": {"handlingClass": "PUBLIC", "obligations": []},
+    }})
+
+    answer = asyncio.run(composer.compose(
+        query_id="same-model-complex",
+        query="Porovnej povinnosti ve smlouvě.",
+        chunks=[chunk], confidence="high", warnings=[], max_chunks=4,
+        answer_mode="extract_obligations",
+    ))
+
+    assert llm.models == ["gpt-6-luna"]
+    assert answer.llm_usage["routing"]["tier"] == "external_standard"
+
+
 def test_external_economy_model_never_overrides_document_processing_policy() -> None:
     llm = CaptureLLMClient()
     settings = replace(

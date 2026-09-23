@@ -119,12 +119,12 @@ the tier only together with a genuinely complex request or answer mode.
 ```text
 AKL_RAG_MODEL_ROUTING_MODE=cost_optimized
 AKL_RAG_EXTERNAL_COMPLEXITY_THRESHOLD=3
-AKL_RAG_EXTERNAL_PREMIUM_COMPLEXITY_THRESHOLD=8
+AKL_RAG_EXTERNAL_PREMIUM_COMPLEXITY_THRESHOLD=14
 AKL_RAG_CHAT_MODEL=gemma4:12b-mlx
 AKL_RAG_HIGH_QUALITY_CHAT_MODEL=gemma4:31b-mlx
-AKL_RAG_EXTERNAL_ECONOMY_CHAT_MODEL=gpt-5-mini
-AKL_RAG_EXTERNAL_CHAT_MODEL=gpt-5.6-luna
-AKL_RAG_EXTERNAL_PREMIUM_CHAT_MODEL=
+AKL_RAG_EXTERNAL_ECONOMY_CHAT_MODEL=gpt-6-luna
+AKL_RAG_EXTERNAL_CHAT_MODEL=gpt-6-luna
+AKL_RAG_EXTERNAL_PREMIUM_CHAT_MODEL=gpt-6-sol
 ```
 
 `external_preferred` retains the former behavior for a controlled comparison:
@@ -132,6 +132,18 @@ every policy-permitted answer uses an external model. `local_only` disables
 external composition without weakening document authorization or the evidence
 gate. Model routing never overrides Information Policy V2; `RESTRICTED`,
 `NO_EXTERNAL_AI`, `LOCAL_PROCESSING_ONLY` and classified content stay local.
+Using Luna in both the economy and standard tiers retains distinct routing
+metadata while paying the same low model rate. Sol is reserved for complexity
+scores at or above 14; the premium model can be left empty until a quality
+evaluation justifies it. Changing these IDs or thresholds is a configuration
+change, not a document-specific rule. Both API model IDs were verified with a
+content-free live request on 2026-09-23. OpenAI's Standard short-context text
+prices at that date were $0.10 input / $0.50 output per million tokens for
+Luna and $2.00 / $10.00 for Sol; cached input was $0.01 / $0.20. Longer
+prompts, regional processing, and other processing modes may use other rates.
+Verify prices against the [OpenAI Luna](https://developers.openai.com/api/docs/models/gpt-6-luna)
+and [Sol](https://developers.openai.com/api/docs/models/gpt-6-sol) model pages
+before revising the pricing snapshot.
 
 ## DIA and multi-model API routers
 
@@ -239,8 +251,8 @@ mounted at `/run/secrets/akb-openai-api-key`:
 ```text
 AKL_LLM_DEFAULT_PROVIDER=openai
 AKL_LLM_ENABLED_PROVIDERS=ollama,openai
-AKL_LLM_MODEL_PROVIDER_MAP={"gpt-5.6-luna":"openai","gpt-5.4-mini":"openai","bge-m3":"ollama"}
-AKL_LLM_DEFAULT_CHAT_MODEL=gpt-5.6-luna
+AKL_LLM_MODEL_PROVIDER_MAP={"gpt-6-luna":"openai","gpt-6-sol":"openai","bge-m3":"ollama"}
+AKL_LLM_DEFAULT_CHAT_MODEL=gpt-6-luna
 AKL_OPENAI_COMPAT_BASE_URL=https://api.openai.com
 AKL_OPENAI_COMPAT_API_KEY_FILE=/run/secrets/akb-openai-api-key
 AKL_OPENAI_COMPAT_API_KEY_SOURCE_FILE=/srv/akb/env/openai-akb-api-key

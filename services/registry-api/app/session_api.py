@@ -1,11 +1,13 @@
 import hashlib
 import hmac
 import time
+from collections.abc import Generator
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationError
-from sqlalchemy import select
+from sqlalchemy import select, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.audit import add_audit_event
@@ -17,6 +19,28 @@ from app.models import WebSession, make_id
 
 router = APIRouter(prefix="/api/v1/internal/web-sessions", tags=["Web sessions"])
 MAX_CLOCK_SKEW_SECONDS = 60
+_TRANSIENT_DATABASE_STATES = {"55P03", "57014"}
+_BUSY_RESPONSE = {503: {"description": "Session store is temporarily busy; retry after two seconds."}}
+
+
+def _bounded_session_db(db: Session = Depends(get_db)) -> Generator[Session, None, None]:
+    # A stuck session row must not block the Registry event loop or outlive the
+    # web bridge's five-second request deadline. Keep these limits local to
+    # session operations; ingestion and other Registry workflows are untouched.
+    try:
+        if db.bind is not None and db.bind.dialect.name == "postgresql":
+            db.execute(text("SET LOCAL lock_timeout = '1500ms'"))
+            db.execute(text("SET LOCAL statement_timeout = '4000ms'"))
+        yield db
+    except DBAPIError as exc:
+        db.rollback()
+        if getattr(exc.orig, "sqlstate", None) in _TRANSIENT_DATABASE_STATES:
+            raise HTTPException(
+                status_code=503,
+                detail="Session store is temporarily busy.",
+                headers={"Retry-After": "2"},
+            ) from exc
+        raise
 
 
 class WebSessionWrite(BaseModel):
@@ -98,14 +122,13 @@ def _payload(model: type[BaseModel], body: bytes):
 
 @router.post("", response_model=WebSessionResponse, status_code=201, openapi_extra={
     "requestBody": {"required": True, "content": {"application/json": {"schema": WebSessionWrite.model_json_schema()}}},
-})
-async def create_web_session(
-    request: Request,
-    db: Session = Depends(get_db),
+}, responses=_BUSY_RESPONSE)
+def create_web_session(
+    db: Session = Depends(_bounded_session_db),
     settings: Settings = Depends(get_settings),
-    _: bytes = Depends(_verify_internal_request),
+    body: bytes = Depends(_verify_internal_request),
 ) -> WebSessionResponse:
-    payload = _payload(WebSessionWrite, await request.body())
+    payload = _payload(WebSessionWrite, body)
     if payload.idle_expires_at > payload.absolute_expires_at:
         raise HTTPException(status_code=422, detail="Idle expiry exceeds absolute expiry.")
     now = datetime.now(timezone.utc)
@@ -125,27 +148,30 @@ async def create_web_session(
         metadata={"persistent": record.persistent, "client_id": record.client_id},
         correlation_id=get_correlation_id(),
     )
+    db.flush()
+    response = _response(record)
     db.commit()
-    db.refresh(record)
-    return _response(record)
+    return response
 
 
-@router.get("/{session_id_hash}", response_model=WebSessionResponse)
-async def get_web_session(
+@router.get("/{session_id_hash}", response_model=WebSessionResponse, responses=_BUSY_RESPONSE)
+def get_web_session(
     session_id_hash: str,
-    db: Session = Depends(get_db),
+    db: Session = Depends(_bounded_session_db),
     _: bytes = Depends(_verify_internal_request),
 ) -> WebSessionResponse:
     record = db.scalar(select(WebSession).where(WebSession.session_id_hash == session_id_hash))
     if record is None:
         raise HTTPException(status_code=404, detail="Web session not found.")
-    return _response(record)
+    response = _response(record)
+    db.rollback()
+    return response
 
 
-@router.get("/subjects/{subject_id}/sessions", response_model=list[WebSessionResponse])
-async def list_subject_sessions(
+@router.get("/subjects/{subject_id}/sessions", response_model=list[WebSessionResponse], responses=_BUSY_RESPONSE)
+def list_subject_sessions(
     subject_id: str,
-    db: Session = Depends(get_db),
+    db: Session = Depends(_bounded_session_db),
     _: bytes = Depends(_verify_internal_request),
 ) -> list[WebSessionResponse]:
     records = db.scalars(
@@ -153,21 +179,22 @@ async def list_subject_sessions(
         .where(WebSession.subject_id == subject_id, WebSession.revoked_at.is_(None))
         .order_by(WebSession.last_seen_at.desc())
     ).all()
-    return [_response(record) for record in records]
+    response = [_response(record) for record in records]
+    db.rollback()
+    return response
 
 
 @router.patch("/{session_id_hash}", response_model=WebSessionResponse, openapi_extra={
     "requestBody": {"required": True, "content": {"application/json": {"schema": WebSessionPatch.model_json_schema()}}},
     "responses": {"409": {"description": "Expired, revoked or concurrently changed session; token and policy rotation require expected_updated_at."}},
-})
-async def update_web_session(
+}, responses=_BUSY_RESPONSE)
+def update_web_session(
     session_id_hash: str,
-    request: Request,
-    db: Session = Depends(get_db),
+    db: Session = Depends(_bounded_session_db),
     settings: Settings = Depends(get_settings),
-    _: bytes = Depends(_verify_internal_request),
+    body: bytes = Depends(_verify_internal_request),
 ) -> WebSessionResponse:
-    payload = _payload(WebSessionPatch, await request.body())
+    payload = _payload(WebSessionPatch, body)
     record = db.scalar(select(WebSession).where(WebSession.session_id_hash == session_id_hash).with_for_update())
     if record is None:
         raise HTTPException(status_code=404, detail="Web session not found.")
@@ -195,7 +222,9 @@ async def update_web_session(
         if settings.identity_mode == "managed" and record.issuer != settings.managed_identity_issuer:
             raise HTTPException(status_code=422, detail="Managed session binding is invalid.")
     elif record.revoked_at is not None:
-        return _response(record)
+        response = _response(record)
+        db.rollback()
+        return response
     if revoked_reason:
         values = {}
     for key, value in values.items():
@@ -212,9 +241,10 @@ async def update_web_session(
             metadata={"reason": revoked_reason},
             correlation_id=get_correlation_id(),
         )
+    db.flush()
+    response = _response(record)
     db.commit()
-    db.refresh(record)
-    return _response(record)
+    return response
 
 
 def _utc(value: datetime) -> datetime:
@@ -225,10 +255,10 @@ def _session_ttls(persistent: bool) -> tuple[timedelta, timedelta]:
     return (timedelta(days=30), timedelta(days=90)) if persistent else (timedelta(hours=8), timedelta(hours=24))
 
 
-@router.delete("/{session_id_hash}", status_code=204)
-async def revoke_web_session(
+@router.delete("/{session_id_hash}", status_code=204, responses=_BUSY_RESPONSE)
+def revoke_web_session(
     session_id_hash: str,
-    db: Session = Depends(get_db),
+    db: Session = Depends(_bounded_session_db),
     _: bytes = Depends(_verify_internal_request),
 ) -> Response:
     record = db.scalar(select(WebSession).where(WebSession.session_id_hash == session_id_hash).with_for_update())
@@ -248,10 +278,10 @@ async def revoke_web_session(
     return Response(status_code=204)
 
 
-@router.delete("/subjects/{subject_id}/all", status_code=204)
-async def revoke_subject_sessions(
+@router.delete("/subjects/{subject_id}/all", status_code=204, responses=_BUSY_RESPONSE)
+def revoke_subject_sessions(
     subject_id: str,
-    db: Session = Depends(get_db),
+    db: Session = Depends(_bounded_session_db),
     _: bytes = Depends(_verify_internal_request),
 ) -> Response:
     now = datetime.now(timezone.utc)
@@ -274,11 +304,11 @@ async def revoke_subject_sessions(
     return Response(status_code=204)
 
 
-@router.delete("/subjects/{subject_id}/sessions/{session_id}", status_code=204)
-async def revoke_subject_session(
+@router.delete("/subjects/{subject_id}/sessions/{session_id}", status_code=204, responses=_BUSY_RESPONSE)
+def revoke_subject_session(
     subject_id: str,
     session_id: str,
-    db: Session = Depends(get_db),
+    db: Session = Depends(_bounded_session_db),
     _: bytes = Depends(_verify_internal_request),
 ) -> Response:
     record = db.scalar(

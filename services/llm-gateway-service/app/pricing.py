@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
-PRICING_VERSION = "openai-2026-09-20"
+PRICING_VERSION = "openai-2026-09-23"
 
 
 @dataclass(frozen=True)
@@ -16,6 +16,8 @@ class TokenPrice:
 # Operator-reviewed snapshot of the public OpenAI API price table. Unknown
 # models deliberately return no estimate instead of silently using a guess.
 OPENAI_TOKEN_PRICES: dict[str, TokenPrice] = {
+    "gpt-6-sol": TokenPrice(2.00, 10.00, 0.20),
+    "gpt-6-luna": TokenPrice(0.10, 0.50, 0.01),
     "gpt-6-astra": TokenPrice(10.0, 50.0),
     "gpt-5.6-sol": TokenPrice(4.0, 20.0),
     "gpt-5.6": TokenPrice(4.0, 20.0),

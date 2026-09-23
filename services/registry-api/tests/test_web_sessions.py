@@ -5,6 +5,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 from app.models import AuditEvent, WebSession
+from sqlalchemy.exc import DBAPIError
 
 
 SECRET = "akb-development-web-session-store-secret-v1"
@@ -81,6 +82,21 @@ def test_server_session_store_rejects_invalid_signature(client):
         },
     )
     assert response.status_code == 401
+
+
+def test_session_row_lock_timeout_returns_retryable_error(client, db_session, monkeypatch):
+    class LockBusy(Exception):
+        sqlstate = "55P03"
+
+    def blocked_read(*args, **kwargs):
+        raise DBAPIError("select", {}, LockBusy("row lock unavailable"))
+
+    monkeypatch.setattr(db_session, "scalar", blocked_read)
+    path = "/api/v1/internal/web-sessions/" + "a" * 64
+    response = client.get(path, headers=_headers("GET", path))
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "2"
+    assert "row lock" not in response.text
 
 
 def test_server_session_store_supports_selective_and_global_revocation(client):

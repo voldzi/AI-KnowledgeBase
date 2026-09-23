@@ -17,6 +17,16 @@ requirements from the site-specific `docker.home.cz` immutable release.
 
 ## Server-side browser sessions
 
+Internal web-session database operations run in worker threads and use a
+PostgreSQL 1.5-second row-lock limit and 4-second statement limit, below the
+web bridge's five-second request deadline. A lock timeout returns 503 with
+`Retry-After: 2`; the transaction is rolled back. A completed session write
+returns its response after the commit without opening a new read transaction.
+If users unexpectedly see the AKB recovery page after central SSO, check
+Registry health/readiness, the aggregate age of `web_sessions` transactions,
+and the safe OIDC callback failure reason before asking them to log in again.
+Never log a selector, token, session payload, or the database query text.
+
 Production OIDC uses database-backed AKB sessions. Configure three separate
 operator-owned files with mode `0600`:
 

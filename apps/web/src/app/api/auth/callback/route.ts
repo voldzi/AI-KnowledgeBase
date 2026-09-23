@@ -107,8 +107,12 @@ export async function GET(request: NextRequest) {
       selector = await createServerSession(config, session, persistent, nowMs, priorDeadline);
       absoluteExpiresAt = serverSessionDeadline(config, session, persistent, nowMs, priorDeadline);
     }
-  } catch {
-    console.error("OIDC callback could not create a server session.");
+  } catch (error) {
+    // Keep operational diagnosis possible without logging tokens, selectors,
+    // document content or the original exception message.
+    console.error("OIDC callback could not create a server session.", {
+      reason: safeSessionFailureReason(error),
+    });
     return redirectToLogin(config, returnTo);
   }
   const response = redirectTo(buildPublicAppUrl(config, returnTo));
@@ -142,4 +146,16 @@ function redirectTo(targetUrl: string) {
   const response = NextResponse.redirect(targetUrl, 303);
   response.headers.set("cache-control", "no-store, max-age=0");
   return response;
+}
+
+function safeSessionFailureReason(error: unknown): string {
+  if (!(error instanceof Error)) return "unexpected_failure";
+  if (error.name === "TimeoutError" || error.name === "AbortError") return "session_store_timeout";
+  switch (error.message) {
+    case "SESSION_STORE_WRITE_FAILED": return "session_store_write_failed";
+    case "SESSION_SYNCHRONIZATION_REJECTED": return "session_synchronization_rejected";
+    case "SESSION_IDENTITY_BINDING_INVALID": return "identity_binding_invalid";
+    case "SESSION_EXPIRED": return "session_expired";
+    default: return "unexpected_failure";
+  }
 }

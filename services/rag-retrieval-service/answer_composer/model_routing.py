@@ -107,11 +107,9 @@ def select_model_route(
             )
         selected_external = external_model or external_premium_model or external_economy_model
         assert selected_external is not None
-        selected_tier: ModelTier = (
-            "external_economy"
-            if selected_external == external_economy_model
-            else "external_standard"
-        )
+        # The standard and economy tiers may intentionally use the same model
+        # ID. Record the decision, not a comparison of provider model names.
+        selected_tier: ModelTier = "external_standard" if external_model else "external_economy"
         return ModelRoute(
             model=selected_external,
             effective_model=selected_external,
