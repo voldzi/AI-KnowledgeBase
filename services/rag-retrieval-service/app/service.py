@@ -1551,12 +1551,6 @@ class RagRetrievalService:
                 and isinstance(chunk.metadata.get("tags"), list)
                 and "official-public-reference" in chunk.metadata["tags"]
             ]
-        logger.info(
-            "assistant_context_selected query_id=%s chunk_ids=%s version_ids=%s content_logged=false",
-            query_id,
-            [chunk.chunk_id for chunk in assistant_chunks],
-            sorted({chunk.citation.document_version_id for chunk in assistant_chunks}),
-        )
         conversation_reference = None
         selected_pairs = {
             (chunk.citation.document_id, chunk.citation.document_version_id)
@@ -1582,6 +1576,52 @@ class RagRetrievalService:
                 chunks=assistant_chunks,
             )
             if official_legal_identity else None
+        )
+        if official_legal_identity and official_title_answer is None:
+            # A title-only source can fall below the semantic top-k. Resolve the
+            # statute title lexically, then apply the same Registry authorization
+            # and validity gate before allowing it into answer evidence.
+            exact_resolver = getattr(self._retriever, "resolve_exact_candidates", None)
+            lookup_query = _official_statute_lookup_query(payload.message)
+            if exact_resolver is not None and lookup_query is not None:
+                title_candidates = await exact_resolver(
+                    query=lookup_query,
+                    filters=retrieval_filters,
+                    limit=30,
+                )
+                title_candidates = [
+                    chunk for chunk in title_candidates
+                    if chunk.metadata.get("document_type") == "regulation"
+                    and isinstance(chunk.metadata.get("tags"), list)
+                    and "official-public-reference" in chunk.metadata["tags"]
+                ]
+                effective_on = retrieval_filters.valid_on or (
+                    datetime.now(ZoneInfo("Europe/Prague")).date()
+                    if retrieval_filters.only_valid else None
+                )
+                title_authorized, title_denied = await self._filter_authorized_chunks(
+                    subject_id=payload.user_id,
+                    chunks=title_candidates,
+                    auth_context=auth_context,
+                    effective_on=effective_on,
+                )
+                run.denied_document_ids.update(title_denied)
+                official_title_answer = _official_statute_title_answer(
+                    query_id=query_id,
+                    question=payload.message,
+                    chunks=title_authorized,
+                )
+                if official_title_answer is not None:
+                    assistant_chunks.extend(
+                        chunk for chunk in title_authorized
+                        if chunk.chunk_id in official_title_answer.used_chunks
+                        and all(item.chunk_id != chunk.chunk_id for item in assistant_chunks)
+                    )
+        logger.info(
+            "assistant_context_selected query_id=%s chunk_ids=%s version_ids=%s content_logged=false",
+            query_id,
+            [chunk.chunk_id for chunk in assistant_chunks],
+            sorted({chunk.citation.document_version_id for chunk in assistant_chunks}),
         )
         decision = self._no_answer_policy.evaluate(
             chunks=assistant_chunks,
@@ -3623,6 +3663,14 @@ def _official_statute_title_answer(
         evidence_status="supported",
         verification_model="official-source-metadata-title-v1",
     )
+
+
+def _official_statute_lookup_query(question: str) -> str | None:
+    match = re.search(r"\bzákon\w*\s+o\s+([^?!.]+)", question, re.I)
+    if not match:
+        return None
+    topic = re.sub(r"\s+", " ", match.group(1)).strip()
+    return "Zákon o " + topic if topic else None
 
 
 def _same_source_context_scope(seed: RetrievedChunk, item: RetrievedChunk) -> bool:

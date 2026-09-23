@@ -1677,6 +1677,43 @@ def test_statute_identity_uses_an_authorized_official_regulation() -> None:
     assert body["llm_usage"] is None
 
 
+def test_statute_identity_resolves_official_title_beyond_semantic_top_k() -> None:
+    with make_client({"AKL_RAG_NO_ANSWER_MIN_SCORE": "0"}) as client:
+        service = client.app.state.rag_service
+        service._retriever._chunks.append({
+            "chunk_id": "chunk_official_title_only",
+            "text": "Úvodní ustanovení.",
+            "payload": {
+                "document_id": "doc_official_title_only",
+                "document_version_id": "ver_official_title_only",
+                "document_title": "13/2020 Sb. – Zákon o ukázkové službě",
+                "version_label": "1.0",
+                "document_type": "regulation",
+                "classification": "public",
+                "status": "valid",
+                "tags": ["official-public-reference"],
+            },
+        })
+        original_retrieve = service._retriever.retrieve
+
+        async def omit_title_from_semantic_results(**kwargs):
+            chunks = await original_retrieve(**kwargs)
+            return [chunk for chunk in chunks if chunk.chunk_id != "chunk_official_title_only"]
+
+        service._retriever.retrieve = omit_title_from_semantic_results
+        response = client.post("/api/v1/assistant/chat", json={
+            "user_id": "employee_1",
+            "message": "Jaké je číslo a název zákona o ukázkové službě?",
+            "persist_conversation": False,
+        })
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["answer"] == "13/2020 Sb. – Zákon o ukázkové službě"
+    assert {citation["document_id"] for citation in body["citations"]} == {"doc_official_title_only"}
+    assert body["verification_model"] == "official-source-metadata-title-v1"
+
+
 def test_assistant_filters_preserve_explicit_document_and_version_scope() -> None:
     filters = _assistant_filters(
         {
