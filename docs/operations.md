@@ -350,10 +350,12 @@ Disable the worker through `AKB_OFFICIAL_SOURCE_AUTOMATION_ENABLED=false` for a
 reversible stop; do not delete its state volume during a normal rollback.
 
 Document-grounded chat requests use
-`AKL_WEB_RAG_ASSISTANT_TIMEOUT_MS` (default `45000`). When the bounded timeout
-expires, the web bridge fails the turn explicitly instead of leaving the chat
-indefinitely in a sending state. Live STRATOS tools retain their independent,
-shorter Director Copilot timeout.
+`AKL_WEB_RAG_ASSISTANT_TIMEOUT_MS` (default `120000`). The web bridge must
+outwait the normal RAG answer budget; a 45-second web deadline previously
+discarded a document answer that the RAG service completed a second later.
+When the bounded timeout expires, the web bridge still fails the turn
+explicitly instead of leaving the chat indefinitely in a sending state. Live
+STRATOS tools retain their independent, shorter Director Copilot timeout.
 
 ### Director Copilot activation
 

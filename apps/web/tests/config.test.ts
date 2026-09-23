@@ -15,7 +15,7 @@ describe("AKL web config", () => {
     assert.equal(config.directorCopilot?.clientId, "svc-akb-director-copilot");
     assert.equal(config.officialSourceAutomation?.enabled, false);
     assert.equal(config.officialSourceAutomation?.audience, "stratos-official-sources");
-    assert.equal(config.ragAssistantTimeoutMs, 45_000);
+    assert.equal(config.ragAssistantTimeoutMs, 120_000);
   });
 
   it("requires dedicated file-backed credentials for production official-source automation", () => {

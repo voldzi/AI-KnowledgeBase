@@ -501,7 +501,7 @@ export function getAklConfig(env: EnvSource = process.env): AklConfig {
     serviceBaseUrls,
     ragAssistantTimeoutMs: positiveNumber(
       env.AKL_WEB_RAG_ASSISTANT_TIMEOUT_MS,
-      45_000,
+      120_000,
       "AKL_WEB_RAG_ASSISTANT_TIMEOUT_MS",
     ),
     oidc,

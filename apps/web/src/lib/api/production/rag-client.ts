@@ -20,7 +20,7 @@ export class ProductionRagClient implements RagApiClient {
   constructor(
     private readonly baseUrl: string,
     private readonly fetcher?: AklFetch,
-    private readonly assistantTimeoutMs = 45_000,
+    private readonly assistantTimeoutMs = 120_000,
   ) {}
 
   query(request: RagQueryRequest, context: ApiRequestContext): Promise<RagAnswer> {
