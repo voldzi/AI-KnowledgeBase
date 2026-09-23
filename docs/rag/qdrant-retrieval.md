@@ -97,8 +97,13 @@ chunk metadata again before composing an answer. An incidental mention in a
 contract or manual cannot establish a statute's identity, even if the mention
 would pass a quotation-based evidence check. If no qualifying official source
 is indexed and authorized, the assistant returns its normal insufficient-source
-response. An explicit question about a particular document or a source-bound
-follow-up retains that document's scope.
+response. When an authorized official title exactly matches a requested
+`Zákon o …` identity and begins with its statute number, the assistant returns
+that title directly with its source citation and a deterministic metadata
+verification record; it does not spend model tokens to paraphrase the title.
+Ambiguous or non-matching titles continue through the ordinary evidence gate.
+An explicit question about a particular document or a source-bound follow-up
+retains that document's scope.
 
 ## Text Normalization and Czech Recall
 

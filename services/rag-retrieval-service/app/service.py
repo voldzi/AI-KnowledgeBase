@@ -1506,7 +1506,7 @@ class RagRetrievalService:
             3
             if director_copilot_request
             else 10
-            if explicit_identifier_request or _assistant_legal_retrieval_hint(payload.message)
+            if official_legal_identity or explicit_identifier_request or _assistant_legal_retrieval_hint(payload.message)
             else 10
             if len(requested_facets) >= 2
             else 8
@@ -1575,12 +1575,22 @@ class RagRetrievalService:
                 conversation_context.parent_document_answer,
                 set(conversation_context.citation_scope_pairs),
             )
+        official_title_answer = (
+            _official_statute_title_answer(
+                query_id=query_id,
+                question=payload.message,
+                chunks=assistant_chunks,
+            )
+            if official_legal_identity else None
+        )
         decision = self._no_answer_policy.evaluate(
             chunks=assistant_chunks,
             had_candidates=run.had_candidates,
             denied_document_ids=run.denied_document_ids,
         )
-        if not decision.can_answer:
+        if official_title_answer is not None:
+            rag_answer = official_title_answer
+        elif not decision.can_answer:
             rag_answer = self._no_answer_policy.no_answer(
                 query_id=query_id,
                 decision=decision,
@@ -3540,6 +3550,78 @@ def _retrieval_only_answer(
         warnings=warnings,
         used_chunks=[chunk.chunk_id for chunk in chunks],
         missing_information=None,
+    )
+
+
+def _official_statute_title_answer(
+    *, query_id: str, question: str, chunks: list[RetrievedChunk],
+) -> RagAnswer | None:
+    """Answer an exact statute-identity question from an authorized official title.
+
+    This uses governed source metadata, not a model's paraphrase of an OCR
+    passage. An amendment mentioning a different act cannot win merely because
+    its body contains the same topic words.
+    """
+    from answer_composer.composer import _answer_policy_bindings, _citations, _policy_metadata
+
+    normalized_question = _normalize_for_assistant(question)
+    topic_match = re.search(r"\bzakon\w*\s+o\s+([^?!.]+)", normalized_question)
+    if not topic_match:
+        return None
+    topic = re.sub(r"\s+", " ", topic_match.group(1)).strip()
+    if not topic:
+        return None
+
+    matches: dict[tuple[str, str], RetrievedChunk] = {}
+    for chunk in chunks:
+        tags = chunk.metadata.get("tags")
+        if (
+            chunk.metadata.get("document_type") != "regulation"
+            or not isinstance(tags, list)
+            or "official-public-reference" not in tags
+        ):
+            continue
+        title = chunk.citation.document_title.strip()
+        title_match = re.fullmatch(
+            r"(?P<number>\d{1,4}/\d{4}\s*Sb\.)\s*[–—-]\s*(?P<name>Zákon o .+)",
+            title,
+            re.I,
+        )
+        if not title_match:
+            continue
+        normalized_name = re.sub(
+            r"\s+", " ", _normalize_for_assistant(title_match.group("name")),
+        ).strip()
+        if normalized_name != "zakon o " + topic:
+            continue
+        identity = (title_match.group("number"), normalized_name)
+        if identity not in matches or chunk.score > matches[identity].score:
+            matches[identity] = chunk
+
+    # Multiple official acts with the same requested title need clarification;
+    # selecting one silently would turn source ambiguity into a false fact.
+    if len(matches) != 1:
+        return None
+    selected = next(iter(matches.values()))
+    title = selected.citation.document_title.strip()
+    return RagAnswer(
+        query_id=query_id,
+        answer=title,
+        confidence="high",
+        citations=_citations([selected]),
+        used_chunks=[selected.chunk_id],
+        policy_bindings=_answer_policy_bindings([selected]),
+        obligations=list(_policy_metadata([selected]).get("obligations", [])),
+        claims=[{
+            "claim": title,
+            "claim_type": "main",
+            "chunk_ids": [selected.chunk_id],
+            "quoted_support": title,
+            "supported": True,
+            "support_score": 1.0,
+        }],
+        evidence_status="supported",
+        verification_model="official-source-metadata-title-v1",
     )
 
 

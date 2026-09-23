@@ -1637,7 +1637,21 @@ def test_statute_identity_uses_an_authorized_official_regulation() -> None:
                 "payload": {
                     "document_id": "doc_official_statute",
                     "document_version_id": "ver_official_statute",
-                    "document_title": "Zákon o ukázkové službě",
+                    "document_title": "13/2020 Sb. – Zákon o ukázkové službě",
+                    "version_label": "1.0",
+                    "document_type": "regulation",
+                    "classification": "public",
+                    "status": "valid",
+                    "tags": ["official-public-reference"],
+                },
+            },
+            {
+                "chunk_id": "chunk_official_amendment",
+                "text": "Zákon o jiném tématu mění zákon č. 13/2020 Sb., o ukázkové službě.",
+                "payload": {
+                    "document_id": "doc_official_amendment",
+                    "document_version_id": "ver_official_amendment",
+                    "document_title": "14/2020 Sb. – Zákon o jiném tématu a o změně zákona č. 13/2020 Sb., o ukázkové službě",
                     "version_label": "1.0",
                     "document_type": "regulation",
                     "classification": "public",
@@ -1655,8 +1669,12 @@ def test_statute_identity_uses_an_authorized_official_regulation() -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["response_type"] == "answer"
+    assert body["answer"] == "13/2020 Sb. – Zákon o ukázkové službě"
     assert {citation["document_id"] for citation in body["citations"]} == {"doc_official_statute"}
     assert "12/2020" not in str(body)
+    assert body["evidence_status"] == "supported"
+    assert body["verification_model"] == "official-source-metadata-title-v1"
+    assert body["llm_usage"] is None
 
 
 def test_assistant_filters_preserve_explicit_document_and_version_scope() -> None:
